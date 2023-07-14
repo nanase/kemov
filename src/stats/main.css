@@ -1,0 +1,19 @@
+html {
+  font-family: 'IBM Plex Sans JP', sans-serif;
+  color: #1e1e1e;
+  font-size: 16px;
+  background-color: #edf2f7;
+}
+
+h1 {
+  margin: 1em auto;
+  width: 90%;
+  text-align: center;
+  font-size: 200%;
+}
+
+@media screen and (max-width: 840px) {
+  h1 {
+    font-size: 150%;
+  }
+}
