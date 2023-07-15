@@ -242,4 +242,39 @@ onMounted(async () => {
     font-size: 100%;
   }
 }
+@media screen and (max-width: 520px) {
+  .vtuber-list {
+    width: 90%;
+    padding: 15px 15px;
+  }
+  .vtuber {
+    padding: 2px;
+    width: calc(100% - 4px);
+  }
+  .avatar {
+    width: 24px;
+    height: 24px;
+    border: 2px solid;
+  }
+  .header {
+    font-size: 80%;
+  }
+  .name {
+    padding: 0 2px;
+    font-weight: bold;
+    font-size: 80%;
+  }
+  .subscriberCount {
+    padding: 0 2px;
+    font-size: 80%;
+  }
+  .viewCount {
+    padding: 0 2px;
+    font-size: 80%;
+  }
+  .videoCount {
+    padding: 0 2px;
+    font-size: 80%;
+  }
+}
 </style>
