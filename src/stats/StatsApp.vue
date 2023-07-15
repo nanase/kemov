@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { type YouTubeChannelStat, type YouTubeChannel } from '@/types/youtube';
+import { mergeArrayBy } from '@/lib/array';
 
 const channelsUri = 'https://raw.githubusercontent.com/nanase/asset/main/kemov/channel.json';
 const statsUri = 'https://s3.ap-northeast-1.amazonaws.com/nanase.asset/kemov/stats.json';
@@ -8,21 +9,6 @@ const statsUri = 'https://s3.ap-northeast-1.amazonaws.com/nanase.asset/kemov/sta
 const vtubers = ref<Array<YouTubeChannel & YouTubeChannelStat> | null>(null);
 const updateTime = ref<number>(Date.now());
 const elapsedTime = ref<number>(0);
-
-function findBy<T, ValueType>(propertyName: string, value: ValueType, array: T[]): T | null {
-  for (let element of array) {
-    if (typeof element[propertyName] === 'undefined') continue;
-    if (element[propertyName] === value) return element;
-  }
-  return null;
-}
-
-function mergeArrayBy<T1, T2>(propertyName: string, array1: T1[], array2: T2[]): Array<T1 & T2> {
-  return array1.map((element) => ({
-    ...findBy<T1, any>(propertyName, element[propertyName], array1),
-    ...findBy<T2, any>(propertyName, element[propertyName], array2),
-  })) as Array<T1 & T2>;
-}
 
 function withCommas(x?: number): string | undefined {
   return x?.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
