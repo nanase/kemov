@@ -129,10 +129,10 @@ onMounted(async () => {
   transform: scale(1.5);
 }
 .avatar.total {
-  visibility: collapse;
+  visibility: hidden;
 }
 .avatar.header {
-  visibility: collapse;
+  visibility: hidden;
   height: 0;
 }
 
