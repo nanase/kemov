@@ -2,13 +2,15 @@
 import { onMounted, ref } from 'vue';
 import { type YouTubeChannelStat, type YouTubeChannel } from '@/types/youtube';
 import { mergeArrayBy } from '@/lib/array';
+import dayjs, { Dayjs } from 'dayjs';
+import ja from 'dayjs/locale/ja';
 
 const channelsUri = 'https://raw.githubusercontent.com/nanase/asset/main/kemov/channel.json';
 const statsUri = 'https://s3.ap-northeast-1.amazonaws.com/nanase.asset/kemov/stats.json';
 
 const vtubers = ref<Array<YouTubeChannel & YouTubeChannelStat> | null>(null);
-const updateTime = ref<number>(Date.now());
 const elapsedTime = ref<number>(0);
+const fetchedTime = ref<Dayjs>(dayjs());
 
 function withCommas(x?: number): string | undefined {
   return x?.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -23,17 +25,17 @@ function sum<T>(array: T[] | null, value: (element: T) => number): number {
 }
 
 function readableElapsedTime() {
-  if (elapsedTime.value >= 60000) {
-    return `${Math.floor(elapsedTime.value / 60000)}分`;
+  if (elapsedTime.value >= 60) {
+    return `${Math.floor(elapsedTime.value / 60)}分`;
   } else {
-    return `${Math.floor(elapsedTime.value / 1000)}秒`;
+    return `${elapsedTime.value}秒`;
   }
 }
 
 async function fetchVtubersData() {
   const channels = (await (await fetch(channelsUri)).json()) as YouTubeChannel[];
   const stats = (await (await fetch(statsUri)).json()) as YouTubeChannelStat[];
-  updateTime.value = Date.now();
+  fetchedTime.value = dayjs();
   vtubers.value = mergeArrayBy('id', channels, stats);
 }
 
@@ -45,7 +47,7 @@ onMounted(async () => {
   }, 600000);
 
   setInterval(() => {
-    elapsedTime.value = Date.now() - updateTime.value;
+    elapsedTime.value = dayjs().diff(fetchedTime.value, 's');
   }, 1000);
 });
 </script>
@@ -80,7 +82,9 @@ onMounted(async () => {
       <div class="viewCount total">{{ withCommas(sum(vtubers, (v) => v.statistics.viewCount)) }}</div>
       <div class="videoCount total">{{ withCommas(sum(vtubers, (v) => v.statistics.videoCount)) }}</div>
     </div>
-    <div class="update">{{ `最終更新: ${readableElapsedTime()}前` }}</div>
+    <div class="update">
+      {{ `最終更新: ${fetchedTime.format('HH:mm:ss')} (${readableElapsedTime()}前)` }}
+    </div>
     <div class="horizon"></div>
     <ul>
       <li>10分ごとに自動で更新されます。数値が減少することがあります</li>
