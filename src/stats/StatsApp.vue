@@ -214,6 +214,10 @@ onMounted(async () => {
   background-color: #ebf0f5;
 }
 
+.note ul {
+  padding-inline-start: 20px;
+}
+
 @media screen and (min-width: 1035px) {
   .vtuber-list {
     width: 900px;
@@ -235,19 +239,19 @@ onMounted(async () => {
   .name {
     padding: 0 2px;
     font-weight: bold;
-    font-size: 100%;
+    font-size: 125%;
   }
   .subscriberCount {
     padding: 0 2px;
-    font-size: 100%;
+    font-size: 110%;
   }
   .viewCount {
     padding: 0 2px;
-    font-size: 100%;
+    font-size: 110%;
   }
   .videoCount {
     padding: 0 2px;
-    font-size: 100%;
+    font-size: 110%;
   }
 }
 @media screen and (max-width: 520px) {
@@ -265,24 +269,24 @@ onMounted(async () => {
     border: 2px solid;
   }
   .header {
-    font-size: 80%;
+    font-size: 100%;
   }
   .name {
     padding: 0 2px;
     font-weight: bold;
-    font-size: 80%;
+    font-size: 125%;
   }
   .subscriberCount {
     padding: 0 2px;
-    font-size: 80%;
+    font-size: 110%;
   }
   .viewCount {
     padding: 0 2px;
-    font-size: 80%;
+    font-size: 110%;
   }
   .videoCount {
     padding: 0 2px;
-    font-size: 80%;
+    font-size: 110%;
   }
 }
 </style>
