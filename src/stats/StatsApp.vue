@@ -86,10 +86,13 @@ onMounted(async () => {
       {{ `最終更新: ${fetchedTime.format('HH:mm:ss')} (${readableElapsedTime()}前)` }}
     </div>
     <div class="horizon"></div>
-    <ul>
-      <li>10分ごとに自動で更新されます。数値が減少することがあります</li>
-      <li>このページは非公式です。内容についてのお問い合わせはご遠慮ください</li>
-    </ul>
+    <div class="note">
+      <ul>
+        <li>10分ごとに自動で更新されます。数値は減少することがあります</li>
+        <li>総再生回数と動画数は配信終了後に反映されます</li>
+        <li>このページは非公式です。内容についてのお問い合わせはご遠慮ください</li>
+      </ul>
+    </div>
   </div>
 </template>
 
