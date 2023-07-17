@@ -103,6 +103,7 @@ onMounted(async () => {
   padding: 15px 35px;
   background-color: white;
   border-radius: 10px;
+  word-break: keep-all;
 }
 
 .vtuber {
