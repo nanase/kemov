@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { type YouTubeChannelStat, type YouTubeChannel } from '@/types/youtube';
-import { mergeArrayBy } from '@/lib/array';
+import { mergeArrayBy, sum } from '@/lib/array';
 import dayjs, { Dayjs } from 'dayjs';
 
 const channelsUri = 'https://raw.githubusercontent.com/nanase/asset/main/kemov/channel.json';
@@ -13,14 +13,6 @@ const fetchedTime = ref<Dayjs>(dayjs());
 
 function withCommas(x?: number): string | undefined {
   return x?.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-}
-
-function sum<T>(array: T[] | null, value: (element: T) => number): number {
-  if (!array) {
-    return 0;
-  }
-
-  return array.reduce((prev, element) => prev + value(element), 0);
 }
 
 function readableElapsedTime() {
