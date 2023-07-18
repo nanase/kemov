@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { channelsUri, statsUri } from './config';
 import { mergeArrayBy, sum } from '@/lib/array';
-import { onMounted, ref } from 'vue';
+import { onMounted, onBeforeUnmount, ref } from 'vue';
 import { type YouTubeChannelStat, type YouTubeChannel } from '@/types/youtube';
 import { withCommas } from '@/lib/number';
 import dayjs, { Dayjs } from 'dayjs';
@@ -9,6 +9,9 @@ import dayjs, { Dayjs } from 'dayjs';
 const vtubers = ref<Array<YouTubeChannel & YouTubeChannelStat>>([]);
 const elapsedTime = ref<number>(0);
 const fetchedTime = ref<Dayjs>(dayjs());
+
+const fetchVtuberDataInterval = ref<number>();
+const elapsedTimeUpdateInterval = ref<number>();
 
 function readableElapsedTime() {
   if (elapsedTime.value >= 60) {
@@ -28,13 +31,18 @@ async function fetchVtubersData() {
 onMounted(async () => {
   await fetchVtubersData();
 
-  setInterval(async () => {
+  fetchVtuberDataInterval.value = setInterval(async () => {
     await fetchVtubersData();
   }, 600000);
 
-  setInterval(() => {
+  elapsedTimeUpdateInterval.value = setInterval(() => {
     elapsedTime.value = dayjs().diff(fetchedTime.value, 's');
   }, 1000);
+});
+
+onBeforeUnmount(() => {
+  clearInterval(fetchVtuberDataInterval.value);
+  clearInterval(elapsedTimeUpdateInterval.value);
 });
 </script>
 
