@@ -27,10 +27,12 @@ export function mergeArrayBy<K extends PropertyKey, T1 extends Record<K, any>, T
     .filter((e): e is NonNullable<typeof e> => e !== null);
 }
 
-export function sum<T>(array: T[] | null, value: (element: T) => number): number {
-  if (array == null) {
-    return 0;
+export function sum(array: number[]): number;
+export function sum<T>(array: T[], key?: (element: T) => number): number;
+export function sum<T>(array: T[], key?: (element: T) => number): number {
+  if (key == null) {
+    return array.reduce((prev, element) => prev + Number(element), 0);
+  } else {
+    return array.reduce((prev, element) => prev + key(element), 0);
   }
-
-  return array.reduce((prev, element) => prev + value(element), 0);
 }

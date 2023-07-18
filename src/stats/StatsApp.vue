@@ -8,7 +8,7 @@ import dayjs, { Dayjs } from 'dayjs';
 const channelsUri = 'https://raw.githubusercontent.com/nanase/asset/main/kemov/channel.json';
 const statsUri = 'https://s3.ap-northeast-1.amazonaws.com/nanase.asset/kemov/stats.json';
 
-const vtubers = ref<Array<YouTubeChannel & YouTubeChannelStat> | null>(null);
+const vtubers = ref<Array<YouTubeChannel & YouTubeChannelStat>>([]);
 const elapsedTime = ref<number>(0);
 const fetchedTime = ref<Dayjs>(dayjs());
 

@@ -1,4 +1,4 @@
-import { findBy, mergeArrayBy } from '../../src/lib/array';
+import { findBy, mergeArrayBy, sum } from '../../src/lib/array';
 
 describe('findBy', () => {
   test('find object', () => {
@@ -64,5 +64,29 @@ describe('mergeArrayBy', () => {
     ];
 
     expect(mergeArrayBy('id', array1, array2)).toEqual([]);
+  });
+});
+
+describe('sum', () => {
+  test('sum object array', () => {
+    const array = [
+      { id: 27, value: 14 },
+      { id: 32, value: 32 },
+      { id: 42, value: 25 },
+    ];
+
+    expect(sum(array, (e) => e.value)).toBe(71);
+  });
+
+  test('sum number array', () => {
+    const array = [14, 32, 25];
+
+    expect(sum(array)).toBe(71);
+  });
+
+  test('sum empty array', () => {
+    const array: number[] = [];
+
+    expect(sum(array)).toBe(0);
   });
 });
