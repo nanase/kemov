@@ -3,7 +3,6 @@ import { onMounted, ref } from 'vue';
 import { type YouTubeChannelStat, type YouTubeChannel } from '@/types/youtube';
 import { mergeArrayBy } from '@/lib/array';
 import dayjs, { Dayjs } from 'dayjs';
-import ja from 'dayjs/locale/ja';
 
 const channelsUri = 'https://raw.githubusercontent.com/nanase/asset/main/kemov/channel.json';
 const statsUri = 'https://s3.ap-northeast-1.amazonaws.com/nanase.asset/kemov/stats.json';
