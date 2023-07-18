@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue';
 import { type YouTubeChannelStat, type YouTubeChannel } from '@/types/youtube';
 import { mergeArrayBy, sum } from '@/lib/array';
+import { withCommas } from '@/lib/number';
 import dayjs, { Dayjs } from 'dayjs';
 
 const channelsUri = 'https://raw.githubusercontent.com/nanase/asset/main/kemov/channel.json';
@@ -10,10 +11,6 @@ const statsUri = 'https://s3.ap-northeast-1.amazonaws.com/nanase.asset/kemov/sta
 const vtubers = ref<Array<YouTubeChannel & YouTubeChannelStat> | null>(null);
 const elapsedTime = ref<number>(0);
 const fetchedTime = ref<Dayjs>(dayjs());
-
-function withCommas(x?: number): string | undefined {
-  return x?.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-}
 
 function readableElapsedTime() {
   if (elapsedTime.value >= 60) {
