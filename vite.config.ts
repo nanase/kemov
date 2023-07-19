@@ -10,6 +10,7 @@ const outDir = resolve(__dirname, 'docs');
 export default defineConfig({
   root,
   base: '/kemov/',
+  publicDir: '../public',
   plugins: [vue()],
   resolve: {
     alias: {
