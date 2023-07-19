@@ -33,13 +33,13 @@ h1 {
 }
 
 
-@media screen and (min-width: 1035px) {
+@media screen and (width >= 1035px) {
   .content {
     width: 900px;
   }
 }
 
-@media screen and (max-width: 840px) {
+@media screen and (width <= 840px) {
   html {
     font-size: 14px;
   }
@@ -53,13 +53,13 @@ h1 {
   }
 }
 
-@media screen and (max-width: 520px) {
+@media screen and (width <= 520px) {
   html {
     font-size: 12px;
   }
 
   .content {
     width: 90%;
-    padding: 15px 15px;
+    padding: 15px;
   }
 }

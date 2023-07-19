@@ -65,7 +65,7 @@ onBeforeUnmount(() => {
   </div>
 </template>
 
-<style>
+<style lang="scss">
 .vtuber-list {
   word-break: keep-all;
 }
@@ -76,15 +76,15 @@ onBeforeUnmount(() => {
   padding: 5px;
   width: calc(100% - 10px);
   border-radius: 50px;
-}
-.vtuber:hover:not(.header, .total) {
-  transition: background-color 0.3s;
-  /* transition: color 0.3s; */
-  background-color: #edf2f7;
-  /* color: white; */
-}
-.vtuber.header {
-  align-items: baseline;
+
+  &:hover:not(.header, .total) {
+    transition: background-color 0.3s;
+    background-color: #edf2f7;
+  }
+
+  &.header {
+    align-items: baseline;
+  }
 }
 
 .avatar {
@@ -96,16 +96,19 @@ onBeforeUnmount(() => {
   border: 3px solid;
   border-radius: 50%;
   transition: transform 0.3s;
-}
-.avatar:hover {
-  transform: scale(1.5);
-}
-.avatar.total {
-  visibility: hidden;
-}
-.avatar.header {
-  visibility: hidden;
-  height: 0;
+
+  &:hover {
+    transform: scale(1.5);
+  }
+
+  &.total {
+    visibility: hidden;
+  }
+
+  &.header {
+    visibility: hidden;
+    height: 0;
+  }
 }
 
 .name {
@@ -114,116 +117,92 @@ onBeforeUnmount(() => {
   font-weight: bold;
   font-size: 150%;
   font-stretch: condensed;
-}
-.name.total,
-.name.header {
-  text-align: right;
-  font-size: 100%;
-}
-.name > a {
-  text-decoration: none;
-  color: inherit;
+
+  &.total,
+  &.header {
+    text-align: right;
+    font-size: 100%;
+  }
+
+  > a {
+    text-decoration: none;
+    color: inherit;
+  }
 }
 
-.subscriberCount {
+.subscriberCount,
+.viewCount,
+.videoCount {
   padding: 0 5px;
   flex: 1;
   text-align: right;
   font-size: 125%;
-}
-.subscriberCount.total,
-.subscriberCount.header {
-  font-weight: bold;
-}
-.subscriberCount.header {
-  font-size: 100%;
-  white-space: nowrap;
-}
 
-.viewCount {
-  padding: 0 5px;
-  flex: 1;
-  text-align: right;
-  font-size: 125%;
-}
-.viewCount.total,
-.viewCount.header {
-  font-weight: bold;
-}
-.viewCount.header {
-  font-size: 100%;
-  white-space: nowrap;
+  &.total,
+  &.header {
+    font-weight: bold;
+  }
+
+  &.header {
+    font-size: 100%;
+    white-space: nowrap;
+  }
 }
 
 .videoCount {
-  padding: 0 5px;
   flex: 0.8;
-  text-align: right;
-  font-size: 125%;
-}
-.videoCount.total,
-.videoCount.header {
-  font-weight: bold;
-}
-.videoCount.header {
-  font-size: 100%;
-  white-space: nowrap;
 }
 
-@media screen and (max-width: 840px) {
+@media screen and (width <= 840px) {
   .vtuber {
     padding: 2px;
     width: calc(100% - 4px);
   }
+
   .avatar {
     width: 32px;
     height: 32px;
     border: 2px solid;
   }
+
   .name {
     padding: 0 2px;
     font-weight: bold;
     font-size: 125%;
   }
-  .subscriberCount {
-    padding: 0 2px;
-    font-size: 110%;
-  }
-  .viewCount {
-    padding: 0 2px;
-    font-size: 110%;
-  }
+
+  .subscriberCount,
+  .viewCount,
   .videoCount {
     padding: 0 2px;
     font-size: 110%;
   }
 }
-@media screen and (max-width: 520px) {
+
+@media screen and (width <= 520px) {
   .vtuber {
     padding: 2px;
     width: calc(100% - 4px);
   }
+
   .avatar {
     width: 24px;
     height: 24px;
     border: 2px solid;
   }
+
   .header {
     font-size: 100%;
   }
+
   .name {
     padding: 0 2px;
     font-weight: bold;
     font-size: 125%;
   }
-  .subscriberCount {
-    padding: 0 2px;
-    font-size: 110%;
-  }
-  .viewCount {
-    padding: 0 2px;
-    font-size: 110%;
-  }
+
+  .subscriberCount,
+  .viewCount,
   .videoCount {
     padding: 0 2px;
     font-size: 110%;
