@@ -5,21 +5,11 @@ import { onMounted, onBeforeUnmount, ref } from 'vue';
 import { type YouTubeChannelStat, type YouTubeChannel } from '@/types/youtube';
 import { withCommas } from '@/lib/number';
 import dayjs, { Dayjs } from 'dayjs';
+import UpdateTime from '../components/stats/UpdateTime.vue';
 
 const vtubers = ref<Array<YouTubeChannel & YouTubeChannelStat>>([]);
-const elapsedTime = ref<number>(0);
 const fetchedTime = ref<Dayjs>(dayjs());
-
 const fetchVtuberDataInterval = ref<number>();
-const elapsedTimeUpdateInterval = ref<number>();
-
-function readableElapsedTime() {
-  if (elapsedTime.value >= 60) {
-    return `${Math.floor(elapsedTime.value / 60)}分`;
-  } else {
-    return `${elapsedTime.value}秒`;
-  }
-}
 
 async function fetchVtubersData() {
   const channels = (await (await fetch(channelsUri)).json()) as YouTubeChannel[];
@@ -34,15 +24,10 @@ onMounted(async () => {
   fetchVtuberDataInterval.value = setInterval(async () => {
     await fetchVtubersData();
   }, 600000);
-
-  elapsedTimeUpdateInterval.value = setInterval(() => {
-    elapsedTime.value = dayjs().diff(fetchedTime.value, 's');
-  }, 1000);
 });
 
 onBeforeUnmount(() => {
   clearInterval(fetchVtuberDataInterval.value);
-  clearInterval(elapsedTimeUpdateInterval.value);
 });
 </script>
 
@@ -76,9 +61,7 @@ onBeforeUnmount(() => {
       <div class="viewCount total">{{ withCommas(sum(vtubers, (v) => v.statistics.viewCount)) }}</div>
       <div class="videoCount total">{{ withCommas(sum(vtubers, (v) => v.statistics.videoCount)) }}</div>
     </div>
-    <div class="update">
-      {{ `最終更新: ${fetchedTime.format('HH:mm:ss')} (${readableElapsedTime()}前)` }}
-    </div>
+    <UpdateTime :time="fetchedTime"></UpdateTime>
   </div>
 </template>
 
