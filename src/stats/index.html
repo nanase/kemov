@@ -23,7 +23,14 @@
       </ul>
     </div>
   </div>
+
+  <script type="module">
+    import { createApp } from 'vue';
+    import StatsApp from '../stats/StatsApp.vue';
+    import './main.css';
+
+    createApp(StatsApp).mount('#app');
+  </script>
 </body>
-<script type="module" src="stats.ts"></script>
 
 </html>
