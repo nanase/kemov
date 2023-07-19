@@ -79,24 +79,11 @@ onBeforeUnmount(() => {
     <div class="update">
       {{ `最終更新: ${fetchedTime.format('HH:mm:ss')} (${readableElapsedTime()}前)` }}
     </div>
-    <div class="horizon"></div>
-    <div class="note">
-      <ul>
-        <li>10分ごとに自動で更新されます。数値は減少することがあります</li>
-        <li>総再生回数と動画数は配信終了後に反映されます</li>
-        <li>このページは非公式です。内容についてのお問い合わせはご遠慮ください</li>
-      </ul>
-    </div>
   </div>
 </template>
 
 <style>
 .vtuber-list {
-  width: 85%;
-  margin: 20px auto;
-  padding: 15px 35px;
-  background-color: white;
-  border-radius: 10px;
   word-break: keep-all;
 }
 
@@ -200,27 +187,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.horizon {
-  display: block;
-  height: 1px;
-  width: 100%;
-  margin: 2em auto;
-  background-color: #ebf0f5;
-}
-
-.note ul {
-  padding-inline-start: 20px;
-}
-
-@media screen and (min-width: 1035px) {
-  .vtuber-list {
-    width: 900px;
-  }
-}
 @media screen and (max-width: 840px) {
-  .vtuber-list {
-    width: 85%;
-  }
   .vtuber {
     padding: 2px;
     width: calc(100% - 4px);
@@ -249,10 +216,6 @@ onBeforeUnmount(() => {
   }
 }
 @media screen and (max-width: 520px) {
-  .vtuber-list {
-    width: 90%;
-    padding: 15px 15px;
-  }
   .vtuber {
     padding: 2px;
     width: calc(100% - 4px);

@@ -12,6 +12,33 @@ h1 {
   font-size: 200%;
 }
 
+.content {
+  width: 85%;
+  margin: 20px auto;
+  padding: 15px 35px;
+  background-color: white;
+  border-radius: 10px;
+}
+
+.horizon {
+  display: block;
+  height: 1px;
+  width: 100%;
+  margin: 2em auto;
+  background-color: #ebf0f5;
+}
+
+.note ul {
+  padding-inline-start: 20px;
+}
+
+
+@media screen and (min-width: 1035px) {
+  .content {
+    width: 900px;
+  }
+}
+
 @media screen and (max-width: 840px) {
   html {
     font-size: 14px;
@@ -20,10 +47,19 @@ h1 {
   h1 {
     font-size: 150%;
   }
+
+  .content {
+    width: 85%;
+  }
 }
 
 @media screen and (max-width: 520px) {
   html {
     font-size: 12px;
+  }
+
+  .content {
+    width: 90%;
+    padding: 15px 15px;
   }
 }
