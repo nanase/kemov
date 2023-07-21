@@ -2,12 +2,12 @@
 import { channelsUri, statsUri } from './config';
 import { mergeArrayBy, sum } from '@/lib/array';
 import { onMounted, onBeforeUnmount, ref } from 'vue';
-import { type YouTubeChannelStat, type YouTubeChannel, type YouTubeChannelStatsResponse } from '@/types/youtube';
+import { type YouTubeChannelStats, type YouTubeChannel, type YouTubeChannelStatsResponse } from '@/types/youtube';
 import { withCommas } from '@/lib/number';
 import dayjs, { Dayjs } from 'dayjs';
 import UpdateTime from '../components/stats/UpdateTime.vue';
 
-const vtubers = ref<Array<YouTubeChannel & YouTubeChannelStat>>([]);
+const vtubers = ref<Array<YouTubeChannel & YouTubeChannelStats>>([]);
 const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
 const fetchVtuberDataInterval = ref<number>();
 

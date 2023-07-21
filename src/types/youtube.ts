@@ -11,7 +11,7 @@ interface YouTubeStatistics {
   subscriberCount: number;
 }
 
-export interface YouTubeChannelStat {
+export interface YouTubeChannelStats {
   id: string;
   fullname: string;
   customUrl: string;
@@ -25,7 +25,7 @@ export interface YouTubeChannelStat {
 
 export interface YouTubeChannelStatsResponse {
   fetched_at: number;
-  data: YouTubeChannelStat[];
+  data: YouTubeChannelStats[];
 }
 
 export interface YouTubeChannel {
