@@ -30,7 +30,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="update">
+  <div v-if="time.isValid()" class="update">
     {{ `最終更新: ${time.format('HH:mm:ss')} (${readableElapsedTime()}前)` }}
   </div>
 </template>
