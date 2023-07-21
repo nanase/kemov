@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue';
+import { onMounted, onBeforeUnmount, ref, watchEffect } from 'vue';
 import dayjs, { Dayjs } from 'dayjs';
 
-const elapsedTime = ref<number>(0);
+const elapsedTime = ref<number>(Number.NaN);
 
 const props = defineProps<{
   time: Dayjs;
@@ -18,19 +18,25 @@ function readableElapsedTime() {
   }
 }
 
+function updateElapsedTime() {
+  elapsedTime.value = dayjs().diff(props.time, 's');
+}
+
 onMounted(async () => {
-  elapsedTimeUpdateInterval.value = setInterval(() => {
-    elapsedTime.value = dayjs().diff(props.time, 's');
-  }, 1000);
+  elapsedTimeUpdateInterval.value = setInterval(updateElapsedTime, 1000);
 });
 
 onBeforeUnmount(() => {
   clearInterval(elapsedTimeUpdateInterval.value);
 });
+
+watchEffect(() => {
+  updateElapsedTime();
+});
 </script>
 
 <template>
-  <div v-if="time.isValid()" class="update">
+  <div v-if="time.isValid() && !Number.isNaN(elapsedTime)" class="update">
     {{ `最終更新: ${time.format('HH:mm:ss')} (${readableElapsedTime()}前)` }}
   </div>
 </template>
