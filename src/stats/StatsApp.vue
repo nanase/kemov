@@ -2,20 +2,20 @@
 import { channelsUri, statsUri } from './config';
 import { mergeArrayBy, sum } from '@/lib/array';
 import { onMounted, onBeforeUnmount, ref } from 'vue';
-import { type YouTubeChannelStat, type YouTubeChannel } from '@/types/youtube';
+import { type YouTubeChannelStat, type YouTubeChannel, type YouTubeChannelStatsResponse } from '@/types/youtube';
 import { withCommas } from '@/lib/number';
 import dayjs, { Dayjs } from 'dayjs';
 import UpdateTime from '../components/stats/UpdateTime.vue';
 
 const vtubers = ref<Array<YouTubeChannel & YouTubeChannelStat>>([]);
-const fetchedTime = ref<Dayjs>(dayjs());
+const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
 const fetchVtuberDataInterval = ref<number>();
 
 async function fetchVtubersData() {
   const channels = (await (await fetch(channelsUri)).json()) as YouTubeChannel[];
-  const stats = (await (await fetch(statsUri)).json()) as YouTubeChannelStat[];
-  fetchedTime.value = dayjs();
-  vtubers.value = mergeArrayBy('id', channels, stats);
+  const stats = (await (await fetch(statsUri)).json()) as YouTubeChannelStatsResponse;
+  fetchedTime.value = dayjs.unix(stats.fetched_at);
+  vtubers.value = mergeArrayBy('id', channels, stats.data);
 }
 
 onMounted(async () => {

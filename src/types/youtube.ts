@@ -23,6 +23,11 @@ export interface YouTubeChannelStat {
   statistics: YouTubeStatistics;
 }
 
+export interface YouTubeChannelStatsResponse {
+  fetched_at: number;
+  data: YouTubeChannelStat[];
+}
+
 export interface YouTubeChannel {
   id: string;
   name: string;
