@@ -1,0 +1,12 @@
+$media: (
+  "sm": "screen and (width <= 576px)",
+  "md": "screen and (width <= 768px)",
+  "lg": "screen and (width >= 992px)",
+  "xl": "screen and (width >= 1200px)",
+  ) !default;
+
+@mixin size($size) {
+  @media #{map-get($media, $size)} {
+    @content;
+  }
+}
