@@ -3,12 +3,10 @@ import { onMounted, onBeforeUnmount, ref, watchEffect } from 'vue';
 import dayjs, { Dayjs } from 'dayjs';
 
 const elapsedTime = ref<number>(Number.NaN);
-
+const elapsedTimeUpdateInterval = ref<number>();
 const props = defineProps<{
   time: Dayjs;
 }>();
-
-const elapsedTimeUpdateInterval = ref<number>();
 
 function readableElapsedTime() {
   if (elapsedTime.value >= 60) {
