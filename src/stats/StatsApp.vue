@@ -12,18 +12,21 @@ const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
 const fetchVtuberDataInterval = ref<number>();
 
 async function fetchVtubersData() {
-  const channels = (await (await fetch(channelsUri)).json()) as YouTubeChannel[];
-  const stats = (await (await fetch(statsUri)).json()) as YouTubeChannelStatsResponse;
-  fetchedTime.value = dayjs.unix(stats.fetched_at);
-  vtubers.value = mergeArrayBy('id', channels, stats.data);
+  try {
+    const channels = (await (await fetch(channelsUri)).json()) as YouTubeChannel[];
+    const stats = (await (await fetch(statsUri)).json()) as YouTubeChannelStatsResponse;
+    vtubers.value = mergeArrayBy('id', channels, stats.data);
+    fetchedTime.value = dayjs.unix(stats.fetched_at);
+    const waitTime = Math.floor(600000 - (dayjs().unix() - stats.fetched_at) * 1000) + 5000;
+    fetchVtuberDataInterval.value = setTimeout(fetchVtubersData, waitTime);
+  } catch (ex) {
+    console.error(`Fetching error. Retrying in 10 minutes: ${ex}`);
+    fetchVtuberDataInterval.value = setTimeout(fetchVtubersData, 600000);
+  }
 }
 
 onMounted(async () => {
   await fetchVtubersData();
-
-  fetchVtuberDataInterval.value = setInterval(async () => {
-    await fetchVtubersData();
-  }, 600000);
 });
 
 onBeforeUnmount(() => {
