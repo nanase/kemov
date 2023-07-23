@@ -69,7 +69,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss">
-@use 'media.scss';
+@use '@/style/media.scss';
 
 .vtuber-list {
   word-break: keep-all;
