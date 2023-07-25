@@ -1,0 +1,60 @@
+@use '@/style/media';
+
+html {
+  font-family: 'IBM Plex Sans JP', sans-serif;
+  color: #1e1e1e;
+  font-size: 100%;
+  background-color: #edf2f7;
+
+  @include media.size(md) {
+    font-size: 87.5%;
+  }
+
+  @include media.size(sm) {
+    font-size: 75%;
+  }
+}
+
+h1 {
+  margin: 1em auto;
+  width: 90%;
+  text-align: center;
+  font-size: 200%;
+
+  @include media.size(md) {
+    font-size: 150%;
+  }
+}
+
+.content {
+  width: 85%;
+  margin: 20px auto;
+  padding: 15px 35px;
+  background-color: white;
+  border-radius: 10px;
+
+  @include media.size(lg) {
+    width: 815px;
+  }
+
+  @include media.size(md) {
+    width: 85%;
+  }
+
+  @include media.size(sm) {
+    width: 90%;
+    padding: 15px;
+  }
+}
+
+.horizon {
+  display: block;
+  height: 1px;
+  width: 100%;
+  margin: 2em auto;
+  background-color: #ebf0f5;
+}
+
+.note ul {
+  padding-inline-start: 20px;
+}
