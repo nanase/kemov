@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type Streaming } from '@/types/genet';
+import { type Streaming, type VideoType } from '@/types/genet';
 import VideoLink from '@/components/VideoLink.vue';
 import MarkDown from '@/components/MarkDown.vue';
 import { computed } from 'vue';
@@ -37,6 +37,19 @@ function toDateTimeString(datetime: string): string {
     return day.format('YYYY/MM/DD (ddd) HH:mm');
   } else {
     return datetime;
+  }
+}
+
+function videoTypeToString(type: VideoType): string {
+  switch (type) {
+    case 'live':
+      return 'ライブ配信';
+    case 'video':
+      return '動画投稿';
+    case 'short':
+      return 'ショート投稿';
+    default:
+      return '投稿';
   }
 }
 </script>
