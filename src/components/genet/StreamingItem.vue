@@ -3,7 +3,15 @@ import { type Streaming } from '@/types/genet';
 import VideoLink from '@/components/VideoLink.vue';
 import MarkDown from '@/components/MarkDown.vue';
 import { computed } from 'vue';
-// import dayjs from 'dayjs';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+import 'dayjs/locale/ja';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.tz.setDefault('Asia/Tokyo');
+dayjs.locale('ja');
 
 const props = defineProps<{
   data: Streaming;
@@ -19,6 +27,16 @@ function insertBreakToName(name: string) {
     return `${regex[1]}\n${regex[2]}\n${regex[3]}`.trim();
   } else {
     return name;
+  }
+}
+
+function toDateTimeString(datetime: string): string {
+  const day = dayjs(datetime).tz();
+
+  if (day.isValid()) {
+    return day.format('YYYY/MM/DD (ddd) HH:mm');
+  } else {
+    return datetime;
   }
 }
 </script>
