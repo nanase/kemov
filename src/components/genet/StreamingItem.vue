@@ -208,6 +208,16 @@ function videoTypeToString(type: VideoType): string {
 }
 
 .tune {
+  margin-bottom: 5px;
+}
+
+.tune-flex {
+  display: flex;
+}
+
+.tune-box {
+  flex: 1;
+
   .title {
     display: block;
     font-weight: bold;
