@@ -25,11 +25,11 @@ function exposeUrl(url: string): string {
 
   switch (parsedUrl.protocol) {
     case 'wikien:': {
-      return `https://en.wikipedia.org/wiki/${parsedUrl.pathname}${parsedUrl.search}`;
+      return `https://en.wikipedia.org/wiki/${parsedUrl.pathname}${parsedUrl.hash}${parsedUrl.search}`;
     }
     case 'wiki:':
     case 'wikija:': {
-      return `https://ja.wikipedia.org/wiki/${parsedUrl.pathname}${parsedUrl.search}`;
+      return `https://ja.wikipedia.org/wiki/${parsedUrl.pathname}${parsedUrl.hash}${parsedUrl.search}`;
     }
     case 'yt:':
     case 'youtube:': {
