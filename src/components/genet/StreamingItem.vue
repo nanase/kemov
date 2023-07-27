@@ -63,7 +63,9 @@ function videoTypeToString(type: VideoType): string {
       <div class="name">
         {{ insertBreakToName(data.shortname ?? data.name) }}
       </div>
-      <div class="published-at">{{ data.publishedAt }} ライブ配信</div>
+      <div class="published-at">
+        {{ `${toDateTimeString(data.video.publishedAt)} ${videoTypeToString(data.video.type)}` }}
+      </div>
       <div class="categories">
         <div class="category" v-for="category in data.categories" :key="category">
           {{ category }}
