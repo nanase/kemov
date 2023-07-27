@@ -42,15 +42,20 @@ function insertBreakToName(name: string) {
     <div class="tunes">
       <ul>
         <li class="tune" v-for="tune in data.tunes" :key="tune.title">
-          <div class="title">
-            <MarkDown :source="tune.title" />
-            <MarkDown class="original-title" v-if="tune.originalTitle != null" :source="tune.originalTitle" />
+          <div class="tune-flex">
+            <div class="tune-box">
+              <div class="title">
+                <MarkDown :source="tune.title" />
+                <MarkDown class="original-title" v-if="tune.originalTitle != null" :source="tune.originalTitle" />
+              </div>
+              <span class="attribute" v-for="attribute in tune.attributes" :key="attribute.name">
+                <span>{{ attribute.name }}: </span>
+                <MarkDown :source="attribute.text" />
+              </span>
+              <MarkDown class="description" :source="tune.description" v-if="tune.description" />
+            </div>
+            <div class="media-box"></div>
           </div>
-          <span class="attribute" v-for="attribute in tune.attributes" :key="attribute.name">
-            <span>{{ attribute.name }}: </span>
-            <MarkDown :source="attribute.text" />
-          </span>
-          <MarkDown class="description" :source="tune.description" v-if="tune.description" />
         </li>
       </ul>
     </div>
@@ -181,6 +186,27 @@ function insertBreakToName(name: string) {
   .description {
     display: block;
     font-size: 90%;
+  }
+}
+
+.media-box {
+  width: 36px;
+  height: 36px;
+  margin: 0 5px;
+  cursor: pointer;
+  background-repeat: no-repeat;
+  background-size: 100%;
+  background-position: center center;
+  background-image: url('/genet/video.svg');
+  transition:
+    background-size 0.3s,
+    filter 0.3s;
+  border-radius: 10px;
+  filter: saturate(0%) brightness(2);
+
+  &:hover {
+    background-size: 175%;
+    filter: saturate(100%) brightness(1);
   }
 }
 </style>
