@@ -146,7 +146,16 @@ function videoTypeToString(type: VideoType): string {
 .streaming-thumbnail {
   width: 400px;
   border-radius: 5px;
+  transform: scale(1);
   box-shadow: 0 0 5px rgba($color: #fff, $alpha: 80%);
+  transition:
+    transform 0.3s,
+    box-shadow 0.3s 0.2s;
+
+  &:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 5px 2px rgba($color: #fff, $alpha: 80%);
+  }
 
   @include media.size(md) {
     width: 320px;
