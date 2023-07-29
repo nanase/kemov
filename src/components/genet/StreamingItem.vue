@@ -34,7 +34,11 @@ function toDateTimeString(datetime: string): string {
   const day = dayjs(datetime).tz();
 
   if (day.isValid()) {
-    return day.format('YYYY/MM/DD (ddd) HH:mm');
+    if (datetime.indexOf(':') !== -1) {
+      return day.format('YYYY/MM/DD (ddd) HH:mm');
+    } else {
+      return day.format('YYYY/MM/DD (ddd)');
+    }
   } else {
     return datetime;
   }
