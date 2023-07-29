@@ -5,9 +5,14 @@ export type VideoType = 'video' | 'live' | 'short';
 interface Video {
   id: string;
   title?: string;
-  position?: number;
   publishedAt: string;
   type: VideoType;
+}
+
+interface EmbeddedVideo {
+  id: string;
+  title?: string;
+  position?: number;
 }
 
 interface TuneAttribute {
@@ -20,7 +25,7 @@ interface Tune {
   originalTitle?: Markdown;
   attributes?: TuneAttribute[];
   description?: Markdown;
-  videos?: Video[];
+  videos?: EmbeddedVideo[];
 }
 
 export interface Streaming {
