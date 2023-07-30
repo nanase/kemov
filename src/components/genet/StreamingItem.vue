@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { type Streaming, type VideoType } from '@/types/genet';
 import VideoLink from '@/components/VideoLink.vue';
+import VideoEmbed from '@/components/VideoEmbed.vue';
 import MarkDown from '@/components/MarkDown.vue';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
@@ -19,6 +20,9 @@ const props = defineProps<{
 
 const thumbnailUrl = computed(() => `//i1.ytimg.com/vi/${props.data.video.id}/hqdefault.jpg`);
 const thumbnailUrlCss = `url('${thumbnailUrl.value}')`;
+
+const parentMedia = ref<string>();
+const targetMedia = ref<string>();
 
 function insertBreakToName(name: string) {
   const regex = name.match(/((?:\[[^\]]*\])|(?:【[^】]*】)*)([^[【]*)((?:\[[^\]]*\])|(?:【[^】]*】)*)/);
@@ -56,6 +60,11 @@ function videoTypeToString(type: VideoType): string {
       return '投稿';
   }
 }
+
+function setEmbedVideo(parentVideoId?: string, targetVideoId?: string): void {
+  parentMedia.value = parentVideoId;
+  targetMedia.value = targetVideoId;
+}
 </script>
 
 <template>
@@ -76,6 +85,12 @@ function videoTypeToString(type: VideoType): string {
         </div>
       </div>
     </div>
+    <Transition name="media">
+      <div class="media-box" v-if="parentMedia === data.video.id && targetMedia != null">
+        <VideoEmbed :video-id="targetMedia"></VideoEmbed>
+        <div class="close" @click="setEmbedVideo()">閉じる</div>
+      </div>
+    </Transition>
     <div class="tunes">
       <ul>
         <li class="tune" v-for="tune in data.tunes" :key="tune.title">
@@ -91,7 +106,9 @@ function videoTypeToString(type: VideoType): string {
               </span>
               <MarkDown class="description" :source="tune.description" v-if="tune.description" />
             </div>
-            <div class="media-box"></div>
+            <div v-for="video in tune.videos" :key="video.id">
+              <div class="media-button" @click="setEmbedVideo(data.video.id, video.id)"></div>
+            </div>
           </div>
         </li>
       </ul>
@@ -246,6 +263,18 @@ function videoTypeToString(type: VideoType): string {
 }
 
 .media-box {
+  .close {
+    text-align: center;
+    background-color: #edf2f7;
+    cursor: pointer;
+
+    &:hover {
+      background-color: #edf2f7;
+    }
+  }
+}
+
+.media-button {
   width: 36px;
   height: 36px;
   margin: 0 5px;
@@ -263,6 +292,18 @@ function videoTypeToString(type: VideoType): string {
   &:hover {
     background-size: 175%;
     filter: saturate(100%) brightness(1);
+  }
+}
+
+.media {
+  &-enter-active,
+  &-leave-active {
+    transition: opacity 0.3s ease;
+  }
+
+  &-enter-from,
+  &-leave-to {
+    opacity: 0;
   }
 }
 </style>
