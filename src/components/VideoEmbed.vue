@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 
 const props = defineProps<{
   /**
@@ -9,6 +9,7 @@ const props = defineProps<{
 }>();
 
 const player = ref<HTMLDivElement>();
+let embedElement: HTMLElement | undefined;
 
 /*
  * This code is based on:
@@ -18,7 +19,11 @@ const player = ref<HTMLDivElement>();
  * Credit: https://www.labnol.org/
  */
 
-onMounted(() => {
+function createEmbedElements() {
+  if (embedElement) {
+    player.value?.removeChild(embedElement);
+  }
+
   const div = document.createElement('div');
   div.setAttribute('data-id', props.videoId);
 
@@ -38,9 +43,14 @@ onMounted(() => {
     iframe.setAttribute('allow', 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture');
     div.parentNode?.removeChild(div);
     player.value?.appendChild(iframe);
+    embedElement = iframe;
   };
   player.value?.appendChild(div);
-});
+  embedElement = div;
+}
+
+onMounted(createEmbedElements);
+watch(props, createEmbedElements);
 </script>
 
 <template>
