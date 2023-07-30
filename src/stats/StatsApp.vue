@@ -44,14 +44,14 @@ onBeforeUnmount(() => {
       <div class="video-count header">動画数</div>
     </div>
     <div class="vtuber" v-for="vtuber in vtubers" :key="vtuber.id">
-      <a v-bind:href="`https://www.youtube.com/${vtuber.customUrl}`" target="_blank">
+      <a :href="`https://www.youtube.com/${vtuber.customUrl}`" target="_blank">
         <div
           class="avatar"
-          v-bind:style="`background-image:url('${vtuber.thumbnails.medium.url}');  border-color: ${vtuber.color.key};`"
+          :style="`background-image:url('${vtuber.thumbnails.medium.url}'); border-color: ${vtuber.color.key};`"
         ></div>
       </a>
       <div class="name">
-        <a v-bind:href="`https://www.youtube.com/${vtuber.customUrl}`" target="_blank"> {{ vtuber.name }} </a>
+        <a :href="`https://www.youtube.com/${vtuber.customUrl}`" target="_blank"> {{ vtuber.name }} </a>
       </div>
       <div class="subscriber-count">{{ withCommas(vtuber.statistics.subscriberCount) }}</div>
       <div class="view-count">{{ withCommas(vtuber.statistics.viewCount) }}</div>
