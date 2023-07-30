@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import StreamingItem from '@/components/genet/StreamingItem.vue';
 import { ref } from 'vue';
 import InfiniteLoading from 'v3-infinite-loading';
 import type { StateHandler } from 'v3-infinite-loading/lib/types';
-import type { Streaming } from '@/types/genet';
-
 import { load as loadYaml } from 'js-yaml';
+
+import type { Streaming } from '@/types/genet';
+import StreamingItem from '@/components/genet/StreamingItem.vue';
+
 import streamingYaml from './streaming.yml?raw';
 
 const streamings = loadYaml(streamingYaml) as Streaming[];
