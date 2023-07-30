@@ -64,7 +64,7 @@ onBeforeUnmount(() => {
       <div class="view-count total">{{ withCommas(sum(vtubers, (v) => v.statistics.viewCount)) }}</div>
       <div class="video-count total">{{ withCommas(sum(vtubers, (v) => v.statistics.videoCount)) }}</div>
     </div>
-    <UpdateTime :time="fetchedTime"></UpdateTime>
+    <UpdateTime class="update-time" :time="fetchedTime"></UpdateTime>
   </div>
 </template>
 
@@ -78,10 +78,9 @@ onBeforeUnmount(() => {
 .vtuber {
   display: flex;
   align-items: center;
-  padding: 5px;
-  width: calc(100% - 10px);
+  padding: 5px 0;
+  width: 100%;
   border-radius: 50px;
-  box-sizing: border-box;
 
   &.header {
     align-items: baseline;
@@ -153,7 +152,7 @@ onBeforeUnmount(() => {
 .subscriber-count,
 .view-count,
 .video-count {
-  padding: 0 5px;
+  padding-left: 5px;
   flex: 1;
   text-align: right;
   font-size: 125%;
@@ -169,7 +168,7 @@ onBeforeUnmount(() => {
   }
 
   @include media.size(md) {
-    padding: 0 2px;
+    padding-left: 2px;
     font-size: 110%;
   }
 }
@@ -189,5 +188,10 @@ onBeforeUnmount(() => {
   .name {
     transform: translate(10px);
   }
+}
+
+.update-time {
+  text-align: right;
+  margin-top: 0.5em;
 }
 </style>
