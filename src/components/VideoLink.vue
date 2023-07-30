@@ -25,12 +25,17 @@ const videoTitle = computed(() => props.videoTitle ?? '');
   <a class="videolink" :href="videoUrl" target="_blank" :alt="videoTitle"> </a>
 </template>
 
-<style scoped>
+<style lang="scss" scoped>
+.videolink {
+  background-image: v-bind('thumbnailUrlCss');
+}
+</style>
+
+<style lang="scss">
 .videolink {
   min-width: 160px;
   aspect-ratio: 16 / 9;
   display: inline-block;
-  background-image: v-bind('thumbnailUrlCss');
   background-position: center center;
   background-repeat: no-repeat;
   background-size: cover;
