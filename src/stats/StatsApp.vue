@@ -81,11 +81,7 @@ onBeforeUnmount(() => {
   padding: 5px;
   width: calc(100% - 10px);
   border-radius: 50px;
-
-  &:hover:not(.header, .total) {
-    transition: background-color 0.3s;
-    background-color: #edf2f7;
-  }
+  box-sizing: border-box;
 
   &.header {
     align-items: baseline;
@@ -106,10 +102,6 @@ onBeforeUnmount(() => {
   border: 3px solid;
   border-radius: 50%;
   transition: transform 0.3s;
-
-  &:hover {
-    transform: scale(1.5);
-  }
 
   &.total {
     visibility: hidden;
@@ -138,6 +130,7 @@ onBeforeUnmount(() => {
   font-weight: bold;
   font-size: 150%;
   font-stretch: condensed;
+  transition: transform 0.3s;
 
   &.total,
   &.header {
@@ -183,5 +176,18 @@ onBeforeUnmount(() => {
 
 .video-count {
   flex: 0.8;
+}
+
+/* transition */
+.vtuber:hover:not(.header, .total) {
+  background-color: #edf2f7;
+
+  .avatar {
+    transform: scale(1.5);
+  }
+
+  .name {
+    transform: translate(10px);
+  }
 }
 </style>
