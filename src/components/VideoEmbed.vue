@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
+import { getThumbnailURL, getEmbedURL } from '@/lib/youtube';
 
 const props = defineProps<{
   /**
@@ -28,7 +29,7 @@ function createEmbedElements() {
   div.setAttribute('data-id', props.videoId);
 
   const thumbNode = document.createElement('img');
-  thumbNode.src = `//i.ytimg.com/vi/${props.videoId}/hqdefault.jpg`;
+  thumbNode.src = getThumbnailURL(props.videoId, { size: 'hq' });
   div.appendChild(thumbNode);
 
   const playButton = document.createElement('div');
@@ -37,7 +38,7 @@ function createEmbedElements() {
 
   div.onclick = function () {
     const iframe = document.createElement('iframe');
-    iframe.setAttribute('src', 'https://www.youtube-nocookie.com/embed/' + props.videoId + '?autoplay=1');
+    iframe.setAttribute('src', `${getEmbedURL(props.videoId)}?autoplay=1`);
     iframe.setAttribute('frameborder', '0');
     iframe.setAttribute('allowfullscreen', '1');
     iframe.setAttribute('allow', 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture');

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { type Streaming, type VideoType } from '@/types/genet';
+import { getThumbnailURL } from '@/lib/youtube';
 import VideoLink from '@/components/VideoLink.vue';
 import VideoEmbed from '@/components/VideoEmbed.vue';
 import MarkDown from '@/components/MarkDown.vue';
@@ -18,7 +19,7 @@ const props = defineProps<{
   data: Streaming;
 }>();
 
-const thumbnailUrl = computed(() => `//i1.ytimg.com/vi/${props.data.video.id}/hqdefault.jpg`);
+const thumbnailUrl = computed(() => getThumbnailURL(props.data.video.id, { size: 'hq' }));
 const thumbnailUrlCss = `url('${thumbnailUrl.value}')`;
 
 const parentMedia = ref<string>();

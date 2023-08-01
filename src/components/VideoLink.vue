@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 
 const props = defineProps<{
   /**
@@ -14,10 +15,9 @@ const props = defineProps<{
   videoTitle?: string;
 }>();
 
-// const thumbnailUrl = computed(() => `//img.youtube.com/vi/${props.videoId}/hqdefault.jpg`);
-const thumbnailUrl = computed(() => `//i1.ytimg.com/vi/${props.videoId}/hqdefault.jpg`);
+const thumbnailUrl = computed(() => getThumbnailURL(props.videoId, { size: 'hq' }));
 const thumbnailUrlCss = `url('${thumbnailUrl.value}')`;
-const videoUrl = computed(() => `//www.youtube.com/watch?v=${props.videoId}`);
+const videoUrl = computed(() => getWatchURL(props.videoId));
 const videoTitle = computed(() => props.videoTitle ?? '');
 </script>
 
