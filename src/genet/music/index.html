@@ -26,8 +26,12 @@
     import { createApp } from 'vue';
     import App from './App.vue';
     import './main.scss';
+    import 'floating-vue/dist/style.css';
+    import { VTooltip } from 'floating-vue';
 
-    createApp(App).mount('#app');
+    const app = createApp(App);
+    app.directive('tooltip', VTooltip)
+    app.mount('#app');
   </script>
 </body>
 
