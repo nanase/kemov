@@ -285,12 +285,20 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string): void {
   background-repeat: no-repeat;
   background-size: 100%;
   background-position: center center;
-  background-image: url('/genet/video.svg');
   transition:
     background-size 0.3s,
     filter 0.3s;
   border-radius: 10px;
-  filter: saturate(0%) brightness(2);
+
+  &.video {
+    filter: saturate(20%) brightness(2);
+    background-image: url('/genet/video.svg');
+  }
+
+  &.reference {
+    filter: saturate(20%) brightness(5);
+    background-image: url('/genet/imslp.svg');
+  }
 
   &:hover {
     background-size: 175%;
