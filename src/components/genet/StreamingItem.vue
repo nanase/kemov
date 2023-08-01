@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { type Streaming, type VideoType } from '@/types/genet';
-import { getThumbnailURL } from '@/lib/youtube';
+import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 import VideoLink from '@/components/VideoLink.vue';
 import VideoEmbed from '@/components/VideoEmbed.vue';
 import MarkDown from '@/components/MarkDown.vue';
@@ -75,7 +75,9 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string): void {
         <VideoLink class="streaming-thumbnail" :video-id="data.video.id" :video-title="data.video.title" />
       </div>
       <div class="name">
-        {{ insertBreakToName(data.shortname ?? data.name) }}
+        <a :href="getWatchURL(data.video.id)" target="_blank" :alt="data.name">
+          {{ insertBreakToName(data.shortname ?? data.name) }}
+        </a>
       </div>
       <div class="published-at">
         {{ `${toDateTimeString(data.video.publishedAt)} ${videoTypeToString(data.video.type)}` }}
@@ -207,6 +209,11 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string): void {
   font-size: 125%;
   text-align: center;
   white-space: pre-line;
+
+  a {
+    color: #fff;
+    text-decoration: none;
+  }
 }
 
 .published-at {
