@@ -323,12 +323,16 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string): void {
 .media {
   &-enter-active,
   &-leave-active {
-    transition: opacity 0.3s ease;
+    overflow: hidden;
+    max-height: 100vh;
+    transition: all 0.5s;
   }
 
   &-enter-from,
   &-leave-to {
     opacity: 0;
+    max-height: 0;
+    overflow: hidden;
   }
 }
 </style>
