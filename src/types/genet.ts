@@ -13,11 +13,17 @@ interface EmbeddedVideo {
   id: string;
   title?: string;
   position?: number;
+  description?: string;
 }
 
 interface TuneAttribute {
   name: string;
   text: Markdown;
+}
+
+interface TuneReference {
+  link: string;
+  title: string;
 }
 
 interface Tune {
@@ -26,6 +32,7 @@ interface Tune {
   attributes?: TuneAttribute[];
   description?: Markdown;
   videos?: EmbeddedVideo[];
+  references?: TuneReference[];
 }
 
 export interface Streaming {

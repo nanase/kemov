@@ -108,7 +108,21 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string): void {
               <MarkDown class="description" :source="tune.description" v-if="tune.description" />
             </div>
             <div v-for="video in tune.videos" :key="video.id">
-              <div class="media-button" @click="setEmbedVideo(data.video.id, video.id)"></div>
+              <div
+                class="media-button video"
+                @click="setEmbedVideo(data.video.id, video.id)"
+                v-tooltip.auto-end="video.description ? `動画を視聴する: ${video.description}` : '動画を視聴する'"
+              ></div>
+            </div>
+            <div v-for="reference in tune.references" :key="reference.link">
+              <a
+                :href="reference.link"
+                target="_blank"
+                :alt="reference.title"
+                v-tooltip.auto-end="`IMSLPへのリンク: ${reference.title}`"
+              >
+                <div class="media-button reference"></div>
+              </a>
             </div>
           </div>
         </li>
