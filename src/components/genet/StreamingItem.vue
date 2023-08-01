@@ -266,11 +266,13 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string): void {
 .media-box {
   .close {
     text-align: center;
-    background-color: #edf2f7;
+    background-color: #232425;
     cursor: pointer;
+    color: #fff;
+    padding: 2.5px;
 
     &:hover {
-      background-color: #edf2f7;
+      background-color: #3a3b3d;
     }
   }
 }
