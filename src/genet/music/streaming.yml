@@ -488,7 +488,7 @@
     type: live
     publishedAt: 2023/05/05 9:00
   name: '【朝活】【雑談】朝に音楽を聴くと脳が活性化する⁉✨'
-  categories: ['純喫茶ジェネット', '楽曲解説', '朝配信', '雑談配信']
+  categories: ['純喫茶ジェネット', '楽曲解説', '雑談配信']
   tunes:
 
 - video:
@@ -854,3 +854,197 @@
       videos:
         - id: dBjC1LYmvsc
           title: '別れのワルツ'
+
+- video:
+    id: AFaT0St4iQ8
+    type: live
+    publishedAt: 2023/03/24
+  name: '【楽曲解説】ストレートな恋心！フランス音楽、名曲ジュ・トゥ・ヴーを読み解く【純喫茶ジェネット】'
+  shortname: 'ストレートな恋心！フランス音楽、名曲ジュ・トゥ・ヴーを読み解く'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[ジュ・トゥ・ヴー](wiki:ジュ・トゥ・ヴー)'
+      originalTitle: 'Je te veux'
+      attributes:
+        - name: 作曲
+          text: '[エリック・サティ](wiki:エリック・サティ)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:AFaT0St4iQ8?t=3305)として'
+      videos:
+        - id: 1IbBltH7daE
+          position: 10
+          title: 'Satie  『je te veux』Piano Trio'
+      references:
+        - link: https://imslp.org/wiki/Auld_lang_syne_(Folk_Songs%2C_Scottish)
+          title: 'Auld lang syne (Folk Songs, Scottish)'
+
+- video:
+    id: cgoUCjG-SoQ
+    type: live
+    publishedAt: 2023/03/22
+  name: '【睡眠導入】【生演奏】ヴァイオリン生演奏！なぜクラシックは聴くと眠くなるのか…？'
+  categories: ['演奏配信']
+  tunes:
+    - title: 'オペラ「[タイス](wiki:タイス_(オペラ))」より「[タイスの瞑想曲](wiki:タイスの瞑想曲)」'
+      originalTitle: 'Thaïs, Méditation'
+      attributes:
+        - name: 作曲
+          text: '[ジュール・マスネ](wiki:ジュール・マスネ)'
+      description: 'BGM（ピアノ伴奏）として、ヴァイオリン演奏（[試奏](yt:cgoUCjG-SoQ?t=1735)、[本奏](yt:cgoUCjG-SoQ?t=2778)）として'
+      videos:
+        - id: cgoUCjG-SoQ
+          position: 2778
+          title: '【睡眠導入】【生演奏】ヴァイオリン生演奏！なぜクラシックは聴くと眠くなるのか…？【#けもV #じぇねったいむっ】'
+      references:
+        - link: https://imslp.org/wiki/Tha%C3%AFs_(Massenet,_Jules)
+          title: 'Thaïs (Massenet, Jules)'
+
+- video:
+    id: kT-pFSLbPLE
+    type: live
+    publishedAt: 2023/03/17
+  name: '【おすすめクラシック紹介】聴くと元気になれる！厳選クラシック５選【純喫茶ジェネット】'
+  shortname: '【おすすめクラシック紹介】聴くと元気になれる！厳選クラシック５選'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '「[威風堂々](wiki:威風堂々_(行進曲))」作品39 [第1番 ニ長調](wiki:威風堂々_(行進曲)#第1番)'
+      originalTitle: 'Pomp and Circumstance, Op.39, March No.1 in D major'
+      attributes:
+        - name: 作曲
+          text: '[エドワード・エルガー](wiki:エドワード・エルガー)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:kT-pFSLbPLE?t=3414)として'
+      videos:
+        - id: Spx4kmY67Wc
+          title: 'Elgar:  Pomp and Circumstance March No 1 in D major, &#39;Land of Hope and Glory&#39; (Prom 75)'
+      references:
+        - link: https://imslp.org/wiki/Pomp_and_Circumstance,_Op.39_(Elgar,_Edward)
+          title: 'Pomp and Circumstance Marches, Op.39 (Elgar, Edward)'
+    - title: '[3つのヴァイオリンと通奏低音のためのカノンとジーグ ニ長調](wiki:カノン_(パッヘルベル)) より「[ジーグ](wiki:カノン_(パッヘルベル)#ジーグ)」'
+      originalTitle: 'Kanon und Gigue für drei Violinen und Basso Continuo, P.37, No.2 Gigue'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・パッヘルベル](wiki:ヨハン・パッヘルベル)'
+      description: 'BGMとして'
+      videos:
+        - id: 2ZXk3svkf8s
+          position: 278
+          title: 'Canon en Gigue in D - Combattimento - Live concert HD'
+      references:
+        - link: https://imslp.org/wiki/Canon_and_Gigue_in_D_major,_P.37_(Pachelbel,_Johann)
+          title: 'Canon and Gigue in D major, P.37 (Pachelbel, Johann)'
+    - title: 'オペレッタ「[こうもり](wiki:こうもり_(オペレッタ))」より 序曲'
+      originalTitle: 'Die Fledermaus, Ouvertüre'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・シュトラウス2世](wiki:ヨハン・シュトラウス2世)'
+      description: 'BGMとして（付記: [美しく青きドナウ](wiki:美しく青きドナウ)の[ヴァイオリン演奏](yt:kT-pFSLbPLE?t=1738)）'
+      videos:
+        - id: 57LBkyziBq4
+          position: 28
+          title: 'Strauß: Fledermaus – Ouvertüre ∙ hr-Sinfonieorchester ∙ DaYe Lin'
+      references:
+        - link: https://imslp.org/wiki/Die_Fledermaus_(Strauss_Jr.,_Johann)
+          title: 'Die Fledermaus (Strauss Jr., Johann)'
+    - title: 'オペラ「[カルメン](wiki:カルメン_(オペラ))」より 序曲'
+      originalTitle: 'Carmen, Prélude'
+      attributes:
+        - name: 作曲
+          text: '[ジョルジュ・ビゼー](wiki:ジョルジュ・ビゼー)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:kT-pFSLbPLE?t=2210)として'
+      videos:
+        - id: jL-Csf1pNCI
+          position: 73
+          title: 'Bizet : Ouverture de &quot;Carmen&quot; (Philharmonique de Radio France / Myung-Whun Chung)'
+      references:
+        - link: https://imslp.org/wiki/Carmen_(Bizet,_Georges)
+          title: 'Carmen (Bizet, Georges)'
+    - title: 'オペレッタ「[地獄のオルフェ（天国と地獄）](wiki:地獄のオルフェ)」より [序曲 第3部「カンカン」](wiki:地獄のオルフェ#序曲)'
+      originalTitle: 'Le Galop infernal (Can-Can) d’Orphée aux Enfers'
+      attributes:
+        - name: 作曲
+          text: '[ジャック・オッフェンバック](wiki:ジャック・オッフェンバック)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:kT-pFSLbPLE?t=2210)として'
+      videos:
+        - id: vEnW5_GTooI
+          position: 418
+          title: 'Offenbach - Orpheus in the Underworld Overture'
+      references:
+        - link: https://imslp.org/wiki/Orph%C3%A9e_aux_enfers_(Offenbach,_Jacques)
+          title: 'Orphée aux enfers (Offenbach, Jacques)'
+
+- video:
+    id: XsQXTWler3Y
+    type: live
+    publishedAt: 2023/03/16
+  name: '【楽曲解説】「四季」は正式名称じゃない…⁉ヴィヴァルディ「四季」より″春”【純喫茶ジェネット】'
+  shortname: '「四季」は正式名称じゃない…⁉ヴィヴァルディ「四季」より″春”'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: |-
+        ヴァイオリン協奏曲集「[和声と創意の試み](wiki:和声と創意の試み)」作品8より "[四季](wiki:四季_(ヴィヴァルディ))"
+        協奏曲第1番ホ長調 RV 269「[春](wiki:四季_(ヴィヴァルディ)#協奏曲第1番ホ長調_RV_269「春」（La_Primavera）)」
+      originalTitle: "Il cimento dell'armonia e dell'inventione, Concerto Nº 1 in Mi maggiore, opera 8, RV 269, \"La Primavera\""
+      attributes:
+        - name: 作曲
+          text: '[アントニオ・ヴィヴァルディ](wiki:アントニオ・ヴィヴァルディ)'
+        - name: ソネット
+          text: '作者不詳（[イタリア語と英語](wikien:The_Four_Seasons_(Vivaldi)#Sonnet_text)）'
+      description: 'BGMとして、[ソネットの解説](yt:XsQXTWler3Y?t=1896)として、[ヴァイオリン演奏](yt:XsQXTWler3Y?t=3101)として'
+      videos:
+        - id: 4rgSzQwe5DQ
+          title: 'Vivaldi: The Four Seasons (Orquesta Reino de Aragón)'
+      references:
+        - link: https://imslp.org/wiki/Il_cimento_dell%27armonia_e_dell%27inventione,_Op.8_(Vivaldi,_Antonio)
+          title: "Il cimento dell'armonia e dell'inventione, Op.8 (Vivaldi, Antonio)"
+        - link: https://imslp.org/wiki/Violin_Concerto_in_E_major,_RV_269_(Vivaldi,_Antonio)
+          title: "Violin Concerto in E major, RV 269 (Vivaldi, Antonio)"
+
+- video:
+    id: aUYnc8kA1X4
+    type: live
+    publishedAt: 2023/03/11
+  name: '【耐久配信】【生演奏】#弾くんだジェネット ！登録者３０００人超えるまでヴァイオリン弾き続ける配信'
+  shortname: '【耐久配信】【生演奏】#弾くんだジェネット ！登録者３０００人超えるまでヴァイオリン弾き続ける配信'
+  categories: ['耐久配信', '演奏配信']
+  tunes:
+    - title: '[3つのヴァイオリンと通奏低音のためのカノンとジーグ ニ長調](wiki:カノン_(パッヘルベル)) より「[カノン](wiki:カノン_(パッヘルベル)#カノン)」'
+      originalTitle: 'Kanon und Gigue für drei Violinen und Basso Continuo, P.37, No.1 Kanon'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・パッヘルベル](wiki:ヨハン・パッヘルベル)'
+      description: 'BGMとして、[全40回のヴァイオリン演奏](wiki:aUYnc8kA1X4?t=16475)として'
+      videos:
+        - id: aUYnc8kA1X4
+          title: '【耐久配信】【生演奏】#弾くんだジェネット ！登録者３０００人超えるまでヴァイオリン弾き続ける配信【#けもV #じぇねったいむっ】'
+      references:
+        - link: https://imslp.org/wiki/Canon_and_Gigue_in_D_major,_P.37_(Pachelbel,_Johann)
+          title: 'Canon and Gigue in D major, P.37 (Pachelbel, Johann)'
+
+- video:
+    id: gHVZb1UheTk
+    type: live
+    publishedAt: 2023/03/09
+  name: '【楽曲解説】【3大バレエ音楽】～Day3～チャイコフスキー「くるみ割り人形」【純喫茶ジェネット】'
+  shortname: '【3大バレエ音楽】～Day3～チャイコフスキー「くるみ割り人形」'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[くるみ割り人形](wiki:くるみ割り人形) 作品71a 演奏会用組曲より'
+      originalTitle: 'Щелкунчик'
+      subtunes:
+        - '第1曲 小序曲 (Ouverture miniature)'
+        - '第2曲 行進曲 (Marche)'
+        - '第3曲 金平糖の精の踊り (Danse de la Fée-Dragée)'
+        - '第4曲 ロシアの踊り（トレパック） (Danse russe (Trépak))'
+        - '第8曲 花のワルツ (Valse des fleurs)'
+      attributes:
+        - name: 作曲
+          text: '[ピョートル・チャイコフスキー](wiki:ピョートル・チャイコフスキー)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:gHVZb1UheTk?t=4925)として'
+      videos:
+        - id: kXRMT_2F-WE
+          position: 4052
+          title: 'The Nutcracker - Full Length Ballet by The New York City Ballet'
+      references:
+        - link: https://imslp.org/wiki/The_Nutcracker_(suite),_Op.71a_(Tchaikovsky,_Pyotr)
+          title: 'The Nutcracker (suite), Op.71a (Tchaikovsky, Pyotr)'
+
+
