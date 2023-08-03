@@ -1,0 +1,856 @@
+- video:
+    id: ZP5bJTMMJdM
+    type: live
+    publishedAt: 2023/07/27 12:00
+  name: '【雑談】ジェネットの友達探し！～初見さん！ウェルカム演奏させてくださいっ！～＃10'
+  shortname: 'ジェネットの友達探し！～初見さん！ウェルカム演奏させてくださいっ！～＃10'
+  categories: ['雑談', 'ジェネットの友達探し']
+  tunes:
+    - title: 'アルルの女　ファランドール'
+      attributes:
+        - name: 作曲
+          text: 'ビゼー'
+      description: 'BGMとして、ヴァイオリン演奏としてt=1825'
+    - title: 'アイネ・クライネ・ナハトムジーク'
+      attributes:
+        - name: 作曲
+          text: 'モーツァルト'
+      description: 'ヴァイオリン演奏としてt=2000'
+    - title: '無伴奏パルティータ 第3番 ガボット'
+      attributes:
+        - name: 作曲
+          text: 'バッハ'
+      description: 'ヴァイオリン演奏としてt=2200'
+    - title: 'トルコ行進曲'
+      attributes:
+        - name: 作曲
+          text: 'モーツァルト'
+      description: 'ヴァイオリン演奏としてt=2400'
+    - title: 'ラデツキー行進曲'
+      attributes:
+        - name: 作曲
+          text: 'ヨハン・シュトラウス1世'
+      description: 'ヴァイオリン演奏としてt=2520'
+    - title: 'ペール・ギュント「朝」'
+      attributes:
+        - name: 作曲
+          text: 'グリーグ'
+      description: 'ヴァイオリン演奏としてt=2685'
+    - title: 'メヌエット'
+      attributes:
+        - name: 作曲
+          text: 'バッハ'
+      description: 'ヴァイオリン演奏としてt=2900'
+
+- video:
+    id: AheA82R3lsU
+    type: live
+    publishedAt: 2023/07/25 12:00
+  name: '【楽曲解説】木星じゃなくて…火星⁉ホルストのロマン溢れる「惑星」組曲【純喫茶ジェネット】'
+  shortname: '木星じゃなくて…火星⁉ホルストのロマン溢れる「惑星」組曲'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '大管弦楽のための組曲「[惑星](wiki:惑星_(組曲))」作品32 より「火星、戦争をもたらす者」'
+      originalTitle: 'The Planets, Op.32, Mars, the Bringer of War. Allegro'
+      attributes:
+        - name: 作曲
+          text: '[グスターヴ・ホルスト](wiki:グスターヴ・ホルスト)'
+      description: BGMとして、ヴァイオリン演奏（主題のコル・レーニョt=3530）として
+      references:
+        - link: https://imslp.org/wiki/The_Planets:_Suite_for_Large_Orchestra_(Holst,_Gustav)
+          title: 'The Planets, Op.32 (Holst, Gustav)'
+
+- video:
+    id: PjmlaqKBsFc
+    type: live
+    publishedAt: 2023/07/22 23:15
+  name: '【雑談】ジェネットの友達探し！～初見さんは生演奏のプレゼント！でしっ！～＃9'
+  shortname: 'ジェネットの友達探し！～初見さんは生演奏のプレゼント！でしっ！～＃9'
+  categories: ['雑談', 'ジェネットの友達探し']
+  tunes:
+    - title: 'ハッピバースデー'
+    - title: '愛の挨拶'
+    - title: '？'
+    - title: 'ディベルティメント'
+    - title: 'ラプソディ・イン・ブルー'
+    - title: '弦楽セレナーデ'
+
+- video:
+    id: oQqCH95h8FQ
+    type: live
+    publishedAt: 2023/07/19 0:00
+  name: '【雑談】ジェネットの友達探し！～初見さん、ジェネのヴァイオリン聴いていかないかい？＃8'
+  shortname: 'ジェネットの友達探し！～初見さん、ジェネのヴァイオリン聴いていかないかい？＃8'
+  categories: ['雑談', 'ジェネットの友達探し']
+  tunes:
+    - title: '蛍の光'
+    - title: '愛の悲しみ'
+      attributes:
+        - name: 作曲
+          text: 'クライスラー'
+    - title: '愛の喜び'
+    - title: 'タイスの瞑想曲'
+    - title: 'ラプソディ・イン・ブルー'
+    - title: 'アイ・ガット・リズム'
+
+- video:
+    id: yJk5KBRu0PY
+    type: live
+    publishedAt: 2023/07/17 16:00
+  name: '【Only Up!】並走耐久！誰かが終わるまでおわれまテン！'
+  shortname: '【Only Up!】並走耐久！誰かが終わるまでおわれまテン！'
+  categories: ['コラボ配信', '耐久配信']
+  tunes:
+    - title: '蛍の光'
+
+- video:
+    id: oOHoIHvZfQQ
+    type: live
+    publishedAt: 2023/07/13 12:00
+  name: '【雑談】ジェネットの友達探し！～初見さん、ジェネがウェルカム生演奏しますっ＃7'
+  shortname: 'ジェネットの友達探し！～初見さん、ジェネがウェルカム生演奏しますっ＃7'
+  categories: ['雑談', 'ジェネットの友達探し']
+  tunes:
+    - title: 'パッフェルベルのカノン'
+
+- video:
+    id: sarqYacnl2Y
+    type: live
+    publishedAt: 2023/07/12 12:00
+  name: '【雑談】ジェネットの友達探し！～寝起きですが今日も初見さん探しにいそしみます～＃6'
+  shortname: 'ジェネットの友達探し！～寝起きですが今日も初見さん探しにいそしみます～＃6'
+  categories: ['雑談', 'ジェネットの友達探し']
+  tunes:
+    - title: '茶摘み'
+    - title: 'ドヴォルザーク　新世界　ラルゴ'
+    - title: 'サンタルチア'
+    - title: '海'
+    - title: '蛍の光'
+
+- video:
+    id: fae1zr57zV0
+    type: live
+    publishedAt: 2023/07/07 9:00
+  name: '【音楽豆知識】7/7は七夕！星や惑星の名がタイトルに入ったクラシック曲たち☆【純喫茶ジェネット】'
+  shortname: '7/7は七夕！星や惑星の名がタイトルに入ったクラシック曲たち☆'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '組曲「惑星」より木星'
+      attributes:
+        - name: 作曲
+          text: '[グスターヴ・ホルスト](wiki:グスターヴ・ホルスト)'
+    - title: '七夕'
+    - title: 'モーツァルト21番'
+
+- video:
+    id: Y36MDBWNsFM
+    type: live
+    publishedAt: 2023/07/04 16:30
+  name: '【雑談】ジェネットの友達探し！～おともだち、募集中～＃3'
+  shortname: 'ジェネットの友達探し！～おともだち、募集中～＃3'
+  categories: ['雑談', 'ジェネットの友達探し']
+  tunes:
+    - title: '[交響曲第9番「合唱付き」](wiki:交響曲第9番_(ベートーヴェン)) 第4楽章「[歓喜の歌](wiki:歓喜の歌)」'
+      originalTitle: 'Sinfonie Nr. 9 D-moll, op. 125, An die Freude / Ode to Joy'
+      attributes:
+        - name: 作曲
+          text: '[ルードヴィッヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
+        - name: 原詩
+          text: '[フリードリヒ・フォン・シラー](wiki:フリードリヒ・フォン・シラー)'
+      description: ヴァイオリン演奏として
+
+- video:
+    id: Slwb33TpqYs
+    type: live
+    publishedAt: 2023/07/02 22:00
+  name: '【耐久配信】【生演奏】#弾くんだジェネット ！10か月記念！高評価500件…やっぱり1000件！いくまで耐久配信します'
+  shortname: '【耐久配信】【生演奏】弾くんだジェネット！10か月記念！高評価500件…やっぱり1000件！いくまで耐久配信します'
+  categories: ['純喫茶ジェネット', '記念配信']
+  tunes:
+    - title: '[主よ、人の望みの喜びよ](wiki:主よ、人の望みの喜びよ)'
+      originalTitle: 'Herz und Mund und Tat und Leben, BWV 147, Jesus bleibet meine Freude'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
+      description: ヴァイオリン演奏として
+      references:
+        - link: https://imslp.org/wiki/Herz_und_Mund_und_Tat_und_Leben,_BWV_147_(Bach,_Johann_Sebastian)
+          title: 'Herz und Mund und Tat und Leben, BWV 147 (Bach, Johann Sebastian)'
+
+- video:
+    id: zqkctiEhIW0
+    type: live
+    publishedAt: 2023/06/25 22:00
+  name: '【楽曲解説】ブラームスヴァイオリンソナタ第１番「雨の歌」ロマンチックなバックストーリーに迫る【純喫茶ジェネット】'
+  shortname: 'ブラームスヴァイオリンソナタ第１番「雨の歌」ロマンチックなバックストーリーに迫る'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[ヴァイオリンソナタ第1番](wiki:ヴァイオリンソナタ第1番) ト長調「雨の歌」 作品78'
+      originalTitle: Sonate für Klavier und Violine Nr. 1 G-Dur op. 78
+      attributes:
+        - name: 作曲
+          text: '[ヨハネス・ブラームス](wiki:ヨハネス・ブラームス)'
+      description: BGMとして、ヴァイオリン演奏t=3380として
+  keywords:
+    - ロベルト・シューマン
+    - ソナタ
+    - ソナチネ
+    - ドイツ
+    - ハンブルク
+    - オーストリア
+    - ウィーン
+    - ハンガリー舞曲
+    - 子守唄
+    - クララ・シューマン
+    - ベルター湖
+    - クラウス・グロード
+
+- video:
+    id: aOIZcsH00fs
+    type: live
+    publishedAt: 2023/06/17 22:00
+  name: '【音楽豆知識】知られざる「カスタネット」の世界…！【純喫茶ジェネット】'
+  shortname: '知られざる「カスタネット」の世界…！'
+  categories: ['純喫茶ジェネット', '楽器解説']
+  tunes:
+    - title: 'バッカナール'
+      description: 楽曲紹介として
+  keywords:
+    - 栗
+    - 黒檀
+    - ローズウッド
+    - ミハルス
+    - 教育用カスタネット
+    - ハンドカスタネット
+    - ヨハン・シュトラウス2世
+    - モーリス・ラヴェル
+    - サン＝サーンス
+
+- video:
+    id: -aWTJmqfqFE
+    type: live
+    publishedAt: 2023/06/14 12:00
+  name: '【楽曲解説】ピアノの詩人ショパン！名曲「ノクターン第２番」を徹底解説♪【純喫茶ジェネット】'
+  shortname: 'ピアノの詩人ショパン！名曲「ノクターン第２番」を徹底解説♪'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[夜想曲第2番](wiki:夜想曲第2番) 変ホ長調 作品9-2'
+      originalTitle: Nocturne, Op. 9, No. 2, Larghetto in E-flat major
+      attributes:
+        - name: 作曲
+          text: '[フレデリック・ショパン](wiki:フレデリック・ショパン)'
+      description: BGMとして、ヴァイオリン演奏t=3130として
+      references:
+        - link: https://imslp.org/wiki/Nocturnes,_Op.9_(Chopin,_Fr%C3%A9d%C3%A9ric)
+          title: 'Nocturnes, Op.9 (Chopin, Frédéric)'
+  keywords: ['性格的小品', 'ジョン・フィールド', 'ポーランド', 'ポーランド立憲革命', 'ノクターン20番']
+
+- video:
+    id: _EigItq1hf4
+    type: live
+    publishedAt: 2023/06/09 12:00
+  name: '【練習配信】作業用BGMに♪ひたすらヴァイオリンを練習します'
+  shortname: '作業用BGMに♪ひたすらヴァイオリンを練習します'
+  categories: ['練習配信']
+  tunes:
+    - title: '[大学祝典序曲](wiki:大学祝典序曲)'
+      originalTitle: 'Akademische Festouvertüre'
+      attributes:
+        - name: 作曲
+          text: '[ヨハネス・ブラームス](wiki:ヨハネス・ブラームス)'
+      description: 練習曲として、BGMとして
+
+- video:
+    id: FnY8s9MuzNI
+    type: live
+    publishedAt: 2023/05/26 12:00
+  name: '【楽曲解説】極度の民族マニア⁉バルトークってどんな人？「ルーマニア民族舞曲」【純喫茶ジェネット】'
+  shortname: '極度の民族マニア⁉バルトークってどんな人？「ルーマニア民族舞曲」'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[ルーマニア民俗舞曲](wiki:ルーマニア民俗舞曲)'
+      originalTitle: 'Dansuri populare românești, Sz.56, Sz.68'
+      attributes:
+        - name: 作曲
+          text: '[バルトーク・ベーラ](wiki:バルトーク・ベーラ)'
+      videos:
+      description: 'BGMとして（第1曲 棒踊り）、[ヴァイオリン演奏](yt:FnY8s9MuzNI?t=3860)として'
+
+- video:
+    id: zHH2FlLgyhs
+    type: live
+    publishedAt: 2023/05/22 22:15
+  name: '【楽曲解説】どったんばったん、大騒ぎ！？モーツァルト「フィガロの結婚」【純喫茶ジェネット】'
+  shortname: 'どったんばったん、大騒ぎ！？モーツァルト「フィガロの結婚」'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[フィガロの結婚](wiki:フィガロの結婚)'
+      originalTitle: 'Le Nozze di Figaro, K.492'
+      attributes:
+        - name: 作曲
+          text: '[ヴォルフガング・アマデウス・モーツァルト](wiki:ヴォルフガング・アマデウス・モーツァルト)'
+      description: |-
+        OPのBGM（序曲）として、BGM（第2幕 恋とはどんなものかしら）として、
+        ヴァイオリン演奏（[序曲](yt:zHH2FlLgyhs?t=4290)、[恋とはどんなものかしら](yt:zHH2FlLgyhs?t=4400)）として
+
+- video:
+    id: P-qHO3h3GCg
+    type: live
+    publishedAt: 2023/05/20 19:00
+  name: '【おすすめクラシック紹介】作品の顔！めくるめく「序曲」の世界 おすすめ5選【純喫茶ジェネット】'
+  shortname: '【おすすめクラシック紹介】作品の顔！めくるめく「序曲」の世界 おすすめ5選'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[運命の力](wiki:運命の力#序曲)'
+      originalTitle: 'La Forza del Destino'
+      attributes:
+        - name: 作曲
+          text: '[ジュゼッペ・ヴェルディ](wiki:ジュゼッペ・ヴェルディ)'
+      description: BGMとして
+    - title: '[エグモント](wiki:エグモント_(劇音楽)#曲の構成) 作品84'
+      originalTitle: 'Egmont, Op.84'
+      attributes:
+        - name: 作曲
+          text: '[ルートヴィヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
+      description: BGMとして
+    - title: '[大学祝典序曲](wiki:大学祝典序曲) ハ短調 作品80'
+      originalTitle: 'Akademische Festouvertüre, Op.80'
+      attributes:
+        - name: 作曲
+          text: '[ヨハネス・ブラームス](wiki:ヨハネス・ブラームス)'
+      description: BGMとして
+    - title: '[セビリアの理髪師](wiki:セビリアの理髪師#曲目)'
+      originalTitle: 'Il Barbiere di Siviglia'
+      attributes:
+        - name: 作曲
+          text: '[ジョアキーノ・ロッシーニ](wiki:ジョアキーノ・ロッシーニ)'
+      description: BGMとして
+    - title: '[フィガロの結婚](wiki:フィガロの結婚)'
+      originalTitle: 'Le Nozze di Figaro, K.492'
+      attributes:
+        - name: 作曲
+          text: '[ヴォルフガング・アマデウス・モーツァルト](wiki:ヴォルフガング・アマデウス・モーツァルト)'
+      description: |-
+        OPのBGMとして、BGMとして
+
+- video:
+    id: l9JKjVlYIUY
+    type: live
+    publishedAt: 2023/05/18 22:00
+  name: '【おすすめクラシック紹介】運動会といえばこの曲！定番クラシック5選【純喫茶ジェネット】'
+  shortname: '【おすすめクラシック紹介】運動会といえばこの曲！定番クラシック5選'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[星条旗よ永遠なれ](wiki:星条旗よ永遠なれ)'
+      originalTitle: 'Stars and Stripes Forever'
+      attributes:
+        - name: 作曲
+          text: '[ジョン・フィリップ・スーザ](wiki:ジョン・フィリップ・スーザ)'
+      description: BGMとして
+    - title: '[クシコス・ポスト](wiki:クシコス・ポスト)'
+      originalTitle: 'Csikos Post'
+      attributes:
+        - name: 作曲
+          text: '[ヘルマン・ネッケ](wiki:ヘルマン・ネッケ)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:l9JKjVlYIUY?t=1670)として'
+    - title: '[天国と地獄](wiki:地獄のオルフェ) 序曲第3部 カンカン'
+      originalTitle: 'Le Galop infernal (Can-Can) d’Orphée aux Enfers'
+      attributes:
+        - name: 作曲
+          text: '[ジャック・オッフェンバック](wiki:ジャック・オッフェンバック)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:l9JKjVlYIUY?t=2250)として'
+    - title: '[ウィリアム・テル序曲](wiki:ウィリアム・テル序曲)'
+      originalTitle: 'Ouverture de Guillaume Tell'
+      attributes:
+        - name: 作曲
+          text: '[ジョアキーノ・ロッシーニ](wiki:ジョアキーノ・ロッシーニ)'
+      description: BGMとして
+    - title: '[見よ、勇者は帰る](wiki:ユダス・マカベウス)'
+      originalTitle: "See, the Conqu'ring Hero Comes from Judas Maccabaeus HWV63"
+      attributes:
+        - name: 作曲
+          text: '[ゲオルク・フリードリヒ・ヘンデル](wiki:ゲオルク・フリードリヒ・ヘンデル)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:l9JKjVlYIUY?t=3580)として'
+
+- video:
+    id: QY4AJMj68Eg
+    type: live
+    publishedAt: 2023/05/15 23:00
+  name: '【楽曲解説】手拍子せずにはいられない⁉名曲、ヨハン・シュトラウス1世「ラデツキー行進曲」【純喫茶ジェネット】'
+  shortname: '手拍子せずにはいられない⁉名曲、ヨハン・シュトラウス1世「ラデツキー行進曲」'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[ラデツキー行進曲](wiki:ラデツキー行進曲) 作品228'
+      originalTitle: 'Radetzky-Marsch'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・シュトラウス1世](wiki:ヨハン・シュトラウス1世)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:QY4AJMj68Eg?t=3850)として'
+
+- video:
+    id: YsrdgzgqTqc
+    type: live
+    publishedAt: 2023/05/12 12:00
+  name: '【音楽豆知識】親子の確執…？ヨハン・シュトラウス親子の仁義なき戦い！【純喫茶ジェネット】'
+  shortname: '【音楽豆知識】親子の確執…？ヨハン・シュトラウス親子の仁義なき戦い！'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[ラデツキー行進曲](wiki:ラデツキー行進曲) 作品228'
+      originalTitle: 'Radetzky-Marsch'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・シュトラウス1世](wiki:ヨハン・シュトラウス1世)'
+      description: OPのBGMとして
+    - title: '[ピツィカート・ポルカ](wiki:ピツィカート・ポルカ)'
+      originalTitle: 'Pizzicato Polka'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・シュトラウス2世](wiki:ヨハン・シュトラウス2世)、[ヨーゼフ・シュトラウス](wiki:ヨーゼフ・シュトラウス)'
+      description: BGMとして
+
+- video:
+    id: k0RmlSuzZhI
+    type: live
+    publishedAt: 2023/05/11 22:00
+  name: '【楽曲解説】オーストリア第2の国歌！ヨハン・シュトラウス2世「美しき青きドナウ」【純喫茶ジェネット】'
+  shortname: 'オーストリア第2の国歌！ヨハン・シュトラウス2世「美しき青きドナウ」'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[美しき青きドナウ](wiki:美しく青きドナウ) 作品314'
+      originalTitle: 'An der schönen, blauen Donau, op.314'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・シュトラウス2世](wiki:ヨハン・シュトラウス2世)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:k0RmlSuzZhI?t=3610)として'
+
+- video:
+    id: u1kBlhriALE
+    type: live
+    publishedAt: 2023/05/10 22:00
+  name: '【おすすめクラシック紹介】春のおすすめクラシック祭り５選！【純喫茶ジェネット】'
+  shortname: '【おすすめクラシック紹介】春のおすすめクラシック祭り５選！'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: |-
+        ヴァイオリン協奏曲集「[和声と創意の試み](wiki:和声と創意の試み)」作品8より "[四季](wiki:四季_(ヴィヴァルディ))"
+        協奏曲第1番ホ長調 RV 269「[春](wiki:四季_(ヴィヴァルディ)#協奏曲第1番ホ長調_RV_269「春」（La_Primavera）)」
+      originalTitle: "Il cimento dell'armonia e dell'inventione, Concerto Nº 1 in Mi maggiore, opera 8, RV 269, \"La Primavera\""
+      attributes:
+        - name: 作曲
+          text: '[アントニオ・ヴィヴァルディ](wiki:アントニオ・ヴィヴァルディ)'
+      description: BGMとして
+    - title: 花の歌 作品39
+      originalTitle: 'Blumenlied Op.39'
+      attributes:
+        - name: 作曲
+          text: '[グスタフ・ランゲ](wiki:グスタフ・ランゲ)'
+      description: BGMとして
+    - title: エーデルワイス 作品31
+      originalTitle: 'Edelweiß Op.31'
+      attributes:
+        - name: 作曲
+          text: '[グスタフ・ランゲ](wiki:グスタフ・ランゲ)'
+      description: 楽曲紹介として
+    - title: '[エーデルワイス](wiki:エーデルワイス_(1959年の曲))'
+      originalTitle: 'Edelweiss'
+      attributes:
+        - name: 作曲
+          text: '[リチャード・ロジャース](wiki:リチャード・ロジャース_(作曲家))'
+        - name: 作曲
+          text: '[オスカー・ハマースタイン2世](wiki:オスカー・ハマースタイン2世)'
+      description: '[ヴァイオリン演奏](yt:u1kBlhriALE?t=1400)として'
+    - title: '[春の歌](wiki:無言歌集_(メンデルスゾーン)#第5巻_作品62)'
+      originalTitle: 'Lieder ohne Worte, Frühlingslied Op.62-6'
+      attributes:
+        - name: 作曲
+          text: '[フェリックス・メンデルスゾーン](wiki:フェリックス・メンデルスゾーン)'
+      description: BGMとして
+    - title: '[春の声](wiki:春の声) 作品410'
+      originalTitle: 'Frühlingsstimmen, Op.410'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・シュトラウス2世](wiki:ヨハン・シュトラウス2世)'
+      description: BGMとして
+    - title: '[ヴァイオリンソナタ第5番「春」](wiki:ヴァイオリンソナタ第5番_(ベートーヴェン)) ヘ長調 作品24'
+      attributes:
+        - name: 作曲
+          text: '[ルートヴィヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
+      description: BGMとして、[ヴァイオリン演奏](yt:u1kBlhriALE?t=4650)として
+    - title: '[春の祭典](wiki:春の祭典)'
+      originalTitle: 'Le Sacre du printemps'
+      attributes:
+        - name: 作曲
+          text: '[イーゴリ・ストラヴィンスキー](wiki:イーゴリ・ストラヴィンスキー)'
+      description: 楽曲紹介として
+
+- video:
+    id: nT1dIvnFsPk
+    type: live
+    publishedAt: 2023/05/05 9:00
+  name: '【朝活】【雑談】朝に音楽を聴くと脳が活性化する⁉✨'
+  categories: ['純喫茶ジェネット', '楽曲解説', '朝配信', '雑談配信']
+  tunes:
+
+- video:
+    id: v4Sr4Fzpwc8
+    type: live
+    publishedAt: 2023/05/03 22:00
+  name: '【8か月記念】【参加型】講義は、予習復習が大事なのです♡'
+  categories: ['純喫茶ジェネット', '記念配信']
+  tunes:
+    - title: '[交響曲第9番](wiki:交響曲第9番_(ドヴォルザーク)) ホ短調 作品95, B. 178「新世界より」'
+      originalTitle: 'Symphony No. 9, B. 178, "New World Symphony"'
+      attributes:
+        - name: 作曲
+          text: '[アントニン・ドヴォルザーク](wiki:アントニン・ドヴォルザーク)'
+      description: ヴァイオリン演奏（第2楽章、第4楽章）として
+
+- video:
+    id: H6mK6fMNSU0
+    type: live
+    publishedAt: 2023/04/30 20:00
+  name: '【エヴァンゲリオン×クラシック音楽】ウサコと初コラボ♪純喫茶ジェネットに聴講生⁉☕✨'
+  categories: ['純喫茶ジェネット', '楽曲解説', 'コラボ配信']
+  tunes:
+    - title: '[交響曲第9番「合唱付き」](wiki:交響曲第9番_(ベートーヴェン)) 第4楽章「[歓喜の歌](wiki:歓喜の歌)」'
+      originalTitle: 'Sinfonie Nr. 9 D-moll, op. 125, An die Freude / Ode to Joy'
+      attributes:
+        - name: 作曲
+          text: '[ルードヴィッヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
+        - name: 原詩
+          text: '[フリードリヒ・フォン・シラー](wiki:フリードリヒ・フォン・シラー)'
+      description: BGMとして、[ヴァイオリン演奏](yt:H6mK6fMNSU0?t=4540)として
+
+- video:
+    id: UVWC7k2R2HY
+    type: live
+    publishedAt: 2023/04/29 20:00
+  name: '【エヴァンゲリオン×クラシック音楽】キ！初コラボ♪ ジェネット🐱☕×ウサギコウモリ🐰🦇'
+  categories: ['純喫茶ジェネット', '楽曲解説', 'コラボ配信']
+  tunes:
+    - title: '[レクイエム](wiki:レクイエム_(ヴェルディ))より [怒りの日](wiki:レクイエム_(ヴェルディ)#Dies_Iræ（怒りの日）)'
+      originalTitle: "Messa da Requiem per l'anniversario della morte di Manzoni, Dies Iræ"
+      attributes:
+        - name: 作曲
+          text: '[ジュゼッペ・ヴェルディ](wiki:ジュゼッペ・ヴェルディ)'
+      description: 解説として
+    - title: '[パッヘルベルのカノン](wiki:カノン_(パッヘルベル))'
+      originalTitle: 'Canon a 3 Violinis con Basso c. / Gigue, PWC 37'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・パッヘルベル](wiki:ヨハン・パッヘルベル)'
+      description: 解説として
+    - title: '[G線上のアリア](wiki:G線上のアリア)'
+      originalTitle: 'Air auf der G-Saite'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
+        - name: 編曲
+          text: '[アウグスト・ウィルヘルミ](wiki:アウグスト・ウィルヘルミ)'
+      description: 解説として
+    - title: 'コラール「[主よ、人の望みの喜びよ](wiki:主よ、人の望みの喜びよ)」'
+      originalTitle: 'Herz und Mund und Tat und Leben, BWV 147'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
+      description: 解説として
+    - title: |-
+        [無伴奏ヴァイオリンのためのソナタとパルティータ](wiki:無伴奏ヴァイオリンのためのソナタとパルティータ)より
+        パルティータ第3番 第3楽章「[ガヴォット](wiki:無伴奏ヴァイオリンのためのソナタとパルティータ#パルティータ第3番ホ長調_BWV1006)」
+      originalTitle: 'Sei Solo a Violino senza Basso accompagnato, BWV1006, Gavotte en Rondeau'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
+      description: 解説として、ヴァイオリン演奏として
+    - title: '劇付随音楽「[真夏の夜の夢](wiki:夏の夜の夢_(メンデルスゾーン))」より 「[結婚行進曲](wiki:結婚行進曲_(メンデルスゾーン))」'
+      originalTitle: "Ein Sommernachtstraum, Hochzeitsmarsch, Op.61"
+      attributes:
+        - name: 作曲
+          text: '[フェリックス・メンデルスゾーン](wiki:フェリックス・メンデルスゾーン)'
+      description: 解説として
+
+- video:
+    id: 0wiTNGo68mo
+    type: video
+    publishedAt: 2023/04/27 23:30
+  name: '【睡眠用BGM】気が付けば夢の中⁉クラシック睡眠導入BGM'
+  categories: ['演奏動画']
+  tunes:
+    - title: '子守唄'
+      attributes:
+        - name: 作曲
+          text: '[ヨハネス・ブラームス](wiki:ヨハネス・ブラームス)'
+      description: ''
+
+- video:
+    id: Tv772tcDIkk
+    type: live
+    publishedAt: 2023/04/24 22:00
+  name: '【楽曲解説】指が6本あった⁉超絶技巧ピアニスト、リスト「ラ・カンパネラ」【純喫茶ジェネット】'
+  shortname: '指が6本あった⁉超絶技巧ピアニスト、リスト「ラ・カンパネラ」'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[パガニーニ](wiki:パガニーニによる大練習曲)による大練習曲 S.141/3 第3番 嬰ト短調「[ラ・カンパネラ](wiki:ラ・カンパネラ)」'
+      originalTitle: 'Grandes études de Paganini, S. 141, "La Campanella"'
+      attributes:
+        - name: 作曲
+          text: '[ニコロ・パガニーニ](wiki:ニコロ・パガニーニ)'
+        - name: 編曲
+          text: '[フランツ・リスト](wiki:フランツ・リスト)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:Tv772tcDIkk?t=3455)として'
+      videos:
+        - id: s6lX2Wzajcc
+          title: 'George Li - La Campanella - Franz Liszt | Podium Witteman'
+          description: 'リストによるピアノ編曲版'
+      references:
+        - link: https://imslp.org/wiki/Grandes_%C3%A9tudes_de_Paganini,_S.141_(Liszt,_Franz)
+          title: 'Grandes études de Paganini, S.141 (Liszt, Franz)'
+    - title: 'ヴァイオリン協奏曲 第2番 ロ短調 「[ラ・カンパネラ](wiki:ヴァイオリン協奏曲第2番_(パガニーニ))」 作品7 より 第3楽章「鐘のロンド」'
+      originalTitle: 'Violin Concerto No. 2 in B minor, Op. 7, III. Rondo "La Campanella"'
+      attributes:
+        - name: 作曲
+          text: '[ニコロ・パガニーニ](wiki:ニコロ・パガニーニ)'
+      description: '[ヴァイオリン演奏](yt:Tv772tcDIkk?t=3455)として'
+      videos:
+        - id: uOeDvBPlpe0
+          title: 'Paganini Violin Concerto No.2 in B minor, opus 7 "La Campanella" | Svetlin Roussev'
+          position: 1365
+          description: 'パガニーニによる原曲版'
+      references:
+        - link: https://imslp.org/wiki/Violin_Concerto_No.2%2C_Op.7_(Paganini%2C_Niccol%C3%B2)
+          title: 'Violin Concerto No.2, Op.7 (Paganini, Niccolò)'
+
+- video:
+    id: XE6zKqSElEA
+    type: live
+    publishedAt: 2023/04/21
+  name: '【音楽豆知識】音楽家はみんな…酒呑みなのです…っ🍺【純喫茶ジェネット】'
+  shortname: '音楽家はみんな…酒呑みなのです…っ🍺'
+  categories: ['純喫茶ジェネット', '音楽家解説']
+  tunes:
+    - title: '[チャールダーシュ](wiki:チャールダーシュ_(モンティ))'
+      originalTitle: 'Csárdás'
+      attributes:
+        - name: 作曲
+          text: '[ヴィットーリオ・モンティ](wiki:ヴィットーリオ・モンティ)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:XE6zKqSElEA?t=4786)として'
+      videos:
+        - id: HVach8BsJSM
+          title: 'David Garrett - Csárdás by Vittorio Monti - Milano 30.05.2015'
+          position: 8
+      references:
+        - link: https://imslp.org/wiki/Cs%C3%A1rd%C3%A1s_(Monti,_Vittorio)
+          title: 'Csárdás (Monti, Vittorio)'
+
+- video:
+    id: _JR_FrRMR-w
+    type: live
+    publishedAt: 2023/04/19
+  name: '【楽曲解説】著作権問題でもめ事！？ブラームス「ハンガリー舞曲第５番」【純喫茶ジェネット】'
+  shortname: '著作権問題でもめ事！？ブラームス「ハンガリー舞曲第５番」'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[ハンガリー舞曲](wiki:ハンガリー舞曲) 第5番'
+      originalTitle: 'Ungarische Tänze, No. 5. Allegro, fis-Moll'
+      attributes:
+        - name: 編曲
+          text: '[ヨハネス・ブラームス](wiki:ヨハネス・ブラームス)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:_JR_FrRMR-w?t=2706)として'
+      videos:
+        - id: aEX48pzi_Pw
+          title: 'Hungarian Dances No 5, J Brahms - Passepartout Piano Duo'
+      references:
+        - link: https://imslp.org/wiki/21_Hungarian_Dances_(Piano),_WoO_1_(Brahms,_Johannes)
+          title: '21 Hungarian Dances (Piano), WoO 1 (Brahms, Johannes)'
+
+- video:
+    id: AuaX9nIzKp4
+    type: live
+    publishedAt: 2023/04/13
+  name: '【楽曲解説】エリーゼって誰…？ベートーヴェン「エリーゼのために」【純喫茶ジェネット】'
+  shortname: 'エリーゼって誰…？ベートーヴェン「エリーゼのために」'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: 'バガテル 第25番 イ短調 WoO 59「[エリーゼのために](wiki:エリーゼのために)」'
+      originalTitle: 'Für Elise, WoO 59'
+      attributes:
+        - name: 作曲
+          text: '[ルートヴィヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:AuaX9nIzKp4?t=2916)として'
+      videos:
+        - id: e4d0LOuP4Uw
+          title: 'Beethoven - Für Elise | Piano &amp; Orchestra'
+      references:
+        - link: https://imslp.org/wiki/F%C3%BCr_Elise,_WoO_59_(Beethoven,_Ludwig_van)
+          title: 'Für Elise, WoO 59 (Beethoven, Ludwig van)'
+
+- video:
+    id: u0rp91xeAt4
+    type: live
+    publishedAt: 2023/04/12
+  name: '【楽曲解説】狂気的な愛の叫び！ベルリオーズ「幻想交響曲」に迫る【純喫茶ジェネット】'
+  shortname: '狂気的な愛の叫び！ベルリオーズ「幻想交響曲」に迫る'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[幻想交響曲](wiki:幻想交響曲) 作品14 (H.48)'
+      originalTitle: 'Symphonie fantastique, H 48'
+      attributes:
+        - name: 作曲
+          text: '[エクトル・ベルリオーズ](wiki:エクトル・ベルリオーズ)'
+      description: |
+        BGMとして、[ヴァイオリン演奏（イデー・フィクス; 恋人の主題）](yt:u0rp91xeAt4?t=4669)として
+        付記: [コル・レーニョによる演奏部分の映像](yt:5HgqPpjIH5c?t=3169)
+      videos:
+        - id: 5HgqPpjIH5c
+          title: 'Berlioz : Symphonie Fantastique (Philharmonique de Radio France / Myung-Whun Chung)'
+          position: 36
+      references:
+        - link: https://imslp.org/wiki/Symphonie_fantastique,_H_48_(Berlioz,_Hector)
+          title: 'Symphonie fantastique, H 48 (Berlioz, Hector)'
+
+- video:
+    id: 8vis2tbJ3oA
+    type: live
+    publishedAt: 2023/04/10
+  name: '【おすすめクラシック紹介】聴くだけで背筋も凍る…恐怖の厳選クラシック５選【純喫茶ジェネット】'
+  shortname: '【おすすめクラシック紹介】聴くだけで背筋も凍る…恐怖の厳選クラシック５選'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: 'グノシエンヌ 第1番'
+      originalTitle: 'Gnossiennes No.1'
+      attributes:
+        - name: 作曲
+          text: '[エリック・サティ](wiki:エリック・サティ)'
+      description: BGMとして
+      videos:
+        - id: 5bIeYqpn0Gk
+          title: 'Reinbert de Leeuw - Erik Satie/ Gnossiennes 1-6 (live @TivoliVredenburg Utrecht)'
+          position: 4
+      references:
+        - link: https://imslp.org/wiki/Gnossiennes_(Satie,_Erik)
+          title: 'Gnossiennes (Satie, Erik)'
+    - title: '交響詩「[禿山の一夜](wiki:禿山の一夜)」ニ短調'
+      originalTitle: 'Ночь на Лысой горе'
+      attributes:
+        - name: 作曲
+          text: '[モデスト・ムソルグスキー](wiki:モデスト・ムソルグスキー)'
+        - name: 編曲
+          text: '[ニコライ・リムスキー＝コルサコフ](wiki:ニコライ・リムスキー＝コルサコフ)'
+      description: BGMとして
+      videos:
+        - id: WOdc6hwq5lE
+          title: 'Modest Mussorgsky - Night on Bald Mountain'
+          position: 33
+      references:
+        - link: https://imslp.org/wiki/Night_on_Bald_Mountain_(Mussorgsky,_Modest)
+          title: 'Night on Bald Mountain (Mussorgsky, Modest)'
+    - title: '前奏曲 嬰ハ短調 作品3-2「[鐘](wiki:前奏曲嬰ハ短調 (ラフマニノフ)]」'
+      originalTitle: 'Morceaux de fantaisie, Op.3, No.2'
+      attributes:
+        - name: 作曲
+          text: '[セルゲイ・ラフマニノフ](wiki:セルゲイ・ラフマニノフ)'
+      description: BGMとして
+      videos:
+        - id: _cvpoi-c5Rk
+          title: 'Rachmaninoff - Prelude in C Sharp minor Op 3 No 2 - A. Osokins encore'
+      references:
+        - link: https://imslp.org/wiki/Morceaux_de_Fantaisies,_Op.3_(Rachmaninoff,_Sergei)
+          title: 'Morceaux de fantaisie, Op.3 (Rachmaninoff, Sergei)'
+    - title: '「[死の舞踏](wiki:死の舞踏_(サン＝サーンス))」 作品40, R. 171'
+      originalTitle: 'Danse macabre, Op.40'
+      attributes:
+        - name: 作曲
+          text: '[カミーユ・サン＝サーンス](wiki:カミーユ・サン＝サーンス)'
+        - name: ピアノ編曲
+          text: '[フランツ・リスト](wiki:フランツ・リスト)'
+      description: BGMとして、[バイオリン演奏](yt:8vis2tbJ3oA?t=3684)として
+      videos:
+        - id: m_TcNjVWJeo
+          title: '交響詩「死の舞踏」/C.サン＝サーンス　- Camille Saint-Saëns - Danse macabre Op.40'
+      references:
+        - link: https://imslp.org/wiki/Danse_macabre,_Op.40_(Saint-Sa%C3%ABns,_Camille)
+          title: 'Danse macabre, Op.40 (Saint-Saëns, Camille)'
+    - title: '[幻想交響曲](wiki:幻想交響曲) 作品14 (H.48) より第4楽章「[断頭台への行進](wiki:幻想交響曲#第4楽章「断頭台への行進」_(Marche_au_supplice)」'
+      originalTitle: 'Symphonie fantastique, H 48, IV. Marche au supplice. Allegretto non troppo'
+      attributes:
+        - name: 作曲
+          text: '[エクトル・ベルリオーズ](wiki:エクトル・ベルリオーズ)'
+      description: BGMとして
+      videos:
+        - id: Vm_Jjc26Zy8
+          title: 'Concertgebouworkest - Symphonie fantastique - IV. Marche au supplice - Berlioz'
+      references:
+        - link: https://imslp.org/wiki/Symphonie_fantastique,_H_48_(Berlioz,_Hector)
+          title: 'Symphonie fantastique, H 48 (Berlioz, Hector)'
+
+- video:
+    id: miu5rhbkLMM
+    type: live
+    publishedAt: 2023/04/08
+  name: '【メンバーシップ開始】はじまります。みんな、じゅんびはいいかーっ！'
+  categories: ['雑談']
+  tunes:
+    - title: '[花](wiki:花_(瀧廉太郎))'
+      attributes:
+        - name: 作曲
+          text: '[瀧廉太郎](wiki:瀧廉太郎)'
+        - name: 作詞
+          text: '[武島羽衣](wiki:武島羽衣)'
+      description: BGMとして、[ヴァイオリン演奏](yt:miu5rhbkLMM?t=3499)として
+      videos:
+        - id: t9WcZ1RVtK8
+          title: 'Hana (Flowers) by Taki Rentaro'
+
+- video:
+    id: VdEAxd4jbPA
+    type: live
+    publishedAt: 2023/04/06
+  name: '【楽曲解説】愛の挨拶！背景にはドラマティックな愛の物語が…♡【純喫茶ジェネット】'
+  shortname: '愛の挨拶！背景にはドラマティックな愛の物語が…♡'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[愛の挨拶](wiki:愛の挨拶) 作品12'
+      originalTitle: "Salut d'amour, Op.12"
+      attributes:
+        - name: 作曲
+          text: '[エドワード・エルガー](wiki:エドワード・エルガー)'
+      description: BGMとして、バイオリン演奏（[ホ長調](yt:VdEAxd4jbPA?t=3124)、[ニ長調](yt:VdEAxd4jbPA?t=3166)）として
+      videos:
+        - id: GoUuozWmoFM
+          title: 'Salut d&#39;Amour, E. Elgar - Anastasiya Petryshak'
+        - id: P1gC8-nGTAw
+          title: 'Elgar Salut d&#39;Amour for cello - Gautier Capuçon (from the album &#39;Intuition&#39;)'
+      references:
+        - link: https://imslp.org/wiki/Salut_d%27Amour,_Op.12_(Elgar,_Edward)
+          title: "Salut d'amour, Op.12 (Elgar, Edward)"
+
+- video:
+    id: sdtEdg1RUXg
+    type: live
+    publishedAt: 2023/03/29
+  name: '【楽曲解説】閉店BGMの定番！って、実は「蛍の光」じゃない…！？【純喫茶ジェネット】'
+  shortname: '閉店BGMの定番！って、実は「蛍の光」じゃない…！？'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[オールド・ラング・サイン](wiki:オールド・ラング・サイン)（[蛍の光](wiki:蛍の光)）'
+      originalTitle: 'Auld Lang Syne'
+      attributes:
+        - name: 作曲
+          text: '不明'
+        - name: 作詞
+          text: '[ロバート・バーンズ](wiki:ロバート・バーンズ)'
+        - name: 日本語訳詞
+          text: '[稲垣千穎](wiki:稲垣千穎)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:sdtEdg1RUXg?t=3350)として'
+      references:
+        - link: https://imslp.org/wiki/Auld_lang_syne_(Folk_Songs%2C_Scottish)
+          title: 'Auld lang syne (Folk Songs, Scottish)'
+    - title: '[別れのワルツ](wiki:蛍の光#別れのワルツ)'
+      originalTitle: 'Auld Lang Syne'
+      attributes:
+        - name: ワルツ編曲
+          text: '[古関裕而](wiki:古関裕而)'
+      description: 'ヴァイオリン演奏（[別れのワルツ](yt:sdtEdg1RUXg?t=3399)、[別れのワルツ本奏](yt:sdtEdg1RUXg?t=3940)）として'
+      videos:
+        - id: dBjC1LYmvsc
+          title: '別れのワルツ'
