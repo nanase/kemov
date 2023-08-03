@@ -28,6 +28,7 @@ interface TuneReference {
 
 interface Tune {
   title: Markdown;
+  subtunes?: Markdown[];
   originalTitle?: Markdown;
   attributes?: TuneAttribute[];
   description?: Markdown;
