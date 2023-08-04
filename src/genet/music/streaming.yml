@@ -1047,4 +1047,326 @@
         - link: https://imslp.org/wiki/The_Nutcracker_(suite),_Op.71a_(Tchaikovsky,_Pyotr)
           title: 'The Nutcracker (suite), Op.71a (Tchaikovsky, Pyotr)'
 
+- video:
+    id: pUyX5LDQ14w
+    type: live
+    publishedAt: 2023/03/08
+  name: '【楽曲解説】【3大バレエ音楽】～Day2～チャイコフスキー「眠れる森の美女」【純喫茶ジェネット】'
+  shortname: '【3大バレエ音楽】～Day2～チャイコフスキー「眠れる森の美女」'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[眠れる森の美女](wiki:眠れる森の美女_(チャイコフスキー)) 作品66 第1幕 第6曲 [村人の大ワルツ](wiki:眠れる森の美女_(チャイコフスキー)#楽曲)'
+      originalTitle: 'Спящая красавица'
+      attributes:
+        - name: 作曲
+          text: '[ピョートル・チャイコフスキー](wiki:ピョートル・チャイコフスキー)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:pUyX5LDQ14w?t=3979)として'
+      videos:
+        - id: FBEqq2HO-yI
+          title: 'Waltz from The Sleeping Beauty (ballet by Marius Petipa, revised version by Konstantin Sergeev)'
+      references:
+        - link: https://imslp.org/wiki/The_Sleeping_Beauty_(ballet),_Op.66_(Tchaikovsky,_Pyotr)
+          title: 'The Sleeping Beauty (ballet), Op.66 (Tchaikovsky, Pyotr)'
+
+- video:
+    id: Bsykz4nenyI
+    type: live
+    publishedAt: 2023/03/06
+  name: '【楽曲解説】【3大バレエ音楽】～Day1～チャイコフスキー「白鳥の湖」【純喫茶ジェネット】'
+  shortname: '【3大バレエ音楽】～Day1～チャイコフスキー「白鳥の湖」'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[白鳥の湖](wiki:白鳥の湖) 作品20 第2幕 第10曲 [情景: モデラート](wiki:白鳥の湖#楽曲)'
+      originalTitle: 'Лебединое озеро'
+      attributes:
+        - name: 作曲
+          text: '[ピョートル・チャイコフスキー](wiki:ピョートル・チャイコフスキー)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:Bsykz4nenyI?t=3595)として'
+      videos:
+        - id: 9rJoB7y6Ncs
+          position: 1635
+          title: 'Tchaikovsky: Swan Lake - The Kirov Ballet'
+      references:
+        - link: https://imslp.org/wiki/Swan_Lake_(ballet),_Op.20_(Tchaikovsky,_Pyotr)
+          title: 'Swan Lake (ballet), Op.20 (Tchaikovsky, Pyotr)'
+
+- video:
+    id: 1jUwCJFGqWs
+    type: live
+    publishedAt: 2023/03/03
+  name: '【楽曲解説】珍しい女性作曲家⁉バダジェフスカ「乙女の祈り」は新幹線のあの音にも…！【純喫茶ジェネット】'
+  shortname: '珍しい女性作曲家⁉バダジェフスカ「乙女の祈り」は新幹線のあの音にも…！'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[乙女の祈り](wiki:乙女の祈り_(バダジェフスカの曲))'
+      originalTitle: "Modlitwa dziewicy (La prière d'une vierge) Op. 4"
+      attributes:
+        - name: 作曲
+          text: '[テクラ・バダジェフスカ](wiki:テクラ・バダジェフスカ)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:1jUwCJFGqWs?t=3489)として'
+      videos:
+        - id: f3POLeoFi3s
+          title: '乙女の祈り（バダジェフスカ）Badarzewska - The Maiden&#39;s Prayer - pianomaedaful'
+      references:
+        - link: https://imslp.org/wiki/La_pri%C3%A8re_d%27une_vierge,_Op.4_(B%C4%85darzewska-Baranowska,_Tekla)
+          title: "La prière d'une vierge, Op.4 (Bądarzewska-Baranowska, Tekla)"
+
+- video:
+    id: Af46LCtbEcA
+    type: live
+    publishedAt: 2023/03/01
+  name: '【デビュー半年記念】【雑談】みんないつもありがとうの会🎻'
+  shortname: '【デビュー半年記念】【雑談】みんないつもありがとうの会🎻'
+  categories: ['記念配信']
+  tunes:
+    - title: '[3つのヴァイオリンと通奏低音のためのカノンとジーグ ニ長調](wiki:カノン_(パッヘルベル)) より「[カノン](wiki:カノン_(パッヘルベル)#カノン)」'
+      originalTitle: 'Kanon und Gigue für drei Violinen und Basso Continuo, P.37, No.1 Kanon'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・パッヘルベル](wiki:ヨハン・パッヘルベル)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:Af46LCtbEcA?t=4451)として'
+      videos:
+        - id: jJRdLZyOU4w
+          title: 'Pachelbel - Canon - Stringspace String Quartet'
+      references:
+        - link: https://imslp.org/wiki/Canon_and_Gigue_in_D_major,_P.37_(Pachelbel,_Johann)
+          title: 'Canon and Gigue in D major, P.37 (Pachelbel, Johann)'
+    - title: '[シフォンケーキ](https://dova-s.jp/bgm/play17170.html)'
+      attributes:
+        - name: 作曲・編曲
+          text: '[いまたく](https://dova-s.jp/_contents/author/profile278.html)'
+      description: 'エンディングの[ピチカート演奏](yt:Af46LCtbEcA?t=5363)として'
+      videos:
+        - id: Kt3WAYAFXRE
+          title: 'シフォンケーキ @ フリーBGM DOVA-SYNDROME OFFICIAL YouTube CHANNEL'
+
+- video:
+    id: DBPauEjBHBs
+    type: live
+    publishedAt: 2023/02/27
+  name: '【楽曲解説】名曲なのに完成してない…！？「未完成」の謎に迫る！【純喫茶ジェネット】'
+  shortname: '名曲なのに完成してない…！？「未完成」の謎に迫る！'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[交響曲第7番 ロ短調 D 759「未完成」](wiki:交響曲第7番_(シューベルト))'
+      originalTitle: 'Sinfonie in h-Moll D 759, Die Unvollendete'
+      attributes:
+        - name: 作曲
+          text: '[フランツ・シューベルト](wiki:フランツ・シューベルト)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:DBPauEjBHBs?t=3640)として'
+      videos:
+        - id: onyN4VcqoQs
+          position: 24
+          title: 'Schubert: 7. Sinfonie (»Unvollendete«) ∙ hr-Sinfonieorchester ∙ Andrés Orozco-Estrada'
+      references:
+        - link: https://imslp.org/wiki/Symphony_No.8,_D.759_(Schubert,_Franz)
+          title: 'Symphony No.8, D.759 (Schubert, Franz)'
+
+- video:
+    id: 1mzNXN1bEwg
+    type: live
+    publishedAt: 2023/02/26
+  name: '【音楽豆知識】あの曲にも！？エモさ爆発！ヨナ抜きコードのひみつ【純喫茶ジェネット】'
+  shortname: 'あの曲にも！？エモさ爆発！ヨナ抜きコードのひみつ'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[君が代](wiki:君が代)'
+      attributes:
+        - name: 作曲
+          text: '[林廣守](wiki:林廣守)、[奥好義](wiki:奥好義)'
+      description: '[ヴァイオリン演奏](yt:1mzNXN1bEwg?t=1198)として'
+      videos:
+        - id: Nrjt5OWb2uc
+          position: 4
+          title: '君が代（きみがよ）｜日本国歌【フルオーケストラ演奏】ジャパンフェスティバルオーケストラ［吉田裕史指揮］'
+
+- video:
+    id: iXuDonwf44U
+    type: live
+    publishedAt: 2023/02/23
+  name: '【楽曲解説】激エモ！”故郷”に想いを馳せて…ドヴォルザーク「新世界」【純喫茶ジェネット】'
+  shortname: '激エモ！”故郷”に想いを馳せて…ドヴォルザーク「新世界」'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[交響曲第9番 ホ短調 作品95, B. 178「新世界より」](wiki:交響曲第9番_(ドヴォルザーク))'
+      originalTitle: 'Symfonie č.9, "Z nového světa"'
+      attributes:
+        - name: 作曲
+          text: '[アントニン・ドヴォルザーク](wiki:アントニン・ドヴォルザーク)'
+      description: 'OPのBGMとして、配信BGMとして、[ヴァイオリン演奏](yt:iXuDonwf44U?t=3178)として'
+      videos:
+        - id: jOofzffyDSA
+          position: 5
+          title: 'Dvořák: 9. Sinfonie (»Aus der Neuen Welt«) ∙ hr-Sinfonieorchester ∙ Andrés Orozco-Estrada'
+      references:
+        - link: https://imslp.org/wiki/Symphony_No.9,_Op.95_(Dvo%C5%99%C3%A1k,_Anton%C3%ADn)
+          title: 'Symphony No.9, Op.95 (Dvořák, Antonín)'
+
+- video:
+    id: 9N7IlG5b8c4
+    type: live
+    publishedAt: 2023/02/19
+  name: '【睡眠導入】【生演奏】聴くと必ず眠くなる！？音の海に沈んでみませんか…ｚＺＺ'
+  shortname: '【睡眠導入】【生演奏】聴くと必ず眠くなる！？音の海に沈んでみませんか…ｚＺＺ'
+  categories: ['演奏配信']
+  tunes:
+    - title: '[目覚めスッキリ！超熟睡できる睡眠導入BGM](yt:nK5f8q_aBgo)'
+      attributes:
+        - name: 作曲
+          text: '[ジェネット](https://www.youtube.com/@large-spottedgenet4617)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:9N7IlG5b8c4?t=1720)として'
+      videos:
+        - id: nK5f8q_aBgo
+          title: '【睡眠用BGM】目覚めスッキリ！超熟睡できる睡眠導入BGM　【#けもV #じぇねったいむっ】'
+
+- video:
+    id: n0H_b2S5yWE
+    type: live
+    publishedAt: 2023/02/16
+  name: '【楽曲解説】結婚式の定番！2大「結婚行進曲」メンデルスゾーンVSワーグナー【純喫茶ジェネット】'
+  shortname: '結婚式の定番！2大「結婚行進曲」メンデルスゾーンVSワーグナー'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '劇付随音楽「[夏の夜の夢](wiki:夏の夜の夢_(メンデルスゾーン))」作品61 第9曲「[結婚行進曲](wiki:結婚行進曲_(メンデルスゾーン))」'
+      originalTitle: 'Musik zu Ein Sommernachtstraum, Op.61, No.9 Hochszeitsmarsch'
+      attributes:
+        - name: 作曲
+          text: '[フェリックス・メンデルスゾーン](wiki:フェリックス・メンデルスゾーン)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:n0H_b2S5yWE?t=3515)として'
+      videos:
+        - id: nfhaD7nZ3-0
+          position: 1610
+          title: 'Felix Mendelssohn Bartholdy - Suite aus &quot;Ein Sommernachtstraum&quot; | E. Gardner | WDR Sinfonieorchester'
+      references:
+        - link: https://imslp.org/wiki/A_Midsummer_Night%27s_Dream,_incidental_music,_Op.61_(Mendelssohn,_Felix)
+          title: "A Midsummer Night's Dream, incidental music, Op.61 (Mendelssohn, Felix)"
+    - title: 'オペラ「[ローエングリン](wiki:ローエングリン)」劇中歌より「[婚礼の合唱](wiki:婚礼の合唱)」'
+      originalTitle: 'Lohengrin, WWV 75, Treulich geführt'
+      attributes:
+        - name: 作曲
+          text: '[リヒャルト・ワーグナー](wiki:リヒャルト・ワーグナー)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:n0H_b2S5yWE?t=4593)として'
+      videos:
+        - id: J2lX86w-pT4
+          title: 'Christian Thielemann – Wagner: Lohengrin: Prelude Act 3 / &quot;Treulich geführt&quot; (Bridal Chorus)'
+      references:
+        - link: https://imslp.org/wiki/Lohengrin,_WWV_75_(Wagner,_Richard)
+          title: "Lohengrin, WWV 75 (Wagner, Richard)"
+
+- video:
+    id: t8CZde-3v8A
+    type: live
+    publishedAt: 2023/02/10
+  name: '【音感テスト】音楽センスやいかに！？みんなで音感テスト！～何の音が鳴っているでしょう？～（初級編）'
+  shortname: '【音感テスト】音楽センスやいかに！？みんなで音感テスト！～何の音が鳴っているでしょう？～（初級編）'
+  categories: ['音楽解説']
+  tunes:
+    - title: '[オールド・ラング・サイン](wiki:オールド・ラング・サイン)（[蛍の光](wiki:蛍の光)）'
+      originalTitle: 'Auld Lang Syne'
+      attributes:
+        - name: 作曲
+          text: '不明'
+        - name: 作詞
+          text: '[ロバート・バーンズ](wiki:ロバート・バーンズ)'
+        - name: 日本語訳詞
+          text: '[稲垣千穎](wiki:稲垣千穎)'
+      description: 'ハンドベル演奏（[テイク1](yt:t8CZde-3v8A?t=2549)、[テイク2](yt:t8CZde-3v8A?t=2776)、[テイク3](yt:t8CZde-3v8A?t=3596)、[テイク21](https://twitter.com/Genet_KEMOV/status/1624051300454260737)）として'
+      videos:
+        - id: 11wYCgYms2I
+          title: 'André Rieu - Auld Lang Syne'
+      references:
+        - link: https://imslp.org/wiki/Auld_lang_syne_(Folk_Songs%2C_Scottish)
+          title: 'Auld lang syne (Folk Songs, Scottish)'
+
+- video:
+    id: RGzM13mFvrQ
+    type: live
+    publishedAt: 2023/02/09
+  name: '【楽曲解説】聴くと頭がよくなるって本当！？モーツァルト「トルコ行進曲」のひみつ！【純喫茶ジェネット】'
+  shortname: '聴くと頭がよくなるって本当！？モーツァルト「トルコ行進曲」のひみつ！'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[ピアノソナタ第11番](wiki:ピアノソナタ第11番_(モーツァルト)) イ長調 K.331 (K⁶.300i) 第3楽章「[トルコ行進曲](wiki:トルコ行進曲)」'
+      originalTitle: 'Piano Sonata No.11, K.331, K⁶.300i, No.3 Alla Turca'
+      attributes:
+        - name: 作曲
+          text: '[ヴォルフガング・アマデウス・モーツァルト](wiki:ヴォルフガング・アマデウス・モーツァルト)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:RGzM13mFvrQ?t=3434)として'
+      videos:
+        - id: ScsJ8GOlM7Y
+          title: 'Mozart - Alla Turca - Arranged for Piano &amp; Orchestra'
+      references:
+        - link: https://imslp.org/wiki/Piano_Sonata_No.11_in_A_major,_K.331/300i_(Mozart,_Wolfgang_Amadeus)
+          title: 'Piano Sonata No.11 in A major, K.331/300i (Mozart, Wolfgang Amadeus)'
+
+- video:
+    id: 50YEkNJURGI
+    type: live
+    publishedAt: 2023/02/06
+  name: '【楽曲解説】最高傑作！？ベートーヴェン「運命」波乱万丈、壮大なストーリーに迫る！【純喫茶ジェネット】'
+  shortname: '最高傑作！？ベートーヴェン「運命」波乱万丈、壮大なストーリーに迫る！'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[交響曲第5番 ハ短調 作品67「運命」](wiki:交響曲第5番_(ベートーヴェン))'
+      originalTitle: 'Symphony No.5 in C minor, Op.67'
+      attributes:
+        - name: 作曲
+          text: '[ルートヴィヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:50YEkNJURGI?t=2987)として'
+      videos:
+        - id: 3ug835LFixU
+          title: 'Beethoven: Symphony No. 5 | Herbert Blomstedt and the Gewandhausorchester Leipzig'
+      references:
+        - link: https://imslp.org/wiki/Symphony_No.5%2C_Op.67_%28Beethoven%2C_Ludwig_van%29
+          title: 'Symphony No.5, Op.67 (Beethoven, Ludwig van)'
+
+- video:
+    id: ULRKI2wL2dY
+    type: live
+    publishedAt: 2023/02/05
+  name: '【楽曲解説】誰もが1度は耳にしたことがある名曲！タイトル「G線」の由来とは？J.Sバッハ「G線上のアリア」【純喫茶ジェネット】'
+  shortname: '誰もが1度は耳にしたことがある名曲！タイトル「G線」の由来とは？J.Sバッハ「G線上のアリア」'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[管弦楽組曲](wiki:管弦楽組曲) [第3番 ニ長調 BWV1068](wiki:管弦楽組曲#第3番_BWV_1068) 第2曲 エール「[G線上のアリア](wiki:G線上のアリア)」'
+      originalTitle: 'Orchestral Suite No.3 in D major, BWV 1068, No.2 Air'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:50YEkNJURGI?t=2987)として'
+      videos:
+        - id: pzlw6fUux4o
+          title: 'Air on the G String (Suite No. 3, BWV 1068) J. S. Bach, original instruments'
+      references:
+        - link: https://imslp.org/wiki/Orchestral_Suite_No.3_in_D_major,_BWV_1068_(Bach,_Johann_Sebastian)
+          title: 'Orchestral Suite No.3 in D major, BWV 1068 (Bach, Johann Sebastian)'
+
+- video:
+    id: QnpD92P3cXE
+    type: video
+    publishedAt: 2023/02/01
+  name: '【自己紹介】Vtuber一問一答自己紹介'
+  shortname: '【自己紹介】Vtuber一問一答自己紹介'
+  categories: ['投稿動画']
+  tunes:
+    - title: '[Vtuber一問一答自己紹介](yt:V4L3YuhCUEY)'
+      originalTitle: 'Orchestral Suite No.3 in D major, BWV 1068, No.2 Air'
+      attributes:
+        - name: 企画
+          text: '[海月シェル](https://www.youtube.com/@umitsukishell)'
+        - name: 音楽
+          text: '[音鳴マシタ](https://www.youtube.com/channel/UC-KmLUpWRDcTUVgyrXrXIJg)'
+      description: '元動画、バイオリン演奏（アドリブ）として'
+      videos:
+        - id: V4L3YuhCUEY
+          title: '【自己紹介】Vtuber一問一答自己紹介/オリジナル曲【#海月シェル /新人Vtuber】'
+    - title: '[愛の挨拶](wiki:愛の挨拶) 作品12'
+      originalTitle: "Salut d'amour, Op.12"
+      attributes:
+        - name: 作曲
+          text: '[エドワード・エルガー](wiki:エドワード・エルガー)'
+      description: 「愛の告白」部分のヴァイオリン演奏として
+      references:
+        - link: https://imslp.org/wiki/Salut_d%27Amour,_Op.12_(Elgar,_Edward)
+          title: "Salut d'amour, Op.12 (Elgar, Edward)"
 
