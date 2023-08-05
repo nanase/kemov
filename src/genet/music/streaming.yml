@@ -1370,3 +1370,165 @@
         - link: https://imslp.org/wiki/Salut_d%27Amour,_Op.12_(Elgar,_Edward)
           title: "Salut d'amour, Op.12 (Elgar, Edward)"
 
+- video:
+    id: ayFXCcZJb88
+    type: live
+    publishedAt: 2023/01/26
+  name: '【純喫茶ジェネット】コーヒー、音楽のすゝめvol.4'
+  shortname: 'コーヒー、音楽のすゝめvol.4'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '大管弦楽のための組曲「[惑星](wiki:惑星_(組曲))」作品32 より「[木星、快楽をもたらす者](wiki:惑星_(組曲)#木星、快楽をもたらす者)」'
+      originalTitle: 'The Planets, Op.32, Jupiter, the Bringer of Jollity'
+      attributes:
+        - name: 作曲
+          text: '[グスターヴ・ホルスト](wiki:グスターヴ・ホルスト)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:ayFXCcZJb88?t=2990)として'
+      videos:
+        - id: 3aXsQQ-ueBk
+          title: 'Gustav Holst: &quot;Jupiter&quot; aus &quot;Die Planeten&quot; op. 32 mit Andrew Manze | NDR Radiophilharmonie'
+      references:
+        - link: https://imslp.org/wiki/The_Planets:_Suite_for_Large_Orchestra_(Holst,_Gustav)
+          title: 'The Planets, Op.32 (Holst, Gustav)'
+
+- video:
+    id: lUdzG4dbuBo
+    type: live
+    publishedAt: 2023/01/22
+  name: '【純喫茶ジェネット】ワークショップ！ウクレレを練習してみる会'
+  shortname: 'ワークショップ！ウクレレを練習してみる会'
+  categories: ['純喫茶ジェネット']
+  tunes:
+    - title: '[きらきら星](wiki:きらきら星)'
+      subtunes:
+        - '原曲: [Ah! Vous dirais-je, Maman](wikien:Ah!_vous_dirai-je,_maman)'
+      attributes:
+        - name: 作曲
+          text: '不明'
+        - name: 日本語訳詞
+          text: '[武鹿悦子](wiki:武鹿悦子)'
+      description: '[ウクレレ](yt:lUdzG4dbuBo?t=1642)として'
+      videos:
+        - id: sSxK5V7WhA8
+          title: 'Michael Bautista - Mozart on guitar - Ah Vous Dirai-je Maman'
+    - title: '[交響曲第9番「合唱付き」](wiki:交響曲第9番_(ベートーヴェン)) 第4楽章「[歓喜の歌](wiki:歓喜の歌)」'
+      originalTitle: 'Sinfonie Nr. 9 D-moll, op. 125, An die Freude / Ode to Joy'
+      attributes:
+        - name: 作曲
+          text: '[ルードヴィッヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
+        - name: 原詩
+          text: '[フリードリヒ・フォン・シラー](wiki:フリードリヒ・フォン・シラー)'
+      description: '[ウクレレ演奏](yt:lUdzG4dbuBo?t=2675)として、[ヴァイオリン演奏](yt:lUdzG4dbuBo?t=3000)として'
+      references:
+        - link: https://imslp.org/wiki/Symphony_No.9%2C_Op.125_%28Beethoven%2C_Ludwig_van%29
+          title: 'Symphony No.9, Op.125 (Beethoven, Ludwig van)'
+
+- video:
+    id: HaiXSGYlK0I
+    type: live
+    publishedAt: 2023/01/12
+  name: '【純喫茶ジェネット】コーヒー、音楽のすゝめvol.3'
+  shortname: 'コーヒー、音楽のすゝめvol.3'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: '[ピアノソナタ第8番「悲愴」](wiki:ピアノソナタ第8番_(ベートーヴェン)) 作品13 第2楽章'
+      originalTitle: 'Piano Sonata No.8, Op.13, 2. Adagio cantabile'
+      attributes:
+        - name: 作曲
+          text: '[ルートヴィヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:HaiXSGYlK0I?t=3505)として'
+      videos:
+        - id: W9gu5YuQqbw
+          title: '横山幸雄 ベートーヴェン ピアノソナタ第8番「悲愴」第2楽章'
+      references:
+        - link: https://imslp.org/wiki/Piano_Sonata_No.8,_Op.13_(Beethoven,_Ludwig_van)
+          title: 'Piano Sonata No.8, Op.13 (Beethoven, Ludwig van)'
+
+- video:
+    id: Ab4w0CzpFGM
+    type: live
+    publishedAt: 2023/01/05
+  name: '【純喫茶ジェネット】コーヒー、音楽のすゝめvol.2'
+  shortname: 'コーヒー、音楽のすゝめvol.2'
+  categories: ['純喫茶ジェネット', '楽曲解説']
+  tunes:
+    - title: 'ラプソディ・イン・ブルー'
+      originalTitle: 'Rhapsody in Blue'
+      attributes:
+        - name: 作曲
+          text: '[ジョージ・ガーシュウィン](wiki:ジョージ・ガーシュウィン)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:Ab4w0CzpFGM?t=3208)として'
+      videos:
+        - id: GwhLxsZDNrk
+          position: 23
+          title: 'G.ガーシュイン  ／ ラプソディ・イン・ブルー'
+      references:
+        - link: https://imslp.org/wiki/Rhapsody_in_Blue_(Gershwin,_George)
+          title: 'Rhapsody in Blue (Gershwin, George)'
+    - title: 'アイ・ガット・リズム'
+      originalTitle: 'I Got Rhythm'
+      attributes:
+        - name: 作曲
+          text: '[ジョージ・ガーシュウィン](wiki:ジョージ・ガーシュウィン)（弟）'
+        - name: 作詞
+          text: '[アイラ・ガーシュウィン](wiki:アイラ・ガーシュウィン)（兄）'
+      description: '[ヴァイオリン演奏](yt:Ab4w0CzpFGM?t=891)として'
+      videos:
+        - id: khoKWKTbBd4
+          position: 27
+          title: 'George Gershwin ／ I Got Rhythm'
+      references:
+        - link: https://imslp.org/wiki/Variations_on_'I_Got_Rhythm'_(Gershwin%2C_George)
+          title: "Variations on 'I Got Rhythm' (Gershwin, George)"
+
+- video:
+    id: wfUsWlaFUHY
+    type: live
+    publishedAt: 2023/01/01
+  name: '【謹賀新年】あけました！ばいにゃす2022ねんっ！'
+  shortname: '【謹賀新年】あけました！ばいにゃす2022ねんっ！'
+  categories: ['雑談配信']
+  tunes:
+    - title: '[春の海](wiki:春の海)'
+      attributes:
+        - name: 作曲
+          text: '[宮城道雄](wiki:宮城道雄)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:wfUsWlaFUHY?t=30)として（[ピチカート演奏](wiki:wfUsWlaFUHY?t=2408)）'
+      videos:
+        - id: gND5pFB9nmU
+          position: 9
+          title: '春の海  Haru No Umi - Koto(LEO) ×Shakuhachi (Reison Kuroda)'
+
+- video:
+    id: VH6b5ZJBUjw
+    type: live
+    publishedAt: 2022/12/29
+  name: '【純喫茶ジェネット】祝！開店！！'
+  shortname: '【純喫茶ジェネット】祝！開店！！'
+  categories: ['純喫茶ジェネット']
+  tunes:
+    - title: '[アイネ・クライネ・ナハトムジーク](wiki:アイネ・クライネ・ナハトムジーク) K. 525'
+      originalTitle: 'Eine kleine Nachtmusik, K.525'
+      attributes:
+        - name: 作曲
+          text: '[ヴォルフガング・アマデウス・モーツァルト](wiki:ヴォルフガング・アマデウス・モーツァルト)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:VH6b5ZJBUjw?t=2427)として'
+      videos:
+        - id: czBSj6_6rkE
+          title: 'Mozart: Eine kleine Nachtmusik | Gewandhaus Quartet with Stefan Adelmann (double bass)'
+      references:
+        - link: https://imslp.org/wiki/Eine_kleine_Nachtmusik,_K.525_(Mozart,_Wolfgang_Amadeus)
+          title: 'Eine kleine Nachtmusik, K.525 (Mozart, Wolfgang Amadeus)'
+    - title: '[3つのヴァイオリンと通奏低音のためのカノンとジーグ ニ長調](wiki:カノン_(パッヘルベル)) より「[カノン](wiki:カノン_(パッヘルベル)#カノン)」'
+      originalTitle: 'Kanon und Gigue für drei Violinen und Basso Continuo, P.37, No.1 Kanon'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・パッヘルベル](wiki:ヨハン・パッヘルベル)'
+      description: '冒頭BGMとして、[ヴァイオリン演奏](yt:VH6b5ZJBUjw?t=2761)として'
+      videos:
+        - id: JvNQLJ1_HQ0
+          title: 'Pachelbel Canon in D Major - the original and best version.'
+      references:
+        - link: https://imslp.org/wiki/Canon_and_Gigue_in_D_major,_P.37_(Pachelbel,_Johann)
+          title: 'Canon and Gigue in D major, P.37 (Pachelbel, Johann)'
+
