@@ -19,7 +19,12 @@ const props = defineProps<{
   data: Streaming;
 }>();
 
-const thumbnailUrl = computed(() => getThumbnailURL(props.data.video.id, { size: 'hq' }));
+const thumbnailUrl = computed(() => {
+  if (props.data.video.variety) {
+    return '';
+  }
+  return getThumbnailURL(props.data.video.id, { size: 'hq' });
+});
 const thumbnailUrlCss = `url('${thumbnailUrl.value}')`;
 
 const parentMedia = ref<string>();
@@ -71,11 +76,11 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string): void {
 <template>
   <div class="streaming-item">
     <div class="header">
-      <div class="thumbnail">
+      <div class="thumbnail" v-if="!data.video.variety">
         <VideoLink class="streaming-thumbnail" :video-id="data.video.id" :video-title="data.video.title" />
       </div>
       <div class="name">
-        <a :href="getWatchURL(data.video.id)" target="_blank" :alt="data.name">
+        <a :href="data.video.variety ? data.video.id : getWatchURL(data.video.id)" target="_blank" :alt="data.name">
           {{ insertBreakToName(data.shortname ?? data.name) }}
         </a>
       </div>
@@ -155,6 +160,7 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string): void {
   z-index: 0;
   border-radius: 10px 10px 0 0;
   padding: 10px;
+  background-color: #3a3b3d;
 
   &::before {
     content: '';

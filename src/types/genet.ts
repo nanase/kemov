@@ -7,6 +7,7 @@ interface Video {
   title?: string;
   publishedAt: string;
   type: VideoType;
+  variety?: boolean;
 }
 
 interface EmbeddedVideo {
