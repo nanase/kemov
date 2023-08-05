@@ -1532,3 +1532,117 @@
         - link: https://imslp.org/wiki/Canon_and_Gigue_in_D_major,_P.37_(Pachelbel,_Johann)
           title: 'Canon and Gigue in D major, P.37 (Pachelbel, Johann)'
 
+- video:
+    id: n-Ur4QTOFig
+    type: live
+    publishedAt: 2022/12/25
+  name: '【演奏＆雑談】聴こえる鈴の音…クリスマス音楽会♪'
+  shortname: '【演奏＆雑談】聴こえる鈴の音…クリスマス音楽会♪'
+  categories: ['雑談配信']
+  tunes:
+    - title: '[きよしこの夜](wiki:きよしこの夜)'
+      originalTitle: 'Stille Nacht, heilige Nacht, H.145'
+      attributes:
+        - name: 作曲
+          text: '[フランツ・クサーヴァー・グルーバー](wiki:フランツ・クサーヴァー・グルーバー)'
+      description: '[ヴァイオリン演奏](yt:n-Ur4QTOFig?t=1856)として（[アンコール演奏](yt:n-Ur4QTOFig?t=2248)）'
+      videos:
+        - id: RDpWkBi-cr4
+          title: 'Silent Night'
+      references:
+        - link: https://imslp.org/wiki/Stille_Nacht,_heilige_Nacht_(Gruber,_Franz_Xaver)
+          title: 'Stille Nacht, heilige Nacht, H.145 (Gruber, Franz Xaver)'
+    - title: '[ジングルベル](wiki:ジングルベル) （a.k.a [ソリが走る](https://wikiwiki.jp/kemo_v/%E7%94%A8%E8%AA%9E%E9%9B%86/%E3%82%BD%E3%83%AA%E3%81%AE%E6%AD%8C)）'
+      originalTitle: 'Jingle Bells'
+      attributes:
+        - name: 作曲
+          text: '[ジェームズ・ロード・ピアポント](wiki:ジェームズ・ロード・ピアポント)'
+      description: '[ヴァイオリン＋リストベル演奏](yt:n-Ur4QTOFig?t=2614)として、[歌唱](yt:n-Ur4QTOFig?t=3333)として'
+      videos:
+        - id: AlFnQxZ0Mak
+          title: 'André Rieu - Jingle Bells'
+
+- video:
+    id: https://www.tiktok.com/@genet_kemov/video/7176927368139869442
+    type: video
+    publishedAt: 2022/12/25
+    variety: true
+  name: 'はじめての！とうこう！'
+  categories: ['投稿動画', 'TikTok']
+  tunes:
+    - title: '[可愛くてごめん (feat. かぴ)](https://www.youtube.com/watch?v=a3FgmTfvJhA)'
+      attributes:
+        - name: 作詞・作曲
+          text: 'shito'
+        - name: 編曲
+          text: 'HoneyWorks'
+      description: '[ヴァイオリン演奏](https://www.tiktok.com/@genet_kemov/video/7176927368139869442)として'
+      videos:
+        - id: a3FgmTfvJhA
+          title: '愛くてごめん (feat. かぴ)／HoneyWorks'
+
+- video:
+    id: qe95eC55pe0
+    type: live
+    publishedAt: 2022/12/01
+  name: '【3か月記念】はじめてのYouTube＆tiktok同時配信！!！'
+  shortname: '【3か月記念】はじめてのYouTube＆tiktok同時配信！!！'
+  categories: ['記念配信']
+  tunes:
+    - title: '[交響曲第9番「合唱付き」](wiki:交響曲第9番_(ベートーヴェン)) 第4楽章「[歓喜の歌](wiki:歓喜の歌)」'
+      originalTitle: 'Sinfonie Nr. 9 D-moll, op. 125, An die Freude / Ode to Joy'
+      attributes:
+        - name: 作曲
+          text: '[ルードヴィッヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
+        - name: 原詩
+          text: '[フリードリヒ・フォン・シラー](wiki:フリードリヒ・フォン・シラー)'
+      description: '[ヴァイオリン演奏](yt:qe95eC55pe0?t=2907)として'
+      videos:
+        - id: rOjHhS5MtvA
+          position: 4006
+          title: 'Beethoven 9 - Chicago Symphony Orchestra - Riccardo Muti'
+      references:
+        - link: https://imslp.org/wiki/Symphony_No.9%2C_Op.125_%28Beethoven%2C_Ludwig_van%29
+          title: 'Symphony No.9, Op.125 (Beethoven, Ludwig van)'
+
+- video:
+    id: b7yAFQf3sbA
+    type: live
+    publishedAt: 2022/11/03
+  name: '【早朝雑談】早起きは三文の徳…！になるかもしれない'
+  shortname: '【早朝雑談】早起きは三文の徳…！になるかもしれない'
+  categories: ['雑談配信']
+  tunes:
+    - title: '[ペール・ギュント](wiki:ペール・ギュント_(グリーグ)) 作品46 第1組曲 第1曲 [朝](wiki:ペール・ギュント_(グリーグ)#第1組曲_作品46)'
+      originalTitle: 'Peer Gynt Suite No.1, Op.46, 1. Morning Mood. Allegretto pastorale'
+      attributes:
+        - name: 作曲
+          text: '[エドヴァルド・グリーグ](wiki:エドヴァルド・グリーグ)'
+      description: '[ヴァイオリン演奏](yt:b7yAFQf3sbA?t=534)として'
+      videos:
+        - id: aMs0rNtBZJk
+          title: 'Grieg: Peer Gynt Suite No. 1, &quot;Morning Mood&quot; / Thomas Dausgaard &amp; Seattle Symphony'
+      references:
+        - link: https://imslp.org/wiki/Peer_Gynt_Suite_No.1,_Op.46_(Grieg,_Edvard)
+          title: 'Peer Gynt Suite No.1, Op.46 (Grieg, Edvard)'
+
+- video:
+    id: JifUAhadkHg
+    type: live
+    publishedAt: 2022/09/26
+  name: '【早朝雑談】早起きは三文の徳…！になるかもしれない'
+  shortname: '【早朝雑談】早起きは三文の徳…！になるかもしれない'
+  categories: ['雑談配信']
+  tunes:
+    - title: '[愛の挨拶](wiki:愛の挨拶) 作品12'
+      originalTitle: "Salut d'amour, Op.12"
+      attributes:
+        - name: 作曲
+          text: '[エドワード・エルガー](wiki:エドワード・エルガー)'
+      description: '[ヴァイオリン演奏](yt:JifUAhadkHg?t=2731)として'
+      videos:
+        - id: N5z3ZO0QfFE
+          title: 'Salut d&#39;Amour (Edward Elgar) - Esther Abrami and Iyad Sughayer'
+      references:
+        - link: https://imslp.org/wiki/Salut_d%27Amour,_Op.12_(Elgar,_Edward)
+          title: "Salut d'amour, Op.12 (Elgar, Edward)"
