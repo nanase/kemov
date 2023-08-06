@@ -11,31 +11,47 @@
         - name: 作曲
           text: 'ビゼー'
       description: 'BGMとして、ヴァイオリン演奏としてt=1825'
-    - title: 'アイネ・クライネ・ナハトムジーク'
+    - title: '[アイネ・クライネ・ナハトムジーク](wiki:アイネ・クライネ・ナハトムジーク) K. 525'
+      originalTitle: 'Eine kleine Nachtmusik, K.525'
       attributes:
         - name: 作曲
-          text: 'モーツァルト'
+          text: '[ヴォルフガング・アマデウス・モーツァルト](wiki:ヴォルフガング・アマデウス・モーツァルト)'
       description: 'ヴァイオリン演奏としてt=2000'
+      references:
+        - link: https://imslp.org/wiki/Eine_kleine_Nachtmusik,_K.525_(Mozart,_Wolfgang_Amadeus)
+          title: 'Eine kleine Nachtmusik, K.525 (Mozart, Wolfgang Amadeus)'
     - title: '無伴奏パルティータ 第3番 ガボット'
       attributes:
         - name: 作曲
           text: 'バッハ'
       description: 'ヴァイオリン演奏としてt=2200'
-    - title: 'トルコ行進曲'
+    - title: '[ピアノソナタ第11番](wiki:ピアノソナタ第11番_(モーツァルト)) イ長調 K.331 (K⁶.300i) 第3楽章「[トルコ行進曲](wiki:トルコ行進曲)」'
+      originalTitle: 'Piano Sonata No.11, K.331, K⁶.300i, No.3 Alla Turca'
       attributes:
         - name: 作曲
-          text: 'モーツァルト'
+          text: '[ヴォルフガング・アマデウス・モーツァルト](wiki:ヴォルフガング・アマデウス・モーツァルト)'
       description: 'ヴァイオリン演奏としてt=2400'
-    - title: 'ラデツキー行進曲'
+      references:
+        - link: https://imslp.org/wiki/Piano_Sonata_No.11_in_A_major,_K.331/300i_(Mozart,_Wolfgang_Amadeus)
+          title: 'Piano Sonata No.11 in A major, K.331/300i (Mozart, Wolfgang Amadeus)'
+    - title: '[ラデツキー行進曲](wiki:ラデツキー行進曲) 作品228'
+      originalTitle: 'Radetzky-Marsch, Op.228 '
       attributes:
         - name: 作曲
-          text: 'ヨハン・シュトラウス1世'
+          text: '[ヨハン・シュトラウス1世](wiki:ヨハン・シュトラウス1世)'
       description: 'ヴァイオリン演奏としてt=2520'
-    - title: 'ペール・ギュント「朝」'
+      references:
+        - link: https://imslp.org/wiki/Radetzky_March,_Op.228_(Strauss_Sr.,_Johann)
+          title: 'Radetzky-Marsch, Op.228 (Strauss Sr., Johann)'
+    - title: '[ペール・ギュント](wiki:ペール・ギュント_(グリーグ)) 作品46 第1組曲 第1曲 [朝](wiki:ペール・ギュント_(グリーグ)#第1組曲_作品46)'
+      originalTitle: 'Peer Gynt Suite No.1, Op.46, 1. Morning Mood. Allegretto pastorale'
       attributes:
         - name: 作曲
-          text: 'グリーグ'
+          text: '[エドヴァルド・グリーグ](wiki:エドヴァルド・グリーグ)'
       description: 'ヴァイオリン演奏としてt=2685'
+      references:
+        - link: https://imslp.org/wiki/Peer_Gynt_Suite_No.1,_Op.46_(Grieg,_Edvard)
+          title: 'Peer Gynt Suite No.1, Op.46 (Grieg, Edvard)'
     - title: 'メヌエット'
       attributes:
         - name: 作曲
@@ -69,10 +85,24 @@
   categories: ['雑談', 'ジェネットの友達探し']
   tunes:
     - title: 'ハッピバースデー'
-    - title: '愛の挨拶'
+    - title: '[愛の挨拶](wiki:愛の挨拶) 作品12'
+      originalTitle: "Salut d'amour, Op.12"
+      attributes:
+        - name: 作曲
+          text: '[エドワード・エルガー](wiki:エドワード・エルガー)'
+      references:
+        - link: https://imslp.org/wiki/Salut_d%27Amour,_Op.12_(Elgar,_Edward)
+          title: "Salut d'amour, Op.12 (Elgar, Edward)"
     - title: '？'
     - title: 'ディベルティメント'
-    - title: 'ラプソディ・イン・ブルー'
+    - title: '[ラプソディ・イン・ブルー](wiki:ラプソディ・イン・ブルー)'
+      originalTitle: 'Rhapsody in Blue'
+      attributes:
+        - name: 作曲
+          text: '[ジョージ・ガーシュウィン](wiki:ジョージ・ガーシュウィン)'
+      references:
+        - link: https://imslp.org/wiki/Rhapsody_in_Blue_(Gershwin,_George)
+          title: 'Rhapsody in Blue (Gershwin, George)'
     - title: '弦楽セレナーデ'
 
 - video:
@@ -83,15 +113,66 @@
   shortname: 'ジェネットの友達探し！～初見さん、ジェネのヴァイオリン聴いていかないかい？＃8'
   categories: ['雑談', 'ジェネットの友達探し']
   tunes:
-    - title: '蛍の光'
-    - title: '愛の悲しみ'
+    - title: '[オールド・ラング・サイン](wiki:オールド・ラング・サイン)（[蛍の光](wiki:蛍の光)）'
+      originalTitle: 'Auld Lang Syne'
       attributes:
         - name: 作曲
-          text: 'クライスラー'
-    - title: '愛の喜び'
-    - title: 'タイスの瞑想曲'
-    - title: 'ラプソディ・イン・ブルー'
-    - title: 'アイ・ガット・リズム'
+          text: '不明'
+        - name: 作詞
+          text: '[ロバート・バーンズ](wiki:ロバート・バーンズ)'
+        - name: 日本語訳詞
+          text: '[稲垣千穎](wiki:稲垣千穎)'
+      references:
+        - link: https://imslp.org/wiki/Auld_lang_syne_(Folk_Songs%2C_Scottish)
+          title: 'Auld lang syne (Folk Songs, Scottish)'
+      description: '[ヴァイオリン演奏](yt:oQqCH95h8FQ?t=2590)として'
+    - title: '[愛の悲しみ](wiki:愛の悲しみ)'
+      originalTitle: 'Alt-Wiener Tanzweisen, 2. Liebesleid'
+      attributes:
+        - name: 作曲
+          text: '[フリッツ・クライスラー](wiki:フリッツ・クライスラー)'
+      references:
+        - link: https://imslp.org/wiki/3_Old_Viennese_Dances_(Kreisler,_Fritz)
+          title: '3 Old Viennese Dances (Kreisler, Fritz)'
+      description: '[ヴァイオリン演奏](yt:oQqCH95h8FQ?t=3215)として'
+    - title: '[愛の喜び](wiki:愛の喜び_(クライスラー))'
+      originalTitle: 'Alt-Wiener Tanzweisen, 1. Liebesfreud'
+      attributes:
+        - name: 作曲
+          text: '[フリッツ・クライスラー](wiki:フリッツ・クライスラー)'
+      references:
+        - link: https://imslp.org/wiki/3_Old_Viennese_Dances_(Kreisler,_Fritz)
+          title: '3 Old Viennese Dances (Kreisler, Fritz)'
+      description: '[ヴァイオリン演奏](yt:oQqCH95h8FQ?t=3320)として'
+    - title: 'オペラ「[タイス](wiki:タイス_(オペラ))」より「[タイスの瞑想曲](wiki:タイスの瞑想曲)」'
+      originalTitle: 'Thaïs, Méditation'
+      attributes:
+        - name: 作曲
+          text: '[ジュール・マスネ](wiki:ジュール・マスネ)'
+      references:
+        - link: https://imslp.org/wiki/Tha%C3%AFs_(Massenet,_Jules)
+          title: 'Thaïs (Massenet, Jules)'
+      description: '[ヴァイオリン演奏](yt:oQqCH95h8FQ?t=3400)として'
+    - title: '[ラプソディ・イン・ブルー](wiki:ラプソディ・イン・ブルー)'
+      originalTitle: 'Rhapsody in Blue'
+      attributes:
+        - name: 作曲
+          text: '[ジョージ・ガーシュウィン](wiki:ジョージ・ガーシュウィン)'
+      references:
+        - link: https://imslp.org/wiki/Rhapsody_in_Blue_(Gershwin,_George)
+          title: 'Rhapsody in Blue (Gershwin, George)'
+      description: '[ヴァイオリン演奏](yt:oQqCH95h8FQ?t=3566)として'
+    - title: '[アイ・ガット・リズム](wiki:アイ・ガット・リズム)'
+      originalTitle: 'I Got Rhythm'
+      attributes:
+        - name: 作曲
+          text: '[ジョージ・ガーシュウィン](wiki:ジョージ・ガーシュウィン)'
+        - name: 作詞
+          text: '[アイラ・ガーシュウィン](wiki:アイラ・ガーシュウィン)'
+      references:
+        - link: https://imslp.org/wiki/Variations_on_'I_Got_Rhythm'_(Gershwin%2C_George)
+          title: "Variations on 'I Got Rhythm' (Gershwin, George)"
+      description: '[ヴァイオリン演奏](yt:oQqCH95h8FQ?t=3654)として'
 
 - video:
     id: yJk5KBRu0PY
@@ -101,7 +182,15 @@
   shortname: '【Only Up!】並走耐久！誰かが終わるまでおわれまテン！'
   categories: ['コラボ配信', '耐久配信']
   tunes:
-    - title: '蛍の光'
+    - title: '[ピアノソナタ第8番「悲愴」](wiki:ピアノソナタ第8番_(ベートーヴェン)) 作品13 第2楽章'
+      originalTitle: 'Piano Sonata No.8, Op.13, 2. Adagio cantabile'
+      attributes:
+        - name: 作曲
+          text: '[ルートヴィヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
+      references:
+        - link: https://imslp.org/wiki/Piano_Sonata_No.8,_Op.13_(Beethoven,_Ludwig_van)
+          title: 'Piano Sonata No.8, Op.13 (Beethoven, Ludwig van)'
+      description: '[ヴァイオリン演奏](yt:HaiXSGYlK0I?t=10396)として'
 
 - video:
     id: oOHoIHvZfQQ
@@ -111,7 +200,15 @@
   shortname: 'ジェネットの友達探し！～初見さん、ジェネがウェルカム生演奏しますっ＃7'
   categories: ['雑談', 'ジェネットの友達探し']
   tunes:
-    - title: 'パッフェルベルのカノン'
+    - title: '[3つのヴァイオリンと通奏低音のためのカノンとジーグ ニ長調](wiki:カノン_(パッヘルベル)) より「[カノン](wiki:カノン_(パッヘルベル)#カノン)」'
+      originalTitle: 'Kanon und Gigue für drei Violinen und Basso Continuo, P.37, No.1 Kanon'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・パッヘルベル](wiki:ヨハン・パッヘルベル)'
+      references:
+        - link: https://imslp.org/wiki/Canon_and_Gigue_in_D_major,_P.37_(Pachelbel,_Johann)
+          title: 'Canon and Gigue in D major, P.37 (Pachelbel, Johann)'
+      description: '[ヴァイオリン演奏](yt:oOHoIHvZfQQ?t=2949)として'
 
 - video:
     id: sarqYacnl2Y
@@ -125,7 +222,18 @@
     - title: 'ドヴォルザーク　新世界　ラルゴ'
     - title: 'サンタルチア'
     - title: '海'
-    - title: '蛍の光'
+    - title: '[オールド・ラング・サイン](wiki:オールド・ラング・サイン)（[蛍の光](wiki:蛍の光)）'
+      originalTitle: 'Auld Lang Syne'
+      attributes:
+        - name: 作曲
+          text: '不明'
+        - name: 作詞
+          text: '[ロバート・バーンズ](wiki:ロバート・バーンズ)'
+        - name: 日本語訳詞
+          text: '[稲垣千穎](wiki:稲垣千穎)'
+      references:
+        - link: https://imslp.org/wiki/Auld_lang_syne_(Folk_Songs%2C_Scottish)
+          title: 'Auld lang syne (Folk Songs, Scottish)'
 
 - video:
     id: fae1zr57zV0
@@ -135,12 +243,22 @@
   shortname: '7/7は七夕！星や惑星の名がタイトルに入ったクラシック曲たち☆'
   categories: ['純喫茶ジェネット', '楽曲解説']
   tunes:
-    - title: '組曲「惑星」より木星'
+    - title: '大管弦楽のための組曲「[惑星](wiki:惑星_(組曲))」作品32 より「[木星、快楽をもたらす者](wiki:惑星_(組曲)#木星、快楽をもたらす者)」'
+      originalTitle: 'The Planets, Op.32, Jupiter, the Bringer of Jollity'
       attributes:
         - name: 作曲
           text: '[グスターヴ・ホルスト](wiki:グスターヴ・ホルスト)'
-    - title: '七夕'
+      references:
+        - link: https://imslp.org/wiki/The_Planets:_Suite_for_Large_Orchestra_(Holst,_Gustav)
+          title: 'The Planets, Op.32 (Holst, Gustav)'
     - title: 'モーツァルト21番'
+    - title: 'たなばたさま'
+      attributes:
+        - name: 作曲
+          text: '[下総皖一](wiki:下総皖一)'
+        - name: 作詞
+          text: '[権藤花代](wiki:権藤花代)、[林柳波](wiki:林柳波)'
+      description: '[ヴァイオリン演奏](yt:fae1zr57zV0?t=2723)として'
 
 - video:
     id: Y36MDBWNsFM
@@ -158,6 +276,9 @@
         - name: 原詩
           text: '[フリードリヒ・フォン・シラー](wiki:フリードリヒ・フォン・シラー)'
       description: ヴァイオリン演奏として
+      references:
+        - link: https://imslp.org/wiki/Symphony_No.9%2C_Op.125_%28Beethoven%2C_Ludwig_van%29
+          title: 'Symphony No.9, Op.125 (Beethoven, Ludwig van)'
 
 - video:
     id: Slwb33TpqYs
@@ -439,24 +560,35 @@
         - name: 作曲
           text: '[アントニオ・ヴィヴァルディ](wiki:アントニオ・ヴィヴァルディ)'
       description: BGMとして
+      references:
+        - link: https://imslp.org/wiki/Il_cimento_dell%27armonia_e_dell%27inventione,_Op.8_(Vivaldi,_Antonio)
+          title: "Il cimento dell'armonia e dell'inventione, Op.8 (Vivaldi, Antonio)"
+        - link: https://imslp.org/wiki/Violin_Concerto_in_E_major,_RV_269_(Vivaldi,_Antonio)
+          title: "Violin Concerto in E major, RV 269 (Vivaldi, Antonio)"
     - title: 花の歌 作品39
       originalTitle: 'Blumenlied Op.39'
       attributes:
         - name: 作曲
           text: '[グスタフ・ランゲ](wiki:グスタフ・ランゲ)'
       description: BGMとして
+      references:
+        - link: https://imslp.org/wiki/Blumenlied,_Op.39_(Lange,_Gustav)
+          title: "Blumenlied, Op.39 (Lange, Gustav)"
     - title: エーデルワイス 作品31
       originalTitle: 'Edelweiß Op.31'
       attributes:
         - name: 作曲
           text: '[グスタフ・ランゲ](wiki:グスタフ・ランゲ)'
       description: 楽曲紹介として
+      references:
+        - link: https://imslp.org/wiki/Edelweiss,_Op.31_(Lange,_Gustav)
+          title: "Edelweiss, Op.31 (Lange, Gustav)"
     - title: '[エーデルワイス](wiki:エーデルワイス_(1959年の曲))'
       originalTitle: 'Edelweiss'
       attributes:
         - name: 作曲
           text: '[リチャード・ロジャース](wiki:リチャード・ロジャース_(作曲家))'
-        - name: 作曲
+        - name: 作詞
           text: '[オスカー・ハマースタイン2世](wiki:オスカー・ハマースタイン2世)'
       description: '[ヴァイオリン演奏](yt:u1kBlhriALE?t=1400)として'
     - title: '[春の歌](wiki:無言歌集_(メンデルスゾーン)#第5巻_作品62)'
@@ -465,23 +597,36 @@
         - name: 作曲
           text: '[フェリックス・メンデルスゾーン](wiki:フェリックス・メンデルスゾーン)'
       description: BGMとして
+      references:
+        - link: https://imslp.org/wiki/Lieder_ohne_Worte%2C_Op.62_(Mendelssohn%2C_Felix)
+          title: "Lieder ohne Worte, Op.62 (Mendelssohn, Felix)"
     - title: '[春の声](wiki:春の声) 作品410'
       originalTitle: 'Frühlingsstimmen, Op.410'
       attributes:
         - name: 作曲
           text: '[ヨハン・シュトラウス2世](wiki:ヨハン・シュトラウス2世)'
       description: BGMとして
+      references:
+        - link: https://imslp.org/wiki/Fr%C3%BChlingsstimmen%2C_Op.410_(Strauss_Jr.%2C_Johann)
+          title: "Frühlingsstimmen, Op.410 (Strauss Jr., Johann)"
     - title: '[ヴァイオリンソナタ第5番「春」](wiki:ヴァイオリンソナタ第5番_(ベートーヴェン)) ヘ長調 作品24'
+      originalTitle: 'Violin Sonata No.5, Op.24'
       attributes:
         - name: 作曲
           text: '[ルートヴィヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
       description: BGMとして、[ヴァイオリン演奏](yt:u1kBlhriALE?t=4650)として
+      references:
+        - link: https://imslp.org/wiki/Violin_Sonata_No.5,_Op.24_(Beethoven,_Ludwig_van)
+          title: Violin Sonata No.5, Op.24 (Beethoven, Ludwig van)
     - title: '[春の祭典](wiki:春の祭典)'
-      originalTitle: 'Le Sacre du printemps'
+      originalTitle: 'Le Sacre du printemps, K015'
       attributes:
         - name: 作曲
           text: '[イーゴリ・ストラヴィンスキー](wiki:イーゴリ・ストラヴィンスキー)'
       description: 楽曲紹介として
+      references:
+        - link: https://imslp.org/wiki/The_Rite_of_Spring,_K015_(Stravinsky,_Igor)
+          title: The Rite of Spring, K015 (Stravinsky, Igor)
 
 - video:
     id: nT1dIvnFsPk
@@ -490,6 +635,13 @@
   name: '【朝活】【雑談】朝に音楽を聴くと脳が活性化する⁉✨'
   categories: ['純喫茶ジェネット', '楽曲解説', '雑談配信']
   tunes:
+    - title: '[こいのぼり](wiki:こいのぼり_(近藤宮子))'
+      attributes:
+        - name: 作曲
+          text: '不明'
+        - name: 作詞
+          text: '[近藤宮子](wiki:近藤宮子)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:nT1dIvnFsPk?t=2777)として'
 
 - video:
     id: v4Sr4Fzpwc8
@@ -1452,7 +1604,7 @@
   shortname: 'コーヒー、音楽のすゝめvol.2'
   categories: ['純喫茶ジェネット', '楽曲解説']
   tunes:
-    - title: 'ラプソディ・イン・ブルー'
+    - title: '[ラプソディ・イン・ブルー](wiki:ラプソディ・イン・ブルー)'
       originalTitle: 'Rhapsody in Blue'
       attributes:
         - name: 作曲
@@ -1465,7 +1617,7 @@
       references:
         - link: https://imslp.org/wiki/Rhapsody_in_Blue_(Gershwin,_George)
           title: 'Rhapsody in Blue (Gershwin, George)'
-    - title: 'アイ・ガット・リズム'
+    - title: '[アイ・ガット・リズム](wiki:アイ・ガット・リズム)'
       originalTitle: 'I Got Rhythm'
       attributes:
         - name: 作曲
