@@ -29,6 +29,7 @@ const thumbnailUrlCss = `url('${thumbnailUrl.value}')`;
 
 const parentMedia = ref<string>();
 const targetMedia = ref<string>();
+const mediaPosition = ref<number>();
 
 function insertBreakToName(name: string) {
   const regex = name.match(/((?:\[[^\]]*\])|(?:【[^】]*】)*)([^[【]*)((?:\[[^\]]*\])|(?:【[^】]*】)*)/);
@@ -67,9 +68,10 @@ function videoTypeToString(type: VideoType): string {
   }
 }
 
-function setEmbedVideo(parentVideoId?: string, targetVideoId?: string): void {
+function setEmbedVideo(parentVideoId?: string, targetVideoId?: string, position?: number): void {
   parentMedia.value = parentVideoId;
   targetMedia.value = targetVideoId;
+  mediaPosition.value = position;
 }
 </script>
 
@@ -95,7 +97,7 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string): void {
     </div>
     <Transition name="media">
       <div class="media-box" v-if="parentMedia === data.video.id && targetMedia != null">
-        <VideoEmbed :video-id="targetMedia"></VideoEmbed>
+        <VideoEmbed :video-id="targetMedia" :position="mediaPosition"></VideoEmbed>
         <div class="close" @click="setEmbedVideo()">閉じる</div>
       </div>
     </Transition>
@@ -117,7 +119,7 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string): void {
             <div v-for="video in tune.videos" :key="video.id">
               <div
                 class="media-button video"
-                @click="setEmbedVideo(data.video.id, video.id)"
+                @click="setEmbedVideo(data.video.id, video.id, video.position)"
                 v-tooltip.auto-end="video.description ? `動画を視聴する: ${video.description}` : '動画を視聴する'"
               ></div>
             </div>

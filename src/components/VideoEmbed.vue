@@ -7,6 +7,7 @@ const props = defineProps<{
    * The id of the link to YouTube video.
    */
   videoId: string;
+  position?: number;
 }>();
 
 const player = ref<HTMLDivElement>();
@@ -38,10 +39,14 @@ function createEmbedElements() {
 
   div.onclick = function () {
     const iframe = document.createElement('iframe');
-    iframe.setAttribute('src', `${getEmbedURL(props.videoId)}?autoplay=1`);
+    const start = Number.isFinite(props.position) ? `start=${props.position}` : '';
+    iframe.setAttribute('src', `${getEmbedURL(props.videoId)}?${start}`);
     iframe.setAttribute('frameborder', '0');
     iframe.setAttribute('allowfullscreen', '1');
-    iframe.setAttribute('allow', 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture');
+    iframe.setAttribute(
+      'allow',
+      'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share',
+    );
     div.parentNode?.removeChild(div);
     player.value?.appendChild(iframe);
     embedElement = iframe;
