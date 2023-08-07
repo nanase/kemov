@@ -153,6 +153,11 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string, position?
   box-shadow: 0 4px 20px rgba($color: #020202, $alpha: 30%);
   border-radius: 10px;
   margin: 20px 0 50px;
+
+  @include media.size(sm) {
+    border-radius: 0;
+    margin: 20px 0 40px;
+  }
 }
 
 .header {
@@ -173,6 +178,10 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string, position?
     background-repeat: no-repeat;
     background-size: cover;
     filter: blur(4px) brightness(40%);
+  }
+
+  @include media.size(sm) {
+    border-radius: 0;
   }
 }
 
