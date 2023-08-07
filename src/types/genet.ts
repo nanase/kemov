@@ -45,4 +45,5 @@ export interface Streaming {
   keywords?: string[];
   tunes: Tune[];
   categories?: string[];
+  notes?: string[];
 }
