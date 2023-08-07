@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
@@ -64,9 +65,11 @@ const renderer = {
 
 marked.use({ renderer });
 
-const markdown = DOMPurify.sanitize(props.inline ? marked.parseInline(props.source) : marked.parse(props.source), {
-  ADD_ATTR: ['target'],
-});
+const markdown = computed(() =>
+  DOMPurify.sanitize(props.inline ? marked.parseInline(props.source) : marked.parse(props.source), {
+    ADD_ATTR: ['target'],
+  }),
+);
 </script>
 
 <template>
