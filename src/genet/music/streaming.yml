@@ -9,7 +9,7 @@
     - title: 'アルルの女　ファランドール'
       attributes:
         - name: 作曲
-          text: 'ビゼー'
+          text: '[ジョルジュ・ビゼー](wiki:ジョルジュ・ビゼー)'
       description: 'BGMとして、ヴァイオリン演奏としてt=1825'
     - title: '[アイネ・クライネ・ナハトムジーク](wiki:アイネ・クライネ・ナハトムジーク) K. 525'
       originalTitle: 'Eine kleine Nachtmusik, K.525'
@@ -23,7 +23,7 @@
     - title: '無伴奏パルティータ 第3番 ガボット'
       attributes:
         - name: 作曲
-          text: 'バッハ'
+          text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
       description: 'ヴァイオリン演奏としてt=2200'
     - title: '[ピアノソナタ第11番](wiki:ピアノソナタ第11番_(モーツァルト)) イ長調 K.331 (K⁶.300i) 第3楽章「[トルコ行進曲](wiki:トルコ行進曲)」'
       originalTitle: 'Piano Sonata No.11, K.331, K⁶.300i, No.3 Alla Turca'
@@ -55,7 +55,7 @@
     - title: 'メヌエット'
       attributes:
         - name: 作曲
-          text: 'バッハ'
+          text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
       description: 'ヴァイオリン演奏としてt=2900'
 
 - video:
