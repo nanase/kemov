@@ -1,4 +1,48 @@
 - video:
+    id: 87eE9y0QsHs
+    type: live
+    publishedAt: 2023/08/06 22:00
+  name: '【雑談】ジェネットの友達探し！～ウェルカム生演奏でおもてなし！～＃11'
+  shortname: 'ジェネットの友達探し！～ウェルカム生演奏でおもてなし！～＃11'
+  categories: ['雑談', 'ジェネットの友達探し']
+  tunes:
+    - title: '[ジュ・トゥ・ヴー](wiki:ジュ・トゥ・ヴー)'
+      originalTitle: 'Je te veux'
+      attributes:
+        - name: 作曲
+          text: '[エリック・サティ](wiki:エリック・サティ)'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:87eE9y0QsHs?t=448)として'
+      references:
+        - link: https://imslp.org/wiki/Auld_lang_syne_(Folk_Songs%2C_Scottish)
+          title: 'Auld lang syne (Folk Songs, Scottish)'
+    - title: 'バガテル 第25番 イ短調 WoO 59「[エリーゼのために](wiki:エリーゼのために)」'
+      originalTitle: 'Für Elise, WoO 59'
+      attributes:
+        - name: 作曲
+          text: '[ルートヴィヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
+      description: '[ヴァイオリン演奏](yt:87eE9y0QsHs?t=2500)として'
+      references:
+        - link: https://imslp.org/wiki/F%C3%BCr_Elise,_WoO_59_(Beethoven,_Ludwig_van)
+          title: 'Für Elise, WoO 59 (Beethoven, Ludwig van)'
+    - title: 'Kid on the Mountain'
+      attributes:
+        - name: 作曲
+          text: '不明'
+      description: '[フィドル演奏](yt:87eE9y0QsHs?t=3552)として'
+      videos:
+        - id: GdPT8_PTLgk
+          title: 'Kid On The Mountain - Irish slip jig'
+    - title: '[ボレロ](wiki:ボレロ_(ラヴェル))'
+      originalTitle: 'Boléro'
+      attributes:
+        - name: 作曲
+          text: '[モーリス・ラヴェル](wiki:モーリス・ラヴェル)'
+      description: '[ヴァイオリン演奏](yt:87eE9y0QsHs?t=4090)として'
+      references:
+        - link: https://imslp.org/wiki/Bol%C3%A9ro_(Ravel,_Maurice)
+          title: 'Boléro_(Ravel,_Maurice)'
+
+- video:
     id: ZP5bJTMMJdM
     type: live
     publishedAt: 2023/07/27 12:00
@@ -6,31 +50,43 @@
   shortname: 'ジェネットの友達探し！～初見さん！ウェルカム演奏させてくださいっ！～＃10'
   categories: ['雑談', 'ジェネットの友達探し']
   tunes:
-    - title: 'アルルの女　ファランドール'
+    - title: '「[アルルの女](wiki:アルルの女)」より 第2組曲 第4曲 [ファランドール](wiki:アルルの女#第2組曲)'
+      originalTitle: "L'Arlésienne Suite No.2, 4. Farandole"
       attributes:
         - name: 作曲
           text: '[ジョルジュ・ビゼー](wiki:ジョルジュ・ビゼー)'
-      description: 'BGMとして、ヴァイオリン演奏としてt=1825'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:ZP5bJTMMJdM?t=1826)として'
+      references:
+        - link: https://imslp.org/wiki/L%27Arl%C3%A9sienne_Suite_No.2_(Bizet,_Georges)
+          title: "L'Arlésienne Suite No.2 (Bizet, Georges)"
     - title: '[アイネ・クライネ・ナハトムジーク](wiki:アイネ・クライネ・ナハトムジーク) K. 525'
       originalTitle: 'Eine kleine Nachtmusik, K.525'
       attributes:
         - name: 作曲
           text: '[ヴォルフガング・アマデウス・モーツァルト](wiki:ヴォルフガング・アマデウス・モーツァルト)'
-      description: 'ヴァイオリン演奏としてt=2000'
+      description: '[ヴァイオリン演奏](yt:ZP5bJTMMJdM?t=1985)として'
       references:
         - link: https://imslp.org/wiki/Eine_kleine_Nachtmusik,_K.525_(Mozart,_Wolfgang_Amadeus)
           title: 'Eine kleine Nachtmusik, K.525 (Mozart, Wolfgang Amadeus)'
-    - title: '無伴奏パルティータ 第3番 ガボット'
+    - title: |-
+        [無伴奏ヴァイオリンのためのソナタとパルティータ](wiki:無伴奏ヴァイオリンのためのソナタとパルティータ)
+        [第3番 ホ長調 BWV1006](wiki:無伴奏ヴァイオリンのためのソナタとパルティータ#パルティータ第3番ホ長調_BWV1006) 第3番 ガボット
+      originalTitle: '6 Violin Sonatas and Partitas, No.3 E major, BWV 1006, 3. Gavotte en Rondeau'
       attributes:
         - name: 作曲
           text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
-      description: 'ヴァイオリン演奏としてt=2200'
+      description: '[ヴァイオリン演奏](yt:ZP5bJTMMJdM?t=2175)として'
+      references:
+        - link: https://imslp.org/wiki/6_Violin_Sonatas_and_Partitas,_BWV_1001-1006_(Bach,_Johann_Sebastian)
+          title: '6 Violin Sonatas and Partitas, BWV 1001-1006 (Bach, Johann Sebastian)'
+        - link: https://imslp.org/wiki/Violin_Partita_No.3_in_E_major,_BWV_1006_(Bach,_Johann_Sebastian)
+          title: 'Violin Partita No.3 in E major, BWV 1006 (Bach, Johann Sebastian)'
     - title: '[ピアノソナタ第11番](wiki:ピアノソナタ第11番_(モーツァルト)) イ長調 K.331 (K⁶.300i) 第3楽章「[トルコ行進曲](wiki:トルコ行進曲)」'
       originalTitle: 'Piano Sonata No.11, K.331, K⁶.300i, No.3 Alla Turca'
       attributes:
         - name: 作曲
           text: '[ヴォルフガング・アマデウス・モーツァルト](wiki:ヴォルフガング・アマデウス・モーツァルト)'
-      description: 'ヴァイオリン演奏としてt=2400'
+      description: '[ヴァイオリン演奏](yt:ZP5bJTMMJdM?t=2412)として'
       references:
         - link: https://imslp.org/wiki/Piano_Sonata_No.11_in_A_major,_K.331/300i_(Mozart,_Wolfgang_Amadeus)
           title: 'Piano Sonata No.11 in A major, K.331/300i (Mozart, Wolfgang Amadeus)'
@@ -39,7 +95,7 @@
       attributes:
         - name: 作曲
           text: '[ヨハン・シュトラウス1世](wiki:ヨハン・シュトラウス1世)'
-      description: 'ヴァイオリン演奏としてt=2520'
+      description: '[ヴァイオリン演奏](yt:ZP5bJTMMJdM?t=2520)として'
       references:
         - link: https://imslp.org/wiki/Radetzky_March,_Op.228_(Strauss_Sr.,_Johann)
           title: 'Radetzky-Marsch, Op.228 (Strauss Sr., Johann)'
@@ -48,15 +104,19 @@
       attributes:
         - name: 作曲
           text: '[エドヴァルド・グリーグ](wiki:エドヴァルド・グリーグ)'
-      description: 'ヴァイオリン演奏としてt=2685'
+      description: '[ヴァイオリン演奏](yt:ZP5bJTMMJdM?t=2680)として'
       references:
         - link: https://imslp.org/wiki/Peer_Gynt_Suite_No.1,_Op.46_(Grieg,_Edvard)
           title: 'Peer Gynt Suite No.1, Op.46 (Grieg, Edvard)'
-    - title: 'メヌエット'
+    - title: '[メヌエット](wiki:ヌエット_(ペツォールト)) ト長調 BWV Anh. 114 （バッハのメヌエット）'
+      originalTitle: 'Minuet in G major, BWV Anh.114'
       attributes:
         - name: 作曲
-          text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
-      description: 'ヴァイオリン演奏としてt=2900'
+          text: '[クリスティアン・ペツォールト](wiki:クリスティアン・ペツォールト)'
+      description: '[ヴァイオリン演奏](yt:ZP5bJTMMJdM?t=2903)として'
+      references:
+        - link: https://imslp.org/wiki/Minuet_in_G_major_(Pezold,_Christian)
+          title: 'Minuet in G major, BWV Anh.114 (Pezold, Christian)'
 
 - video:
     id: AheA82R3lsU
@@ -71,7 +131,7 @@
       attributes:
         - name: 作曲
           text: '[グスターヴ・ホルスト](wiki:グスターヴ・ホルスト)'
-      description: BGMとして、ヴァイオリン演奏（主題のコル・レーニョt=3530）として
+      description: BGMとして、[ヴァイオリン演奏](yt:AheA82R3lsU?t=3487)（[主題のコル・レーニョ](yt:AheA82R3lsU?t=3520)）として
       references:
         - link: https://imslp.org/wiki/The_Planets:_Suite_for_Large_Orchestra_(Holst,_Gustav)
           title: 'The Planets, Op.32 (Holst, Gustav)'
@@ -84,7 +144,11 @@
   shortname: 'ジェネットの友達探し！～初見さんは生演奏のプレゼント！でしっ！～＃9'
   categories: ['雑談', 'ジェネットの友達探し']
   tunes:
-    - title: 'ハッピバースデー'
+    - title: 'Happy Birthday to You (Good Morning to All)'
+      attributes:
+        - name: 作曲・作曲
+          text: '[パティ・スミス・ヒル](wikien:Patty_Hill)、[ミルドレッド・J・ヒル](wikien:Mildred_J._Hill)（諸説あり）'
+      description: '[ヴァイオリン演奏](yt:PjmlaqKBsFc?t=380)として'
     - title: '[愛の挨拶](wiki:愛の挨拶) 作品12'
       originalTitle: "Salut d'amour, Op.12"
       attributes:
@@ -93,17 +157,37 @@
       references:
         - link: https://imslp.org/wiki/Salut_d%27Amour,_Op.12_(Elgar,_Edward)
           title: "Salut d'amour, Op.12 (Elgar, Edward)"
-    - title: '？'
-    - title: 'ディベルティメント'
-    - title: '[ラプソディ・イン・ブルー](wiki:ラプソディ・イン・ブルー)'
-      originalTitle: 'Rhapsody in Blue'
+      description: '[ヴァイオリン演奏](yt:PjmlaqKBsFc?t=616)として'
+    - title: 'オペレッタ「[地獄のオルフェ（天国と地獄）](wiki:地獄のオルフェ)」より [序曲 第3部「カンカン」](wiki:地獄のオルフェ#序曲)'
+      originalTitle: 'Le Galop infernal (Can-Can) d’Orphée aux Enfers'
       attributes:
         - name: 作曲
-          text: '[ジョージ・ガーシュウィン](wiki:ジョージ・ガーシュウィン)'
+          text: '[ジャック・オッフェンバック](wiki:ジャック・オッフェンバック)'
+      description: '[ヴァイオリン演奏](yt:PjmlaqKBsFc?t=1080)として'
       references:
-        - link: https://imslp.org/wiki/Rhapsody_in_Blue_(Gershwin,_George)
-          title: 'Rhapsody in Blue (Gershwin, George)'
-    - title: '弦楽セレナーデ'
+        - link: https://imslp.org/wiki/Orph%C3%A9e_aux_enfers_(Offenbach,_Jacques)
+          title: 'Orphée aux enfers (Offenbach, Jacques)'
+    - title: '[ディヴェルティメント](wiki:ディヴェルティメント_K.136) ニ長調 K.136/125a'
+      originalTitle: 'Divertimento in D major, K.136/125a, 1. Allegro'
+      attributes:
+        - name: 作曲
+          text: '[ヴォルフガング・アマデウス・モーツァルト](wiki:ヴォルフガング・アマデウス・モーツァルト)'
+      description: '[ヴァイオリン演奏](yt:PjmlaqKBsFc?t=4630)として'
+      references:
+        - link: https://imslp.org/wiki/Divertimento_in_D_major,_K.136/125a_(Mozart,_Wolfgang_Amadeus)
+          title: 'Divertimento in D major, K.136/125a (Mozart, Wolfgang Amadeus)'
+    - title: '[弦楽セレナーデ](wiki:弦楽セレナーデ_(チャイコフスキー)) ハ長調 作品48 第1楽章'
+      originalTitle: 'Serenade for String Orchestra, Op.48, 1. Pezzo in forma di sonatina. Andante non troppo—Allegro moderato'
+      attributes:
+        - name: 作曲
+          text: '[ピョートル・チャイコフスキー](wiki:ピョートル・チャイコフスキー)'
+      description: '[ヴァイオリン演奏](yt:PjmlaqKBsFc?t=4880)として'
+      videos:
+        - id: na8_z_3Eq1o
+          title: 'Tchaikovsky : Serenade for String Orchestra, Op.48, 1st movement'
+      references:
+        - link: https://imslp.org/wiki/Serenade_for_String_Orchestra,_Op.48_(Tchaikovsky,_Pyotr)
+          title: 'Serenade for String Orchestra, Op.48 (Tchaikovsky, Pyotr)'
 
 - video:
     id: oQqCH95h8FQ
