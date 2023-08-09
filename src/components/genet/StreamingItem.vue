@@ -106,8 +106,8 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string, position?
         <li class="tune" v-for="tune in data.tunes" :key="tune.title">
           <div class="tune-flex">
             <div class="tune-box">
-              <div class="title">
-                <MarkDown :source="tune.title" />
+              <div class="title-box">
+                <MarkDown class="title" :source="tune.title" />
                 <MarkDown class="original-title" v-if="tune.originalTitle != null" :source="tune.originalTitle" />
               </div>
               <span class="attribute" v-for="attribute in tune.attributes" :key="attribute.name">
@@ -278,16 +278,25 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string, position?
 .tune-box {
   flex: 1;
 
-  .title {
+  .title-box {
     display: block;
     font-weight: bold;
+    word-break: break-all;
+  }
+
+  .title {
+    margin-right: 0.5em;
+    word-break: keep-all;
+    display: block;
   }
 
   .original-title {
-    margin-left: 0.5em;
     font-family: Roboto, 'IBM Plex Sans JP', sans-serif;
     font-style: italic;
     font-size: 90%;
+    word-break: keep-all;
+    display: block;
+    margin-bottom: 0.3em;
   }
 
   .attribute {
