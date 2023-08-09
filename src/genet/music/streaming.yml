@@ -51,7 +51,7 @@
   categories: ['雑談', 'ジェネットの友達探し']
   tunes:
     - title: '「[アルルの女](wiki:アルルの女)」より 第2組曲 第4曲 [ファランドール](wiki:アルルの女#第2組曲)'
-      originalTitle: "L'Arlésienne Suite No.2, 4. Farandole"
+      originalTitle: "L'Arlésienne Suite No.2, IV. Farandole"
       attributes:
         - name: 作曲
           text: '[ジョルジュ・ビゼー](wiki:ジョルジュ・ビゼー)'
@@ -71,7 +71,7 @@
     - title: |-
         [無伴奏ヴァイオリンのためのソナタとパルティータ](wiki:無伴奏ヴァイオリンのためのソナタとパルティータ)
         [第3番 ホ長調 BWV1006](wiki:無伴奏ヴァイオリンのためのソナタとパルティータ#パルティータ第3番ホ長調_BWV1006) 第3番 ガボット
-      originalTitle: '6 Violin Sonatas and Partitas, No.3 E major, BWV 1006, 3. Gavotte en Rondeau'
+      originalTitle: '6 Violin Sonatas and Partitas, No.3 E major, BWV 1006, III. Gavotte en Rondeau'
       attributes:
         - name: 作曲
           text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
@@ -100,7 +100,7 @@
         - link: https://imslp.org/wiki/Radetzky_March,_Op.228_(Strauss_Sr.,_Johann)
           title: 'Radetzky-Marsch, Op.228 (Strauss Sr., Johann)'
     - title: '[ペール・ギュント](wiki:ペール・ギュント_(グリーグ)) 作品46 第1組曲 第1曲 [朝](wiki:ペール・ギュント_(グリーグ)#第1組曲_作品46)'
-      originalTitle: 'Peer Gynt Suite No.1, Op.46, 1. Morning Mood. Allegretto pastorale'
+      originalTitle: 'Peer Gynt Suite No.1, Op.46, I. Morning Mood. Allegretto pastorale'
       attributes:
         - name: 作曲
           text: '[エドヴァルド・グリーグ](wiki:エドヴァルド・グリーグ)'
@@ -168,7 +168,7 @@
         - link: https://imslp.org/wiki/Orph%C3%A9e_aux_enfers_(Offenbach,_Jacques)
           title: 'Orphée aux enfers (Offenbach, Jacques)'
     - title: '[ディヴェルティメント](wiki:ディヴェルティメント_K.136) ニ長調 K.136/125a'
-      originalTitle: 'Divertimento in D major, K.136/125a, 1. Allegro'
+      originalTitle: 'Divertimento in D major, K.136/125a, . Allegro'
       attributes:
         - name: 作曲
           text: '[ヴォルフガング・アマデウス・モーツァルト](wiki:ヴォルフガング・アマデウス・モーツァルト)'
@@ -177,7 +177,7 @@
         - link: https://imslp.org/wiki/Divertimento_in_D_major,_K.136/125a_(Mozart,_Wolfgang_Amadeus)
           title: 'Divertimento in D major, K.136/125a (Mozart, Wolfgang Amadeus)'
     - title: '[弦楽セレナーデ](wiki:弦楽セレナーデ_(チャイコフスキー)) ハ長調 作品48 第1楽章'
-      originalTitle: 'Serenade for String Orchestra, Op.48, 1. Pezzo in forma di sonatina. Andante non troppo—Allegro moderato'
+      originalTitle: 'Serenade for String Orchestra, Op.48, I. Pezzo in forma di sonatina. Andante non troppo—Allegro moderato'
       attributes:
         - name: 作曲
           text: '[ピョートル・チャイコフスキー](wiki:ピョートル・チャイコフスキー)'
@@ -211,7 +211,7 @@
           title: 'Auld lang syne (Folk Songs, Scottish)'
       description: '[ヴァイオリン演奏](yt:oQqCH95h8FQ?t=2590)として'
     - title: '[愛の悲しみ](wiki:愛の悲しみ)'
-      originalTitle: 'Alt-Wiener Tanzweisen, 2. Liebesleid'
+      originalTitle: 'Alt-Wiener Tanzweisen, II. Liebesleid'
       attributes:
         - name: 作曲
           text: '[フリッツ・クライスラー](wiki:フリッツ・クライスラー)'
@@ -220,7 +220,7 @@
           title: '3 Old Viennese Dances (Kreisler, Fritz)'
       description: '[ヴァイオリン演奏](yt:oQqCH95h8FQ?t=3215)として'
     - title: '[愛の喜び](wiki:愛の喜び_(クライスラー))'
-      originalTitle: 'Alt-Wiener Tanzweisen, 1. Liebesfreud'
+      originalTitle: 'Alt-Wiener Tanzweisen, I. Liebesfreud'
       attributes:
         - name: 作曲
           text: '[フリッツ・クライスラー](wiki:フリッツ・クライスラー)'
@@ -267,7 +267,7 @@
   categories: ['コラボ配信', '耐久配信']
   tunes:
     - title: '[ピアノソナタ第8番「悲愴」](wiki:ピアノソナタ第8番_(ベートーヴェン)) 作品13 第2楽章'
-      originalTitle: 'Piano Sonata No.8, Op.13, 2. Adagio cantabile'
+      originalTitle: 'Piano Sonata No.8, Op.13, II. Adagio cantabile'
       attributes:
         - name: 作曲
           text: '[ルートヴィヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
@@ -302,10 +302,42 @@
   shortname: 'ジェネットの友達探し！～寝起きですが今日も初見さん探しにいそしみます～＃6'
   categories: ['雑談', 'ジェネットの友達探し']
   tunes:
-    - title: '茶摘み'
-    - title: 'ドヴォルザーク　新世界　ラルゴ'
-    - title: 'サンタルチア'
-    - title: '海'
+    - title: '[茶摘み](wiki:茶摘み)'
+      attributes:
+        - name: 作曲・作詞
+          text: '不明'
+      description: '[ヴァイオリン演奏](yt:sarqYacnl2Y?t=643)として'
+    - title: '[交響曲第9番 ホ短調 作品95, B. 178「新世界より」](wiki:交響曲第9番_(ドヴォルザーク)) 第2楽章 ラルゴ'
+      originalTitle: 'Symfonie č.9, "Z nového světa", II. Largo'
+      attributes:
+        - name: 作曲
+          text: '[アントニン・ドヴォルザーク](wiki:アントニン・ドヴォルザーク)'
+      description: '[ヴァイオリン演奏](yt:sarqYacnl2Y?t=985)として'
+      videos:
+        - id: jOofzffyDSA
+          position: 780
+          title: 'Dvořák: 9. Sinfonie (»Aus der Neuen Welt«) ∙ hr-Sinfonieorchester ∙ Andrés Orozco-Estrada'
+      references:
+        - link: https://imslp.org/wiki/Symphony_No.9,_Op.95_(Dvo%C5%99%C3%A1k,_Anton%C3%ADn)
+          title: 'Symphony No.9, Op.95 (Dvořák, Antonín)'
+    - title: '[サンタ・ルチア](wiki:サンタ・ルチア)'
+      originalTitle: 'Santa Lucia'
+      attributes:
+        - name: 作曲
+          text: '不明'
+        - name: 編曲
+          text: '[テオドロ・コットラウ](wikien:Teodoro_Cottrau)'
+      description: '[ヴァイオリン演奏](yt:sarqYacnl2Y?t=2167)として'
+      references:
+        - link: https://imslp.org/wiki/Santa_Lucia_(Cottrau%2C_Teodoro)
+          title: 'Santa Lucia (Cottrau, Teodoro)'
+    - title: '[海](wiki:海 (1941年の歌曲))'
+      attributes:
+        - name: 作曲
+          text: '[井上武士](wiki:井上武士)'
+        - name: 作詞
+          text: '[林柳波](wiki:林柳波)'
+      description: '[ヴァイオリン演奏](yt:sarqYacnl2Y?t=2855)として'
     - title: '[オールド・ラング・サイン](wiki:オールド・ラング・サイン)（[蛍の光](wiki:蛍の光)）'
       originalTitle: 'Auld Lang Syne'
       attributes:
@@ -318,6 +350,7 @@
       references:
         - link: https://imslp.org/wiki/Auld_lang_syne_(Folk_Songs%2C_Scottish)
           title: 'Auld lang syne (Folk Songs, Scottish)'
+      description: '[ヴァイオリン演奏](yt:sarqYacnl2Y?t=3378)として'
 
 - video:
     id: fae1zr57zV0
@@ -335,7 +368,20 @@
       references:
         - link: https://imslp.org/wiki/The_Planets:_Suite_for_Large_Orchestra_(Holst,_Gustav)
           title: 'The Planets, Op.32 (Holst, Gustav)'
-    - title: 'モーツァルト21番'
+      description: 'BGMとして'
+    - title: '[交響曲第25番](wiki:交響曲第25番_(モーツァルト)) ト短調 K.183/173dB, 第1楽章 アレグロ・コン・ブリオ'
+      originalTitle: 'Symphony No.25 in G minor, K.183/173dB, I. Allegro con brio'
+      attributes:
+        - name: 作曲
+          text: '[ヴォルフガング・アマデウス・モーツァルト](wiki:ヴォルフガング・アマデウス・モーツァルト)'
+      references:
+        - link: https://imslp.org/wiki/Symphony_No.25_(Mozart,_Wolfgang_Amadeus)
+          text: 'Symphony No.25 in G minor, K.183/173dB (Mozart, Wolfgang Amadeus)'
+      videos:
+        - id: ojDuSz7YxTw
+          position: 35
+          title: 'Mozart: Sinfonie g-Moll KV 183 ∙ hr-Sinfonieorchester ∙ François Leleux'
+      description: '[ヴァイオリン演奏](yt:fae1zr57zV0?t=1132)として'
     - title: 'たなばたさま'
       attributes:
         - name: 作曲
@@ -359,7 +405,7 @@
           text: '[ルードヴィッヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
         - name: 原詩
           text: '[フリードリヒ・フォン・シラー](wiki:フリードリヒ・フォン・シラー)'
-      description: ヴァイオリン演奏として
+      description: '[ヴァイオリン演奏](yt:Y36MDBWNsFM?t=1238)として'
       references:
         - link: https://imslp.org/wiki/Symphony_No.9%2C_Op.125_%28Beethoven%2C_Ludwig_van%29
           title: 'Symphony No.9, Op.125 (Beethoven, Ludwig van)'
@@ -377,7 +423,7 @@
       attributes:
         - name: 作曲
           text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
-      description: ヴァイオリン演奏として
+      description: '[ヴァイオリン演奏](yt:Slwb33TpqYs?t=8227)として'
       references:
         - link: https://imslp.org/wiki/Herz_und_Mund_und_Tat_und_Leben,_BWV_147_(Bach,_Johann_Sebastian)
           title: 'Herz und Mund und Tat und Leben, BWV 147 (Bach, Johann Sebastian)'
@@ -390,12 +436,15 @@
   shortname: 'ブラームスヴァイオリンソナタ第１番「雨の歌」ロマンチックなバックストーリーに迫る'
   categories: ['純喫茶ジェネット', '楽曲解説']
   tunes:
-    - title: '[ヴァイオリンソナタ第1番](wiki:ヴァイオリンソナタ第1番) ト長調「雨の歌」 作品78'
-      originalTitle: Sonate für Klavier und Violine Nr. 1 G-Dur op. 78
+    - title: '[ヴァイオリンソナタ第1番](wiki:ヴァイオリンソナタ第1番) ト長調「雨の歌」 作品78 第1楽章'
+      originalTitle: 'Sonate für Klavier und Violine Nr.1 G-Dur op.78, I. Vivace, ma non troppo'
       attributes:
         - name: 作曲
           text: '[ヨハネス・ブラームス](wiki:ヨハネス・ブラームス)'
-      description: BGMとして、ヴァイオリン演奏t=3380として
+      references:
+        - link: https://imslp.org/wiki/Violin_Sonata_No.1,_Op.78_(Brahms,_Johannes)
+          text: 'Violin Sonata No.1, Op.78 (Brahms, Johannes)'
+      description: BGMとして、[ヴァイオリン演奏](yt:zqkctiEhIW0?t=3380)として
   keywords:
     - ロベルト・シューマン
     - ソナタ
@@ -418,8 +467,15 @@
   shortname: '知られざる「カスタネット」の世界…！'
   categories: ['純喫茶ジェネット', '楽器解説']
   tunes:
-    - title: 'バッカナール'
+    - title: 'オペラ「[サムソンとデリラ](wiki:サムソンとデリラ_(オペラ))」より 第3幕 第2場 バッカナール'
+      originalTitle: 'Samson et Dalila, Op.47, Act 3, Scene2: Le Grand Prêtre, Dalila, Les Philistins Danse "Bacchanale"'
+      attributes:
+        - name: 作曲
+          text: '[カミーユ・サン＝サーンス](wiki:カミーユ・サン＝サーンス)'
       description: 楽曲紹介として
+      references:
+        - link: https://imslp.org/wiki/Samson_et_Dalila,_Op.47_(Saint-Sa%C3%ABns,_Camille)
+          text: 'Samson et Dalila, Op.47 (Saint-Saëns, Camille)'
   keywords:
     - 栗
     - 黒檀
@@ -444,7 +500,7 @@
       attributes:
         - name: 作曲
           text: '[フレデリック・ショパン](wiki:フレデリック・ショパン)'
-      description: BGMとして、ヴァイオリン演奏t=3130として
+      description: BGMとして、[ヴァイオリン演奏](yt:-aWTJmqfqFE?t=3130)として
       references:
         - link: https://imslp.org/wiki/Nocturnes,_Op.9_(Chopin,_Fr%C3%A9d%C3%A9ric)
           title: 'Nocturnes, Op.9 (Chopin, Frédéric)'
@@ -463,6 +519,9 @@
       attributes:
         - name: 作曲
           text: '[ヨハネス・ブラームス](wiki:ヨハネス・ブラームス)'
+      references:
+        - link: https://imslp.org/wiki/Academic_Festival_Overture,_Op.80_(Brahms,_Johannes)
+          text: 'Academic Festival Overture, Op.80 (Brahms, Johannes)'
       description: 練習曲として、BGMとして
 
 - video:
@@ -479,6 +538,9 @@
         - name: 作曲
           text: '[バルトーク・ベーラ](wiki:バルトーク・ベーラ)'
       videos:
+      references:
+        - link: https://imslp.org/wiki/Romanian_Folk_Dances,_Sz.56_(Bart%C3%B3k,_B%C3%A9la)
+          text: 'Romanian Folk Dances, Sz.56 (Bartók, Béla)'
       description: 'BGMとして（第1曲 棒踊り）、[ヴァイオリン演奏](yt:FnY8s9MuzNI?t=3860)として'
 
 - video:
@@ -490,10 +552,13 @@
   categories: ['純喫茶ジェネット', '楽曲解説']
   tunes:
     - title: '[フィガロの結婚](wiki:フィガロの結婚)'
-      originalTitle: 'Le Nozze di Figaro, K.492'
+      originalTitle: 'Le nozze di Figaro, K.492'
       attributes:
         - name: 作曲
           text: '[ヴォルフガング・アマデウス・モーツァルト](wiki:ヴォルフガング・アマデウス・モーツァルト)'
+      references:
+        - link: https://imslp.org/wiki/Le_nozze_di_Figaro,_K.492_(Mozart,_Wolfgang_Amadeus)
+          text: 'Le nozze di Figaro, K.492 (Mozart, Wolfgang Amadeus)'
       description: |-
         OPのBGM（序曲）として、BGM（第2幕 恋とはどんなものかしら）として、
         ヴァイオリン演奏（[序曲](yt:zHH2FlLgyhs?t=4290)、[恋とはどんなものかしら](yt:zHH2FlLgyhs?t=4400)）として
@@ -511,30 +576,45 @@
       attributes:
         - name: 作曲
           text: '[ジュゼッペ・ヴェルディ](wiki:ジュゼッペ・ヴェルディ)'
+      references:
+        - link: https://imslp.org/wiki/La_forza_del_destino_(Verdi,_Giuseppe)
+          text: 'La forza del destino (Verdi, Giuseppe)'
       description: BGMとして
     - title: '[エグモント](wiki:エグモント_(劇音楽)#曲の構成) 作品84'
       originalTitle: 'Egmont, Op.84'
       attributes:
         - name: 作曲
           text: '[ルートヴィヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
+      references:
+        - link: https://imslp.org/wiki/Egmont,_Op.84_(Beethoven,_Ludwig_van)
+          text: 'Egmont, Op.84 (Beethoven, Ludwig van)'
       description: BGMとして
     - title: '[大学祝典序曲](wiki:大学祝典序曲) ハ短調 作品80'
       originalTitle: 'Akademische Festouvertüre, Op.80'
       attributes:
         - name: 作曲
           text: '[ヨハネス・ブラームス](wiki:ヨハネス・ブラームス)'
+      references:
+        - link: https://imslp.org/wiki/Academic_Festival_Overture,_Op.80_(Brahms,_Johannes)
+          text: 'Academic Festival Overture, Op.80 (Brahms, Johannes)'
       description: BGMとして
     - title: '[セビリアの理髪師](wiki:セビリアの理髪師#曲目)'
       originalTitle: 'Il Barbiere di Siviglia'
       attributes:
         - name: 作曲
           text: '[ジョアキーノ・ロッシーニ](wiki:ジョアキーノ・ロッシーニ)'
+      references:
+        - link: https://imslp.org/wiki/Il_barbiere_di_Siviglia_(Rossini,_Gioacchino)
+          text: 'Il barbiere di Siviglia (Rossini, Gioacchino)'
       description: BGMとして
     - title: '[フィガロの結婚](wiki:フィガロの結婚)'
-      originalTitle: 'Le Nozze di Figaro, K.492'
+      originalTitle: 'Le nozze di Figaro, K.492'
       attributes:
         - name: 作曲
           text: '[ヴォルフガング・アマデウス・モーツァルト](wiki:ヴォルフガング・アマデウス・モーツァルト)'
+      references:
+        - link: https://imslp.org/wiki/Le_nozze_di_Figaro,_K.492_(Mozart,_Wolfgang_Amadeus)
+          text: 'Le nozze di Figaro, K.492 (Mozart, Wolfgang Amadeus)'
       description: |-
         OPのBGMとして、BGMとして
 
@@ -551,6 +631,9 @@
       attributes:
         - name: 作曲
           text: '[ジョン・フィリップ・スーザ](wiki:ジョン・フィリップ・スーザ)'
+      references:
+        - link: https://imslp.org/wiki/The_Stars_and_Stripes_Forever_(Sousa,_John_Philip)
+          title: 'The Stars and Stripes Forever (Sousa, John Philip)'
       description: BGMとして
     - title: '[クシコス・ポスト](wiki:クシコス・ポスト)'
       originalTitle: 'Csikos Post'
@@ -563,18 +646,27 @@
       attributes:
         - name: 作曲
           text: '[ジャック・オッフェンバック](wiki:ジャック・オッフェンバック)'
+      references:
+        - link: https://imslp.org/wiki/Orph%C3%A9e_aux_enfers_(Offenbach,_Jacques)
+          title: 'Orphée aux enfers (Offenbach, Jacques)'
       description: 'BGMとして、[ヴァイオリン演奏](yt:l9JKjVlYIUY?t=2250)として'
     - title: '[ウィリアム・テル序曲](wiki:ウィリアム・テル序曲)'
       originalTitle: 'Ouverture de Guillaume Tell'
       attributes:
         - name: 作曲
           text: '[ジョアキーノ・ロッシーニ](wiki:ジョアキーノ・ロッシーニ)'
+      references:
+        - link: https://imslp.org/wiki/Guillaume_Tell_(Rossini,_Gioacchino)
+          title: 'Guillaume Tell (Rossini, Gioacchino)'
       description: BGMとして
     - title: '[見よ、勇者は帰る](wiki:ユダス・マカベウス)'
       originalTitle: "See, the Conqu'ring Hero Comes from Judas Maccabaeus HWV63"
       attributes:
         - name: 作曲
           text: '[ゲオルク・フリードリヒ・ヘンデル](wiki:ゲオルク・フリードリヒ・ヘンデル)'
+      references:
+        - link: https://imslp.org/wiki/Judas_Maccabaeus,_HWV_63_(Handel,_George_Frideric)
+          title: 'Judas Maccabaeus, HWV 63 (Handel, George Frideric)'
       description: 'BGMとして、[ヴァイオリン演奏](yt:l9JKjVlYIUY?t=3580)として'
 
 - video:
@@ -590,6 +682,9 @@
       attributes:
         - name: 作曲
           text: '[ヨハン・シュトラウス1世](wiki:ヨハン・シュトラウス1世)'
+      references:
+        - link: https://imslp.org/wiki/Radetzky_March,_Op.228_(Strauss_Sr.,_Johann)
+          title: 'Radetzky-Marsch, Op.228 (Strauss Sr., Johann)'
       description: 'BGMとして、[ヴァイオリン演奏](yt:QY4AJMj68Eg?t=3850)として'
 
 - video:
@@ -605,12 +700,18 @@
       attributes:
         - name: 作曲
           text: '[ヨハン・シュトラウス1世](wiki:ヨハン・シュトラウス1世)'
+      references:
+        - link: https://imslp.org/wiki/Radetzky_March,_Op.228_(Strauss_Sr.,_Johann)
+          title: 'Radetzky-Marsch, Op.228 (Strauss Sr., Johann)'
       description: OPのBGMとして
     - title: '[ピツィカート・ポルカ](wiki:ピツィカート・ポルカ)'
       originalTitle: 'Pizzicato Polka'
       attributes:
         - name: 作曲
           text: '[ヨハン・シュトラウス2世](wiki:ヨハン・シュトラウス2世)、[ヨーゼフ・シュトラウス](wiki:ヨーゼフ・シュトラウス)'
+      references:
+        - link: https://imslp.org/wiki/Pizzicato_Polka_(Strauss_Jr.,_Johann)
+          title: 'Pizzicato-Polka (Strauss Jr., Johann)'
       description: BGMとして
 
 - video:
@@ -626,6 +727,9 @@
       attributes:
         - name: 作曲
           text: '[ヨハン・シュトラウス2世](wiki:ヨハン・シュトラウス2世)'
+      references:
+        - link: https://imslp.org/wiki/An_der_sch%C3%B6nen_blauen_Donau,_Op.314_(Strauss_Jr.,_Johann)
+          title: 'An der schönen blauen Donau, Op.314 (Strauss Jr., Johann)'
       description: 'BGMとして、[ヴァイオリン演奏](yt:k0RmlSuzZhI?t=3610)として'
 
 - video:
@@ -739,6 +843,9 @@
       attributes:
         - name: 作曲
           text: '[アントニン・ドヴォルザーク](wiki:アントニン・ドヴォルザーク)'
+      references:
+        - link: https://imslp.org/wiki/Symphony_No.9,_Op.95_(Dvo%C5%99%C3%A1k,_Anton%C3%ADn)
+          title: 'Symphony No.9, Op.95 (Dvořák, Antonín)'
       description: ヴァイオリン演奏（第2楽章、第4楽章）として
 
 - video:
@@ -755,6 +862,9 @@
           text: '[ルードヴィッヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
         - name: 原詩
           text: '[フリードリヒ・フォン・シラー](wiki:フリードリヒ・フォン・シラー)'
+      references:
+        - link: https://imslp.org/wiki/Symphony_No.9%2C_Op.125_%28Beethoven%2C_Ludwig_van%29
+          title: 'Symphony No.9, Op.125 (Beethoven, Ludwig van)'
       description: BGMとして、[ヴァイオリン演奏](yt:H6mK6fMNSU0?t=4540)として
 
 - video:
@@ -769,12 +879,18 @@
       attributes:
         - name: 作曲
           text: '[ジュゼッペ・ヴェルディ](wiki:ジュゼッペ・ヴェルディ)'
+      references:
+        - link: https://imslp.org/wiki/Requiem_(Verdi,_Giuseppe)
+          title: 'Requiem (Verdi, Giuseppe)'
       description: 解説として
-    - title: '[パッヘルベルのカノン](wiki:カノン_(パッヘルベル))'
-      originalTitle: 'Canon a 3 Violinis con Basso c. / Gigue, PWC 37'
+    - title: '[3つのヴァイオリンと通奏低音のためのカノンとジーグ ニ長調](wiki:カノン_(パッヘルベル)) より「[カノン](wiki:カノン_(パッヘルベル)#カノン)」'
+      originalTitle: 'Kanon und Gigue für drei Violinen und Basso Continuo, P.37, No.1 Kanon'
       attributes:
         - name: 作曲
           text: '[ヨハン・パッヘルベル](wiki:ヨハン・パッヘルベル)'
+      references:
+        - link: https://imslp.org/wiki/Canon_and_Gigue_in_D_major,_P.37_(Pachelbel,_Johann)
+          title: 'Canon and Gigue in D major, P.37 (Pachelbel, Johann)'
       description: 解説として
     - title: '[G線上のアリア](wiki:G線上のアリア)'
       originalTitle: 'Air auf der G-Saite'
@@ -783,6 +899,9 @@
           text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
         - name: 編曲
           text: '[アウグスト・ウィルヘルミ](wiki:アウグスト・ウィルヘルミ)'
+      references:
+        - link: https://imslp.org/wiki/Orchestral_Suite_No.3_in_D_major,_BWV_1068_(Bach,_Johann_Sebastian)#For_Violin.2C_Piano_and_Strings_.28Wilhelmj.29
+          title: 'Orchestral Suite No.3 in D major, BWV 1068 (Bach, Johann Sebastian)'
       description: 解説として
     - title: 'コラール「[主よ、人の望みの喜びよ](wiki:主よ、人の望みの喜びよ)」'
       originalTitle: 'Herz und Mund und Tat und Leben, BWV 147'
@@ -790,20 +909,31 @@
         - name: 作曲
           text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
       description: 解説として
+      references:
+        - link: https://imslp.org/wiki/Herz_und_Mund_und_Tat_und_Leben,_BWV_147_(Bach,_Johann_Sebastian)
+          title: 'Herz und Mund und Tat und Leben, BWV 147 (Bach, Johann Sebastian)'
     - title: |-
-        [無伴奏ヴァイオリンのためのソナタとパルティータ](wiki:無伴奏ヴァイオリンのためのソナタとパルティータ)より
-        パルティータ第3番 第3楽章「[ガヴォット](wiki:無伴奏ヴァイオリンのためのソナタとパルティータ#パルティータ第3番ホ長調_BWV1006)」
-      originalTitle: 'Sei Solo a Violino senza Basso accompagnato, BWV1006, Gavotte en Rondeau'
+        [無伴奏ヴァイオリンのためのソナタとパルティータ](wiki:無伴奏ヴァイオリンのためのソナタとパルティータ)
+        [第3番 ホ長調 BWV1006](wiki:無伴奏ヴァイオリンのためのソナタとパルティータ#パルティータ第3番ホ長調_BWV1006) 第3番 ガボット
+      originalTitle: '6 Violin Sonatas and Partitas, No.3 E major, BWV 1006, III. Gavotte en Rondeau'
       attributes:
         - name: 作曲
           text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
       description: 解説として、ヴァイオリン演奏として
-    - title: '劇付随音楽「[真夏の夜の夢](wiki:夏の夜の夢_(メンデルスゾーン))」より 「[結婚行進曲](wiki:結婚行進曲_(メンデルスゾーン))」'
-      originalTitle: "Ein Sommernachtstraum, Hochzeitsmarsch, Op.61"
+      references:
+        - link: https://imslp.org/wiki/6_Violin_Sonatas_and_Partitas,_BWV_1001-1006_(Bach,_Johann_Sebastian)
+          title: '6 Violin Sonatas and Partitas, BWV 1001-1006 (Bach, Johann Sebastian)'
+        - link: https://imslp.org/wiki/Violin_Partita_No.3_in_E_major,_BWV_1006_(Bach,_Johann_Sebastian)
+          title: 'Violin Partita No.3 in E major, BWV 1006 (Bach, Johann Sebastian)'
+    - title: '劇付随音楽「[夏の夜の夢](wiki:夏の夜の夢_(メンデルスゾーン))」作品61 第9曲「[結婚行進曲](wiki:結婚行進曲_(メンデルスゾーン))」'
+      originalTitle: 'Musik zu Ein Sommernachtstraum, Op.61, No.9 Hochszeitsmarsch'
       attributes:
         - name: 作曲
           text: '[フェリックス・メンデルスゾーン](wiki:フェリックス・メンデルスゾーン)'
       description: 解説として
+      references:
+        - link: https://imslp.org/wiki/A_Midsummer_Night%27s_Dream,_incidental_music,_Op.61_(Mendelssohn,_Felix)
+          title: "A Midsummer Night's Dream, incidental music, Op.61 (Mendelssohn, Felix)"
 
 - video:
     id: 0wiTNGo68mo
@@ -812,11 +942,15 @@
   name: '【睡眠用BGM】気が付けば夢の中⁉クラシック睡眠導入BGM'
   categories: ['演奏動画']
   tunes:
-    - title: '子守唄'
+    - title: '5つの歌曲 作品49 より [子守唄](wiki:子守歌_(ブラームス))'
+      originalTitle: '5 Lieder, Op.49, IV. Wiegenlied. Zart bewegt'
       attributes:
         - name: 作曲
           text: '[ヨハネス・ブラームス](wiki:ヨハネス・ブラームス)'
       description: ''
+      references:
+        - link: https://imslp.org/wiki/5_Lieder,_Op.49_(Brahms,_Johannes)
+          title: '5 Lieder, Op.49 (Brahms, Johannes)'
 
 - video:
     id: Tv772tcDIkk
@@ -887,7 +1021,7 @@
   categories: ['純喫茶ジェネット', '楽曲解説']
   tunes:
     - title: '[ハンガリー舞曲](wiki:ハンガリー舞曲) 第5番'
-      originalTitle: 'Ungarische Tänze, No. 5. Allegro, fis-Moll'
+      originalTitle: 'Ungarische Tänze, No.5 Allegro, fis-Moll'
       attributes:
         - name: 編曲
           text: '[ヨハネス・ブラームス](wiki:ヨハネス・ブラームス)'
@@ -1668,7 +1802,7 @@
   categories: ['純喫茶ジェネット', '楽曲解説']
   tunes:
     - title: '[ピアノソナタ第8番「悲愴」](wiki:ピアノソナタ第8番_(ベートーヴェン)) 作品13 第2楽章'
-      originalTitle: 'Piano Sonata No.8, Op.13, 2. Adagio cantabile'
+      originalTitle: 'Piano Sonata No.8, Op.13, II. Adagio cantabile'
       attributes:
         - name: 作曲
           text: '[ルートヴィヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
@@ -1850,7 +1984,7 @@
   categories: ['雑談配信']
   tunes:
     - title: '[ペール・ギュント](wiki:ペール・ギュント_(グリーグ)) 作品46 第1組曲 第1曲 [朝](wiki:ペール・ギュント_(グリーグ)#第1組曲_作品46)'
-      originalTitle: 'Peer Gynt Suite No.1, Op.46, 1. Morning Mood. Allegretto pastorale'
+      originalTitle: 'Peer Gynt Suite No.1, Op.46, I. Morning Mood. Allegretto pastorale'
       attributes:
         - name: 作曲
           text: '[エドヴァルド・グリーグ](wiki:エドヴァルド・グリーグ)'
