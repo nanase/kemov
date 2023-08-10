@@ -36,3 +36,11 @@ export function sum<T>(array: T[], key?: (element: T) => number): number {
     return array.reduce((prev, element) => prev + key(element), 0);
   }
 }
+
+export function empty<T>(array: string | T[] | undefined | null): boolean {
+  return array == null || array.length === 0;
+}
+
+export function existsDuplicate<T>(array: T[]): boolean {
+  return array.some((element, index) => array.indexOf(element) !== index);
+}

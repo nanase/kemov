@@ -1,4 +1,4 @@
-import { findBy, mergeArrayBy, sum } from '../../src/lib/array';
+import { empty, existsDuplicate, findBy, mergeArrayBy, sum } from '../../src/lib/array';
 
 describe('findBy', () => {
   test('find object', () => {
@@ -88,5 +88,41 @@ describe('sum', () => {
     const array: number[] = [];
 
     expect(sum(array)).toBe(0);
+  });
+});
+
+describe('empty', () => {
+  test('empty array', () => {
+    expect(empty([])).toBe(true);
+  });
+
+  test('not empty array', () => {
+    expect(empty([0])).toBe(false);
+  });
+
+  test('undefined', () => {
+    expect(empty(undefined)).toBe(true);
+  });
+
+  test('null', () => {
+    expect(empty(null)).toBe(true);
+  });
+
+  test('empty string', () => {
+    expect(empty('')).toBe(true);
+  });
+});
+
+describe('existsDuplicate', () => {
+  test('duplicate elements', () => {
+    expect(existsDuplicate([0, 1, 1, 2])).toBe(true);
+  });
+
+  test('unique elements', () => {
+    expect(existsDuplicate([0, 1, 2, 3])).toBe(false);
+  });
+
+  test('empty array', () => {
+    expect(existsDuplicate([])).toBe(false);
   });
 });
