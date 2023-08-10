@@ -4,6 +4,7 @@ import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 import VideoLink from '@/components/VideoLink.vue';
 import VideoEmbed from '@/components/VideoEmbed.vue';
 import MarkDown from '@/components/MarkDown.vue';
+import StreamingItemVerifier from '@/components/genet/StreamingItemVerifier.vue';
 import { computed, ref } from 'vue';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -26,7 +27,7 @@ const thumbnailUrl = computed(() => {
   return getThumbnailURL(props.data.video.id, { size: 'hq' });
 });
 const thumbnailUrlCss = `url('${thumbnailUrl.value}')`;
-
+const isDev = import.meta.env.DEV;
 const parentMedia = ref<string>();
 const targetMedia = ref<string>();
 const mediaPosition = ref<number>();
@@ -77,6 +78,7 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string, position?
 
 <template>
   <div class="streaming-item">
+    <StreamingItemVerifier v-if="isDev" :data="props.data" />
     <div class="header">
       <div class="thumbnail" v-if="!data.video.variety">
         <VideoLink class="streaming-thumbnail" :video-id="data.video.id" :video-title="data.video.title" />
