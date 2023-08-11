@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { type VideoBase } from '@/types/genet';
 import { computed } from 'vue';
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 
@@ -6,19 +7,13 @@ const props = defineProps<{
   /**
    * The id of the link to YouTube video.
    */
-  videoId: string;
-
-  /**
-   * The title of the link to YouTube video.
-   * If this property is null, the alt attribute of the link image is set to empty.
-   */
-  videoTitle?: string;
+  video: VideoBase;
 }>();
 
-const thumbnailUrl = computed(() => getThumbnailURL(props.videoId, { size: 'hq' }));
+const thumbnailUrl = computed(() => getThumbnailURL(props.video.id, { size: 'hq' }));
 const thumbnailUrlCss = `url('${thumbnailUrl.value}')`;
-const videoUrl = computed(() => getWatchURL(props.videoId));
-const videoTitle = computed(() => props.videoTitle ?? '');
+const videoUrl = computed(() => getWatchURL(props.video.id));
+const videoTitle = computed(() => props.video.title ?? '');
 </script>
 
 <template>

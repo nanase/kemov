@@ -1,13 +1,13 @@
 <script setup lang="ts">
+import { type EmbeddedVideo } from '@/types/genet';
 import { onMounted, ref, watch } from 'vue';
 import { getThumbnailURL, getEmbedURL } from '@/lib/youtube';
 
 const props = defineProps<{
   /**
-   * The id of the link to YouTube video.
+   * The Video Object of the link to YouTube video.
    */
-  videoId: string;
-  position?: number;
+  video: EmbeddedVideo;
 }>();
 
 const player = ref<HTMLDivElement>();
@@ -27,10 +27,10 @@ function createEmbedElements() {
   }
 
   const div = document.createElement('div');
-  div.setAttribute('data-id', props.videoId);
+  div.setAttribute('data-id', props.video.id);
 
   const thumbNode = document.createElement('img');
-  thumbNode.src = getThumbnailURL(props.videoId, { size: 'hq' });
+  thumbNode.src = getThumbnailURL(props.video.id, { size: 'hq' });
   div.appendChild(thumbNode);
 
   const playButton = document.createElement('div');
@@ -39,8 +39,8 @@ function createEmbedElements() {
 
   div.onclick = function () {
     const iframe = document.createElement('iframe');
-    const start = Number.isFinite(props.position) ? `start=${props.position}` : '';
-    iframe.setAttribute('src', `${getEmbedURL(props.videoId)}?${start}`);
+    const start = Number.isFinite(props.video.position) ? `start=${props.video.position}` : '';
+    iframe.setAttribute('src', `${getEmbedURL(props.video.id)}?${start}`);
     iframe.setAttribute('frameborder', '0');
     iframe.setAttribute('allowfullscreen', '1');
     iframe.setAttribute(

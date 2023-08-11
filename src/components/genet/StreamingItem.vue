@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type Streaming, type VideoType } from '@/types/genet';
+import { type Streaming, type VideoType, type Video, type EmbeddedVideo } from '@/types/genet';
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 import VideoLink from '@/components/VideoLink.vue';
 import VideoEmbed from '@/components/VideoEmbed.vue';
@@ -28,9 +28,8 @@ const thumbnailUrl = computed(() => {
 });
 const thumbnailUrlCss = `url('${thumbnailUrl.value}')`;
 const isDev = import.meta.env.DEV;
-const parentMedia = ref<string>();
-const targetMedia = ref<string>();
-const mediaPosition = ref<number>();
+const parentMedia = ref<Video>();
+const targetMedia = ref<EmbeddedVideo>();
 
 function insertBreakToName(name: string) {
   const regex = name.match(/((?:\[[^\]]*\])|(?:【[^】]*】)*)([^[【]*)((?:\[[^\]]*\])|(?:【[^】]*】)*)/);
@@ -69,10 +68,9 @@ function videoTypeToString(type: VideoType): string {
   }
 }
 
-function setEmbedVideo(parentVideoId?: string, targetVideoId?: string, position?: number): void {
-  parentMedia.value = parentVideoId;
-  targetMedia.value = targetVideoId;
-  mediaPosition.value = position;
+function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
+  parentMedia.value = parentVideo;
+  targetMedia.value = targetVideo;
 }
 </script>
 
@@ -81,7 +79,7 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string, position?
     <StreamingItemVerifier v-if="isDev" :data="props.data" />
     <div class="header">
       <div class="thumbnail" v-if="!data.video.variety">
-        <VideoLink class="streaming-thumbnail" :video-id="data.video.id" :video-title="data.video.title" />
+        <VideoLink class="streaming-thumbnail" :video="data.video" />
       </div>
       <div class="name">
         <a :href="data.video.variety ? data.video.id : getWatchURL(data.video.id)" target="_blank" :alt="data.name">
@@ -98,8 +96,8 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string, position?
       </div>
     </div>
     <Transition name="media">
-      <div class="media-box" v-if="parentMedia === data.video.id && targetMedia != null">
-        <VideoEmbed :video-id="targetMedia" :position="mediaPosition"></VideoEmbed>
+      <div class="media-box" v-if="parentMedia === data.video && targetMedia != null">
+        <VideoEmbed :video="targetMedia"></VideoEmbed>
         <div class="close" @click="setEmbedVideo()">閉じる</div>
       </div>
     </Transition>
@@ -121,7 +119,7 @@ function setEmbedVideo(parentVideoId?: string, targetVideoId?: string, position?
             <div v-for="video in tune.videos" :key="video.id">
               <div
                 class="media-button video"
-                @click="setEmbedVideo(data.video.id, video.id, video.position)"
+                @click="setEmbedVideo(data.video, video)"
                 v-tooltip.auto-end="video.description ? `動画を視聴する: ${video.description}` : '動画を視聴する'"
               ></div>
             </div>

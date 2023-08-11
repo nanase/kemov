@@ -1,33 +1,34 @@
-type Markdown = string;
+export type Markdown = string;
 
 export type VideoType = 'video' | 'live' | 'short';
 
-interface Video {
+export interface VideoBase {
   id: string;
   title?: string;
+}
+
+export interface Video extends VideoBase {
   publishedAt: string;
   type: VideoType;
   variety?: boolean;
 }
 
-interface EmbeddedVideo {
-  id: string;
-  title?: string;
+export interface EmbeddedVideo extends VideoBase {
   position?: number;
   description?: string;
 }
 
-interface TuneAttribute {
+export interface TuneAttribute {
   name: string;
   text: Markdown;
 }
 
-interface TuneReference {
+export interface TuneReference {
   link: string;
   title: string;
 }
 
-interface Tune {
+export interface Tune {
   title: Markdown;
   subtunes?: Markdown[];
   originalTitle?: Markdown;
