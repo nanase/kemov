@@ -2,6 +2,7 @@ import { fileURLToPath, URL } from 'node:url';
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import webfontDownload from 'vite-plugin-webfont-dl';
 
 const root = resolve(__dirname, 'src');
 const outDir = resolve(__dirname, 'docs');
@@ -11,7 +12,7 @@ export default defineConfig({
   root,
   base: '/kemov/',
   publicDir: '../public',
-  plugins: [vue()],
+  plugins: [vue(), webfontDownload()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
