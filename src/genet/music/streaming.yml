@@ -935,23 +935,6 @@
           title: "A Midsummer Night's Dream, incidental music, Op.61 (Mendelssohn, Felix)"
 
 - video:
-    id: 0wiTNGo68mo
-    type: video
-    publishedAt: 2023/04/27 23:30
-  name: '【睡眠用BGM】気が付けば夢の中⁉クラシック睡眠導入BGM'
-  categories: ['演奏動画']
-  tunes:
-    - title: '5つの歌曲 作品49 より [子守唄](wiki:子守歌_(ブラームス))'
-      originalTitle: '5 Lieder, Op.49, IV. Wiegenlied. Zart bewegt'
-      attributes:
-        - name: 作曲
-          text: '[ヨハネス・ブラームス](wiki:ヨハネス・ブラームス)'
-      description: 'ヴァイオリン演奏として'
-      references:
-        - link: https://imslp.org/wiki/5_Lieder,_Op.49_(Brahms,_Johannes)
-          title: '5 Lieder, Op.49 (Brahms, Johannes)'
-
-- video:
     id: Tv772tcDIkk
     type: live
     publishedAt: 2023/04/24 22:00
@@ -1039,7 +1022,18 @@
   name: '【睡眠導入】【生演奏】ヴァイオリン生演奏！癒しのリズムに身を委ねて…'
   categories: ['睡眠導入', '演奏配信']
   tunes:
-    - title: '？'
+    - title: '5つの歌曲 作品49 より [子守唄](wiki:子守歌_(ブラームス))'
+      originalTitle: '5 Lieder, Op.49, IV. Wiegenlied. Zart bewegt'
+      attributes:
+        - name: 作曲
+          text: '[ヨハネス・ブラームス](wiki:ヨハネス・ブラームス)'
+      references:
+        - link: https://imslp.org/wiki/5_Lieder,_Op.49_(Brahms,_Johannes)
+          title: '5 Lieder, Op.49 (Brahms, Johannes)'
+      description: '[ヴァイオリン演奏](yt:uuPgbIPpT9M?t=1707)として'
+      videos:
+        - id: rnSbgT6aUUc
+          title: '【睡眠導入】【生演奏】ヴァイオリン生演奏！癒しのリズムに身を委ねて…【#けもV #じぇねったいむっ】'
 
 - video:
     id: rnSbgT6aUUc
@@ -1048,7 +1042,15 @@
   name: '【練習配信】作業用BGMに♪ひたすらヴァイオリンを練習します'
   categories: ['練習配信']
   tunes:
-    - title: '？'
+    - title: 'バガテル 第25番 イ短調 WoO 59「[エリーゼのために](wiki:エリーゼのために)」'
+      originalTitle: 'Für Elise, WoO 59'
+      attributes:
+        - name: 作曲
+          text: '[ルートヴィヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
+      description: '[ヴァイオリン演奏](yt:rnSbgT6aUUc?t=3452)として'
+      references:
+        - link: https://imslp.org/wiki/F%C3%BCr_Elise,_WoO_59_(Beethoven,_Ludwig_van)
+          title: 'Für Elise, WoO 59 (Beethoven, Ludwig van)'
 
 - video:
     id: AuaX9nIzKp4
@@ -1504,7 +1506,19 @@
   name: '【練習配信】作業用BGMに♪ひたすらヴァイオリンを練習します'
   categories: ['練習配信']
   tunes:
-    - title: '？'
+    - title: |-
+        [無伴奏ヴァイオリンのためのソナタとパルティータ](wiki:無伴奏ヴァイオリンのためのソナタとパルティータ)
+        [第3番 ホ長調 BWV1006](wiki:無伴奏ヴァイオリンのためのソナタとパルティータ#パルティータ第3番ホ長調_BWV1006)
+      originalTitle: '6 Violin Sonatas and Partitas, No.3 E major, BWV 1006'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・ゼバスティアン・バッハ](wiki:ヨハン・ゼバスティアン・バッハ)'
+      description: 'ヴァイオリン演奏（[第1楽章 プレリュード](yt:NYmhJky7lFQ?t=2711)）として'
+      references:
+        - link: https://imslp.org/wiki/6_Violin_Sonatas_and_Partitas,_BWV_1001-1006_(Bach,_Johann_Sebastian)
+          title: '6 Violin Sonatas and Partitas, BWV 1001-1006 (Bach, Johann Sebastian)'
+        - link: https://imslp.org/wiki/Violin_Partita_No.3_in_E_major,_BWV_1006_(Bach,_Johann_Sebastian)
+          title: 'Violin Partita No.3 in E major, BWV 1006 (Bach, Johann Sebastian)'
 
 - video:
     id: Af46LCtbEcA
@@ -1581,7 +1595,15 @@
   name: '【練習配信】作業用BGMにどうぞ♪ヴァイオリン練習配信！'
   categories: ['練習配信']
   tunes:
-    - title: '？'
+    - title: '[ツィゴイネルワイゼン](wiki:ツィゴイネルワイゼン) 作品20 第1楽章 モデラート'
+      originalTitle: 'Zigeunerweisen, Op.20, I. Moderato'
+      attributes:
+        - name: 作曲
+          text: '[パブロ・デ・サラサーテ](wiki:パブロ・デ・サラサーテ)'
+      description: '[ヴァイオリン演奏](yt:tkyQz86LQLI?t=1727)として'
+      references:
+        - link: https://imslp.org/wiki/Zigeunerweisen,_Op.20_(Sarasate,_Pablo_de)
+          title: 'Zigeunerweisen, Op.20 (Sarasate, Pablo de)'
 
 - video:
     id: iXuDonwf44U
