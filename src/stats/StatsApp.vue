@@ -6,15 +6,19 @@ import { type YouTubeChannelStats, type YouTubeChannel, type YouTubeChannelStats
 import { withCommas } from '@/lib/number';
 import dayjs, { Dayjs } from 'dayjs';
 import UpdateTime from '../components/stats/UpdateTime.vue';
+import axios from 'axios';
+import axiosRetry from 'axios-retry';
 
 const vtubers = ref<Array<YouTubeChannel & YouTubeChannelStats>>([]);
 const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
 const fetchVtuberDataInterval = ref<number>();
+let channels: YouTubeChannel[];
+
+axiosRetry(axios, { retries: 3, retryDelay: axiosRetry.exponentialDelay });
 
 async function fetchVtubersData() {
   try {
-    const channels = (await (await fetch(channelsUri)).json()) as YouTubeChannel[];
-    const stats = (await (await fetch(statsUri)).json()) as YouTubeChannelStatsResponse;
+    const stats = (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data;
     vtubers.value = mergeArrayBy('id', channels, stats.data);
     fetchedTime.value = dayjs.unix(stats.fetched_at);
     const waitTime = Math.floor(600000 - (dayjs().unix() - stats.fetched_at) * 1000) + 5000;
@@ -26,6 +30,7 @@ async function fetchVtubersData() {
 }
 
 onMounted(async () => {
+  channels = (await axios.get<YouTubeChannel[]>(channelsUri)).data;
   await fetchVtubersData();
 });
 
