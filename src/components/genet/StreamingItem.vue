@@ -140,8 +140,10 @@ function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
 </template>
 
 <style lang="scss" scoped>
-.header::before {
-  background-image: v-bind('thumbnailUrlCss');
+.streaming-item {
+  .header::before {
+    background-image: v-bind('thumbnailUrlCss');
+  }
 }
 </style>
 
@@ -157,214 +159,214 @@ function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
     border-radius: 0;
     margin: 20px 0 40px;
   }
-}
 
-.header {
-  color: #fff;
-  position: relative;
-  overflow: hidden;
-  z-index: 0;
-  border-radius: 10px 10px 0 0;
-  padding: 10px;
-  background-color: #3a3b3d;
-
-  &::before {
-    content: '';
-    position: absolute;
-    inset: -10px;
-    z-index: -1;
-    background-position: center center;
-    background-repeat: no-repeat;
-    background-size: cover;
-    filter: blur(4px) brightness(40%);
-  }
-
-  @include media.size(sm) {
-    border-radius: 0;
-  }
-}
-
-.thumbnail {
-  width: 400px;
-  margin: 10px auto;
-
-  @include media.size(md) {
-    width: 320px;
-  }
-
-  @include media.size(sm) {
-    width: 240px;
-  }
-}
-
-.streaming-thumbnail {
-  width: 400px;
-  border-radius: 5px;
-  transform: scale(1);
-  box-shadow: 0 0 5px rgba($color: #fff, $alpha: 80%);
-  transition:
-    transform 0.3s,
-    box-shadow 0.3s 0.2s;
-
-  &:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 5px 2px rgba($color: #fff, $alpha: 80%);
-  }
-
-  @include media.size(md) {
-    width: 320px;
-  }
-
-  @include media.size(sm) {
-    width: 240px;
-  }
-}
-
-.name {
-  font-weight: bold;
-  font-size: 125%;
-  text-align: center;
-  white-space: pre-line;
-
-  a {
+  .header {
     color: #fff;
-    text-decoration: none;
-  }
-}
+    position: relative;
+    overflow: hidden;
+    z-index: 0;
+    border-radius: 10px 10px 0 0;
+    padding: 10px;
+    background-color: #3a3b3d;
 
-.published-at {
-  text-align: center;
-  font-size: 90%;
-  line-height: 200%;
-}
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -10px;
+      z-index: -1;
+      background-position: center center;
+      background-repeat: no-repeat;
+      background-size: cover;
+      filter: blur(4px) brightness(40%);
+    }
 
-.categories {
-  text-align: center;
-}
-
-.category {
-  display: inline-block;
-  font-size: 75%;
-  border: 1px solid #bf9593;
-  border-radius: 5px;
-  margin: 2px;
-  padding: 2px 5px;
-}
-
-.tunes {
-  padding: 0.5em 1em;
-
-  ul {
-    padding-inline-start: 20px;
-    margin-block: 0.5em;
-  }
-
-  a,
-  a:visited,
-  a:hover {
-    color: inherit;
-  }
-}
-
-.tune {
-  margin-bottom: 5px;
-}
-
-.tune-flex {
-  display: flex;
-}
-
-.tune-box {
-  flex: 1;
-
-  .title-box {
-    display: block;
-    font-weight: bold;
-    word-break: break-all;
-  }
-
-  .title {
-    margin-right: 0.5em;
-    word-break: keep-all;
-    display: block;
-  }
-
-  .original-title {
-    font-family: Roboto, 'IBM Plex Sans JP', sans-serif;
-    font-style: italic;
-    font-size: 90%;
-    word-break: keep-all;
-    display: block;
-    margin-bottom: 0.3em;
-  }
-
-  .attribute {
-    display: block;
-    font-size: 90%;
-  }
-
-  .description {
-    display: block;
-    font-size: 90%;
-  }
-}
-
-.media-box {
-  .close {
-    text-align: center;
-    background-color: #232425;
-    cursor: pointer;
-    color: #fff;
-    padding: 2.5px;
-
-    &:hover {
-      background-color: #3a3b3d;
+    @include media.size(sm) {
+      border-radius: 0;
     }
   }
-}
 
-.media-button {
-  width: 36px;
-  height: 36px;
-  margin: 0 5px;
-  cursor: pointer;
-  background-repeat: no-repeat;
-  background-size: 100%;
-  background-position: center center;
-  transition:
-    background-size 0.3s,
-    filter 0.3s;
-  border-radius: 10px;
+  .thumbnail {
+    width: 400px;
+    margin: 10px auto;
 
-  &.video {
-    filter: saturate(20%) brightness(2);
-    background-image: url('/genet/video.svg');
+    @include media.size(md) {
+      width: 320px;
+    }
+
+    @include media.size(sm) {
+      width: 240px;
+    }
   }
 
-  &.reference {
-    filter: saturate(20%) brightness(5);
-    background-image: url('/genet/imslp.svg');
+  .streaming-thumbnail {
+    width: 400px;
+    border-radius: 5px;
+    transform: scale(1);
+    box-shadow: 0 0 5px rgba($color: #fff, $alpha: 80%);
+    transition:
+      transform 0.3s,
+      box-shadow 0.3s 0.2s;
+
+    &:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 5px 2px rgba($color: #fff, $alpha: 80%);
+    }
+
+    @include media.size(md) {
+      width: 320px;
+    }
+
+    @include media.size(sm) {
+      width: 240px;
+    }
   }
 
-  &:hover {
-    background-size: 175%;
-    filter: saturate(100%) brightness(1);
-  }
-}
+  .name {
+    font-weight: bold;
+    font-size: 125%;
+    text-align: center;
+    white-space: pre-line;
 
-.media {
-  &-enter-active,
-  &-leave-active {
-    overflow: hidden;
-    max-height: 100vh;
-    transition: all 0.5s;
+    a {
+      color: #fff;
+      text-decoration: none;
+    }
   }
 
-  &-enter-from,
-  &-leave-to {
-    opacity: 0;
-    max-height: 0;
-    overflow: hidden;
+  .published-at {
+    text-align: center;
+    font-size: 90%;
+    line-height: 200%;
+  }
+
+  .categories {
+    text-align: center;
+  }
+
+  .category {
+    display: inline-block;
+    font-size: 75%;
+    border: 1px solid #bf9593;
+    border-radius: 5px;
+    margin: 2px;
+    padding: 2px 5px;
+  }
+
+  .tunes {
+    padding: 0.5em 1em;
+
+    ul {
+      padding-inline-start: 20px;
+      margin-block: 0.5em;
+    }
+
+    a,
+    a:visited,
+    a:hover {
+      color: inherit;
+    }
+  }
+
+  .tune {
+    margin-bottom: 5px;
+  }
+
+  .tune-flex {
+    display: flex;
+  }
+
+  .tune-box {
+    flex: 1;
+
+    .title-box {
+      display: block;
+      font-weight: bold;
+      word-break: break-all;
+    }
+
+    .title {
+      margin-right: 0.5em;
+      word-break: keep-all;
+      display: block;
+    }
+
+    .original-title {
+      font-family: Roboto, 'IBM Plex Sans JP', sans-serif;
+      font-style: italic;
+      font-size: 90%;
+      word-break: keep-all;
+      display: block;
+      margin-bottom: 0.3em;
+    }
+
+    .attribute {
+      display: block;
+      font-size: 90%;
+    }
+
+    .description {
+      display: block;
+      font-size: 90%;
+    }
+  }
+
+  .media-box {
+    .close {
+      text-align: center;
+      background-color: #232425;
+      cursor: pointer;
+      color: #fff;
+      padding: 2.5px;
+
+      &:hover {
+        background-color: #3a3b3d;
+      }
+    }
+  }
+
+  .media-button {
+    width: 36px;
+    height: 36px;
+    margin: 0 5px;
+    cursor: pointer;
+    background-repeat: no-repeat;
+    background-size: 100%;
+    background-position: center center;
+    transition:
+      background-size 0.3s,
+      filter 0.3s;
+    border-radius: 10px;
+
+    &.video {
+      filter: saturate(20%) brightness(2);
+      background-image: url('/genet/video.svg');
+    }
+
+    &.reference {
+      filter: saturate(20%) brightness(5);
+      background-image: url('/genet/imslp.svg');
+    }
+
+    &:hover {
+      background-size: 175%;
+      filter: saturate(100%) brightness(1);
+    }
+  }
+
+  .media {
+    &-enter-active,
+    &-leave-active {
+      overflow: hidden;
+      max-height: 100vh;
+      transition: all 0.5s;
+    }
+
+    &-enter-from,
+    &-leave-to {
+      opacity: 0;
+      max-height: 0;
+      overflow: hidden;
+    }
   }
 }
 </style>
