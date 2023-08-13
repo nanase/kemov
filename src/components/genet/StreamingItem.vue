@@ -78,7 +78,7 @@ function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
     <StreamingItemVerifier v-if="isDev" :data="props.data" />
     <div class="header">
       <div class="thumbnail" v-if="!data.video.variety">
-        <VideoLink class="streaming-thumbnail" :video="data.video" />
+        <VideoLink class="streaming-thumbnail" :video="data.video" :title="data.shortname ?? data.name" />
       </div>
       <div class="name">
         <a :href="data.video.variety ? data.video.id : getWatchURL(data.video.id)" target="_blank" :alt="data.name">
