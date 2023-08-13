@@ -34,7 +34,7 @@ watchEffect(() => {
 </script>
 
 <template>
-  <div v-if="time.isValid() && !Number.isNaN(elapsedTime)" class="update">
+  <div class="update-time" v-if="time.isValid() && !Number.isNaN(elapsedTime)">
     {{ `${time.format('YYYY/MM/DD HH:mm:ss')} (${readableElapsedTime()}前) 更新` }}
   </div>
 </template>

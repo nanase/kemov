@@ -73,6 +73,6 @@ const markdown = computed(() =>
 </script>
 
 <template>
-  <span v-html="markdown" v-if="inline"></span>
-  <div v-html="markdown" v-else></div>
+  <span class="markdown" v-html="markdown" v-if="inline"></span>
+  <div class="markdown" v-html="markdown" v-else></div>
 </template>
