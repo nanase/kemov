@@ -20,13 +20,12 @@ const props = defineProps<{
   data: Streaming;
 }>();
 
-const thumbnailUrl = computed(() => {
+const thumbnailUrlCss = computed(() => {
   if (props.data.video.variety) {
-    return '';
+    return "url('')";
   }
-  return getThumbnailURL(props.data.video.id, { size: 'hq' });
+  return `url('${getThumbnailURL(props.data.video.id, { size: 'hq' })}`;
 });
-const thumbnailUrlCss = `url('${thumbnailUrl.value}')`;
 const isDev = import.meta.env.DEV;
 const parentMedia = ref<Video>();
 const targetMedia = ref<EmbeddedVideo>();

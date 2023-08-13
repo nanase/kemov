@@ -10,10 +10,7 @@ const props = defineProps<{
   video: VideoBase;
 }>();
 
-const thumbnailUrl = computed(() => getThumbnailURL(props.video.id, { size: 'hq' }));
-const thumbnailUrlCss = `url('${thumbnailUrl.value}')`;
-const videoUrl = computed(() => getWatchURL(props.video.id));
-const videoTitle = computed(() => props.video.title ?? '');
+const thumbnailUrlCss = computed(() => `url('${getThumbnailURL(props.video.id, { size: 'hq' })}')`);
 </script>
 
 <template>
