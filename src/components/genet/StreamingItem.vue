@@ -1,20 +1,12 @@
 <script setup lang="ts">
 import { type Streaming, type VideoType, type Video, type EmbeddedVideo } from '@/types/genet';
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
+import { JST, toDateTimeText } from '@/lib/date';
 import VideoLink from '@/components/VideoLink.vue';
 import VideoEmbed from '@/components/VideoEmbed.vue';
 import MarkDown from '@/components/MarkDown.vue';
 import StreamingItemVerifier from '@/components/genet/StreamingItemVerifier.vue';
 import { computed, ref } from 'vue';
-import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc';
-import timezone from 'dayjs/plugin/timezone';
-import 'dayjs/locale/ja';
-
-dayjs.extend(utc);
-dayjs.extend(timezone);
-dayjs.tz.setDefault('Asia/Tokyo');
-dayjs.locale('ja');
 
 const props = defineProps<{
   data: Streaming;
@@ -37,20 +29,6 @@ function insertBreakToName(name: string) {
     return `${regex[1]}\n${regex[2]}\n${regex[3]}`.trim();
   } else {
     return name;
-  }
-}
-
-function toDateTimeString(datetime: string): string {
-  const day = dayjs(datetime).tz();
-
-  if (day.isValid()) {
-    if (datetime.indexOf(':') !== -1) {
-      return day.format('YYYY/MM/DD (ddd) HH:mm');
-    } else {
-      return day.format('YYYY/MM/DD (ddd)');
-    }
-  } else {
-    return datetime;
   }
 }
 
@@ -86,7 +64,7 @@ function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
         </a>
       </div>
       <div class="published-at">
-        {{ `${toDateTimeString(data.video.publishedAt)} ${videoTypeToString(data.video.type)}` }}
+        {{ `${toDateTimeText(data.video.publishedAt, JST)} ${videoTypeToString(data.video.type)}` }}
       </div>
       <div class="categories">
         <div class="category" v-for="category in data.categories" :key="category">
