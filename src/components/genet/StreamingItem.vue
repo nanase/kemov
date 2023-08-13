@@ -81,7 +81,7 @@ function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
         <VideoLink class="streaming-thumbnail" :video="data.video" :title="data.shortname ?? data.name" />
       </div>
       <div class="name">
-        <a :href="data.video.variety ? data.video.id : getWatchURL(data.video.id)" target="_blank" :alt="data.name">
+        <a :href="data.video.variety ? data.video.id : getWatchURL(data.video.id)" target="_blank" :title="data.name">
           {{ insertBreakToName(data.shortname ?? data.name) }}
         </a>
       </div>
