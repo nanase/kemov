@@ -234,7 +234,7 @@ function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
     padding: 0.5em 1em;
 
     ul {
-      padding-inline-start: 20px;
+      padding-inline-start: 0;
       margin-block: 0.5em;
     }
 
@@ -247,6 +247,17 @@ function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
 
   .tune {
     margin-bottom: 5px;
+    list-style: none;
+    padding: 0 20px;
+    background-image: url('/kemov/genet/note.svg');
+    background-repeat: no-repeat;
+    background-position: 0 6px;
+    background-size: 12px;
+
+    @include media.size(sm) {
+      padding: 0 16px;
+      background-position: 0 4px;
+    }
   }
 
   .tune-flex {
