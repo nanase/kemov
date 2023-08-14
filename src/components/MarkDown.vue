@@ -3,17 +3,14 @@ import { computed } from 'vue';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
-const props = withDefaults(
-  defineProps<{
-    /**
-     * The source of Markdown text.
-     */
-    source: string;
+const { source, inline = true } = defineProps<{
+  /**
+   * The source of Markdown text.
+   */
+  source: string;
 
-    inline?: boolean;
-  }>(),
-  { inline: true },
-);
+  inline?: boolean;
+}>();
 
 marked.setOptions({
   mangle: false,
@@ -62,7 +59,7 @@ const renderer = {
 marked.use({ renderer });
 
 const markdown = computed(() =>
-  DOMPurify.sanitize(props.inline ? marked.parseInline(props.source) : marked.parse(props.source), {
+  DOMPurify.sanitize(inline ? marked.parseInline(source) : marked.parse(source), {
     ADD_ATTR: ['target'],
   }),
 );

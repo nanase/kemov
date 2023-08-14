@@ -8,15 +8,15 @@ import MarkDown from '@/components/MarkDown.vue';
 import StreamingItemVerifier from '@/components/genet/StreamingItemVerifier.vue';
 import { computed, ref } from 'vue';
 
-const props = defineProps<{
+const { data } = defineProps<{
   data: Streaming;
 }>();
 
 const thumbnailUrlCss = computed(() => {
-  if (props.data.video.variety) {
+  if (data.video.variety) {
     return "url('')";
   }
-  return `url('${getThumbnailURL(props.data.video.id, { size: 'hq' })}`;
+  return `url('${getThumbnailURL(data.video.id, { size: 'hq' })}`;
 });
 const isDev = import.meta.env.DEV;
 const parentMedia = ref<Video>();
@@ -53,7 +53,7 @@ function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
 
 <template>
   <div class="streaming-item">
-    <StreamingItemVerifier v-if="isDev" :data="props.data" />
+    <StreamingItemVerifier v-if="isDev" :data="data" />
     <div class="header">
       <div class="thumbnail" v-if="!data.video.variety">
         <VideoLink class="streaming-thumbnail" :video="data.video" :title="data.shortname ?? data.name" />
@@ -84,14 +84,18 @@ function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
           <div class="tune-flex">
             <div class="tune-box">
               <div class="title-box">
-                <MarkDown class="title" :source="tune.title" />
+                <MarkDown class="title" :source="tune.title" :inline="true" />
                 <MarkDown class="original-title" v-if="tune.originalTitle != null" :source="tune.originalTitle" />
               </div>
               <span class="attribute" v-for="attribute in tune.attributes" :key="attribute.name">
                 <span>{{ attribute.name }}: </span>
                 <MarkDown :source="attribute.text" />
               </span>
-              <MarkDown class="description" :source="tune.description" v-if="tune.description" />
+              <MarkDown
+                class="description"
+                :source="tune.description"
+                v-if="tune.description"
+              />
             </div>
             <div v-for="video in tune.videos" :key="video.id">
               <div

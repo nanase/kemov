@@ -3,7 +3,7 @@ import { type EmbeddedVideo } from '@/types/genet';
 import { onMounted, ref, watch } from 'vue';
 import { getThumbnailURL, getEmbedURL } from '@/lib/youtube';
 
-const props = defineProps<{
+const { video } = defineProps<{
   /**
    * The Video Object of the link to YouTube video.
    */
@@ -27,10 +27,10 @@ function createEmbedElements() {
   }
 
   const div = document.createElement('div');
-  div.setAttribute('data-id', props.video.id);
+  div.setAttribute('data-id', video.id);
 
   const thumbNode = document.createElement('img');
-  thumbNode.src = getThumbnailURL(props.video.id, { size: 'hq' });
+  thumbNode.src = getThumbnailURL(video.id, { size: 'hq' });
   div.appendChild(thumbNode);
 
   const playButton = document.createElement('div');
@@ -39,8 +39,8 @@ function createEmbedElements() {
 
   div.onclick = function () {
     const iframe = document.createElement('iframe');
-    const start = Number.isFinite(props.video.position) ? `start=${props.video.position}` : '';
-    iframe.setAttribute('src', `${getEmbedURL(props.video.id)}?${start}`);
+    const start = Number.isFinite(video.position) ? `start=${video.position}` : '';
+    iframe.setAttribute('src', `${getEmbedURL(video.id)}?${start}`);
     iframe.setAttribute('frameborder', '0');
     iframe.setAttribute('allowfullscreen', '1');
     iframe.setAttribute(

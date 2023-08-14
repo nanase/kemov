@@ -3,7 +3,7 @@ import { type VideoBase } from '@/types/genet';
 import { computed } from 'vue';
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 
-const props = defineProps<{
+const { video, title } = defineProps<{
   /**
    * The id of the link to YouTube video.
    */
@@ -11,16 +11,11 @@ const props = defineProps<{
   title?: string;
 }>();
 
-const thumbnailUrlCss = computed(() => `url('${getThumbnailURL(props.video.id, { size: 'hq' })}')`);
+const thumbnailUrlCss = computed(() => `url('${getThumbnailURL(video.id, { size: 'hq' })}')`);
 </script>
 
 <template>
-  <a
-    class="video-link"
-    :href="getWatchURL(props.video.id)"
-    target="_blank"
-    :title="video.title ?? title ?? '配信を見る'"
-  >
+  <a class="video-link" :href="getWatchURL(video.id)" target="_blank" :title="video.title ?? title ?? '配信を見る'">
   </a>
 </template>
 

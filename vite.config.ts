@@ -12,7 +12,14 @@ export default defineConfig({
   root,
   base: '/kemov/',
   publicDir: '../public',
-  plugins: [vue(), webfontDownload()],
+  plugins: [
+    vue({
+      script: {
+        propsDestructure: true,
+      },
+    }),
+    webfontDownload(),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
