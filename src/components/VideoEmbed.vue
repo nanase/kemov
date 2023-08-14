@@ -56,7 +56,7 @@ function createEmbedElements() {
 }
 
 onMounted(createEmbedElements);
-watch(props, createEmbedElements);
+watch(() => video, createEmbedElements);
 </script>
 
 <template>

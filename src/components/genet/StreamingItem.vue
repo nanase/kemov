@@ -49,6 +49,10 @@ function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
   parentMedia.value = parentVideo;
   targetMedia.value = targetVideo;
 }
+
+function clickWatchLinkHandler(id: string, position?: number): void {
+  setEmbedVideo(data.video, { id, position });
+}
 </script>
 
 <template>
@@ -95,6 +99,7 @@ function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
                 class="description"
                 :source="tune.description"
                 v-if="tune.description"
+                @clickWatchLink="clickWatchLinkHandler"
               />
             </div>
             <div v-for="video in tune.videos" :key="video.id">
