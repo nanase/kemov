@@ -26,12 +26,10 @@ function exposeUrl(url: URL): string {
     case 'wikien:': {
       return `https://en.wikipedia.org/wiki/${url.pathname}${url.hash}${url.search}`;
     }
-    case 'wiki:':
-    case 'wikija:': {
+    case 'wiki:': {
       return `https://ja.wikipedia.org/wiki/${url.pathname}${url.hash}${url.search}`;
     }
-    case 'yt:':
-    case 'youtube:': {
+    case 'yt:': {
       return `https://www.youtube.com/watch?v=${url.pathname}${url.search.replace('?', '&')}`;
     }
 
