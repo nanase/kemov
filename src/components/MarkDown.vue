@@ -21,32 +21,30 @@ marked.setOptions({
   gfm: true,
 });
 
-function exposeUrl(url: string): string {
-  const parsedUrl = new URL(url);
-
-  switch (parsedUrl.protocol) {
+function exposeUrl(url: URL): string {
+  switch (url.protocol) {
     case 'wikien:': {
-      return `https://en.wikipedia.org/wiki/${parsedUrl.pathname}${parsedUrl.hash}${parsedUrl.search}`;
+      return `https://en.wikipedia.org/wiki/${url.pathname}${url.hash}${url.search}`;
     }
     case 'wiki:':
     case 'wikija:': {
-      return `https://ja.wikipedia.org/wiki/${parsedUrl.pathname}${parsedUrl.hash}${parsedUrl.search}`;
+      return `https://ja.wikipedia.org/wiki/${url.pathname}${url.hash}${url.search}`;
     }
     case 'yt:':
     case 'youtube:': {
-      return `https://www.youtube.com/watch?v=${parsedUrl.pathname}${parsedUrl.search.replace('?', '&')}`;
+      return `https://www.youtube.com/watch?v=${url.pathname}${url.search.replace('?', '&')}`;
     }
 
     default: {
-      return parsedUrl.href;
+      return url.href;
     }
   }
 }
 
 const renderer = {
   link(href: string, title: string, text: string) {
-    // href = cleanUrl(this.options.sanitize, this.options.baseUrl, href);
-    href = exposeUrl(href);
+    const url = new URL(href);
+    href = exposeUrl(url);
 
     if (href === null) {
       return text;
