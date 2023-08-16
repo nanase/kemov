@@ -255,16 +255,16 @@ function clickWatchLinkHandler(id: string, position?: number): void {
   }
 
   .tune {
-    margin-bottom: 5px;
+    margin-bottom: 10px;
     list-style: none;
-    padding: 0 20px;
+    padding: 0 10px 0 25px;
     background-image: url('/kemov/genet/note.svg');
     background-repeat: no-repeat;
-    background-position: 0 6px;
+    background-position: 2px 6px;
     background-size: 12px;
 
     @include media.size(sm) {
-      padding: 0 16px;
+      padding: 0 16px 0 24px;
       background-position: 0 4px;
     }
   }
