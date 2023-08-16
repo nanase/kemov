@@ -13,8 +13,8 @@
           text: '[エリック・サティ](wiki:エリック・サティ)'
       description: 'BGMとして、[ヴァイオリン演奏](yt:87eE9y0QsHs?t=448)として'
       references:
-        - link: https://imslp.org/wiki/Auld_lang_syne_(Folk_Songs%2C_Scottish)
-          title: 'Auld lang syne (Folk Songs, Scottish)'
+        - link: https://imslp.org/wiki/Je_te_veux_(Satie,_Erik)
+          title: 'Je te veux (Satie, Erik)'
     - title: 'バガテル 第25番 イ短調 WoO 59「[エリーゼのために](wiki:エリーゼのために)」'
       originalTitle: 'Für Elise, WoO 59'
       attributes:
@@ -273,7 +273,20 @@
       references:
         - link: https://imslp.org/wiki/Piano_Sonata_No.8,_Op.13_(Beethoven,_Ludwig_van)
           title: 'Piano Sonata No.8, Op.13 (Beethoven, Ludwig van)'
-      description: '[ヴァイオリン演奏](yt:HaiXSGYlK0I?t=10396)として'
+      description: '[ヴァイオリン演奏](yt:yJk5KBRu0PY?t=10396)として'
+    - title: '[オールド・ラング・サイン](wiki:オールド・ラング・サイン)（[蛍の光](wiki:蛍の光)）'
+      originalTitle: 'Auld Lang Syne'
+      attributes:
+        - name: 作曲
+          text: '不明'
+        - name: 作詞
+          text: '[ロバート・バーンズ](wiki:ロバート・バーンズ)'
+        - name: 日本語訳詞
+          text: '[稲垣千穎](wiki:稲垣千穎)'
+      references:
+        - link: https://imslp.org/wiki/Auld_lang_syne_(Folk_Songs%2C_Scottish)
+          title: 'Auld lang syne (Folk Songs, Scottish)'
+      description: '[ヴァイオリン演奏](yt:yJk5KBRu0PY?t=10542)として'
 
 - video:
     id: oOHoIHvZfQQ
@@ -648,7 +661,7 @@
       references:
         - link: https://imslp.org/wiki/Orph%C3%A9e_aux_enfers_(Offenbach,_Jacques)
           title: 'Orphée aux enfers (Offenbach, Jacques)'
-      description: 'BGMとして、[ヴァイオリン演奏](yt:l9JKjVlYIUY?t=2250)として'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:l9JKjVlYIUY?t=2260)として'
     - title: '[ウィリアム・テル序曲](wiki:ウィリアム・テル序曲)'
       originalTitle: 'Ouverture de Guillaume Tell'
       attributes:
@@ -666,7 +679,7 @@
       references:
         - link: https://imslp.org/wiki/Judas_Maccabaeus,_HWV_63_(Handel,_George_Frideric)
           title: 'Judas Maccabaeus, HWV 63 (Handel, George Frideric)'
-      description: 'BGMとして、[ヴァイオリン演奏](yt:l9JKjVlYIUY?t=3580)として'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:l9JKjVlYIUY?t=3576)として'
 
 - video:
     id: QY4AJMj68Eg
@@ -801,7 +814,7 @@
       attributes:
         - name: 作曲
           text: '[ルートヴィヒ・ヴァン・ベートーヴェン](wiki:ルートヴィヒ・ヴァン・ベートーヴェン)'
-      description: BGMとして、[ヴァイオリン演奏](yt:u1kBlhriALE?t=4650)として
+      description: BGMとして、[ヴァイオリン演奏](yt:u1kBlhriALE?t=4643)として
       references:
         - link: https://imslp.org/wiki/Violin_Sonata_No.5,_Op.24_(Beethoven,_Ludwig_van)
           title: Violin Sonata No.5, Op.24 (Beethoven, Ludwig van)
@@ -962,7 +975,7 @@
       attributes:
         - name: 作曲
           text: '[ニコロ・パガニーニ](wiki:ニコロ・パガニーニ)'
-      description: '[ヴァイオリン演奏](yt:Tv772tcDIkk?t=3455)として'
+      description: '[ヴァイオリン演奏](yt:Tv772tcDIkk?t=3585)として'
       videos:
         - id: uOeDvBPlpe0
           title: 'Paganini Violin Concerto No.2 in B minor, opus 7 "La Campanella" | Svetlin Roussev'
@@ -1032,7 +1045,7 @@
           title: '5 Lieder, Op.49 (Brahms, Johannes)'
       description: '[ヴァイオリン演奏](yt:uuPgbIPpT9M?t=1707)として'
       videos:
-        - id: rnSbgT6aUUc
+        - id: 0wiTNGo68mo
           title: '【睡眠導入】【生演奏】ヴァイオリン生演奏！癒しのリズムに身を委ねて…【#けもV #じぇねったいむっ】'
 
 - video:
@@ -1133,7 +1146,7 @@
       references:
         - link: https://imslp.org/wiki/Night_on_Bald_Mountain_(Mussorgsky,_Modest)
           title: 'Night on Bald Mountain (Mussorgsky, Modest)'
-    - title: '前奏曲 嬰ハ短調 作品3-2「[鐘](wiki:前奏曲嬰ハ短調 (ラフマニノフ)]」'
+    - title: '前奏曲 嬰ハ短調 作品3-2「[鐘](wiki:前奏曲嬰ハ短調_(ラフマニノフ))」'
       originalTitle: 'Morceaux de fantaisie, Op.3, No.2'
       attributes:
         - name: 作曲
@@ -1263,8 +1276,8 @@
           position: 10
           title: 'Satie  『je te veux』Piano Trio'
       references:
-        - link: https://imslp.org/wiki/Auld_lang_syne_(Folk_Songs%2C_Scottish)
-          title: 'Auld lang syne (Folk Songs, Scottish)'
+        - link: https://imslp.org/wiki/Je_te_veux_(Satie,_Erik)
+          title: 'Je te veux (Satie, Erik)'
 
 - video:
     id: cgoUCjG-SoQ
@@ -1351,7 +1364,7 @@
       attributes:
         - name: 作曲
           text: '[ジャック・オッフェンバック](wiki:ジャック・オッフェンバック)'
-      description: 'BGMとして、[ヴァイオリン演奏](yt:kT-pFSLbPLE?t=2210)として'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:kT-pFSLbPLE?t=3326)として'
       videos:
         - id: vEnW5_GTooI
           position: 418
@@ -1399,7 +1412,7 @@
       attributes:
         - name: 作曲
           text: '[ヨハン・パッヘルベル](wiki:ヨハン・パッヘルベル)'
-      description: 'BGMとして、[全40回のヴァイオリン演奏](wiki:aUYnc8kA1X4?t=16475)として'
+      description: 'BGMとして、[全40回のヴァイオリン演奏](yt:aUYnc8kA1X4?t=16475)として'
       videos:
         - id: aUYnc8kA1X4
           title: '【耐久配信】【生演奏】#弾くんだジェネット ！登録者３０００人超えるまでヴァイオリン弾き続ける配信【#けもV #じぇねったいむっ】'
@@ -1914,7 +1927,7 @@
       attributes:
         - name: 作曲
           text: '[宮城道雄](wiki:宮城道雄)'
-      description: 'BGMとして、[ヴァイオリン演奏](yt:wfUsWlaFUHY?t=30)として（[ピチカート演奏](wiki:wfUsWlaFUHY?t=2408)）'
+      description: 'BGMとして、[ヴァイオリン演奏](yt:wfUsWlaFUHY?t=30)として（[ピチカート演奏](yt:wfUsWlaFUHY?t=2408)）'
       videos:
         - id: gND5pFB9nmU
           position: 9
