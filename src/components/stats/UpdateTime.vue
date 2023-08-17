@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, watchEffect } from 'vue';
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import dayjs, { Dayjs } from 'dayjs';
 
 const { time } = defineProps<{
@@ -29,9 +29,7 @@ onBeforeUnmount(() => {
   clearInterval(elapsedTimeUpdateInterval.value);
 });
 
-watchEffect(() => {
-  updateElapsedTime();
-});
+watch(() => time, updateElapsedTime);
 </script>
 
 <template>
