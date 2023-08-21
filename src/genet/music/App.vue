@@ -29,7 +29,7 @@ const load = async (state: StateHandler) => {
   }
 };
 
-function updateValue(e: Event) {
+function updateSearchQuery(e: Event) {
   if (!(e.target instanceof HTMLInputElement)) return;
 
   const query = e.target.value;
@@ -49,7 +49,13 @@ function updateValue(e: Event) {
   <div class="search-box">
     <div class="keyword">
       <label class="label" for="keyword">キーワード検索</label>
-      <input class="input" type="search" id="keyword" placeholder="動画名、曲名、作曲者名など…" @change="updateValue" />
+      <input
+        class="input"
+        type="search"
+        id="keyword"
+        placeholder="動画名、曲名、作曲者名など…"
+        @change="updateSearchQuery"
+      />
     </div>
     <div class="result-count" v-show="streamings != null">
       <span v-if="streamings.length === rawStreamings.length">
