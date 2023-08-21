@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import InfiniteLoading from 'v3-infinite-loading';
 import type { StateHandler } from 'v3-infinite-loading/lib/types';
 import { load as loadYaml } from 'js-yaml';
+import { StreamingSearch } from './search';
 
 import type { Streaming } from '@/types/genet';
 import StreamingItem from '@/components/genet/StreamingItem.vue';
@@ -15,6 +16,7 @@ const streamings = ref<Streaming[]>([...rawStreamings]);
 const displayedStreamings = ref<Streaming[]>([]);
 const ItemsPerLoaded = 10;
 const infiniteId = ref<number>(0);
+const streamingSearch = new StreamingSearch();
 
 const load = async (state: StateHandler) => {
   if (displayedStreamings.value.length >= streamings.value.length) {
@@ -37,7 +39,7 @@ function updateSearchQuery(e: Event) {
   if (query.length === 0) {
     streamings.value = [...rawStreamings];
   } else {
-    streamings.value = rawStreamings.filter((s) => s.name.includes(query));
+    streamings.value = streamingSearch.search(rawStreamings, query);
   }
 
   displayedStreamings.value = [];
