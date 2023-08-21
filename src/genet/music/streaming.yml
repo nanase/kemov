@@ -4,7 +4,7 @@
     publishedAt: 2023/08/06 22:00
   name: '【雑談】ジェネットの友達探し！～ウェルカム生演奏でおもてなし！～＃11'
   shortname: 'ジェネットの友達探し！～ウェルカム生演奏でおもてなし！～＃11'
-  categories: ['雑談', 'ジェネットの友達探し']
+  categories: ['雑談配信', 'ジェネットの友達探し']
   tunes:
     - title: '[ジュ・トゥ・ヴー](wiki:ジュ・トゥ・ヴー)'
       originalTitle: 'Je te veux'
@@ -57,7 +57,7 @@
     publishedAt: 2023/07/27 12:00
   name: '【雑談】ジェネットの友達探し！～初見さん！ウェルカム演奏させてくださいっ！～＃10'
   shortname: 'ジェネットの友達探し！～初見さん！ウェルカム演奏させてくださいっ！～＃10'
-  categories: ['雑談', 'ジェネットの友達探し']
+  categories: ['雑談配信', 'ジェネットの友達探し']
   tunes:
     - title: '「[アルルの女](wiki:アルルの女)」より 第2組曲 第4曲 [ファランドール](wiki:アルルの女#第2組曲)'
       originalTitle: "L'Arlésienne Suite No.2, IV. Farandole"
@@ -178,7 +178,7 @@
     publishedAt: 2023/07/22 23:15
   name: '【雑談】ジェネットの友達探し！～初見さんは生演奏のプレゼント！でしっ！～＃9'
   shortname: 'ジェネットの友達探し！～初見さんは生演奏のプレゼント！でしっ！～＃9'
-  categories: ['雑談', 'ジェネットの友達探し']
+  categories: ['雑談配信', 'ジェネットの友達探し']
   tunes:
     - title: '[Happy Birthday to You](wiki:ハッピーバースデートゥーユー) (Good Morning to All)'
       attributes:
@@ -242,7 +242,7 @@
     publishedAt: 2023/07/19 0:00
   name: '【雑談】ジェネットの友達探し！～初見さん、ジェネのヴァイオリン聴いていかないかい？＃8'
   shortname: 'ジェネットの友達探し！～初見さん、ジェネのヴァイオリン聴いていかないかい？＃8'
-  categories: ['雑談', 'ジェネットの友達探し']
+  categories: ['雑談配信', 'ジェネットの友達探し']
   tunes:
     - title: '[オールド・ラング・サイン](wiki:オールド・ラング・サイン)（[蛍の光](wiki:蛍の光)）'
       originalTitle: 'Auld Lang Syne'
@@ -341,7 +341,7 @@
     publishedAt: 2023/07/13 12:00
   name: '【雑談】ジェネットの友達探し！～初見さん、ジェネがウェルカム生演奏しますっ＃7'
   shortname: 'ジェネットの友達探し！～初見さん、ジェネがウェルカム生演奏しますっ＃7'
-  categories: ['雑談', 'ジェネットの友達探し']
+  categories: ['雑談配信', 'ジェネットの友達探し']
   tunes:
     - title: '[3つのヴァイオリンと通奏低音のためのカノンとジーグ ニ長調](wiki:カノン_(パッヘルベル)) より「[カノン](wiki:カノン_(パッヘルベル)#カノン)」'
       originalTitle: 'Kanon und Gigue für drei Violinen und Basso Continuo, P.37, No.1 Kanon'
@@ -359,7 +359,7 @@
     publishedAt: 2023/07/12 12:00
   name: '【雑談】ジェネットの友達探し！～寝起きですが今日も初見さん探しにいそしみます～＃6'
   shortname: 'ジェネットの友達探し！～寝起きですが今日も初見さん探しにいそしみます～＃6'
-  categories: ['雑談', 'ジェネットの友達探し']
+  categories: ['雑談配信', 'ジェネットの友達探し']
   tunes:
     - title: '[茶摘み](wiki:茶摘み)'
       attributes:
@@ -455,7 +455,7 @@
     publishedAt: 2023/07/04 16:30
   name: '【雑談】ジェネットの友達探し！～おともだち、募集中～＃3'
   shortname: 'ジェネットの友達探し！～おともだち、募集中～＃3'
-  categories: ['雑談', 'ジェネットの友達探し']
+  categories: ['雑談配信', 'ジェネットの友達探し']
   tunes:
     - title: '[交響曲第9番「合唱付き」](wiki:交響曲第9番_(ベートーヴェン)) 第4楽章「[歓喜の歌](wiki:歓喜の歌)」'
       originalTitle: 'Sinfonie Nr. 9 D-moll, op. 125, An die Freude / Ode to Joy'
@@ -1240,7 +1240,7 @@
     type: live
     publishedAt: 2023/04/08 22:00
   name: '【メンバーシップ開始】はじまります。みんな、じゅんびはいいかーっ！'
-  categories: ['雑談']
+  categories: ['雑談配信']
   tunes:
     - title: '[花](wiki:花_(瀧廉太郎))'
       attributes:
