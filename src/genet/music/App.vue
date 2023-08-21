@@ -41,6 +41,8 @@ const load = async (state: StateHandler) => {
 </template>
 
 <style lang="scss">
+@use '@/style/media';
+
 .streaming-item {
   &-enter-active,
   &-leave-active {
@@ -51,5 +53,30 @@ const load = async (state: StateHandler) => {
   &-leave-to {
     opacity: 0;
   }
+}
+
+.content,
+.search-box {
+  width: 85%;
+  margin: 20px auto;
+  padding: 15px 35px;
+  border-radius: 10px;
+
+  @include media.size(lg) {
+    width: 815px;
+  }
+
+  @include media.size(md) {
+    width: 85%;
+  }
+
+  @include media.size(sm) {
+    width: 100%;
+    padding: 0;
+  }
+}
+
+.content {
+  background-color: white;
 }
 </style>

@@ -32,27 +32,6 @@ body {
       }
 }
 
-.content {
-  width: 85%;
-  margin: 20px auto;
-  padding: 15px 35px;
-  background-color: white;
-  border-radius: 10px;
-
-  @include media.size(lg) {
-    width: 815px;
-  }
-
-  @include media.size(md) {
-    width: 85%;
-  }
-
-  @include media.size(sm) {
-    width: 100%;
-    padding: 0;
-  }
-}
-
 .horizon {
   display: block;
   height: 1px;
