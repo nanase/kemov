@@ -61,10 +61,10 @@ function updateSearchQuery(e: Event) {
     </div>
     <div class="result-count" v-show="streamings != null">
       <span v-if="streamings.length === rawStreamings.length">
-        {{ `${rawStreamings.length} 件の配信または動画` }}
+        {{ `${rawStreamings.length} 件の配信` }}
       </span>
       <span v-else>
-        {{ `${rawStreamings.length} 件の配信または動画から ${streamings.length} 件 見つかりました` }}
+        {{ `${rawStreamings.length} 件の配信から ${streamings.length} 件 見つかりました` }}
       </span>
     </div>
   </div>
