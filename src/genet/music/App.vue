@@ -16,10 +16,12 @@ const streamings = ref<Streaming[]>([...rawStreamings]);
 const displayedStreamings = ref<Streaming[]>([]);
 const ItemsPerLoaded = 10;
 const infiniteId = ref<number>(0);
+const finishScore = ref<number>(0);
 const streamingSearch = new StreamingSearch();
 
 const load = async (state: StateHandler) => {
   if (displayedStreamings.value.length >= streamings.value.length) {
+    finishScore.value = Math.floor(Math.random() * 5);
     state.complete();
   } else {
     const newItems = streamings.value.slice(
@@ -76,7 +78,31 @@ function updateSearchQuery(e: Event) {
     </div>
     <InfiniteLoading :identifier="infiniteId" @infinite="load">
       <template #complete>
-        <span></span>
+        <div
+          class="finish-score"
+          style="background-image: url('/kemov/genet/score0.svg')"
+          v-if="finishScore === 0"
+        ></div>
+        <div
+          class="finish-score"
+          style="background-image: url('/kemov/genet/score1.svg')"
+          v-if="finishScore === 1"
+        ></div>
+        <div
+          class="finish-score"
+          style="background-image: url('/kemov/genet/score2.svg')"
+          v-if="finishScore === 2"
+        ></div>
+        <div
+          class="finish-score"
+          style="background-image: url('/kemov/genet/score3.svg')"
+          v-if="finishScore === 3"
+        ></div>
+        <div
+          class="finish-score"
+          style="background-image: url('/kemov/genet/score4.svg')"
+          v-if="finishScore === 4"
+        ></div>
       </template>
     </InfiniteLoading>
   </div>
@@ -114,7 +140,7 @@ function updateSearchQuery(e: Event) {
 
   @include media.size(sm) {
     width: 100%;
-    padding: 0;
+    padding: 15px 0;
   }
 }
 
@@ -136,6 +162,19 @@ function updateSearchQuery(e: Event) {
 
   .result-count {
     margin-top: 1em;
+  }
+}
+
+.finish-score {
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: contain;
+  width: 100%;
+  height: 80px;
+  margin: 80px 0 50px;
+
+  @include media.size(md) {
+    height: 66px;
   }
 }
 </style>
