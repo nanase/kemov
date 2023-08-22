@@ -1,7 +1,7 @@
 import type { Streaming } from '@/types/genet';
 import { escapeRegex } from '@/lib/string';
 
-const conversionTable = [
+const conversionTable: [string, string][] = [
   ['バ', 'ヴァ'],
   ['ビ', 'ヴィ'],
   ['ブ', 'ヴ'],
