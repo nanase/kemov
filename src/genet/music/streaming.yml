@@ -1,4 +1,31 @@
 - video:
+    id: TKqtotAHf5M
+    type: live
+    publishedAt: 2023/08/22 12:00
+  name: '【雑談】ジェネットの友達探し！～初見さんいらっしゃい～＃12'
+  shortname: 'ジェネットの友達探し！～初見さんいらっしゃい～＃12'
+  categories: ['雑談配信', 'ジェネットの友達探し']
+  tunes:
+    - title: '[3つのヴァイオリンと通奏低音のためのカノンとジーグ ニ長調](wiki:カノン_(パッヘルベル)) より「[カノン](wiki:カノン_(パッヘルベル)#カノン)」'
+      originalTitle: 'Kanon und Gigue für drei Violinen und Basso Continuo, P.37, No.1 Kanon'
+      attributes:
+        - name: 作曲
+          text: '[ヨハン・パッヘルベル](wiki:ヨハン・パッヘルベル)'
+      references:
+        - link: https://imslp.org/wiki/Canon_and_Gigue_in_D_major,_P.37_(Pachelbel,_Johann)
+          title: 'Canon and Gigue in D major, P.37 (Pachelbel, Johann)'
+      description: '[ヴァイオリン演奏](yt:TKqtotAHf5M?t=312)として'
+    - title: '[愛の挨拶](wiki:愛の挨拶) 作品12'
+      originalTitle: "Salut d'amour, Op.12"
+      attributes:
+        - name: 作曲
+          text: '[エドワード・エルガー](wiki:エドワード・エルガー)'
+      references:
+        - link: https://imslp.org/wiki/Salut_d%27Amour,_Op.12_(Elgar,_Edward)
+          title: "Salut d'amour, Op.12 (Elgar, Edward)"
+      description: '[ヴァイオリン演奏](yt:TKqtotAHf5M?t=405)として'
+
+- video:
     id: 87eE9y0QsHs
     type: live
     publishedAt: 2023/08/06 22:00
