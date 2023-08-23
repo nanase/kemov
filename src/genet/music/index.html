@@ -24,12 +24,12 @@
   <div id="app"></div>
   <script type="module">
     import { createApp } from 'vue';
-    import App from './App.vue';
+    import MusicApp from './MusicApp.vue';
     import './main.scss';
     import 'floating-vue/dist/style.css';
     import { VTooltip } from 'floating-vue';
 
-    const app = createApp(App);
+    const app = createApp(MusicApp);
     app.directive('tooltip', VTooltip)
     app.mount('#app');
   </script>
