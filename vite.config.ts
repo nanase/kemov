@@ -34,7 +34,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         stats: resolve(root, 'stats', 'index.html'),
-        // genetMusic: resolve(root, 'genet', 'music', 'index.html'),
+        genetMusic: resolve(root, 'genet', 'music', 'index.html'),
       },
     },
     emptyOutDir: true,
