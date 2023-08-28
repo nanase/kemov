@@ -6,6 +6,8 @@ import StreamingList from '@/components/genet/StreamingList.vue';
 const filterQuery = ref<string>('');
 const totalStreamingCount = ref<number>(0);
 const matchedStreamingCount = ref<number>(0);
+const streamingLoaded = ref<boolean>(false);
+const streamingLoadFailed = ref<boolean>(false);
 
 function updateSearchQuery(e: Event) {
   if (!(e.target instanceof HTMLInputElement)) return;
@@ -16,6 +18,11 @@ function updateSearchQuery(e: Event) {
 function onUpdateFilter(total: number, matched: number) {
   totalStreamingCount.value = total;
   matchedStreamingCount.value = matched;
+}
+
+function onLoadStateChanged(loaded: boolean, errorOccurred: boolean) {
+  streamingLoaded.value = loaded;
+  streamingLoadFailed.value = errorOccurred;
 }
 </script>
 
@@ -33,7 +40,9 @@ function onUpdateFilter(total: number, matched: number) {
         />
       </div>
       <div class="result-count" v-show="filterQuery != null">
-        <span v-if="matchedStreamingCount === totalStreamingCount">
+        <span v-if="streamingLoadFailed">配信情報を取得できませんでした。時間を置いてリロードしてください</span>
+        <span v-else-if="!streamingLoaded"> 配信情報を読み込んでいます... </span>
+        <span v-else-if="matchedStreamingCount === totalStreamingCount">
           {{ `${totalStreamingCount} 件の配信` }}
         </span>
         <span v-else>
@@ -42,8 +51,12 @@ function onUpdateFilter(total: number, matched: number) {
       </div>
     </div>
     <Suspense>
-      <StreamingList :filterQuery="filterQuery" @updateFilter="onUpdateFilter"></StreamingList>
-      <template #fallback>読み込んでいます...</template>
+      <StreamingList
+        :filterQuery="filterQuery"
+        @updateFilter="onUpdateFilter"
+        @loadStateChanged="onLoadStateChanged"
+      ></StreamingList>
+      <!-- <template #fallback>読み込んでいます...</template> -->
     </Suspense>
   </div>
 </template>

@@ -14,15 +14,18 @@ const { filterQuery } = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  loadStateChanged: [loaded: boolean, errorOccurred: boolean];
   updateFilter: [total: number, matched: number];
 }>();
+
+emit('loadStateChanged', false, false);
 
 const rawStreamings = loadYaml(
   await (async function () {
     if (import.meta.env.VITE_GENET_MUSIC_LIST_SUB_URL) {
       try {
         const responce = await axios.get<string>(import.meta.env.VITE_GENET_MUSIC_LIST_SUB_URL);
-        console.info('This is development build. Fetched from sub url');
+        console.info('This is development build. Fetched from sub url.');
 
         return responce.data;
       } catch (error) {
@@ -34,7 +37,12 @@ const rawStreamings = loadYaml(
       }
     }
 
-    return (await axios.get<string>(import.meta.env.VITE_GENET_MUSIC_LIST_URL)).data;
+    try {
+      return (await axios.get<string>(import.meta.env.VITE_GENET_MUSIC_LIST_URL)).data;
+    } catch (error) {
+      emit('loadStateChanged', false, true);
+      throw error;
+    }
   })(),
 ) as Streaming[];
 
@@ -46,6 +54,7 @@ const finishScore = ref<number>(0);
 const streamingSearch = new StreamingSearch();
 
 emit('updateFilter', rawStreamings.length, rawStreamings.length);
+emit('loadStateChanged', true, false);
 
 const load = async (state: StateHandler) => {
   if (displayedStreamings.value.length >= streamings.value.length) {
