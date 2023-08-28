@@ -22,18 +22,16 @@ emit('loadStateChanged', false, false);
 
 const rawStreamings = loadYaml(
   await (async function () {
-    if (import.meta.env.VITE_GENET_MUSIC_LIST_SUB_URL) {
+    if (import.meta.env.DEV && import.meta.env.VITE_GENET_MUSIC_LIST_SUB_URL) {
       try {
         const responce = await axios.get<string>(import.meta.env.VITE_GENET_MUSIC_LIST_SUB_URL);
         console.info('This is development build. Fetched from sub url.');
 
         return responce.data;
       } catch (error) {
-        if (import.meta.env.DEV) {
-          console.info(
-            `This is development build. Try to fetch from sub url, but fetching was failed caused by ${error}`,
-          );
-        }
+        console.info(
+          `This is development build. Try to fetch from sub url, but fetching was failed caused by ${error}`,
+        );
       }
     }
 
