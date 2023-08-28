@@ -100,15 +100,6 @@ watch(
       <div class="finish-score" style="background-image: url('/kemov/genet/score2.svg')" v-if="finishScore === 2"></div>
       <div class="finish-score" style="background-image: url('/kemov/genet/score3.svg')" v-if="finishScore === 3"></div>
       <div class="finish-score" style="background-image: url('/kemov/genet/score4.svg')" v-if="finishScore === 4"></div>
-      <div class="horizon"></div>
-      <div class="note">
-        <ul>
-          <li>
-            このサイトは非公式です。お問い合わせは
-            <a href="https://github.com/nanase/kemov/issues" target="_blank">issue</a> までご連絡ください。
-          </li>
-        </ul>
-      </div>
     </template>
   </InfiniteLoading>
 </template>
