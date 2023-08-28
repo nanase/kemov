@@ -57,13 +57,12 @@ function onLoadStateChanged(loaded: boolean, errorOccurred: boolean) {
           @updateFilter="onUpdateFilter"
           @loadStateChanged="onLoadStateChanged"
         ></StreamingList>
-        <!-- <template #fallback>読み込んでいます...</template> -->
       </Suspense>
       <div class="horizon"></div>
       <div class="note">
         <ul>
           <li>
-            このサイトは非公式です。お問い合わせは
+            このサイトはファンによる非公式サイトです。お問い合わせは
             <a href="https://github.com/nanase/kemov/issues" target="_blank">issue</a> までご連絡ください。
           </li>
         </ul>
