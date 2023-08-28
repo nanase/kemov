@@ -96,27 +96,27 @@ watch(
       <template #complete>
         <div
           class="finish-score"
-          style="background-image: url('/kemov/genet/score0.svg')"
+          style="background-image: url('@public/genet/music/score0.svg')"
           v-if="finishScore === 0"
         ></div>
         <div
           class="finish-score"
-          style="background-image: url('/kemov/genet/score1.svg')"
+          style="background-image: url('@public/genet/music/score1.svg')"
           v-if="finishScore === 1"
         ></div>
         <div
           class="finish-score"
-          style="background-image: url('/kemov/genet/score2.svg')"
+          style="background-image: url('@public/genet/music/score2.svg')"
           v-if="finishScore === 2"
         ></div>
         <div
           class="finish-score"
-          style="background-image: url('/kemov/genet/score3.svg')"
+          style="background-image: url('@public/genet/music/score3.svg')"
           v-if="finishScore === 3"
         ></div>
         <div
           class="finish-score"
-          style="background-image: url('/kemov/genet/score4.svg')"
+          style="background-image: url('@public/genet/music/score4.svg')"
           v-if="finishScore === 4"
         ></div>
       </template>
