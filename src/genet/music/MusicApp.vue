@@ -50,22 +50,24 @@ function onLoadStateChanged(loaded: boolean, errorOccurred: boolean) {
         </span>
       </div>
     </div>
-    <Suspense>
-      <StreamingList
-        :filterQuery="filterQuery"
-        @updateFilter="onUpdateFilter"
-        @loadStateChanged="onLoadStateChanged"
-      ></StreamingList>
-      <!-- <template #fallback>読み込んでいます...</template> -->
-    </Suspense>
-    <div class="horizon"></div>
-    <div class="note">
-      <ul>
-        <li>
-          このサイトは非公式です。お問い合わせは
-          <a href="https://github.com/nanase/kemov/issues" target="_blank">issue</a> までご連絡ください。
-        </li>
-      </ul>
+    <div class="content">
+      <Suspense>
+        <StreamingList
+          :filterQuery="filterQuery"
+          @updateFilter="onUpdateFilter"
+          @loadStateChanged="onLoadStateChanged"
+        ></StreamingList>
+        <!-- <template #fallback>読み込んでいます...</template> -->
+      </Suspense>
+      <div class="horizon"></div>
+      <div class="note">
+        <ul>
+          <li>
+            このサイトは非公式です。お問い合わせは
+            <a href="https://github.com/nanase/kemov/issues" target="_blank">issue</a> までご連絡ください。
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
 </template>
@@ -108,16 +110,24 @@ function onLoadStateChanged(loaded: boolean, errorOccurred: boolean) {
     }
   }
 
-  .finish-score {
-    background-repeat: no-repeat;
-    background-position: center center;
-    background-size: contain;
-    width: 100%;
-    height: 80px;
-    margin: 80px 0 50px;
+  .content {
+    width: 85%;
+    margin: 20px auto;
+    padding: 15px 35px;
+    border-radius: 10px;
+    background-color: white;
+
+    @include media.size(lg) {
+      width: 815px;
+    }
 
     @include media.size(md) {
-      height: 66px;
+      width: 85%;
+    }
+
+    @include media.size(sm) {
+      width: 100%;
+      padding: 15px 0;
     }
   }
 }

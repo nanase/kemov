@@ -92,50 +92,52 @@ watch(
     <TransitionGroup name="streaming-item">
       <StreamingItem v-for="streaming in displayedStreamings" :key="streaming.video.id" :data="streaming" />
     </TransitionGroup>
+    <InfiniteLoading :identifier="infiniteId" @infinite="load">
+      <template #complete>
+        <div
+          class="finish-score"
+          style="background-image: url('/kemov/genet/score0.svg')"
+          v-if="finishScore === 0"
+        ></div>
+        <div
+          class="finish-score"
+          style="background-image: url('/kemov/genet/score1.svg')"
+          v-if="finishScore === 1"
+        ></div>
+        <div
+          class="finish-score"
+          style="background-image: url('/kemov/genet/score2.svg')"
+          v-if="finishScore === 2"
+        ></div>
+        <div
+          class="finish-score"
+          style="background-image: url('/kemov/genet/score3.svg')"
+          v-if="finishScore === 3"
+        ></div>
+        <div
+          class="finish-score"
+          style="background-image: url('/kemov/genet/score4.svg')"
+          v-if="finishScore === 4"
+        ></div>
+      </template>
+    </InfiniteLoading>
   </div>
-  <InfiniteLoading :identifier="infiniteId" @infinite="load">
-    <template #complete>
-      <div class="finish-score" style="background-image: url('/kemov/genet/score0.svg')" v-if="finishScore === 0"></div>
-      <div class="finish-score" style="background-image: url('/kemov/genet/score1.svg')" v-if="finishScore === 1"></div>
-      <div class="finish-score" style="background-image: url('/kemov/genet/score2.svg')" v-if="finishScore === 2"></div>
-      <div class="finish-score" style="background-image: url('/kemov/genet/score3.svg')" v-if="finishScore === 3"></div>
-      <div class="finish-score" style="background-image: url('/kemov/genet/score4.svg')" v-if="finishScore === 4"></div>
-    </template>
-  </InfiniteLoading>
 </template>
 
 <style lang="scss">
 @use '@/style/media';
 
 .streaming-list {
-  width: 85%;
-  margin: 20px auto;
-  padding: 15px 35px;
-  border-radius: 10px;
-  background-color: white;
-
-  @include media.size(lg) {
-    width: 815px;
-  }
-
-  @include media.size(md) {
-    width: 85%;
-  }
-
-  @include media.size(sm) {
+  .finish-score {
+    background-repeat: no-repeat;
+    background-position: center center;
+    background-size: contain;
     width: 100%;
-    padding: 15px 0;
-  }
+    height: 80px;
+    margin: 80px 0;
 
-  .streaming-item {
-    &-enter-active,
-    &-leave-active {
-      transition: opacity 0.3s ease;
-    }
-
-    &-enter-from,
-    &-leave-to {
-      opacity: 0;
+    @include media.size(md) {
+      height: 66px;
     }
   }
 }

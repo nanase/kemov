@@ -147,6 +147,16 @@ function clickWatchLinkHandler(id: string, position?: number): void {
     margin: 20px 0 40px;
   }
 
+  &-enter-active,
+  &-leave-active {
+    transition: opacity 0.3s ease;
+  }
+
+  &-enter-from,
+  &-leave-to {
+    opacity: 0;
+  }
+
   .header {
     color: #fff;
     position: relative;
