@@ -12,6 +12,7 @@ export default defineConfig({
   root,
   base: '/kemov/',
   publicDir: '../public',
+  envDir: '../',
   plugins: [
     vue({
       script: {
