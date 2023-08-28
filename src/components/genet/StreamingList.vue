@@ -92,31 +92,11 @@ watch(
     </TransitionGroup>
     <InfiniteLoading :identifier="infiniteId" @infinite="load">
       <template #complete>
-        <div
-          class="finish-score"
-          style="background-image: url('@public/genet/music/score0.svg')"
-          v-if="finishScore === 0"
-        ></div>
-        <div
-          class="finish-score"
-          style="background-image: url('@public/genet/music/score1.svg')"
-          v-if="finishScore === 1"
-        ></div>
-        <div
-          class="finish-score"
-          style="background-image: url('@public/genet/music/score2.svg')"
-          v-if="finishScore === 2"
-        ></div>
-        <div
-          class="finish-score"
-          style="background-image: url('@public/genet/music/score3.svg')"
-          v-if="finishScore === 3"
-        ></div>
-        <div
-          class="finish-score"
-          style="background-image: url('@public/genet/music/score4.svg')"
-          v-if="finishScore === 4"
-        ></div>
+        <div class="finish-score score0" v-if="finishScore === 0"></div>
+        <div class="finish-score score1" v-if="finishScore === 1"></div>
+        <div class="finish-score score2" v-if="finishScore === 2"></div>
+        <div class="finish-score score3" v-if="finishScore === 3"></div>
+        <div class="finish-score score4" v-if="finishScore === 4"></div>
       </template>
     </InfiniteLoading>
   </div>
@@ -136,6 +116,26 @@ watch(
 
     @include media.size(md) {
       height: 66px;
+    }
+
+    &.score0 {
+      background-image: url('/genet/music/score0.svg');
+    }
+
+    &.score1 {
+      background-image: url('/genet/music/score1.svg');
+    }
+
+    &.score2 {
+      background-image: url('/genet/music/score2.svg');
+    }
+
+    &.score3 {
+      background-image: url('/genet/music/score3.svg');
+    }
+
+    &.score4 {
+      background-image: url('/genet/music/score4.svg');
     }
   }
 }

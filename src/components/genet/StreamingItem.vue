@@ -268,7 +268,7 @@ function clickWatchLinkHandler(id: string, position?: number): void {
     margin-bottom: 10px;
     list-style: none;
     padding: 0 10px 0 25px;
-    background-image: url('@public/genet/music/note.svg');
+    background-image: url('/genet/music/note.svg');
     background-repeat: no-repeat;
     background-position: 2px 6px;
     background-size: 12px;
@@ -372,12 +372,12 @@ function clickWatchLinkHandler(id: string, position?: number): void {
 
     &.video {
       filter: saturate(20%) brightness(2);
-      background-image: url('@public/genet/music/video.svg');
+      background-image: url('/genet/music/video.svg');
     }
 
     &.reference {
       filter: saturate(20%) brightness(5);
-      background-image: url('@public/genet/music/imslp.svg');
+      background-image: url('/genet/music/imslp.svg');
     }
 
     &:hover {
