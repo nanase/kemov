@@ -40,7 +40,7 @@ export class StreamingSearch {
   public search(rawStreamings: Streaming[], queryText: string): Streaming[] {
     this.initialize();
 
-    return queryText.split(' ').reduce((streamings, query) => {
+    return queryText.split(/\s/).reduce((streamings, query) => {
       const escapedQuery = this.convertWord(escapeRegex(query));
       const regex = new RegExp(escapedQuery, 'i');
 
