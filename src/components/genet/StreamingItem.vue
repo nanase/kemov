@@ -256,12 +256,6 @@ function clickWatchLinkHandler(id: string, position?: number): void {
       padding-inline-start: 0;
       margin-block: 0.5em;
     }
-
-    a,
-    a:visited,
-    a:hover {
-      color: inherit;
-    }
   }
 
   .tune {

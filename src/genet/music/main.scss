@@ -32,6 +32,12 @@ body {
       }
 }
 
+a,
+a:visited,
+a:hover {
+  color: inherit;
+}
+
 .horizon {
   display: block;
   height: 1px;
