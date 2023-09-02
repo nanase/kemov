@@ -104,9 +104,11 @@ watch(
 
 .streaming-list {
   .finish-score {
-    width: 100%;
+    width: calc(100% - 80px);
+    max-width: 400px;
     height: 80px;
-    margin: 80px 0;
+    margin: 40px auto;
+    padding: 40px 0;
 
     @include media.size(md) {
       height: 66px;
