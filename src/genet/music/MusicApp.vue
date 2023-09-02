@@ -103,7 +103,7 @@ function onLoadStateChanged(loaded: boolean, errorOccurred: boolean) {
 
     @include media.size(sm) {
       width: 100%;
-      padding: 15px 0;
+      padding: 0;
     }
 
     .input {
@@ -137,7 +137,8 @@ function onLoadStateChanged(loaded: boolean, errorOccurred: boolean) {
 
     @include media.size(sm) {
       width: 100%;
-      padding: 15px 0;
+      padding: 0 0 15px;
+      border-radius: 0;
     }
   }
 }

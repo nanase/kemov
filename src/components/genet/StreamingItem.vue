@@ -268,7 +268,7 @@ function clickWatchLinkHandler(id: string, position?: number): void {
     background-size: 12px;
 
     @include media.size(sm) {
-      padding: 0 16px 0 24px;
+      padding: 0 8px 0 24px;
       background-position: 0 4px;
     }
   }
@@ -284,12 +284,20 @@ function clickWatchLinkHandler(id: string, position?: number): void {
       display: block;
       font-weight: bold;
       word-break: break-all;
+
+      @include media.size(md) {
+        word-break: inherit;
+      }
     }
 
     .title {
       margin-right: 0.5em;
       word-break: keep-all;
       display: block;
+
+      @include media.size(md) {
+        word-break: inherit;
+      }
     }
 
     .original-title {
@@ -299,6 +307,10 @@ function clickWatchLinkHandler(id: string, position?: number): void {
       word-break: keep-all;
       display: block;
       margin-bottom: 0.3em;
+
+      @include media.size(md) {
+        word-break: inherit;
+      }
     }
 
     .attribute {
@@ -377,6 +389,12 @@ function clickWatchLinkHandler(id: string, position?: number): void {
     &:hover {
       background-size: 175%;
       filter: saturate(100%) brightness(1);
+    }
+
+    @include media.size(sm) {
+      width: 30px;
+      height: 30px;
+      margin: 0 3px;
     }
   }
 
