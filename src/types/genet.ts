@@ -21,6 +21,7 @@ export interface EmbeddedVideo extends VideoBase {
 export interface TuneAttribute {
   name: string;
   text: Markdown;
+  noSeparator?: boolean;
 }
 
 export interface TuneReference {

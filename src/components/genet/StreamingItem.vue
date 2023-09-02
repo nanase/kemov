@@ -92,8 +92,8 @@ function clickWatchLinkHandler(id: string, position?: number): void {
                 <MarkDown class="original-title" v-if="tune.originalTitle != null" :source="tune.originalTitle" />
               </div>
               <span class="attribute" v-for="attribute in tune.attributes" :key="attribute.name">
-                <span>{{ attribute.name }}: </span>
-                <MarkDown :source="attribute.text" />
+                <span v-if="!attribute.noSeparator">{{ attribute.name }}: </span>
+                <MarkDown :source="(attribute.noSeparator ? attribute.name : '') + attribute.text" />
               </span>
               <MarkDown
                 class="description"
