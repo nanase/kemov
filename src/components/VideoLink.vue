@@ -11,19 +11,19 @@ const { video, title } = defineProps<{
   title?: string;
 }>();
 
-const thumbnailUrlCss = computed(() => `url('${getThumbnailURL(video.id, { size: 'hq' })}')`);
+const thumbnailUrl = computed(() => `url('${getThumbnailURL(video.id, { size: 'hq' })}')`);
 </script>
 
 <template>
-  <a class="video-link" :href="getWatchURL(video.id)" target="_blank" :title="video.title ?? title ?? '配信を見る'">
+  <a
+    class="video-link"
+    :href="getWatchURL(video.id)"
+    target="_blank"
+    :title="video.title ?? title ?? '配信を見る'"
+    :style="{ backgroundImage: thumbnailUrl }"
+  >
   </a>
 </template>
-
-<style lang="scss" scoped>
-.video-link {
-  background-image: v-bind('thumbnailUrlCss');
-}
-</style>
 
 <style lang="scss">
 .video-link {
