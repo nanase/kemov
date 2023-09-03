@@ -7,6 +7,12 @@ const conversionTable: [string, string][] = [
   ['ブ', 'ヴ'],
   ['ベ', 'ヴェ'],
   ['ボ', 'ヴォ'],
+  ['ア', 'ァ'],
+  ['イ', 'ィ'],
+  ['ウ', 'ゥ'],
+  ['エ', 'ェ'],
+  ['オ', 'ォ'],
+  ['ツ', 'ッ'],
 ];
 
 export class StreamingSearch {
