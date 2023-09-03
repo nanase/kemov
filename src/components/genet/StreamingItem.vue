@@ -4,7 +4,7 @@ import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 import { JST, toDateTimeText } from '@/lib/date';
 import VideoLink from '@/components/VideoLink.vue';
 import VideoEmbed from '@/components/VideoEmbed.vue';
-import MarkDown from '@/components/MarkDown.vue';
+import MarkDown from '@/components/genet/MarkDown.vue';
 import StreamingItemVerifier from '@/components/genet/StreamingItemVerifier.vue';
 import { computed, ref } from 'vue';
 
