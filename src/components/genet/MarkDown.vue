@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed } from 'vue';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { unescapeHtml } from '@/lib/string';
 
 const { source } = defineProps<{
   /**
@@ -14,13 +15,9 @@ const emit = defineEmits<{
   clickWatchLink: [url: string, position?: number];
 }>();
 
-marked.setOptions({
-  mangle: false,
-  headerIds: false,
-  gfm: true,
-});
+function exposeUrl(input: string): string {
+  const url = new URL(input);
 
-function exposeUrl(url: URL): string {
   switch (url.protocol) {
     case 'wikien:': {
       return `https://en.wikipedia.org/wiki/${url.pathname}${url.hash}${url.search}`;
@@ -38,64 +35,50 @@ function exposeUrl(url: URL): string {
   }
 }
 
-marked.use({
-  renderer: {
-    link(href: string, title: string, text: string) {
-      const url = new URL(href);
-      href = exposeUrl(url);
-
-      if (href === null) {
-        return text;
-      }
-
-      let out = `<a target="_blank" href="${href}"`;
-
-      if (title) {
-        out += ` title="${title}"`;
-      }
-
-      out += `>${text}</a>`;
-
-      if (url.protocol === 'yt:') {
-        const id = url.pathname;
-        const position = url.searchParams.get('t');
-        out += `<button class="yt-link" data-id="${id}" data-position="${position}"></button>`;
-      }
-
-      return out;
-    },
-    paragraph(text: string) {
-      return text;
-    },
-  },
-});
-
-const markdown = computed(() => {
+const tokensList = computed(() => {
   const tokens = marked.lexer(source);
-  const parsedMarkdown = marked.parser(tokens);
-  return DOMPurify.sanitize(parsedMarkdown, {
-    ADD_ATTR: ['target'],
-  });
-});
 
-onMounted(() => {
-  if (container.value) {
-    for (let button of container.value.getElementsByClassName('yt-link')) {
-      button.addEventListener('click', function (this: Element) {
-        const id = this.getAttribute('data-id');
-        const position = Number(this.getAttribute('data-position'));
-
-        if (id) {
-          emit('clickWatchLink', id, position);
-        }
-      });
-    }
+  if (tokens.length === 1 && tokens[0].type === 'paragraph') {
+    return tokens[0].tokens;
   }
+
+  return tokens;
 });
 
-const container = ref<HTMLElement>();
+function getProtocol(input: string): string {
+  return new URL(input).protocol;
+}
+
+function getYouTubeId(input: string): string {
+  return new URL(input).pathname;
+}
+
+function getYouTubePosition(input: string): number {
+  return Number(new URL(input).searchParams.get('t') ?? '0');
+}
 </script>
 
 <template>
-  <span class="markdown" ref="container" v-html="markdown"></span>
+  <span class="markdown">
+    <span v-for="token in tokensList" :key="token.raw">
+      <span v-if="token.type === 'text'">{{ unescapeHtml(token.text) }}</span>
+      <span v-else-if="token.type === 'link'">
+        <a :href="exposeUrl(token.href)" :title="token.title" target="_blank">
+          <MarkDown :source="token.text" />
+        </a>
+        <button
+          class="yt-link"
+          v-if="getProtocol(token.href) === 'yt:'"
+          @click="emit('clickWatchLink', getYouTubeId(token.href), getYouTubePosition(token.href))"
+        ></button>
+      </span>
+      <strong v-else-if="token.type === 'strong'"><MarkDown :source="token.text" /></strong>
+      <em v-else-if="token.type === 'em'"><MarkDown :source="token.text" /></em>
+      <span v-else-if="token.type === 'escape'">{{ token.text }}</span>
+      <code v-else-if="token.type === 'codespan'">{{ unescapeHtml(token.text) }}</code>
+      <span v-else-if="token.type === 'html'" v-html="DOMPurify.sanitize(token.raw)"></span>
+      <img v-else-if="token.type === 'image'" :src="token.href" :title="token.title" />
+      <br v-else-if="token.type === 'br'" />
+    </span>
+  </span>
 </template>
