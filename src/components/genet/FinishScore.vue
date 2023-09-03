@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 
 const MaxScore = 5;
 const finishScore = ref<number>(0);
-const urlCss = computed(() => `url('${getImageUrl(finishScore.value)}')`);
+const imageUrl = computed(() => `url('${getImageUrl(finishScore.value)}')`);
 
 function getImageUrl(index: number) {
   // return new URL(`/genet/music/score${index}.svg`, import.meta.url).href;
@@ -23,14 +23,8 @@ onMounted(updateScore);
 </script>
 
 <template>
-  <div class="finish-score"></div>
+  <div class="finish-score" :style="{ backgroundImage: imageUrl }"></div>
 </template>
-
-<style lang="scss" scoped>
-.finish-score {
-  background-image: v-bind('urlCss');
-}
-</style>
 
 <style lang="scss">
 .finish-score {
