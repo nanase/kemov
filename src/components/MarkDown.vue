@@ -64,14 +64,19 @@ marked.use({
 
       return out;
     },
+    paragraph(text: string) {
+      return text;
+    },
   },
 });
 
-const markdown = computed(() =>
-  DOMPurify.sanitize(marked.parseInline(source), {
+const markdown = computed(() => {
+  const tokens = marked.lexer(source);
+  const parsedMarkdown = marked.parser(tokens);
+  return DOMPurify.sanitize(parsedMarkdown, {
     ADD_ATTR: ['target'],
-  }),
-);
+  });
+});
 
 onMounted(() => {
   if (container.value) {
