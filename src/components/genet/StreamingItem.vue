@@ -88,7 +88,7 @@ function clickWatchLinkHandler(id: string, position?: number): void {
           <div class="tune-flex">
             <div class="tune-box">
               <div class="title-box">
-                <MarkDown class="title" :source="tune.title" :inline="true" />
+                <MarkDown class="title" :source="tune.title" />
                 <MarkDown class="original-title" v-if="tune.originalTitle != null" :source="tune.originalTitle" />
               </div>
               <span class="attribute" v-for="attribute in tune.attributes" :key="attribute.name">

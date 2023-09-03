@@ -3,13 +3,11 @@ import { computed, onMounted, ref } from 'vue';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
-const { source, inline = true } = defineProps<{
+const { source } = defineProps<{
   /**
    * The source of Markdown text.
    */
   source: string;
-
-  inline?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -70,7 +68,7 @@ marked.use({
 });
 
 const markdown = computed(() =>
-  DOMPurify.sanitize(inline ? marked.parseInline(source) : marked.parse(source), {
+  DOMPurify.sanitize(marked.parseInline(source), {
     ADD_ATTR: ['target'],
   }),
 );
@@ -94,6 +92,5 @@ const container = ref<HTMLElement>();
 </script>
 
 <template>
-  <span class="markdown" ref="container" v-html="markdown" v-if="inline"></span>
-  <div class="markdown" ref="container" v-html="markdown" v-else></div>
+  <span class="markdown" ref="container" v-html="markdown"></span>
 </template>
