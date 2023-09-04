@@ -76,9 +76,9 @@ function getYouTubePosition(input: string): number {
       <em v-else-if="token.type === 'em'"><MarkDown :source="token.text" /></em>
       <span v-else-if="token.type === 'escape'">{{ token.text }}</span>
       <code v-else-if="token.type === 'codespan'">{{ unescapeHtml(token.text) }}</code>
-      <span v-else-if="token.type === 'html'" v-html="DOMPurify.sanitize(token.raw)"></span>
       <img v-else-if="token.type === 'image'" :src="token.href" :title="token.title" />
       <br v-else-if="token.type === 'br'" />
+      <div v-else v-html="DOMPurify.sanitize(marked(token.raw))"></div>
     </span>
   </span>
 </template>
