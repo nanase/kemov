@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { unescapeHtml } from '@/lib/string';
+import WatchButton from './WatchButton.vue';
 
 const { source } = defineProps<{
   /**
@@ -12,7 +13,7 @@ const { source } = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  clickWatchLink: [url: string, position?: number];
+  clickWatchButton: [url: string, position?: number];
 }>();
 
 function exposeUrl(input: string): string {
@@ -44,18 +45,6 @@ const tokensList = computed(() => {
 
   return tokens;
 });
-
-function getProtocol(input: string): string {
-  return new URL(input).protocol;
-}
-
-function getYouTubeId(input: string): string {
-  return new URL(input).pathname;
-}
-
-function getYouTubePosition(input: string): number {
-  return Number(new URL(input).searchParams.get('t') ?? '0');
-}
 </script>
 
 <template>
@@ -66,11 +55,10 @@ function getYouTubePosition(input: string): number {
         <a :href="exposeUrl(token.href)" :title="token.title" target="_blank">
           <MarkDown :source="token.text" />
         </a>
-        <button
-          class="yt-link"
-          v-if="getProtocol(token.href) === 'yt:'"
-          @click="emit('clickWatchLink', getYouTubeId(token.href), getYouTubePosition(token.href))"
-        ></button>
+        <WatchButton
+          :url="token.href"
+          @click-watch-button="(url, position) => emit('clickWatchButton', url, position)"
+        />
       </span>
       <strong v-else-if="token.type === 'strong'"><MarkDown :source="token.text" /></strong>
       <em v-else-if="token.type === 'em'"><MarkDown :source="token.text" /></em>
