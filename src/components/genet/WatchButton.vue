@@ -21,6 +21,7 @@ const position = computed(() => Number(new URL(url).searchParams.get('t') ?? '0'
     class="watch-button"
     v-if="protocol === 'yt:'"
     @click="emit('clickWatchButton', watchPath, position)"
+    v-tooltip="'動画を視聴する'"
   ></button>
 </template>
 
