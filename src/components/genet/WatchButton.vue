@@ -1,3 +1,7 @@
+<script lang="ts">
+export type ClickWatchButton = { clickWatchButton: [url: string, position?: number] };
+</script>
+
 <script setup lang="ts">
 import { computed } from 'vue';
 
@@ -5,9 +9,7 @@ const { url } = defineProps<{
   url: string;
 }>();
 
-const emit = defineEmits<{
-  clickWatchButton: [url: string, position?: number];
-}>();
+const emit = defineEmits<ClickWatchButton>();
 
 const protocol = computed(() => new URL(url).protocol);
 const watchPath = computed(() => new URL(url).pathname);

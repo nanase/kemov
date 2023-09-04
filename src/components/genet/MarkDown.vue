@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { unescapeHtml } from '@/lib/string';
-import WatchButton from './WatchButton.vue';
+import WatchButton, { type ClickWatchButton } from './WatchButton.vue';
 
 const { source } = defineProps<{
   /**
@@ -12,9 +12,7 @@ const { source } = defineProps<{
   source: string;
 }>();
 
-const emit = defineEmits<{
-  clickWatchButton: [url: string, position?: number];
-}>();
+const emit = defineEmits<ClickWatchButton>();
 
 function exposeUrl(input: string): string {
   const url = new URL(input);
