@@ -68,9 +68,7 @@ function clickWatchButtonHandler(id: string, position?: number): void {
         </a>
       </div>
       <div class="published-at">
-        <RouterLink :to="`/${encodeURIComponent(data.video.id)}`" v-tooltip.right="'詳細ページへ'">
-          {{ `${toDateTimeText(data.video.publishedAt, JST)} ${videoTypeToString(data.video.type)}` }}
-        </RouterLink>
+        {{ `${toDateTimeText(data.video.publishedAt, JST)} ${videoTypeToString(data.video.type)}` }}
       </div>
       <div class="categories">
         <div class="category" v-for="category in data.categories" :key="category">
@@ -236,10 +234,6 @@ function clickWatchButtonHandler(id: string, position?: number): void {
     text-align: center;
     font-size: 90%;
     line-height: 200%;
-
-    a {
-      text-decoration: none;
-    }
   }
 
   .categories {
