@@ -10,13 +10,15 @@ import type { Streaming } from '@/types/genet';
 import StreamingItem from '@/components/genet/StreamingItem.vue';
 import FinishScore from './FinishScore.vue';
 
-const { filterQuery } = defineProps<{
+const { filterQuery, videoId } = defineProps<{
   filterQuery: string;
+  videoId?: string;
 }>();
 
 const emit = defineEmits<{
   loadStateChanged: [loaded: boolean, errorOccurred: boolean];
   updateFilter: [total: number, matched: number];
+  changeDetailState: [isDetailPage: boolean];
 }>();
 
 emit('loadStateChanged', false, false);
@@ -53,9 +55,26 @@ const streamingSearch = new StreamingSearch();
 const finishScore = ref<InstanceType<typeof FinishScore>>();
 
 emit('updateFilter', rawStreamings.length, rawStreamings.length);
-emit('loadStateChanged', true, false);
 
 const load = async (state: StateHandler) => {
+  if (videoId) {
+    const item = streamings.value.find((s) => s.video.id === decodeURIComponent(videoId));
+
+    if (item) {
+      displayedStreamings.value.push(item);
+      emit('loadStateChanged', true, false);
+    } else {
+      emit('loadStateChanged', true, true);
+    }
+
+    emit('changeDetailState', true);
+    finishScore.value?.updateScore();
+    state.complete();
+    return;
+  }
+
+  emit('loadStateChanged', true, false);
+
   if (displayedStreamings.value.length >= streamings.value.length) {
     state.complete();
   } else {
@@ -63,11 +82,18 @@ const load = async (state: StateHandler) => {
       displayedStreamings.value.length,
       displayedStreamings.value.length + ItemsPerLoaded,
     );
+
+    emit('changeDetailState', false);
     displayedStreamings.value.push(...newItems);
     finishScore.value?.updateScore();
     state.loading();
   }
 };
+
+function clearDisplayedStreaming() {
+  displayedStreamings.value = [];
+  infiniteId.value = infiniteId.value + 1; // force-reset the InfiniteLoading
+}
 
 watch(
   () => filterQuery,
@@ -79,11 +105,11 @@ watch(
     }
 
     emit('updateFilter', rawStreamings.length, streamings.value.length);
-
-    displayedStreamings.value = [];
-    infiniteId.value = infiniteId.value + 1; // force-reset the InfiniteLoading
+    clearDisplayedStreaming();
   },
 );
+
+watch(() => videoId, clearDisplayedStreaming);
 </script>
 
 <template>

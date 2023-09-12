@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 
-import StreamingList from '@/components/genet/StreamingList.vue';
-
 const filterQuery = ref<string>('');
 const totalStreamingCount = ref<number>(0);
 const matchedStreamingCount = ref<number>(0);
 const streamingLoaded = ref<boolean>(false);
 const streamingLoadFailed = ref<boolean>(false);
+const streamingIsDetailPage = ref<boolean>(false);
 
 function updateSearchQuery(e: Event) {
   if (!(e.target instanceof HTMLInputElement)) return;
@@ -23,6 +22,10 @@ function onUpdateFilter(total: number, matched: number) {
 function onLoadStateChanged(loaded: boolean, errorOccurred: boolean) {
   streamingLoaded.value = loaded;
   streamingLoadFailed.value = errorOccurred;
+}
+
+function onChangeDetailState(isDetailPage: boolean) {
+  streamingIsDetailPage.value = isDetailPage;
 }
 </script>
 
@@ -40,7 +43,11 @@ function onLoadStateChanged(loaded: boolean, errorOccurred: boolean) {
         />
       </div>
       <div class="result-count" v-show="filterQuery != null">
-        <span v-if="streamingLoadFailed">配信情報を取得できませんでした。時間を置いてリロードしてください</span>
+        <span v-if="streamingIsDetailPage">
+          <span v-if="streamingLoadFailed">指定された配信が見つかりませんでした。</span>
+          <RouterLink to="/">一覧に戻る</RouterLink>
+        </span>
+        <span v-else-if="streamingLoadFailed">配信情報を取得できませんでした。時間を置いてリロードしてください</span>
         <span v-else-if="!streamingLoaded"> 配信情報を読み込んでいます... </span>
         <span v-else-if="matchedStreamingCount === totalStreamingCount">
           {{ `${totalStreamingCount} 件の配信` }}
@@ -52,11 +59,12 @@ function onLoadStateChanged(loaded: boolean, errorOccurred: boolean) {
     </div>
     <div class="content">
       <Suspense>
-        <StreamingList
+        <RouterView
           :filterQuery="filterQuery"
           @updateFilter="onUpdateFilter"
           @loadStateChanged="onLoadStateChanged"
-        ></StreamingList>
+          @changeDetailState="onChangeDetailState"
+        ></RouterView>
       </Suspense>
       <div class="horizon"></div>
       <div class="note">
