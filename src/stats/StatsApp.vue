@@ -42,36 +42,36 @@ onBeforeUnmount(() => {
 <template>
   <div class="vtuber-list">
     <div class="vtuber header">
-      <div class="avatar header"></div>
-      <div class="name header"></div>
-      <div class="subscriber-count header">チャンネル登録</div>
-      <div class="view-count header">総再生回数</div>
-      <div class="video-count header">動画数</div>
+      <div class="header avatar"></div>
+      <div class="header name"></div>
+      <div class="header subscriber-count">チャンネル登録</div>
+      <div class="header view-count">総再生回数</div>
+      <div class="header video-count">動画数</div>
     </div>
     <div class="vtuber" v-for="vtuber in vtubers" :key="vtuber.id">
-      <a :href="`https://www.youtube.com/${vtuber.customUrl}`" target="_blank" :title="vtuber.name">
-        <div
-          class="avatar"
-          :style="`background-image:url('${vtuber.thumbnails.medium.url}'); border-color: ${vtuber.color.key};`"
-        ></div>
+      <a
+        class="avatar"
+        :style="`background-image:url('${vtuber.thumbnails.medium.url}'); border-color: ${vtuber.color.key};`"
+        :href="`https://www.youtube.com/${vtuber.customUrl}`"
+        target="_blank"
+        :title="vtuber.name"
+      >
       </a>
-      <div class="name">
-        <a :href="`https://www.youtube.com/${vtuber.customUrl}`" target="_blank" :title="vtuber.name">
-          {{ vtuber.name }}
-        </a>
-      </div>
+      <a class="name" :href="`https://www.youtube.com/${vtuber.customUrl}`" target="_blank" :title="vtuber.name">
+        {{ vtuber.name }}
+      </a>
       <div class="subscriber-count">{{ withCommas(vtuber.statistics.subscriberCount) }}</div>
       <div class="view-count">{{ withCommas(vtuber.statistics.viewCount) }}</div>
       <div class="video-count">{{ withCommas(vtuber.statistics.videoCount) }}</div>
     </div>
     <div class="vtuber total">
-      <div class="avatar total"></div>
-      <div class="name total">合計</div>
-      <div class="subscriber-count total">{{ withCommas(sum(vtubers, (v) => v.statistics.subscriberCount)) }}</div>
-      <div class="view-count total">{{ withCommas(sum(vtubers, (v) => v.statistics.viewCount)) }}</div>
-      <div class="video-count total">{{ withCommas(sum(vtubers, (v) => v.statistics.videoCount)) }}</div>
+      <div class="total avatar"></div>
+      <div class="total name">合計</div>
+      <div class="total subscriber-count">{{ withCommas(sum(vtubers, (v) => v.statistics.subscriberCount)) }}</div>
+      <div class="total view-count">{{ withCommas(sum(vtubers, (v) => v.statistics.viewCount)) }}</div>
+      <div class="total video-count">{{ withCommas(sum(vtubers, (v) => v.statistics.videoCount)) }}</div>
     </div>
-    <UpdateTime class="update-time" :time="fetchedTime"></UpdateTime>
+    <UpdateTime class="update-time" :time="fetchedTime" />
   </div>
 </template>
 
@@ -131,22 +131,19 @@ onBeforeUnmount(() => {
 }
 
 .name {
+  color: inherit;
   padding: 0 5px;
   flex: 2;
   font-weight: bold;
   font-size: 150%;
   font-stretch: condensed;
+  text-decoration: none;
   transition: transform 0.3s;
 
   &.total,
   &.header {
     text-align: right;
     font-size: 100%;
-  }
-
-  > a {
-    text-decoration: none;
-    color: inherit;
   }
 
   @include media.size(md) {
