@@ -59,9 +59,12 @@ function clickWatchButtonHandler(id: string, position?: number): void {
   <div class="streaming-item">
     <StreamingItemVerifier v-if="isDev" :data="data" />
     <div class="header">
-      <div class="thumbnail" v-if="!data.video.variety">
-        <VideoLink class="streaming-thumbnail" :video="data.video" :title="data.shortname ?? data.name" />
-      </div>
+      <VideoLink
+        class="streaming-thumbnail"
+        v-if="!data.video.variety"
+        :video="data.video"
+        :title="data.shortname ?? data.name"
+      />
       <div class="name">
         <a :href="data.video.variety ? data.video.id : getWatchURL(data.video.id)" target="_blank" :title="data.name">
           {{ insertBreakToName(data.shortname ?? data.name) }}
@@ -182,21 +185,10 @@ function clickWatchButtonHandler(id: string, position?: number): void {
     }
   }
 
-  .thumbnail {
-    width: 400px;
-    margin: 10px auto;
-
-    @include media.size(md) {
-      width: 320px;
-    }
-
-    @include media.size(sm) {
-      width: 240px;
-    }
-  }
-
   .streaming-thumbnail {
+    display: block;
     width: 400px;
+    margin: 10px auto 15px;
     border-radius: 5px;
     transform: scale(1);
     box-shadow: 0 0 5px rgba($color: #fff, $alpha: 80%);
