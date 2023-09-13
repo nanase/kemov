@@ -34,6 +34,10 @@ function exposeUrl(input: string): string {
   }
 }
 
+function getProtocol(href: string): string {
+  return new URL(href).protocol;
+}
+
 const tokensList = computed(() => {
   const tokens = marked.lexer(source);
 
@@ -54,6 +58,7 @@ const tokensList = computed(() => {
           <MarkDown :source="token.text" />
         </a>
         <WatchButton
+          v-if="getProtocol(token.href) === 'yt:'"
           :url="token.href"
           @click-watch-button="(url, position) => emit('clickWatchButton', url, position)"
         />
