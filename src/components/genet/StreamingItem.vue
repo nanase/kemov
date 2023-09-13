@@ -95,10 +95,12 @@ function clickWatchButtonHandler(id: string, position?: number): void {
             <MarkDown class="title" :source="tune.title" />
             <MarkDown class="original-title" v-if="tune.originalTitle != null" :source="tune.originalTitle" />
           </div>
-          <span class="attribute" v-for="attribute in tune.attributes" :key="attribute.name">
-            <MarkDown v-if="!attribute.noSeparator" :source="attribute.name + ' : '" />
-            <MarkDown :source="(attribute.noSeparator ? attribute.name : '') + attribute.text" />
-          </span>
+          <MarkDown
+            v-for="attribute in tune.attributes"
+            :key="attribute.name"
+            class="attribute"
+            :source="`${attribute.name}${attribute.noSeparator ? '' : ' : '}${attribute.text}`"
+          />
           <MarkDown
             class="description"
             :source="tune.description"
