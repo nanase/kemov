@@ -60,16 +60,19 @@ function clickWatchButtonHandler(id: string, position?: number): void {
     <StreamingItemVerifier v-if="isDev" :data="data" />
     <div class="header">
       <VideoLink
-        class="streaming-thumbnail"
+        class="video-thumbnail"
         v-if="!data.video.variety"
         :video="data.video"
         :title="data.shortname ?? data.name"
       />
-      <div class="name">
-        <a :href="data.video.variety ? data.video.id : getWatchURL(data.video.id)" target="_blank" :title="data.name">
-          {{ insertBreakToName(data.shortname ?? data.name) }}
-        </a>
-      </div>
+      <a
+        class="video-name"
+        :href="data.video.variety ? data.video.id : getWatchURL(data.video.id)"
+        target="_blank"
+        :title="data.name"
+      >
+        {{ insertBreakToName(data.shortname ?? data.name) }}
+      </a>
       <div class="published-at">
         {{ `${toDateTimeText(data.video.publishedAt, JST)} ${videoTypeToString(data.video.type)}` }}
       </div>
@@ -185,7 +188,7 @@ function clickWatchButtonHandler(id: string, position?: number): void {
     }
   }
 
-  .streaming-thumbnail {
+  .video-thumbnail {
     display: block;
     width: 400px;
     margin: 10px auto 15px;
@@ -210,16 +213,14 @@ function clickWatchButtonHandler(id: string, position?: number): void {
     }
   }
 
-  .name {
+  .video-name {
+    display: block;
     font-weight: bold;
     font-size: 125%;
     text-align: center;
     white-space: pre-line;
-
-    a {
-      color: #fff;
-      text-decoration: none;
-    }
+    color: #fff;
+    text-decoration: none;
   }
 
   .published-at {
