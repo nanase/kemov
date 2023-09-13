@@ -51,9 +51,9 @@ const tokensList = computed(() => {
 
 <template>
   <span class="markdown">
-    <span v-for="token in tokensList" :key="token.raw">
-      <span v-if="token.type === 'text'">{{ unescapeHtml(token.text) }}</span>
-      <span v-else-if="token.type === 'link'">
+    <template v-for="token in tokensList" :key="token.raw">
+      <template v-if="token.type === 'text'">{{ unescapeHtml(token.text) }}</template>
+      <template v-else-if="token.type === 'link'">
         <a :href="exposeUrl(token.href)" :title="token.title" target="_blank">
           <MarkDown :source="token.text" />
         </a>
@@ -62,14 +62,14 @@ const tokensList = computed(() => {
           :url="token.href"
           @click-watch-button="(url, position) => emit('clickWatchButton', url, position)"
         />
-      </span>
+      </template>
       <strong v-else-if="token.type === 'strong'"><MarkDown :source="token.text" /></strong>
       <em v-else-if="token.type === 'em'"><MarkDown :source="token.text" /></em>
-      <span v-else-if="token.type === 'escape'">{{ token.text }}</span>
+      <template v-else-if="token.type === 'escape'">{{ token.text }}</template>
       <code v-else-if="token.type === 'codespan'">{{ unescapeHtml(token.text) }}</code>
       <img v-else-if="token.type === 'image'" :src="token.href" :title="token.title" />
       <br v-else-if="token.type === 'br'" />
       <div v-else v-html="DOMPurify.sanitize(marked(token.raw))"></div>
-    </span>
+    </template>
   </span>
 </template>
