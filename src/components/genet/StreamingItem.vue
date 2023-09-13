@@ -91,41 +91,39 @@ function clickWatchButtonHandler(id: string, position?: number): void {
     <div class="tunes">
       <ul>
         <li class="tune" v-for="tune in data.tunes" :key="tune.title">
-          <div class="tune-flex">
-            <div class="tune-box">
-              <div class="title-box">
-                <MarkDown class="title" :source="tune.title" />
-                <MarkDown class="original-title" v-if="tune.originalTitle != null" :source="tune.originalTitle" />
-              </div>
-              <span class="attribute" v-for="attribute in tune.attributes" :key="attribute.name">
-                <MarkDown v-if="!attribute.noSeparator" :source="attribute.name + ' : '" />
-                <MarkDown :source="(attribute.noSeparator ? attribute.name : '') + attribute.text" />
-              </span>
-              <MarkDown
-                class="description"
-                :source="tune.description"
-                v-if="tune.description"
-                @clickWatchButton="clickWatchButtonHandler"
-              />
+          <div class="tune-content">
+            <div class="tune-title">
+              <MarkDown class="title" :source="tune.title" />
+              <MarkDown class="original-title" v-if="tune.originalTitle != null" :source="tune.originalTitle" />
             </div>
-            <div
-              class="media-button video"
-              v-for="video in tune.videos"
-              :key="video.id"
-              @click="setEmbedVideo(data.video, video)"
-              v-tooltip.auto-end="video.description ? `動画を視聴する: ${video.description}` : '動画を視聴する'"
-            ></div>
-            <a
-              class="media-button reference"
-              v-for="reference in tune.references"
-              :key="reference.link"
-              :href="reference.link"
-              :alt="reference.title"
-              target="_blank"
-              v-tooltip.auto-end="`IMSLPへのリンク: ${reference.title}`"
-            >
-            </a>
+            <span class="attribute" v-for="attribute in tune.attributes" :key="attribute.name">
+              <MarkDown v-if="!attribute.noSeparator" :source="attribute.name + ' : '" />
+              <MarkDown :source="(attribute.noSeparator ? attribute.name : '') + attribute.text" />
+            </span>
+            <MarkDown
+              class="description"
+              :source="tune.description"
+              v-if="tune.description"
+              @clickWatchButton="clickWatchButtonHandler"
+            />
           </div>
+          <div
+            class="media-button video"
+            v-for="video in tune.videos"
+            :key="video.id"
+            @click="setEmbedVideo(data.video, video)"
+            v-tooltip.auto-end="video.description ? `動画を視聴する: ${video.description}` : '動画を視聴する'"
+          ></div>
+          <a
+            class="media-button reference"
+            v-for="reference in tune.references"
+            :key="reference.link"
+            :href="reference.link"
+            :alt="reference.title"
+            target="_blank"
+            v-tooltip.auto-end="`IMSLPへのリンク: ${reference.title}`"
+          >
+          </a>
         </li>
       </ul>
     </div>
@@ -252,6 +250,7 @@ function clickWatchButtonHandler(id: string, position?: number): void {
   }
 
   .tune {
+    display: flex;
     margin-bottom: 10px;
     list-style: none;
     padding: 0 10px 0 25px;
@@ -266,14 +265,10 @@ function clickWatchButtonHandler(id: string, position?: number): void {
     }
   }
 
-  .tune-flex {
-    display: flex;
-  }
-
-  .tune-box {
+  .tune-content {
     flex: 1;
 
-    .title-box {
+    .tune-title {
       display: block;
       font-weight: bold;
       word-break: break-all;
