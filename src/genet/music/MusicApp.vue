@@ -59,25 +59,23 @@ function onLoadStateChanged(loaded: boolean, errorOccurred: boolean) {
         ></StreamingList>
       </Suspense>
       <div class="horizon"></div>
-      <div class="note">
-        <ul>
-          <li>
-            <a href="https://www.kemov-project.com/" target="_blank"><strong>けものフレンズVプロジェクト</strong></a
-            >所属のVTuber、<a href="https://www.youtube.com/@large-spottedgenet4617" target="_blank"
-              ><strong>ジェネット</strong></a
-            >の配信や動画で紹介・演奏された楽曲とその原曲をまとめています。（<a
-              href="https://note.com/nanase_t/n/nd08ac5e1994c"
-              target="_blank"
-              >旧一覧ページ</a
-            >）
-          </li>
-          <li>
-            掲載内容についてのお問い合わせは
-            <a href="https://github.com/nanase/kemov/issues" target="_blank">issue</a> までご連絡ください。
-          </li>
-          <li>このサイトはファンによる非公式のサイトです。</li>
-        </ul>
-      </div>
+      <ul class="note">
+        <li>
+          <a href="https://www.kemov-project.com/" target="_blank"><strong>けものフレンズVプロジェクト</strong></a
+          >所属のVTuber、<a href="https://www.youtube.com/@large-spottedgenet4617" target="_blank"
+            ><strong>ジェネット</strong></a
+          >の配信や動画で紹介・演奏された楽曲とその原曲をまとめています。（<a
+            href="https://note.com/nanase_t/n/nd08ac5e1994c"
+            target="_blank"
+            >旧一覧ページ</a
+          >）
+        </li>
+        <li>
+          掲載内容についてのお問い合わせは
+          <a href="https://github.com/nanase/kemov/issues" target="_blank">issue</a> までご連絡ください。
+        </li>
+        <li>このサイトはファンによる非公式のサイトです。</li>
+      </ul>
     </div>
   </div>
 </template>
@@ -140,6 +138,18 @@ function onLoadStateChanged(loaded: boolean, errorOccurred: boolean) {
       padding: 0 0 15px;
       border-radius: 0;
     }
+  }
+
+  .horizon {
+    display: block;
+    height: 1px;
+    width: 100%;
+    margin: 2em auto;
+    background-color: #ebf0f5;
+  }
+
+  .note {
+    padding-inline-start: 20px;
   }
 }
 </style>
