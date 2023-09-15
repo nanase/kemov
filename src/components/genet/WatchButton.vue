@@ -17,12 +17,12 @@ const position = computed(() => Number(new URL(url).searchParams.get('t') ?? '0'
 </script>
 
 <template>
-  <button
+  <div
     class="watch-button"
     v-if="protocol === 'yt:'"
     @click="emit('clickWatchButton', watchPath, position)"
     v-tooltip="'動画を視聴する'"
-  ></button>
+  ></div>
 </template>
 
 <style lang="scss">
@@ -34,14 +34,16 @@ const position = computed(() => Number(new URL(url).searchParams.get('t') ?? '0'
   @include icon('%231e1e1e', '%23ffffff', '%231e1e1e');
 
   cursor: pointer;
+  display: inline-block;
   background-repeat: no-repeat;
   background-size: 100%;
   background-position: center center;
   width: 20px;
-  height: 1.2em;
+  height: 16px;
   border: none;
   background-color: inherit;
   margin: 0 2px;
+  padding: 0;
   transition: transform 0.3s;
 
   &:hover {
