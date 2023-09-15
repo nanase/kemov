@@ -5,7 +5,7 @@ import { getEmbedURL } from '@/lib/youtube';
 
 const { video } = defineProps<{
   /**
-   * The Video Object of the link to YouTube video.
+   * Video object of the link to YouTube video.
    */
   video: EmbeddedVideo;
 }>();

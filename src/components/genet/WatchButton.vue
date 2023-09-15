@@ -6,6 +6,9 @@ export type ClickWatchButton = { clickWatchButton: [url: string, position?: numb
 import { computed } from 'vue';
 
 const { url } = defineProps<{
+  /**
+   * URL containing a YouTube video ID starting with "yt:".
+   */
   url: string;
 }>();
 

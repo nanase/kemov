@@ -5,9 +5,12 @@ import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 
 const { video, title } = defineProps<{
   /**
-   * The id of the link to YouTube video.
+   * ID of the link to YouTube video.
    */
   video: VideoBase;
+  /**
+   * Title of the link to YouTube video.
+   */
   title?: string;
 }>();
 
