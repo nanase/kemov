@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type Streaming, type VideoType, type Video, type EmbeddedVideo } from '@/types/genet';
+import { videoTypeToString, type Streaming, type Video, type EmbeddedVideo } from '@/types/genet';
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 import { JST, toDateTimeText } from '@/lib/date';
 import VideoLink from '@/components/VideoLink.vue';
@@ -29,19 +29,6 @@ function insertBreakToName(name: string) {
     return `${regex[1]}\n${regex[2]}\n${regex[3]}`.trim();
   } else {
     return name;
-  }
-}
-
-function videoTypeToString(type: VideoType): string {
-  switch (type) {
-    case 'live':
-      return 'ライブ配信';
-    case 'video':
-      return '動画投稿';
-    case 'short':
-      return 'ショート投稿';
-    default:
-      return '投稿';
   }
 }
 

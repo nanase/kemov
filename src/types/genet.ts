@@ -49,3 +49,16 @@ export interface Streaming {
   categories?: string[];
   notes?: string[];
 }
+
+export function videoTypeToString(type: VideoType): string {
+  switch (type) {
+    case 'live':
+      return 'ライブ配信';
+    case 'video':
+      return '動画投稿';
+    case 'short':
+      return 'ショート投稿';
+    default:
+      return '投稿';
+  }
+}
