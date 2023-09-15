@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { videoTypeToString, type Streaming, type Video, type EmbeddedVideo } from '@/types/genet';
+import { videoTypeToString, type Streaming, type Video, type EmbeddedVideo } from '@/genet/music/types';
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 import { JST, toDateTimeText } from '@/lib/date';
-import VideoLink from '@/components/VideoLink.vue';
-import VideoEmbed from '@/components/VideoEmbed.vue';
+import VideoLink from '@/components/genet/VideoLink.vue';
+import VideoEmbed from '@/components/genet/VideoEmbed.vue';
 import MarkDown from '@/components/genet/MarkDown.vue';
 import StreamingItemVerifier from '@/components/genet/StreamingItemVerifier.vue';
 import { computed, ref } from 'vue';

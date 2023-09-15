@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { type Streaming } from '@/types/genet';
+import { type Streaming } from '@/genet/music/types';
 import { empty, existsDuplicate } from '@/lib/array';
 
 const { data } = defineProps<{

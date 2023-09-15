@@ -2,7 +2,7 @@
 import { channelsUri, statsUri } from './config';
 import { mergeArrayBy, sum } from '@/lib/array';
 import { onMounted, onBeforeUnmount, ref } from 'vue';
-import { type YouTubeChannelStats, type YouTubeChannel, type YouTubeChannelStatsResponse } from '@/types/youtube';
+import { type YouTubeChannelStats, type YouTubeChannel, type YouTubeChannelStatsResponse } from './types';
 import { withCommas } from '@/lib/number';
 import dayjs, { Dayjs } from 'dayjs';
 import UpdateTime from '../components/stats/UpdateTime.vue';

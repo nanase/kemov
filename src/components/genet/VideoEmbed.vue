@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type EmbeddedVideo } from '@/types/genet';
+import { type EmbeddedVideo } from '@/genet/music/types';
 import { computed } from 'vue';
 import { getEmbedURL } from '@/lib/youtube';
 
