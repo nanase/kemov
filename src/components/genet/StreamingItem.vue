@@ -34,10 +34,6 @@ function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
   parentMedia.value = parentVideo;
   targetMedia.value = targetVideo;
 }
-
-function clickWatchButtonHandler(id: string, position?: number): void {
-  setEmbedVideo(data.video, { id, position });
-}
 </script>
 
 <template>
@@ -90,7 +86,7 @@ function clickWatchButtonHandler(id: string, position?: number): void {
             class="description"
             :source="tune.description"
             v-if="tune.description"
-            @clickWatchButton="clickWatchButtonHandler"
+            @clickWatchButton="(id, position) => setEmbedVideo(data.video, { id, position })"
           />
         </div>
         <div
