@@ -2,6 +2,7 @@
 import { type VideoBase } from '@/genet/music/types';
 import { computed } from 'vue';
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
+import { url } from '@/lib/style';
 
 const { video, title } = defineProps<{
   /**
@@ -14,7 +15,7 @@ const { video, title } = defineProps<{
   title?: string;
 }>();
 
-const thumbnailUrl = computed(() => `url('${getThumbnailURL(video.id, { size: 'hq' })}')`);
+const thumbnailUrl = computed(() => url(getThumbnailURL(video.id, { size: 'hq' })));
 </script>
 
 <template>

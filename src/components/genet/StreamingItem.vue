@@ -2,6 +2,7 @@
 import { videoTypeToString, type Streaming, type Video, type EmbeddedVideo } from '@/genet/music/types';
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 import { JST, toDateTimeText } from '@/lib/date';
+import { url } from '@/lib/style';
 import VideoLink from '@/components/genet/VideoLink.vue';
 import VideoEmbed from '@/components/genet/VideoEmbed.vue';
 import MarkDown from '@/components/genet/MarkDown.vue';
@@ -12,12 +13,9 @@ const { data } = defineProps<{
   data: Streaming;
 }>();
 
-const thumbnailUrlCss = computed(() => {
-  if (data.video.variety) {
-    return "url('')";
-  }
-  return `url('${getThumbnailURL(data.video.id, { size: 'hq' })}`;
-});
+const thumbnailUrlCss = computed(() =>
+  data.video.variety ? url() : url(getThumbnailURL(data.video.id, { size: 'hq' })),
+);
 const isDev = import.meta.env.DEV;
 const parentMedia = ref<Video>();
 const targetMedia = ref<EmbeddedVideo>();

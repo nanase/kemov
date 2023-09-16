@@ -4,6 +4,7 @@ import { mergeArrayBy, sum } from '@/lib/array';
 import { onMounted, onBeforeUnmount, ref } from 'vue';
 import { type YouTubeChannelStats, type YouTubeChannel, type YouTubeChannelStatsResponse } from './types';
 import { withCommas } from '@/lib/number';
+import { url } from '@/lib/style';
 import dayjs, { Dayjs } from 'dayjs';
 import UpdateTime from '../components/stats/UpdateTime.vue';
 import axios from 'axios';
@@ -51,7 +52,7 @@ onBeforeUnmount(() => {
     <div class="vtuber" v-for="vtuber in vtubers" :key="vtuber.id">
       <a
         class="avatar"
-        :style="`background-image:url('${vtuber.thumbnails.medium.url}'); border-color: ${vtuber.color.key};`"
+        :style="{ backgroundImage: url(vtuber.thumbnails.medium.url), borderColor: vtuber.color.key }"
         :href="`https://www.youtube.com/${vtuber.customUrl}`"
         target="_blank"
         :title="vtuber.name"
