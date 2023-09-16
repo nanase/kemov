@@ -55,7 +55,8 @@ const tokensList = computed(() => {
       <template v-if="token.type === 'text'">{{ unescapeHtml(token.text) }}</template>
       <template v-else-if="token.type === 'link'">
         <a :href="exposeUrl(token.href)" :title="token.title" target="_blank">
-          <MarkDown :source="token.text" />
+          <template v-if="token.tokens?.[0].type === 'text'">{{ unescapeHtml(token.tokens?.[0].text) }}</template>
+          <MarkDown v-else :source="token.text" />
         </a>
         <WatchButton
           v-if="getProtocol(token.href) === 'yt:'"
@@ -63,8 +64,14 @@ const tokensList = computed(() => {
           @click-watch-button="(url, position) => emit('clickWatchButton', url, position)"
         />
       </template>
-      <strong v-else-if="token.type === 'strong'"><MarkDown :source="token.text" /></strong>
-      <em v-else-if="token.type === 'em'"><MarkDown :source="token.text" /></em>
+      <strong v-else-if="token.type === 'strong'">
+        <template v-if="token.tokens?.[0].type === 'text'">{{ unescapeHtml(token.tokens?.[0].text) }}</template>
+        <MarkDown v-else :source="token.text" />
+      </strong>
+      <em v-else-if="token.type === 'em'">
+        <template v-if="token.tokens?.[0].type === 'text'">{{ unescapeHtml(token.tokens?.[0].text) }}</template>
+        <MarkDown v-else :source="token.text" />
+      </em>
       <template v-else-if="token.type === 'escape'">{{ token.text }}</template>
       <code v-else-if="token.type === 'codespan'">{{ unescapeHtml(token.text) }}</code>
       <img v-else-if="token.type === 'image'" :src="token.href" :title="token.title" />
