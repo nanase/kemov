@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { url } from '@/lib/style';
 
 const MaxScore = 5;
 const finishScore = ref<number>(0);
-const imageUrl = computed(() => url(getImageUrl(finishScore.value)));
 
 function getImageUrl(index: number) {
   // return new URL(`/genet/music/score${index}.svg`, import.meta.url).href;
@@ -24,7 +23,7 @@ onMounted(updateScore);
 </script>
 
 <template>
-  <div class="finish-score" :style="{ backgroundImage: imageUrl }"></div>
+  <div class="finish-score" :style="{ backgroundImage: url(getImageUrl(finishScore)) }"></div>
 </template>
 
 <style lang="scss">

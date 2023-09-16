@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { type EmbeddedVideo } from '@/genet/music/types';
-import { computed } from 'vue';
 import { getEmbedURL } from '@/lib/youtube';
 
 const { video } = defineProps<{
@@ -9,14 +8,12 @@ const { video } = defineProps<{
    */
   video: EmbeddedVideo;
 }>();
-
-const start = computed(() => (Number.isFinite(video.position) ? `start=${video.position}` : ''));
 </script>
 
 <template>
   <iframe
     class="video-embed"
-    :src="`${getEmbedURL(video.id)}?${start}`"
+    :src="`${getEmbedURL(video.id)}?${Number.isFinite(video.position) ? `start=${video.position}` : ''}`"
     frameborder="0"
     allowfullscreen
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { type VideoBase } from '@/genet/music/types';
-import { computed } from 'vue';
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 import { url } from '@/lib/style';
 
@@ -14,8 +13,6 @@ const { video, title } = defineProps<{
    */
   title?: string;
 }>();
-
-const thumbnailUrl = computed(() => url(getThumbnailURL(video.id, { size: 'hq' })));
 </script>
 
 <template>
@@ -24,7 +21,7 @@ const thumbnailUrl = computed(() => url(getThumbnailURL(video.id, { size: 'hq' }
     :href="getWatchURL(video.id)"
     target="_blank"
     :title="video.title ?? title ?? '配信を見る'"
-    :style="{ backgroundImage: thumbnailUrl }"
+    :style="{ backgroundImage: url(getThumbnailURL(video.id, { size: 'hq' })) }"
   >
   </a>
 </template>
