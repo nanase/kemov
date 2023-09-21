@@ -7,6 +7,7 @@ import { withCommas } from '@/lib/number';
 import { url } from '@/lib/style';
 import dayjs, { Dayjs } from 'dayjs';
 import UpdateTime from '../components/stats/UpdateTime.vue';
+import SiteNavigator from '@/components/common/SiteNavigator.vue';
 import axios from 'axios';
 import axiosRetry from 'axios-retry';
 
@@ -41,6 +42,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <SiteNavigator />
   <div class="stats-app">
     <h1>けもV リアルタイム統計</h1>
     <div class="content">

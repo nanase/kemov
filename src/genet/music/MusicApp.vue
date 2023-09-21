@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 
 import StreamingList from '@/components/genet/StreamingList.vue';
+import SiteNavigator from '@/components/common/SiteNavigator.vue';
 
 const filterQuery = ref<string>('');
 const totalStreamingCount = ref<number>(0);
@@ -27,6 +28,7 @@ function onLoadStateChanged(loaded: boolean, errorOccurred: boolean) {
 </script>
 
 <template>
+  <SiteNavigator />
   <div class="music-app">
     <div class="search-box">
       <div class="keyword">
