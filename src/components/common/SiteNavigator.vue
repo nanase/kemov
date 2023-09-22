@@ -19,11 +19,19 @@ const navigatorOpened = ref<boolean>(false);
         <div class="closer" @click="navigatorOpened = false"></div>
         <div class="content">
           <div class="item">
-            <a class="item-icon" href="/kemov/stats/" style="background-image: url('/common/chart_line_line.svg')"></a>
+            <a
+              class="item-icon"
+              href="/kemov/stats/"
+              style="background-image: url('/kemov/common/chart_line_line.svg')"
+            ></a>
             <a class="item-text" href="/kemov/stats/">リアルタイム統計</a>
           </div>
           <div class="item">
-            <a class="item-icon" href="/kemov/genet/music/" style="background-image: url('/common/music_line.svg')"></a>
+            <a
+              class="item-icon"
+              href="/kemov/genet/music/"
+              style="background-image: url('/kemov/common/music_line.svg')"
+            ></a>
             <a class="item-text" href="/kemov/genet/music/">ジェネットの配信で紹介された楽曲一覧</a>
           </div>
         </div>
