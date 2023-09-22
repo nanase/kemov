@@ -18,12 +18,14 @@ const navigatorOpened = ref<boolean>(false);
       <div class="site-navigator" v-if="navigatorOpened">
         <div class="closer" @click="navigatorOpened = false"></div>
         <div class="content">
-          <a class="item" href="/kemov/stats/" style="background-image: url('/common/chart_line_line.svg')"
-            >けもV リアルタイム統計</a
-          >
-          <a class="item" href="/kemov/genet/music/" style="background-image: url('/common/music_line.svg')"
-            >ジェネットの配信で紹介された楽曲一覧</a
-          >
+          <div class="item">
+            <a class="item-icon" href="/kemov/stats/" style="background-image: url('/common/chart_line_line.svg')"></a>
+            <a class="item-text" href="/kemov/stats/">リアルタイム統計</a>
+          </div>
+          <div class="item">
+            <a class="item-icon" href="/kemov/genet/music/" style="background-image: url('/common/music_line.svg')"></a>
+            <a class="item-text" href="/kemov/genet/music/">ジェネットの配信で紹介された楽曲一覧</a>
+          </div>
         </div>
         <a class="footer" href="/" target="_blank">Lazuli</a>
       </div>
@@ -107,13 +109,27 @@ const navigatorOpened = ref<boolean>(false);
     margin: 10px;
 
     .item {
-      display: block;
+      display: inline-flex;
       margin: 10px 0;
       cursor: pointer;
+    }
+
+    .item-icon {
+      width: 24px;
+      height: 24px;
+      margin: 0 5px;
       background-repeat: no-repeat;
-      background-position: left top;
+      background-position: center center;
       background-size: 24px 24px;
-      padding-left: 29px;
+      transition: transform 0.2s;
+    }
+
+    .item:hover .item-icon {
+      transform: scale(1.3);
+    }
+
+    .item-text {
+      flex: fit-content;
       text-decoration: none;
     }
   }
