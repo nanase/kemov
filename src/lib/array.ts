@@ -44,3 +44,29 @@ export function empty<T>(array: string | T[] | undefined | null): boolean {
 export function existsDuplicate<T>(array: T[]): boolean {
   return array.some((element, index) => array.indexOf(element) !== index);
 }
+
+export function count<T>(
+  array?: readonly T[],
+  condition?: (element: T, index: number, array: readonly T[]) => boolean,
+): number {
+  if (!array) {
+    return 0;
+  }
+
+  if (!condition) {
+    return array.length;
+  }
+
+  let c = 0;
+  let index = 0;
+
+  for (const element of array) {
+    if (condition(element, index, array)) {
+      c++;
+    }
+
+    index++;
+  }
+
+  return c;
+}
