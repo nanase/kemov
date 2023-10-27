@@ -40,4 +40,6 @@ export interface YouTubeChannel {
     light: string;
     back: string;
   };
+  activityStartDate: string;
+  activityEndDate?: string;
 }
