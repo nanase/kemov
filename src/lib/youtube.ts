@@ -1,5 +1,5 @@
-type ThumbnailSize = 'default' | 'mq' | 'hq' | 'sd' | 'max';
-type ThumbnailServer = 'main' | 'i' | 'i1' | 'i2' | 'i3' | 'i4';
+export type ThumbnailSize = 'default' | 'mq' | 'hq' | 'sd' | 'max';
+export type ThumbnailServer = 'main' | 'i' | 'i1' | 'i2' | 'i3' | 'i4';
 
 function getThumbnailSizeName(size: ThumbnailSize) {
   switch (size) {
