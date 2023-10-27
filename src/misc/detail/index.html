@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="けもVの配信についてのいろいろな統計を閲覧できるサイトです。" />
+  <meta property="og:title" content="けもV いろいろ統計" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://nanase.cc/kemov/misc/" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://i.ytimg.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;700&family=Roboto:ital@0;1&display=swap"
+    rel="stylesheet">
+  <link rel="icon" sizes="16x16" href="/favicon.ico" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <title>けもV いろいろ統計</title>
+</head>
+
+<body>
+  <div id="app"></div>
+  <script type="module">
+    import { createApp } from 'vue';
+    import router from './router';
+
+    import 'vuetify/styles';
+    import '@mdi/font/css/materialdesignicons.css';
+    import { createVuetify } from 'vuetify';
+    import colors from 'vuetify/lib/util/colors'
+    import * as components from 'vuetify/components';
+    import * as directives from 'vuetify/directives';
+
+    import DetailApp from './DetailApp.vue';
+    import '../main.scss';
+
+    const vuetify = createVuetify({
+      components,
+      directives,
+      icons: {
+        defaultSet: 'mdi',
+      },
+      theme: {
+        themes: {
+          defaultTheme: 'light',
+          light: {
+            dark: false,
+            colors: {
+              background: '#F4F5FA',
+              primary: colors.indigo.base,
+              secondary: colors.blue.base,
+            },
+          },
+          dark: {
+            dark: true,
+            colors: {
+              background: '#121212',
+              primary: colors.indigo.base,
+              secondary: colors.blue.base,
+            },
+          },
+        },
+        variations: {
+          colors: ['primary', 'secondary'],
+          lighten: 0,
+          darken: 0,
+        },
+      }
+    });
+    const app = createApp(DetailApp);
+    app.use(router);
+    app.use(vuetify);
+    app.mount('#app');
+  </script>
+</body>
+
+</html>
