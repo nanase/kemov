@@ -69,14 +69,90 @@ const dialog = ref<boolean>();
                     </v-card-text>
                   </v-card>
                 </v-col>
+                <v-col cols="6" sm="12" md="6" class="pa-1">
+                  <v-card
+                    color="red"
+                    variant="outlined"
+                    class="summary-card"
+                    :disabled="(video.chatMessageCount ?? 0) === 0"
+                  >
+                    <v-card-text class="pa-2 text-subtitle-2">
+                      <v-icon icon="mdi-chat"></v-icon>
+                      チャット数
+                    </v-card-text>
+                    <v-card-text class="py-2 mt-n3 text-h6 text-right">
+                      {{ withCommas(video.chatMessageCount) }}
+                      <span class="text-subtitle-2"></span>
+                    </v-card-text>
+                  </v-card>
+                </v-col>
+                <v-col cols="6" sm="12" md="6" class="pa-1">
+                  <v-card
+                    color="teal"
+                    variant="outlined"
+                    class="summary-card"
+                    :disabled="(video.chatUniqueUserCount ?? 0) === 0"
+                  >
+                    <v-card-text class="pa-2 text-subtitle-2">
+                      <v-icon icon="mdi-account-multiple"></v-icon>
+                      チャットユーザ数
+                    </v-card-text>
+                    <v-card-text class="pa-2 mt-n3 text-h6 text-right">
+                      {{ withCommas(video.chatUniqueUserCount) }}
+                      <span class="text-subtitle-2">&nbsp;</span>
+                    </v-card-text>
+                  </v-card>
+                </v-col>
+                <v-col cols="6" sm="12" md="6" class="pa-1">
+                  <v-card
+                    color="blue"
+                    variant="outlined"
+                    class="summary-card"
+                    :disabled="video.scheduledStartTime == null"
+                  >
+                    <v-card-text class="pa-2 text-subtitle-2">
+                      <v-icon icon="mdi-calendar"></v-icon>
+                      配信開始予定日時
+                    </v-card-text>
+                    <v-card-text class="py-2 mt-n3 text-body-2 text-right">
+                      {{
+                        video.scheduledStartTime ? JST(video.scheduledStartTime).format('YYYY/MM/DD HH:mm:ss') : 'なし'
+                      }}
+                      <span class="text-subtitle-2"></span>
+                    </v-card-text>
+                  </v-card>
+                </v-col>
+                <v-col cols="6" sm="12" md="6" class="pa-1">
+                  <v-card
+                    color="blue"
+                    variant="outlined"
+                    class="summary-card"
+                    :disabled="video.actualStartTime == null"
+                  >
+                    <v-card-text class="pa-2 text-subtitle-2">
+                      <v-icon icon="mdi-calendar-start"></v-icon>
+                      配信開始日時
+                    </v-card-text>
+                    <v-card-text class="py-2 mt-n3 text-body-2 text-right">
+                      {{ video.actualStartTime ? JST(video.actualStartTime).format('YYYY/MM/DD HH:mm:ss') : 'なし' }}
+                      <span class="text-subtitle-2"></span>
+                    </v-card-text>
+                  </v-card>
+                </v-col>
+                <v-col cols="6" sm="12" md="6" class="pa-1">
+                  <v-card color="blue" variant="outlined" class="summary-card" :disabled="video.actualEndTime == null">
+                    <v-card-text class="pa-2 text-subtitle-2">
+                      <v-icon icon="mdi-calendar-end"></v-icon>
+                      配信終了日時
+                    </v-card-text>
+                    <v-card-text class="py-2 mt-n3 text-body-2 text-right">
+                      {{ video.actualEndTime ? JST(video.actualEndTime).format('YYYY/MM/DD HH:mm:ss') : 'なし' }}
+                      <span class="text-subtitle-2"></span>
+                    </v-card-text>
+                  </v-card>
+                </v-col>
               </v-row>
             </v-container>
-
-            <div>ChatMessage: {{ video.chatMessageCount }}</div>
-            <div>ChatUniqueUser: {{ video.chatUniqueUserCount }}</div>
-            <div>scheduledStartTime: {{ JST(video.scheduledStartTime).format('YYYY/MM/DD HH:mm:ss') }}</div>
-            <div>actualStartTime: {{ JST(video.actualStartTime).format('YYYY/MM/DD HH:mm:ss') }}</div>
-            <div>actualEndTime: {{ JST(video.actualEndTime).format('YYYY/MM/DD HH:mm:ss') }}</div>
           </v-col>
         </v-row>
       </v-container>
