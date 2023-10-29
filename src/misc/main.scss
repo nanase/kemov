@@ -1,0 +1,37 @@
+@use '@/style/media';
+
+html {
+  font-family: 'IBM Plex Sans JP', sans-serif;
+  color: #1e1e1e;
+  font-size: 100%;
+  // background-color: #edf2f7;
+
+  // @include media.size(md) {
+  //   font-size: 87.5%;
+  // }
+
+  // @include media.size(sm) {
+  //   font-size: 75%;
+  // }
+}
+
+// h1 {
+//   margin: 1em auto;
+//   width: 90%;
+//   text-align: center;
+//   font-size: 200%;
+
+//   @include media.size(md) {
+//     font-size: 150%;
+//   }
+// }
+
+// body {
+//   margin: 0;
+// }
+
+// a,
+// a:visited,
+// a:hover {
+//   color: inherit;
+// }

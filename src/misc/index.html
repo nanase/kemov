@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="けもVの配信についてのいろいろな統計を閲覧できるサイトです。" />
+  <meta property="og:title" content="けもV いろいろ統計" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://nanase.cc/kemov/misc/" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://i.ytimg.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;700&family=Roboto:ital@0;1&display=swap"
+    rel="stylesheet">
+  <link rel="icon" sizes="16x16" href="/favicon.ico" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <title>けもV いろいろ統計</title>
+</head>
+
+<body>
+  <h1>けもV いろいろ統計</h1>
+  <div id="app"></div>
+  <script type="module">
+    import { createApp } from 'vue';
+    import StatsApp from './StatsApp.vue';
+    import './main.scss';
+    import 'floating-vue/dist/style.css';
+    import { VTooltip } from 'floating-vue';
+
+    const app = createApp(StatsApp);
+    app.directive('tooltip', VTooltip)
+    app.mount('#app');
+  </script>
+</body>
+
+</html>
