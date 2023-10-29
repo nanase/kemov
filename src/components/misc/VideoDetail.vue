@@ -15,7 +15,7 @@ const dialog = ref<boolean>();
 </script>
 
 <template>
-  <v-dialog v-model="dialog" activator="parent" max-width="1200">
+  <v-dialog $="dialog" activator="parent" max-width="1200">
     <v-card>
       <v-container>
         <v-row>

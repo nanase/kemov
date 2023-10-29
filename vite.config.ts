@@ -1,7 +1,8 @@
 import { fileURLToPath, URL } from 'node:url';
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
-import vue from '@vitejs/plugin-vue';
+import VueMacros from 'unplugin-vue-macros/vite';
+import Vue from '@vitejs/plugin-vue';
 import webfontDownload from 'vite-plugin-webfont-dl';
 
 const root = resolve(__dirname, 'src');
@@ -14,9 +15,13 @@ export default defineConfig({
   publicDir: '../public',
   envDir: '../',
   plugins: [
-    vue({
-      script: {
-        propsDestructure: true,
+    VueMacros({
+      plugins: {
+        vue: Vue({
+          script: {
+            propsDestructure: true,
+          },
+        }),
       },
     }),
     webfontDownload(),
