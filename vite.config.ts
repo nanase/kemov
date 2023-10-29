@@ -43,6 +43,9 @@ export default defineConfig({
         miscDetail: resolve(root, 'misc', 'detail', 'index.html'),
         genetMusic: resolve(root, 'genet', 'music', 'index.html'),
       },
+      output: {
+        chunkFileNames: 'assets/kemov-[name]-[hash].js',
+      },
     },
     emptyOutDir: true,
   },
