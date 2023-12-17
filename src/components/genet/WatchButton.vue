@@ -1,9 +1,7 @@
-<script lang="ts">
-export type ClickWatchButton = { clickWatchButton: [url: string, position?: number] };
-</script>
-
 <script setup lang="ts">
 import { computed } from 'vue';
+
+export type ClickWatchButton = { clickWatchButton: [url: string, position?: number] };
 
 const { url } = defineProps<{
   /**
