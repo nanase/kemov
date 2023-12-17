@@ -76,7 +76,7 @@ const tokensList = computed(() => {
       <code v-else-if="token.type === 'codespan'">{{ unescapeHtml(token.text) }}</code>
       <img v-else-if="token.type === 'image'" :src="token.href" :title="token.title" />
       <br v-else-if="token.type === 'br'" />
-      <div v-else v-html="DOMPurify.sanitize(marked(token.raw))"></div>
+      <div v-else v-html="(async (code: string) => DOMPurify.sanitize(await marked(code)))(token.raw)"></div>
     </template>
   </span>
 </template>
