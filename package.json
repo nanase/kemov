@@ -3,6 +3,11 @@
   "version": "1.2.1",
   "private": true,
   "type": "module",
+  "engines": {
+    "npm": "use yarn instead",
+    "yarn": "4.0.2"
+  },
+  "packageManager": "yarn@4.0.2",
   "scripts": {
     "dev": "vite",
     "build": "run-p type-check build-only",
