@@ -1347,12 +1347,21 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:*, @types/node@npm:^20.10.4":
+"@types/node@npm:*":
   version: 20.10.4
   resolution: "@types/node@npm:20.10.4"
   dependencies:
     undici-types: "npm:~5.26.4"
   checksum: 2c8b70cba731eb2ae3ae046daa74903bfcbb0e7b9196da767e5895054f6d252296ae7a04fb1dbbcb53bb004c4c658c05eaea2731bc9e2dd9e08f7e88d672f563
+  languageName: node
+  linkType: hard
+
+"@types/node@npm:^20.10.5":
+  version: 20.10.5
+  resolution: "@types/node@npm:20.10.5"
+  dependencies:
+    undici-types: "npm:~5.26.4"
+  checksum: be30609aae0bfe492097815f166ccc07f465220cb604647fa4e5ec05a1d16c012a41b82b5f11ecfe2485cbb479d4d20384b95b809ca0bcff6d94d5bbafa645bb
   languageName: node
   linkType: hard
 
@@ -2071,10 +2080,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@vue/tsconfig@npm:^0.5.0":
-  version: 0.5.0
-  resolution: "@vue/tsconfig@npm:0.5.0"
-  checksum: fa1f80bb3325c9c9e478e578ad7c6fe819c7aff9835449ebb92468bcce366156f6c615e228a317a560cc107efc77d1fdad9840c483a7b7824ea84a30f52d3ea5
+"@vue/tsconfig@npm:^0.5.1":
+  version: 0.5.1
+  resolution: "@vue/tsconfig@npm:0.5.1"
+  checksum: cf4049c0daf26579e42803eca661809f95f9196323b4a6aec1714ac3c80df37b44d3878468f56e2f3d1fe64640fe9cb42f20db42509ef858ab059fe05e0dd862
   languageName: node
   linkType: hard
 
@@ -5153,12 +5162,12 @@ __metadata:
     "@types/dompurify": "npm:^3.0.5"
     "@types/jest": "npm:^29.5.11"
     "@types/js-yaml": "npm:^4.0.9"
-    "@types/node": "npm:^20.10.4"
+    "@types/node": "npm:^20.10.5"
     "@vitejs/plugin-vue": "npm:^4.5.2"
     "@vue-macros/volar": "npm:^0.18.1"
     "@vue/eslint-config-prettier": "npm:^8.0.0"
     "@vue/eslint-config-typescript": "npm:^12.0.0"
-    "@vue/tsconfig": "npm:^0.5.0"
+    "@vue/tsconfig": "npm:^0.5.1"
     "@vueuse/core": "npm:^10.7.0"
     axios: "npm:^1.6.2"
     axios-retry: "npm:^4.0.0"
