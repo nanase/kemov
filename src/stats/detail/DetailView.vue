@@ -9,11 +9,11 @@ import dayjs from 'dayjs';
 import { mergeArrayBy, sum } from '@/lib/array';
 import { withCommas } from '@/lib/number';
 import { channelsUri, videoUri, statsUri } from '../config';
-import { type Video, parse as parseAsVideo } from '../types';
+import { type Video, parse as parseAsVideo } from './types';
 import { type YouTubeChannel, type YouTubeChannelStats, type YouTubeChannelStatsResponse } from '../../stats/types';
-import type { VideoType } from '@/misc/types';
+import type { VideoType } from '@/stats/detail/types';
 
-import VideoRanking, { type Sorting, type TargetProperty } from '@/components/misc/VideoRanking.vue';
+import VideoRanking, { type Sorting, type TargetProperty } from '@/components/stats/detail/VideoRanking.vue';
 
 axiosRetry(axios, { retries: 3, retryDelay: axiosRetry.exponentialDelay });
 

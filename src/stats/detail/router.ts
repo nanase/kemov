@@ -6,7 +6,7 @@ const router = createRouter({
     {
       path: '/:channelId',
       name: 'detail',
-      component: async () => await import('@/misc/detail/DetailView.vue'),
+      component: async () => await import('@/stats/detail/DetailView.vue'),
       props: true,
     },
     {
