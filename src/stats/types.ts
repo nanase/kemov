@@ -9,6 +9,12 @@ interface YouTubeStatistics {
   videoCount: number;
   viewCount: number;
   subscriberCount: number;
+  videoCountPerHour: number;
+  viewCountPerHour: number;
+  subscriberCountPerHour: number;
+  videoCountPerDay: number;
+  viewCountPerDay: number;
+  subscriberCountPerDay: number;
 }
 
 export interface YouTubeChannelStats {
