@@ -58,7 +58,7 @@ function toggleTheme() {
 <template>
   <v-navigation-drawer class="bg-background" v-model="drawer" floating>
     <v-list class="pb-0 d-flex flex-column fill-height">
-      <v-list-item link title="けもV いろいろ統計" href="../">
+      <v-list-item link title="リアルタイム統計" href="/kemov/stats/">
         <template v-slot:prepend>
           <v-icon icon="mdi-finance" size="large" />
         </template>
@@ -83,11 +83,6 @@ function toggleTheme() {
 
       <v-divider />
       <v-list density="compact" link nav class="flex-grow-0 flex-shrink-0">
-        <v-list-item title="リアルタイム統計" href="/kemov/stats/" prepend-icon="mdi-chart-line">
-          <template v-slot:prepend>
-            <v-icon icon="mdi-chart-line" size="small" />
-          </template>
-        </v-list-item>
         <v-list-item title="ジェネット楽曲一覧" href="/kemov/genet/music/" prepend-icon="mdi-music">
           <template v-slot:prepend>
             <v-icon icon="mdi-music" size="small" />

@@ -54,22 +54,30 @@ function toggleTheme() {
   <v-app>
     <v-navigation-drawer class="bg-background" v-model="drawer" floating>
       <v-list class="pb-0 d-flex flex-column fill-height">
-        <v-list-item link title="けもV いろいろ統計" href="../">
+        <v-list-item link title="リアルタイム統計" href="/kemov/stats/">
           <template v-slot:prepend>
             <v-icon icon="mdi-finance" size="large" />
           </template>
         </v-list-item>
 
         <v-list nav link active-class="bg-primary" density="compact" class="flex-grow-1 flex-shrink-1 overflow-auto">
+          <v-list-item
+            v-for="channel in vtubers"
+            :key="channel.id"
+            :title="channel.name"
+            :subtitle="channel.globalname"
+            :href="`./detail/#/${channel.id}`"
+          >
+            <template v-slot:prepend>
+              <v-avatar :color="channel.color.key" variant="outlined" size="small">
+                <v-img :src="channel.thumbnails.default.url" />
+              </v-avatar>
+            </template>
+          </v-list-item>
         </v-list>
 
         <v-divider />
         <v-list density="compact" link nav class="flex-grow-0 flex-shrink-0">
-          <v-list-item title="リアルタイム統計" href="/kemov/stats/" prepend-icon="mdi-chart-line">
-            <template v-slot:prepend>
-              <v-icon icon="mdi-chart-line" size="small" />
-            </template>
-          </v-list-item>
           <v-list-item title="ジェネット楽曲一覧" href="/kemov/genet/music/" prepend-icon="mdi-music">
             <template v-slot:prepend>
               <v-icon icon="mdi-music" size="small" />
@@ -78,6 +86,7 @@ function toggleTheme() {
         </v-list>
       </v-list>
     </v-navigation-drawer>
+
     <v-main>
       <v-app-bar flat density="compact">
         <v-app-bar-nav-icon variant="text" @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
