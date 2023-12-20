@@ -1,19 +1,24 @@
 <script setup lang="ts">
-import { channelsUri, statsUri } from './config';
-import { mergeArrayBy, sum } from '@/lib/array';
 import { onMounted, onBeforeUnmount, ref } from 'vue';
-import { type YouTubeChannelStats, type YouTubeChannel, type YouTubeChannelStatsResponse } from './types';
-import { withCommas } from '@/lib/number';
-import { url } from '@/lib/style';
-import dayjs, { Dayjs } from 'dayjs';
+import { useTheme } from 'vuetify';
+
+import StatTable, { type StatDataType } from '@/components/stats/StatTable.vue';
 import UpdateTime from '../components/stats/UpdateTime.vue';
-import SiteNavigator from '@/components/common/SiteNavigator.vue';
+import { type YouTubeChannelStats, type YouTubeChannel, type YouTubeChannelStatsResponse } from './types';
+
+import { channelsUri, statsUri } from './config';
+import { mergeArrayBy } from '@/lib/array';
+
 import axios from 'axios';
 import axiosRetry from 'axios-retry';
+import dayjs, { Dayjs } from 'dayjs';
 
 const vtubers = ref<Array<YouTubeChannel & YouTubeChannelStats>>([]);
 const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
 const fetchVtuberDataInterval = ref<number>();
+const theme = useTheme();
+const tab = ref<StatDataType>('subscriber');
+const drawer = ref<boolean>();
 let channels: YouTubeChannel[];
 
 axiosRetry(axios, { retries: 3, retryDelay: axiosRetry.exponentialDelay });
@@ -39,225 +44,78 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   clearInterval(fetchVtuberDataInterval.value);
 });
+
+function toggleTheme() {
+  theme.global.name.value = theme.global.current.value.dark ? 'light' : 'dark';
+}
 </script>
 
 <template>
-  <SiteNavigator />
-  <div class="stats-app">
-    <h1>けもV リアルタイム統計</h1>
-    <div class="content">
-      <div class="vtuber-list">
-        <div class="vtuber header">
-          <div class="header avatar"></div>
-          <div class="header name"></div>
-          <div class="header subscriber-count">チャンネル登録</div>
-          <div class="header view-count">総再生回数</div>
-          <div class="header video-count">動画数</div>
-        </div>
-        <div class="vtuber" v-for="vtuber in vtubers" :key="vtuber.id">
-          <a
-            class="avatar"
-            :style="{ backgroundImage: url(vtuber.thumbnails.medium.url), borderColor: vtuber.color.key }"
-            :href="`https://www.youtube.com/${vtuber.customUrl}`"
-            target="_blank"
-            :title="vtuber.name"
-          >
-          </a>
-          <a class="name" :href="`https://www.youtube.com/${vtuber.customUrl}`" target="_blank" :title="vtuber.name">
-            {{ vtuber.name }}
-          </a>
-          <div class="subscriber-count">{{ withCommas(vtuber.statistics.subscriberCount) }}</div>
-          <div class="view-count">{{ withCommas(vtuber.statistics.viewCount) }}</div>
-          <div class="video-count">{{ withCommas(vtuber.statistics.videoCount) }}</div>
-        </div>
-        <div class="vtuber total">
-          <div class="total avatar"></div>
-          <div class="total name">合計</div>
-          <div class="total subscriber-count">{{ withCommas(sum(vtubers, (v) => v.statistics.subscriberCount)) }}</div>
-          <div class="total view-count">{{ withCommas(sum(vtubers, (v) => v.statistics.viewCount)) }}</div>
-          <div class="total video-count">{{ withCommas(sum(vtubers, (v) => v.statistics.videoCount)) }}</div>
-        </div>
-        <UpdateTime class="update-time" :time="fetchedTime" />
-      </div>
-      <div class="horizon"></div>
-      <div class="note">
+  <v-app>
+    <v-navigation-drawer class="bg-background" v-model="drawer" floating>
+      <v-list class="pb-0 d-flex flex-column fill-height">
+        <v-list-item link title="けもV いろいろ統計" href="../">
+          <template v-slot:prepend>
+            <v-icon icon="mdi-finance" size="large" />
+          </template>
+        </v-list-item>
+
+        <v-list nav link active-class="bg-primary" density="compact" class="flex-grow-1 flex-shrink-1 overflow-auto">
+        </v-list>
+
+        <v-divider />
+        <v-list density="compact" link nav class="flex-grow-0 flex-shrink-0">
+          <v-list-item title="リアルタイム統計" href="/kemov/stats/" prepend-icon="mdi-chart-line">
+            <template v-slot:prepend>
+              <v-icon icon="mdi-chart-line" size="small" />
+            </template>
+          </v-list-item>
+          <v-list-item title="ジェネット楽曲一覧" href="/kemov/genet/music/" prepend-icon="mdi-music">
+            <template v-slot:prepend>
+              <v-icon icon="mdi-music" size="small" />
+            </template>
+          </v-list-item>
+        </v-list>
+      </v-list>
+    </v-navigation-drawer>
+    <v-main>
+      <v-app-bar flat density="compact">
+        <v-app-bar-nav-icon variant="text" @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
+        <v-toolbar-title>けもV リアルタイム統計</v-toolbar-title>
+        <template v-slot:append>
+          <v-btn icon="mdi-theme-light-dark" @click="toggleTheme"></v-btn>
+        </template>
+      </v-app-bar>
+      <v-container>
+        <v-tabs v-model="tab" color="primary" align-tabs="center" density="compact">
+          <v-tab value="subscriber">
+            <v-icon start>mdi-account-check</v-icon>
+            <span class="font-weight-bold">チャンネル登録数</span>
+          </v-tab>
+          <v-tab value="view">
+            <v-icon start>mdi-play</v-icon>
+            <span class="font-weight-bold">再生回数</span>
+          </v-tab>
+          <v-tab value="video">
+            <v-icon start>mdi-video</v-icon>
+            <span class="font-weight-bold">動画数</span>
+          </v-tab>
+        </v-tabs>
+
+        <StatTable :channels="vtubers" :type="tab" />
+
+        <v-card class="text-right px-4 py-2" variant="flat">
+          <UpdateTime class="update-time" :time="fetchedTime" />
+        </v-card>
+      </v-container>
+
+      <v-footer class="bg-primary text-left d-flex flex-column mt-10">
         <ul>
           <li>およそ10分ごとに自動で更新されます。数値は減少することがあります</li>
           <li>総再生回数と動画数は配信終了後から反映されます</li>
           <li>このサイトは非公式です。内容についてのお問い合わせはご遠慮ください</li>
         </ul>
-      </div>
-    </div>
-  </div>
+      </v-footer>
+    </v-main>
+  </v-app>
 </template>
-
-<style lang="scss">
-@use '@/style/media.scss';
-
-.stats-app {
-  h1 {
-    margin: 1em auto;
-    width: 90%;
-    text-align: center;
-    font-size: 200%;
-
-    @include media.size(md) {
-      font-size: 150%;
-    }
-  }
-
-  .content {
-    width: 85%;
-    margin: 20px auto;
-    padding: 15px 35px;
-    background-color: white;
-    border-radius: 10px;
-
-    @include media.size(lg) {
-      width: 815px;
-    }
-
-    @include media.size(md) {
-      width: 85%;
-    }
-
-    @include media.size(sm) {
-      width: 90%;
-      padding: 15px;
-    }
-  }
-
-  .vtuber-list {
-    word-break: keep-all;
-  }
-
-  .vtuber {
-    display: flex;
-    align-items: center;
-    padding: 5px 0;
-    width: 100%;
-    border-radius: 50px;
-
-    &.header {
-      align-items: baseline;
-    }
-
-    @include media.size(md) {
-      padding: 2px;
-      width: calc(100% - 4px);
-    }
-  }
-
-  .avatar {
-    width: 40px;
-    height: 40px;
-    background-position: center center;
-    background-repeat: no-repeat;
-    background-size: contain;
-    border: 3px solid;
-    border-radius: 50%;
-    transition: transform 0.3s;
-
-    &.total {
-      visibility: hidden;
-    }
-
-    &.header {
-      visibility: hidden;
-      height: 0;
-    }
-
-    @include media.size(md) {
-      width: 32px;
-      height: 32px;
-      border: 2px solid;
-    }
-
-    @include media.size(sm) {
-      width: 24px;
-      height: 24px;
-    }
-  }
-
-  .name {
-    color: inherit;
-    padding: 0 5px;
-    flex: 2;
-    font-weight: bold;
-    font-size: 150%;
-    font-stretch: condensed;
-    text-decoration: none;
-    transition: transform 0.3s;
-
-    &.total,
-    &.header {
-      text-align: right;
-      font-size: 100%;
-    }
-
-    @include media.size(md) {
-      padding: 0 2px;
-      font-weight: bold;
-      font-size: 125%;
-    }
-  }
-
-  .subscriber-count,
-  .view-count,
-  .video-count {
-    padding-left: 5px;
-    flex: 1;
-    text-align: right;
-    font-size: 125%;
-
-    &.total,
-    &.header {
-      font-weight: bold;
-    }
-
-    &.header {
-      font-size: 100%;
-      white-space: nowrap;
-    }
-
-    @include media.size(md) {
-      padding-left: 2px;
-      font-size: 110%;
-    }
-  }
-
-  .video-count {
-    flex: 0.8;
-  }
-
-  /* transition */
-  .vtuber:hover:not(.header, .total) {
-    background-color: #edf2f7;
-
-    .avatar {
-      transform: scale(1.5);
-    }
-
-    .name {
-      transform: translate(10px);
-    }
-  }
-
-  .update-time {
-    text-align: right;
-    margin-top: 0.5em;
-  }
-
-  .horizon {
-    display: block;
-    height: 1px;
-    width: 100%;
-    margin: 1.5em auto;
-    background-color: #ebf0f5;
-  }
-
-  .note ul {
-    padding-inline-start: 20px;
-  }
-}
-</style>
