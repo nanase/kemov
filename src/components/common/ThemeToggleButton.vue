@@ -80,5 +80,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <v-btn icon="mdi-theme-light-dark" @click="toggleTheme"></v-btn>
+  <v-tooltip text="テーマを切り替え">
+    <template v-slot:activator="{ props }">
+      <v-btn v-bind="props" icon="mdi-theme-light-dark" @click="toggleTheme"></v-btn>
+    </template>
+  </v-tooltip>
 </template>
