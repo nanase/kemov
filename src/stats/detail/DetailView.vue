@@ -3,7 +3,6 @@ import { computed, ref } from 'vue';
 import { computedAsync } from '@vueuse/core';
 import axios from 'axios';
 import axiosRetry from 'axios-retry';
-import { useTheme } from 'vuetify';
 import dayjs from 'dayjs';
 
 import { mergeArrayBy, sum } from '@/lib/array';
@@ -13,6 +12,7 @@ import { type Video, parse as parseAsVideo } from './types';
 import { type YouTubeChannel, type YouTubeChannelStats, type YouTubeChannelStatsResponse } from '../../stats/types';
 import type { VideoType } from '@/stats/detail/types';
 
+import ThemeToggleButton from '@/components/common/ThemeToggleButton.vue';
 import VideoRanking, { type Sorting, type TargetProperty } from '@/components/stats/detail/VideoRanking.vue';
 
 axiosRetry(axios, { retries: 3, retryDelay: axiosRetry.exponentialDelay });
@@ -43,16 +43,10 @@ const activityDays = computed(() =>
   dayjs(channel?.value?.activityEndDate ?? undefined).diff(dayjs(channel?.value?.activityStartDate), 'days', true),
 );
 
-const theme = useTheme();
 const drawer = ref<boolean>();
 const targetProperty = ref<TargetProperty>('viewCount');
 const filterType = ref<VideoType[]>(['video', 'streaming', 'shorts']);
 const sorting = ref<Sorting>('descending');
-
-//
-function toggleTheme() {
-  theme.global.name.value = theme.global.current.value.dark ? 'light' : 'dark';
-}
 </script>
 
 <template>
@@ -97,7 +91,7 @@ function toggleTheme() {
       <v-app-bar-nav-icon variant="text" @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
       <v-toolbar-title>{{ channel?.fullname }}</v-toolbar-title>
       <template v-slot:append>
-        <v-btn icon="mdi-theme-light-dark" @click="toggleTheme"></v-btn>
+        <ThemeToggleButton />
       </template>
     </v-app-bar>
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue';
-import { useTheme } from 'vuetify';
 
+import ThemeToggleButton from '@/components/common/ThemeToggleButton.vue';
 import StatTable, { type StatDataType } from '@/components/stats/StatTable.vue';
 import UpdateTime from '../components/stats/UpdateTime.vue';
 import { type YouTubeChannelStats, type YouTubeChannel, type YouTubeChannelStatsResponse } from './types';
@@ -16,7 +16,6 @@ import dayjs, { Dayjs } from 'dayjs';
 const vtubers = ref<Array<YouTubeChannel & YouTubeChannelStats>>([]);
 const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
 const fetchVtuberDataInterval = ref<number>();
-const theme = useTheme();
 const tab = ref<StatDataType>('subscriber');
 const drawer = ref<boolean>();
 let channels: YouTubeChannel[];
@@ -44,10 +43,6 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   clearInterval(fetchVtuberDataInterval.value);
 });
-
-function toggleTheme() {
-  theme.global.name.value = theme.global.current.value.dark ? 'light' : 'dark';
-}
 </script>
 
 <template>
@@ -92,7 +87,7 @@ function toggleTheme() {
         <v-app-bar-nav-icon variant="text" @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
         <v-toolbar-title>けもV リアルタイム統計</v-toolbar-title>
         <template v-slot:append>
-          <v-btn icon="mdi-theme-light-dark" @click="toggleTheme"></v-btn>
+          <ThemeToggleButton />
         </template>
       </v-app-bar>
 
@@ -123,7 +118,7 @@ function toggleTheme() {
         </v-row>
       </v-container>
 
-      <v-footer class="bg-primary text-left d-flex flex-column mt-10">
+      <v-footer class="bg-secondary text-left d-flex flex-column mt-10">
         <ul>
           <li>およそ10分ごとに自動で更新されます。数値は減少することがあります</li>
           <li>総再生回数と動画数は配信終了後から反映されます</li>
