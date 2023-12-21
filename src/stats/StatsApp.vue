@@ -99,15 +99,15 @@ function toggleTheme() {
         <v-tabs v-model="tab" color="primary" align-tabs="center" density="compact">
           <v-tab value="subscriber">
             <v-icon start>mdi-account-check</v-icon>
-            <span class="font-weight-bold">チャンネル登録数</span>
+            <span class="font-weight-bold">チャンネル登録者数</span>
           </v-tab>
           <v-tab value="view">
             <v-icon start>mdi-play</v-icon>
-            <span class="font-weight-bold">再生回数</span>
+            <span class="font-weight-bold">総再生数</span>
           </v-tab>
           <v-tab value="video">
             <v-icon start>mdi-video</v-icon>
-            <span class="font-weight-bold">動画数</span>
+            <span class="font-weight-bold">配信・動画数</span>
           </v-tab>
         </v-tabs>
 

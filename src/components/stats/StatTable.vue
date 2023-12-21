@@ -16,9 +16,9 @@ const { channels, type } = defineProps<{
 function getColumnName(): string {
   switch (type) {
     case 'subscriber':
-      return 'チャンネル登録';
+      return '登録数';
     case 'view':
-      return '再生回数';
+      return '再生数';
     case 'video':
       return '動画数';
   }
