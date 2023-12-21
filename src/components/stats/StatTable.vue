@@ -73,15 +73,15 @@ function getStrong(): number {
   <v-table density="compact" hover>
     <thead>
       <tr>
-        <th>&nbsp;</th>
-        <th class="text-right font-weight-bold">{{ getColumnName() }}</th>
-        <th class="text-right font-weight-bold" v-if="type === 'subscriber'">1時間</th>
-        <th class="text-right font-weight-bold">24時間</th>
+        <th class="pl-4 pr-2">&nbsp;</th>
+        <th class="px-2 text-right font-weight-bold">{{ getColumnName() }}</th>
+        <th class="px-2 text-right font-weight-bold" v-if="type === 'subscriber'">1時間</th>
+        <th class="pl-2 pr-4 text-right font-weight-bold">24時間</th>
       </tr>
     </thead>
     <tbody>
       <tr class="channel text-right" v-for="channel in channels" :key="channel.id">
-        <td>
+        <td class="pl-4 pr-2">
           <v-list-item
             class="channel-name text-left px-0"
             :href="`https://www.youtube.com/${channel.customUrl}`"
@@ -98,34 +98,39 @@ function getStrong(): number {
             </template>
           </v-list-item>
         </td>
-        <td class="text-h6">{{ withCommas(getCount(channel)) }}</td>
+        <td class="px-2 text-h6">{{ withCommas(getCount(channel)) }}</td>
         <DifferenceValue
-          class="text-h6"
+          class="px-2 text-h6"
           :value="getCountPerHour(channel)"
           :strong="getStrong()"
           tag="td"
           v-if="type === 'subscriber'"
         />
-        <DifferenceValue class="text-h6" :value="getCountPerDay(channel)" :strong="getStrong()" tag="td" />
+        <DifferenceValue class="pl-2 pr-4 text-h6" :value="getCountPerDay(channel)" :strong="getStrong()" tag="td" />
       </tr>
     </tbody>
     <tfoot>
       <tr class="text-right text-h6">
-        <td class="text-body-1 font-weight-bold">合計</td>
-        <td>{{ withCommas(sum(channels, getCount)) }}</td>
+        <td class="pl-4 pr-2 text-body-1 font-weight-bold">合計</td>
+        <td class="px-2">{{ withCommas(sum(channels, getCount)) }}</td>
         <DifferenceValue
+          class="px-2"
           :value="sum(channels, getCountPerHour)"
           :strong="getStrong()"
           tag="td"
           v-if="type === 'subscriber'"
         />
-        <DifferenceValue :value="sum(channels, getCountPerDay)" :strong="getStrong()" tag="td" />
+        <DifferenceValue class="pl-2 pr-4" :value="sum(channels, getCountPerDay)" :strong="getStrong()" tag="td" />
       </tr>
     </tfoot>
   </v-table>
 </template>
 
 <style lang="scss">
+.v-table th {
+  white-space: nowrap;
+}
+
 .channel {
   .channel-name span {
     background-color: transparent;
