@@ -50,20 +50,24 @@
             colors: {
               background: '#F4F5FA',
               primary: colors.indigo.base,
-              secondary: colors.blue.base,
+              secondary: colors.indigo.base,
+              positive: colors.green.darken3,
+              negative: colors.red.darken3,
             },
           },
           dark: {
             dark: true,
             colors: {
               background: '#121212',
-              primary: colors.indigo.base,
-              secondary: colors.blue.base,
+              primary: colors.indigo.lighten4,
+              secondary: colors.indigo.darken4,
+              positive: colors.green.lighten2,
+              negative: colors.red.lighten1,
             },
           },
         },
         variations: {
-          colors: ['primary', 'secondary'],
+          colors: ['primary', 'secondary', 'positive', 'negative'],
           lighten: 0,
           darken: 0,
         },

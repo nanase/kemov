@@ -4,8 +4,8 @@ import { withCommas } from '@/lib/number';
 const {
   value,
   strong,
-  positiveClass = ['text-green-darken-3'],
-  negativeClass = ['text-red-darken-3'],
+  positiveClass = ['text-positive'],
+  negativeClass = ['text-negative'],
   strongClass = ['font-weight-bold'],
   tag = 'span',
 } = defineProps<{
