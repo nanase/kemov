@@ -75,7 +75,7 @@ function getStrong(): number {
       <tr>
         <th>&nbsp;</th>
         <th class="text-right font-weight-bold">{{ getColumnName() }}</th>
-        <th class="text-right font-weight-bold">1時間</th>
+        <th class="text-right font-weight-bold" v-if="type === 'subscriber'">1時間</th>
         <th class="text-right font-weight-bold">24時間</th>
       </tr>
     </thead>
@@ -99,7 +99,13 @@ function getStrong(): number {
           </v-list-item>
         </td>
         <td class="text-h6">{{ withCommas(getCount(channel)) }}</td>
-        <DifferenceValue class="text-h6" :value="getCountPerHour(channel)" :strong="getStrong()" tag="td" />
+        <DifferenceValue
+          class="text-h6"
+          :value="getCountPerHour(channel)"
+          :strong="getStrong()"
+          tag="td"
+          v-if="type === 'subscriber'"
+        />
         <DifferenceValue class="text-h6" :value="getCountPerDay(channel)" :strong="getStrong()" tag="td" />
       </tr>
     </tbody>
@@ -107,7 +113,12 @@ function getStrong(): number {
       <tr class="text-right text-h6">
         <td class="text-body-1 font-weight-bold">合計</td>
         <td>{{ withCommas(sum(channels, getCount)) }}</td>
-        <DifferenceValue :value="sum(channels, getCountPerHour)" :strong="getStrong()" tag="td" />
+        <DifferenceValue
+          :value="sum(channels, getCountPerHour)"
+          :strong="getStrong()"
+          tag="td"
+          v-if="type === 'subscriber'"
+        />
         <DifferenceValue :value="sum(channels, getCountPerDay)" :strong="getStrong()" tag="td" />
       </tr>
     </tfoot>
