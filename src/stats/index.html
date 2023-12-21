@@ -29,7 +29,7 @@
     import 'vuetify/styles';
     import '@mdi/font/css/materialdesignicons.css';
     import { createVuetify } from 'vuetify';
-    import colors from 'vuetify/lib/util/colors'
+    import { theme } from './theme'
     import * as components from 'vuetify/components';
     import * as directives from 'vuetify/directives';
 
@@ -42,36 +42,7 @@
       icons: {
         defaultSet: 'mdi',
       },
-      theme: {
-        themes: {
-          defaultTheme: 'light',
-          light: {
-            dark: false,
-            colors: {
-              background: '#F4F5FA',
-              primary: colors.indigo.base,
-              secondary: colors.indigo.base,
-              positive: colors.green.darken3,
-              negative: colors.red.darken3,
-            },
-          },
-          dark: {
-            dark: true,
-            colors: {
-              background: '#121212',
-              primary: colors.indigo.lighten4,
-              secondary: colors.indigo.darken4,
-              positive: colors.green.lighten2,
-              negative: colors.red.lighten1,
-            },
-          },
-        },
-        variations: {
-          colors: ['primary', 'secondary', 'positive', 'negative'],
-          lighten: 0,
-          darken: 0,
-        },
-      }
+      theme,
     });
     const app = createApp(StatsApp);
     app.use(vuetify);
