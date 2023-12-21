@@ -95,27 +95,32 @@ function toggleTheme() {
           <v-btn icon="mdi-theme-light-dark" @click="toggleTheme"></v-btn>
         </template>
       </v-app-bar>
+
       <v-container>
-        <v-tabs v-model="tab" color="primary" align-tabs="center" density="compact">
-          <v-tab value="subscriber">
-            <v-icon start>mdi-account-check</v-icon>
-            <span class="font-weight-bold">チャンネル登録者数</span>
-          </v-tab>
-          <v-tab value="view">
-            <v-icon start>mdi-play</v-icon>
-            <span class="font-weight-bold">総再生数</span>
-          </v-tab>
-          <v-tab value="video">
-            <v-icon start>mdi-video</v-icon>
-            <span class="font-weight-bold">配信・動画数</span>
-          </v-tab>
-        </v-tabs>
+        <v-row justify="center">
+          <v-col cols="12" md="12" lg="10" xl="7" xxl="6">
+            <v-tabs v-model="tab" color="primary" align-tabs="center" density="compact">
+              <v-tab value="subscriber">
+                <v-icon start>mdi-account-check</v-icon>
+                <span class="font-weight-bold">チャンネル登録者数</span>
+              </v-tab>
+              <v-tab value="view">
+                <v-icon start>mdi-play</v-icon>
+                <span class="font-weight-bold">総再生数</span>
+              </v-tab>
+              <v-tab value="video">
+                <v-icon start>mdi-video</v-icon>
+                <span class="font-weight-bold">配信・動画数</span>
+              </v-tab>
+            </v-tabs>
 
-        <StatTable :channels="vtubers" :type="tab" />
+            <StatTable :channels="vtubers" :type="tab" />
 
-        <v-card class="text-right px-4 py-2" variant="flat">
-          <UpdateTime class="update-time" :time="fetchedTime" />
-        </v-card>
+            <v-card class="text-right px-4 py-2" variant="flat">
+              <UpdateTime class="update-time" :time="fetchedTime" />
+            </v-card>
+          </v-col>
+        </v-row>
       </v-container>
 
       <v-footer class="bg-primary text-left d-flex flex-column mt-10">
