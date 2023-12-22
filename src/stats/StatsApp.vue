@@ -13,35 +13,35 @@ import axios from 'axios';
 import axiosRetry from 'axios-retry';
 import dayjs, { Dayjs } from 'dayjs';
 
-const vtubers = ref<YouTubeChannelStreamer[]>([]);
+const channels = ref<YouTubeChannelStreamer[]>([]);
 const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
-const fetchVtuberDataInterval = ref<number>();
+const fetchChannelsDataInterval = ref<number>();
 const tab = ref<StatDataType>('subscriber');
 const drawer = ref<boolean>();
 
 axiosRetry(axios, { retries: 3, retryDelay: axiosRetry.exponentialDelay });
 
-async function fetchVtubersData() {
+async function fetchChannelsData() {
   try {
-    const channels = (await axios.get<YouTubeStreamer[]>(channelsUri)).data;
+    const streamers = (await axios.get<YouTubeStreamer[]>(channelsUri)).data;
     const stats = (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data;
-    vtubers.value = mergeArrayBy('id', channels, stats.data);
+    channels.value = mergeArrayBy('id', streamers, stats.data);
 
     fetchedTime.value = dayjs.unix(stats.fetched_at);
     const waitTime = Math.floor(600000 - (dayjs().unix() - stats.fetched_at) * 1000) + 5000;
-    fetchVtuberDataInterval.value = setTimeout(fetchVtubersData, waitTime);
+    fetchChannelsDataInterval.value = setTimeout(fetchChannelsData, waitTime);
   } catch (ex) {
     console.error(`Fetching error. Retrying in 10 minutes: ${ex}`);
-    fetchVtuberDataInterval.value = setTimeout(fetchVtubersData, 600000);
+    fetchChannelsDataInterval.value = setTimeout(fetchChannelsData, 600000);
   }
 }
 
 onMounted(async () => {
-  await fetchVtubersData();
+  await fetchChannelsData();
 });
 
 onBeforeUnmount(() => {
-  clearInterval(fetchVtuberDataInterval.value);
+  clearInterval(fetchChannelsDataInterval.value);
 });
 </script>
 
@@ -57,7 +57,7 @@ onBeforeUnmount(() => {
 
         <v-list nav link active-class="bg-primary" density="compact" class="flex-grow-1 flex-shrink-1 overflow-auto">
           <v-list-item
-            v-for="channel in vtubers"
+            v-for="channel in channels"
             :key="channel.id"
             :title="channel.name"
             :subtitle="channel.globalname"
@@ -109,7 +109,7 @@ onBeforeUnmount(() => {
               </v-tab>
             </v-tabs>
 
-            <StatTable :channels="vtubers" :type="tab" />
+            <StatTable :channels="channels" :type="tab" />
 
             <v-card class="text-right px-4 py-2" variant="flat">
               <UpdateTime class="update-time" :time="fetchedTime" />
