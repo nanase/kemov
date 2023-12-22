@@ -69,6 +69,10 @@ onBeforeUnmount(() => {
               </v-avatar>
             </template>
           </v-list-item>
+
+          <v-list-item v-if="channels.length === 0" class="pa-4 text-center">
+            <v-progress-circular color="primary" indeterminate></v-progress-circular>
+          </v-list-item>
         </v-list>
 
         <v-divider />

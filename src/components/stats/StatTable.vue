@@ -70,7 +70,7 @@ function getStrong(): number {
 
 <template>
   <v-table density="compact" hover>
-    <thead>
+    <thead v-if="channels.length !== 0">
       <tr>
         <th class="pl-4 pr-2">&nbsp;</th>
         <th class="px-2 text-right font-weight-bold">{{ getColumnName() }}</th>
@@ -107,8 +107,13 @@ function getStrong(): number {
         />
         <DifferenceValue class="pl-2 pr-4 text-h6" :value="getCountPerDay(channel)" :strong="getStrong()" tag="td" />
       </tr>
+      <tr v-if="channels.length === 0">
+        <td colspan="4" class="pa-4 text-center">
+          <v-progress-circular color="primary" indeterminate></v-progress-circular>
+        </td>
+      </tr>
     </tbody>
-    <tfoot>
+    <tfoot v-if="channels.length !== 0">
       <tr class="text-right text-h6">
         <td class="pl-4 pr-2 text-body-1 font-weight-bold">合計</td>
         <td class="px-2">{{ withCommas(sum(channels, getCount)) }}</td>
