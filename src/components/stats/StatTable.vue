@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import DifferenceValue from '@/components/stats/DifferenceValue.vue';
-import { type YouTubeChannelStats, type YouTubeChannel } from '@/stats/types';
+import { type YouTubeChannelStreamer } from '@/stats/types';
 
 import { sum } from '@/lib/array';
 import { withCommas } from '@/lib/number';
 
 export type StatDataType = 'subscriber' | 'view' | 'video';
-type Channel = YouTubeChannel & YouTubeChannelStats;
 
 const { channels, type } = defineProps<{
-  channels: readonly Channel[];
+  channels: readonly YouTubeChannelStreamer[];
   type: StatDataType;
 }>();
 
@@ -24,7 +23,7 @@ function getColumnName(): string {
   }
 }
 
-function getCount(channel: Channel): number {
+function getCount(channel: YouTubeChannelStreamer): number {
   switch (type) {
     case 'subscriber':
       return channel.statistics.subscriberCount;
@@ -35,7 +34,7 @@ function getCount(channel: Channel): number {
   }
 }
 
-function getCountPerHour(channel: Channel): number {
+function getCountPerHour(channel: YouTubeChannelStreamer): number {
   switch (type) {
     case 'subscriber':
       return channel.statistics.subscriberCountPerHour;
@@ -46,7 +45,7 @@ function getCountPerHour(channel: Channel): number {
   }
 }
 
-function getCountPerDay(channel: Channel): number {
+function getCountPerDay(channel: YouTubeChannelStreamer): number {
   switch (type) {
     case 'subscriber':
       return channel.statistics.subscriberCountPerDay;

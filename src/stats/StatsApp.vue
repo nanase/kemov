@@ -4,7 +4,7 @@ import { onMounted, onBeforeUnmount, ref } from 'vue';
 import ThemeToggleButton from '@/components/common/ThemeToggleButton.vue';
 import StatTable, { type StatDataType } from '@/components/stats/StatTable.vue';
 import UpdateTime from '../components/stats/UpdateTime.vue';
-import { type YouTubeChannelStats, type YouTubeChannel, type YouTubeChannelStatsResponse } from './types';
+import { type YouTubeStreamer, type YouTubeChannelStreamer, type YouTubeChannelStatsResponse } from './types';
 
 import { channelsUri, statsUri } from './config';
 import { mergeArrayBy } from '@/lib/array';
@@ -13,19 +13,20 @@ import axios from 'axios';
 import axiosRetry from 'axios-retry';
 import dayjs, { Dayjs } from 'dayjs';
 
-const vtubers = ref<Array<YouTubeChannel & YouTubeChannelStats>>([]);
+const vtubers = ref<YouTubeChannelStreamer[]>([]);
 const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
 const fetchVtuberDataInterval = ref<number>();
 const tab = ref<StatDataType>('subscriber');
 const drawer = ref<boolean>();
-let channels: YouTubeChannel[];
 
 axiosRetry(axios, { retries: 3, retryDelay: axiosRetry.exponentialDelay });
 
 async function fetchVtubersData() {
   try {
+    const channels = (await axios.get<YouTubeStreamer[]>(channelsUri)).data;
     const stats = (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data;
     vtubers.value = mergeArrayBy('id', channels, stats.data);
+
     fetchedTime.value = dayjs.unix(stats.fetched_at);
     const waitTime = Math.floor(600000 - (dayjs().unix() - stats.fetched_at) * 1000) + 5000;
     fetchVtuberDataInterval.value = setTimeout(fetchVtubersData, waitTime);
@@ -36,7 +37,6 @@ async function fetchVtubersData() {
 }
 
 onMounted(async () => {
-  channels = (await axios.get<YouTubeChannel[]>(channelsUri)).data;
   await fetchVtubersData();
 });
 

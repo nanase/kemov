@@ -9,7 +9,7 @@ import { mergeArrayBy, sum } from '@/lib/array';
 import { withCommas } from '@/lib/number';
 import { channelsUri, videoUri, statsUri } from '../config';
 import { type Video, parse as parseAsVideo } from './types';
-import { type YouTubeChannel, type YouTubeChannelStats, type YouTubeChannelStatsResponse } from '../../stats/types';
+import { type YouTubeChannelStreamer, type YouTubeChannelStatsResponse } from '../../stats/types';
 import type { VideoType } from '@/stats/detail/types';
 
 import ThemeToggleButton from '@/components/common/ThemeToggleButton.vue';
@@ -23,8 +23,8 @@ const { channelId } = defineProps<{
 
 //
 const stats = computedAsync(async () => (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data.data, []);
-const channels = computedAsync<readonly (YouTubeChannel & YouTubeChannelStats)[]>(async () =>
-  mergeArrayBy('id', (await axios.get<YouTubeChannel[]>(channelsUri)).data, stats.value),
+const channels = computedAsync<readonly YouTubeChannelStreamer[]>(async () =>
+  mergeArrayBy('id', (await axios.get<YouTubeChannelStreamer[]>(channelsUri)).data, stats.value),
 );
 const channel = computed(() => channels.value.find((c) => c.id === channelId));
 const videos = computedAsync(async () => {

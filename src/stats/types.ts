@@ -17,7 +17,7 @@ interface YouTubeStatistics {
   subscriberCountPerDay: number;
 }
 
-export interface YouTubeChannelStats {
+export interface YouTubeChannel {
   id: string;
   fullname: string;
   customUrl: string;
@@ -31,10 +31,10 @@ export interface YouTubeChannelStats {
 
 export interface YouTubeChannelStatsResponse {
   fetched_at: number;
-  data: YouTubeChannelStats[];
+  data: YouTubeChannel[];
 }
 
-export interface YouTubeChannel {
+export interface YouTubeStreamer {
   id: string;
   name: string;
   fullname: string;
@@ -49,3 +49,5 @@ export interface YouTubeChannel {
   activityStartDate: string;
   activityEndDate?: string;
 }
+
+export type YouTubeChannelStreamer = YouTubeStreamer & YouTubeChannel;
