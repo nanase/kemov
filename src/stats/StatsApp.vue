@@ -18,11 +18,13 @@ const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
 const fetchChannelsDataInterval = ref<number>();
 const tab = ref<StatDataType>('subscriber');
 const drawer = ref<boolean>();
+const errorSnackbar = ref<boolean>();
 
 axiosRetry(axios, { retries: 3, retryDelay: axiosRetry.exponentialDelay });
 
 async function fetchChannelsData() {
   try {
+    errorSnackbar.value = false;
     const streamers = (await axios.get<YouTubeStreamer[]>(channelsUri)).data;
     const stats = (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data;
     channels.value = mergeArrayBy('id', streamers, stats.data);
@@ -32,6 +34,7 @@ async function fetchChannelsData() {
     fetchChannelsDataInterval.value = setTimeout(fetchChannelsData, waitTime);
   } catch (ex) {
     console.error(`Fetching error. Retrying in 10 minutes: ${ex}`);
+    errorSnackbar.value = true;
     fetchChannelsDataInterval.value = setTimeout(fetchChannelsData, 600000);
   }
 }
@@ -94,6 +97,13 @@ onBeforeUnmount(() => {
           <ThemeToggleButton />
         </template>
       </v-app-bar>
+
+      <v-snackbar v-model="errorSnackbar" timeout="10000">
+        データの読み込みができませんでした。しばらくしてから再読み込みしてください。
+        <template v-slot:actions>
+          <v-btn color="red-lighten-2" variant="text" @click="errorSnackbar = false">閉じる</v-btn>
+        </template>
+      </v-snackbar>
 
       <v-container>
         <v-row justify="center">
