@@ -92,17 +92,24 @@ const sorting = ref<Sorting>('descending');
               <v-icon icon="mdi-check" />
               チャンネル登録者
             </v-card-text>
-            <v-card-text class="pa-2 mt-n3 text-h5 text-right">
-              {{ withCommas(realtimeStats?.subscriberCount) }}
-              <span class="text-subtitle-2">&nbsp;</span>
-            </v-card-text>
-            <v-card-text class="pa-2 pt-0 mt-n2 text-subtitle-2 text-right">
-              1日あたり
-              <span class="pr-2 pt-0 mt-n2 text-h6 text-right">
-                +{{ ((realtimeStats?.subscriberCount ?? 0) / activityDays).toFixed(1) }}
-              </span>
-              <span class="text-subtitle-2">&nbsp;</span>
-            </v-card-text>
+            <v-skeleton-loader
+              v-if="!realtimeStats || !Number.isFinite(activityDays) || activityDays === 0"
+              color="transparent"
+              type="text@2"
+            />
+            <template v-else>
+              <v-card-text class="pa-2 mt-n3 text-h5 text-right">
+                {{ withCommas(realtimeStats?.subscriberCount) }}
+                <span class="text-subtitle-2">&nbsp;</span>
+              </v-card-text>
+              <v-card-text class="pa-2 pt-0 mt-n2 text-subtitle-2 text-right">
+                1日あたり
+                <span class="pr-2 pt-0 mt-n2 text-h6 text-right">
+                  +{{ ((realtimeStats?.subscriberCount ?? 0) / activityDays).toFixed(1) }}
+                </span>
+                <span class="text-subtitle-2">&nbsp;</span>
+              </v-card-text>
+            </template>
           </v-card>
         </v-col>
         <v-col cols="6" sm="4" class="pa-1">
@@ -111,16 +118,23 @@ const sorting = ref<Sorting>('descending');
               <v-icon icon="mdi-video"></v-icon>
               公開中の配信・動画
             </v-card-text>
-            <v-card-text class="py-2 mt-n3 text-h5 text-right">
-              {{ withCommas(videos.length) }}
-              <span class="text-subtitle-2">個</span>
-            </v-card-text>
-            <v-card-text class="py-2 pt-0 mt-n2 text-subtitle-2 text-right">
-              <span class="pr-1 pt-0 mt-n2 text-h6 text-right">
-                {{ (activityDays / videos.length).toFixed(2) }}
-              </span>
-              <span class="text-subtitle-2">日に1回</span>
-            </v-card-text>
+            <v-skeleton-loader
+              v-if="videos.length === 0 || !Number.isFinite(activityDays)"
+              color="transparent"
+              type="text@2"
+            />
+            <template v-else>
+              <v-card-text class="py-2 mt-n3 text-h5 text-right">
+                {{ withCommas(videos.length) }}
+                <span class="text-subtitle-2">個</span>
+              </v-card-text>
+              <v-card-text class="py-2 pt-0 mt-n2 text-subtitle-2 text-right">
+                <span class="pr-1 pt-0 mt-n2 text-h6 text-right">
+                  {{ (activityDays / videos.length).toFixed(2) }}
+                </span>
+                <span class="text-subtitle-2">日に1回</span>
+              </v-card-text>
+            </template>
           </v-card>
         </v-col>
         <v-col cols="6" sm="4" class="pa-1">
@@ -129,16 +143,19 @@ const sorting = ref<Sorting>('descending');
               <v-icon icon="mdi-calendar-clock"></v-icon>
               配信活動日数
             </v-card-text>
-            <v-card-text class="py-2 mt-n3 text-h5 text-right">
-              {{ withCommas(Math.floor(activityDays)) }}
-              <span class="text-subtitle-2">日</span>
-            </v-card-text>
-            <v-card-text class="py-2 pt-0 mt-n2 text-subtitle-2 text-right">
-              <span class="pt-0 mt-n2 text-h6 text-right">
-                {{ channel?.activityStartDate }}
-              </span>
-              開始
-            </v-card-text>
+            <v-skeleton-loader v-if="!channel || !Number.isFinite(activityDays)" color="transparent" type="text@2" />
+            <template v-else>
+              <v-card-text class="py-2 mt-n3 text-h5 text-right">
+                {{ withCommas(Math.floor(activityDays)) }}
+                <span class="text-subtitle-2">日</span>
+              </v-card-text>
+              <v-card-text class="py-2 pt-0 mt-n2 text-subtitle-2 text-right">
+                <span class="pt-0 mt-n2 text-h6 text-right">
+                  {{ channel?.activityStartDate }}
+                </span>
+                開始
+              </v-card-text>
+            </template>
           </v-card>
         </v-col>
         <v-col cols="6" sm="4" class="pa-1">
@@ -147,17 +164,20 @@ const sorting = ref<Sorting>('descending');
               <v-icon icon="mdi-play"></v-icon>
               総再生数
             </v-card-text>
-            <v-card-text class="py-2 mt-n3 text-h5 text-right">
-              {{ withCommas(sum(videos, (v) => v.viewCount ?? 0)) }}
-              <span class="text-subtitle-2">回</span>
-            </v-card-text>
-            <v-card-text class="py-2 pt-0 mt-n2 text-subtitle-2 text-right">
-              1配信あたり
-              <span class="pr-2 pt-0 mt-n2 text-h6 text-right">
-                {{ withCommas(Math.floor(sum(videos, (v) => v.viewCount ?? 0) / videos.length)) }}
-              </span>
-              <span class="text-subtitle-2">回</span>
-            </v-card-text>
+            <v-skeleton-loader v-if="videos.length === 0" color="transparent" type="text@2" />
+            <template v-else>
+              <v-card-text class="py-2 mt-n3 text-h5 text-right">
+                {{ withCommas(sum(videos, (v) => v.viewCount ?? 0)) }}
+                <span class="text-subtitle-2">回</span>
+              </v-card-text>
+              <v-card-text class="py-2 pt-0 mt-n2 text-subtitle-2 text-right">
+                1配信あたり
+                <span class="pr-2 pt-0 mt-n2 text-h6 text-right">
+                  {{ withCommas(Math.floor(sum(videos, (v) => v.viewCount ?? 0) / videos.length)) }}
+                </span>
+                <span class="text-subtitle-2">回</span>
+              </v-card-text>
+            </template>
           </v-card>
         </v-col>
         <v-col cols="6" sm="4" class="pa-1">
@@ -166,17 +186,20 @@ const sorting = ref<Sorting>('descending');
               <v-icon icon="mdi-thumb-up"></v-icon>
               総高評価数
             </v-card-text>
-            <v-card-text class="pa-2 mt-n3 text-h5 text-right">
-              {{ withCommas(sum(videos, (v) => v.likeCount ?? 0)) }}
-              <span class="text-subtitle-2">&nbsp;</span>
-            </v-card-text>
-            <v-card-text class="pa-2 pt-0 mt-n2 text-subtitle-2 text-right">
-              1配信あたり
-              <span class="pr-2 pt-0 mt-n2 text-h6 text-right">
-                {{ (sum(videos, (v) => v.likeCount ?? 0) / videos.length).toFixed(1) }}
-              </span>
-              <span class="text-subtitle-2">&nbsp;</span>
-            </v-card-text>
+            <v-skeleton-loader v-if="videos.length === 0" color="transparent" type="text@2" />
+            <template v-else>
+              <v-card-text class="pa-2 mt-n3 text-h5 text-right">
+                {{ withCommas(sum(videos, (v) => v.likeCount ?? 0)) }}
+                <span class="text-subtitle-2">&nbsp;</span>
+              </v-card-text>
+              <v-card-text class="pa-2 pt-0 mt-n2 text-subtitle-2 text-right">
+                1配信あたり
+                <span class="pr-2 pt-0 mt-n2 text-h6 text-right">
+                  {{ (sum(videos, (v) => v.likeCount ?? 0) / videos.length).toFixed(1) }}
+                </span>
+                <span class="text-subtitle-2">&nbsp;</span>
+              </v-card-text>
+            </template>
           </v-card>
         </v-col>
         <v-col cols="6" sm="4" class="pa-1">
@@ -185,17 +208,20 @@ const sorting = ref<Sorting>('descending');
               <v-icon icon="mdi-comment"></v-icon>
               総コメント数
             </v-card-text>
-            <v-card-text class="py-2 mt-n3 text-h5 text-right">
-              {{ withCommas(sum(videos, (v) => v.commentCount ?? 0)) }}
-              <span class="text-subtitle-2">個</span>
-            </v-card-text>
-            <v-card-text class="py-2 pt-0 mt-n2 text-subtitle-2 text-right">
-              1配信あたり
-              <span class="pr-2 pt-0 mt-n2 text-h6 text-right">
-                {{ (sum(videos, (v) => v.commentCount ?? 0) / videos.length).toFixed(1) }}
-              </span>
-              <span class="text-subtitle-2">個</span>
-            </v-card-text>
+            <v-skeleton-loader v-if="videos.length === 0" color="transparent" type="text@2" />
+            <template v-else>
+              <v-card-text class="py-2 mt-n3 text-h5 text-right">
+                {{ withCommas(sum(videos, (v) => v.commentCount ?? 0)) }}
+                <span class="text-subtitle-2">個</span>
+              </v-card-text>
+              <v-card-text class="py-2 pt-0 mt-n2 text-subtitle-2 text-right">
+                1配信あたり
+                <span class="pr-2 pt-0 mt-n2 text-h6 text-right">
+                  {{ (sum(videos, (v) => v.commentCount ?? 0) / videos.length).toFixed(1) }}
+                </span>
+                <span class="text-subtitle-2">個</span>
+              </v-card-text>
+            </template>
           </v-card>
         </v-col>
       </v-row>
