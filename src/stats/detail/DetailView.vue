@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { computedAsync } from '@vueuse/core';
 import axios from 'axios';
 import axiosRetry from 'axios-retry';
@@ -9,7 +9,7 @@ import { mergeArrayBy, sum } from '@/lib/array';
 import { withCommas } from '@/lib/number';
 import { channelsUri, videoUri, statsUri } from '../config';
 import { type Video, parse as parseAsVideo } from './types';
-import { type YouTubeChannelStreamer, type YouTubeChannelStatsResponse } from '../../stats/types';
+import { type YouTubeChannelStreamer, type YouTubeChannelStatsResponse, type YouTubeChannel } from '../../stats/types';
 import type { VideoType } from '@/stats/detail/types';
 
 import NavigationDrawer from '@/components/common/NavigationDrawer.vue';
@@ -23,10 +23,8 @@ const { channelId } = defineProps<{
 }>();
 
 //
-const stats = computedAsync(async () => (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data.data, []);
-const channels = computedAsync<readonly YouTubeChannelStreamer[]>(async () =>
-  mergeArrayBy('id', (await axios.get<YouTubeChannelStreamer[]>(channelsUri)).data, stats.value),
-);
+const stats = ref<YouTubeChannel[]>([]);
+const channels = ref<readonly YouTubeChannelStreamer[]>([]);
 const channel = computed(() => channels.value.find((c) => c.id === channelId));
 const videos = computedAsync(async () => {
   if (channel.value != null) {
@@ -37,9 +35,14 @@ const videos = computedAsync(async () => {
     return [];
   }
 }, []);
-const realtimeStats = computedAsync(async () => stats.value.find((channel) => channel.id === channelId)?.statistics);
+
+onMounted(async () => {
+  stats.value = (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data.data;
+  channels.value = mergeArrayBy('id', (await axios.get<YouTubeChannelStreamer[]>(channelsUri)).data, stats.value);
+});
 
 ////
+const realtimeStats = computed(() => stats.value.find((channel) => channel.id === channelId)?.statistics);
 const activityDays = computed(() =>
   dayjs(channel?.value?.activityEndDate ?? undefined).diff(dayjs(channel?.value?.activityStartDate), 'days', true),
 );
