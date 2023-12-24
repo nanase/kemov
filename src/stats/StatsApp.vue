@@ -99,8 +99,8 @@ onBeforeUnmount(() => {
       <v-footer class="bg-secondary text-left d-flex flex-column mt-10">
         <ul>
           <li>およそ10分ごとに自動で更新されます。数値は減少することがあります</li>
-          <li>総再生回数と動画数は配信終了後から反映されます</li>
-          <li>このサイトは非公式です。内容についてのお問い合わせはご遠慮ください</li>
+          <li>総再生数と配信・動画数は配信終了後から反映されます</li>
+          <li>このサイトは非公式のファンサイトです</li>
         </ul>
       </v-footer>
     </v-main>

@@ -237,7 +237,12 @@ const sorting = ref<Sorting>('descending');
         </v-card>
       </v-container>
     </v-container>
-    <v-footer class="bg-primary text-center d-flex flex-column mt-10">このサイトは非公式のファンサイトです</v-footer>
+    <v-footer class="bg-secondary text-center d-flex flex-column mt-10">
+      <ul>
+        <li>数値の反映に数日かかることがあります</li>
+        <li>このサイトは非公式のファンサイトです</li>
+      </ul>
+    </v-footer>
   </v-main>
 </template>
 
