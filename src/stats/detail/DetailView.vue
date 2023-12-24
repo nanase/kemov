@@ -28,17 +28,28 @@ const channels = ref<readonly YouTubeChannelStreamer[]>([]);
 const channel = computed(() => channels.value.find((c) => c.id === channelId));
 const videos = computedAsync(async () => {
   if (channel.value != null) {
-    return (
-      await axios.get<readonly Video[]>(videoUri(channel.value.id), { transformResponse: parseAsVideo })
-    ).data.filter((v) => v.availability === 'public');
+    try {
+      errorSnackbar.value = false;
+      return (
+        await axios.get<readonly Video[]>(videoUri(channel.value.id), { transformResponse: parseAsVideo })
+      ).data.filter((v) => v.availability === 'public');
+    } catch {
+      errorSnackbar.value = true;
+      return [];
+    }
   } else {
     return [];
   }
 }, []);
 
 onMounted(async () => {
-  stats.value = (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data.data;
-  channels.value = mergeArrayBy('id', (await axios.get<YouTubeChannelStreamer[]>(channelsUri)).data, stats.value);
+  try {
+    errorSnackbar.value = false;
+    stats.value = (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data.data;
+    channels.value = mergeArrayBy('id', (await axios.get<YouTubeChannelStreamer[]>(channelsUri)).data, stats.value);
+  } catch {
+    errorSnackbar.value = true;
+  }
 });
 
 ////
@@ -47,6 +58,7 @@ const activityDays = computed(() =>
   dayjs(channel?.value?.activityEndDate ?? undefined).diff(dayjs(channel?.value?.activityStartDate), 'days', true),
 );
 
+const errorSnackbar = ref<boolean>();
 const drawer = ref<boolean>();
 const targetProperty = ref<TargetProperty>('viewCount');
 const filterType = ref<VideoType[]>(['video', 'streaming', 'shorts']);
@@ -64,6 +76,13 @@ const sorting = ref<Sorting>('descending');
         <ThemeToggleButton />
       </template>
     </v-app-bar>
+
+    <v-snackbar v-model="errorSnackbar" timeout="10000">
+      データの読み込みができませんでした。しばらくしてから再読み込みしてください。
+      <template v-slot:actions>
+        <v-btn color="red-lighten-2" variant="text" @click="errorSnackbar = false">閉じる</v-btn>
+      </template>
+    </v-snackbar>
 
     <v-container>
       <v-row class="ma-0">
