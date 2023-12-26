@@ -131,7 +131,13 @@ function getAverageSubscriberCount(): number {
         <td class="pl-4 pr-2 text-body-1 font-weight-bold">
           <v-dialog v-if="type === 'subscriber'" max-width="640">
             <template v-slot:activator="{ props }">
-              <v-btn v-bind="props" icon="mdi-information-outline" variant="plain" density="compact"></v-btn>
+              <v-btn
+                v-bind="props"
+                icon="mdi-information-outline"
+                variant="plain"
+                density="compact"
+                aria-label="チャンネル登録者数について"
+              />
             </template>
 
             <template v-slot:default="{ isActive }">

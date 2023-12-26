@@ -55,7 +55,7 @@ onBeforeUnmount(() => {
 
     <v-main>
       <v-app-bar flat density="compact">
-        <v-app-bar-nav-icon variant="text" @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
+        <v-app-bar-nav-icon variant="text" @click.stop="drawer = !drawer" aria-label="ナビゲーションを表示" />
         <v-toolbar-title>けもV リアルタイム統計</v-toolbar-title>
         <template v-slot:append>
           <ThemeToggleButton />
