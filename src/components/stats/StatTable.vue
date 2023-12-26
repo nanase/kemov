@@ -105,7 +105,7 @@ function getAverageSubscriberCount(): number {
             </template>
             <template v-slot:prepend>
               <v-avatar class="avatar" :color="channel.color.key" variant="outlined" size="small">
-                <v-img :src="channel.thumbnails.default.url" />
+                <v-img :src="channel.thumbnails.default.url" :alt="channel.fullname" />
               </v-avatar>
             </template>
           </v-list-item>
