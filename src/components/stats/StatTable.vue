@@ -66,6 +66,19 @@ function getStrong(): number {
       return 10;
   }
 }
+
+function getMaxSubscriberCount(x: number): number {
+  if (x >= 1000) {
+    return x + 10 ** (BigInt(x).toString().length - 3) - 1;
+  } else {
+    return x;
+  }
+}
+
+function getAverageSubscriberCount(): number {
+  const total = sum(channels, getCount);
+  return Math.round(total + (sum(channels, (channel) => getMaxSubscriberCount(getCount(channel))) - total) / 2);
+}
 </script>
 
 <template>
@@ -115,7 +128,58 @@ function getStrong(): number {
     </tbody>
     <tfoot v-if="channels.length !== 0">
       <tr class="text-right text-h6">
-        <td class="pl-4 pr-2 text-body-1 font-weight-bold">合計</td>
+        <td class="pl-4 pr-2 text-body-1 font-weight-bold">
+          <v-dialog v-if="type === 'subscriber'" max-width="640">
+            <template v-slot:activator="{ props }">
+              <v-btn v-bind="props" icon="mdi-information-outline" variant="plain" density="compact"></v-btn>
+            </template>
+
+            <template v-slot:default="{ isActive }">
+              <v-card title="チャンネル登録者数について">
+                <v-card-text>
+                  <p>
+                    YouTube の仕様の制約により、チャンネル登録者数の正確な数値はチャンネルの所有者のみに開示されます。
+                    それ以外の利用者には数値の上位3桁のみが開示されます。
+                  </p>
+                  <p>
+                    よって、このサイトで表示している数値は上位3桁のみの最小値であり、正確な数値はこれ以上となります。
+                    下記の数値は参考値としてお考えください。
+                  </p>
+                </v-card-text>
+                <v-card-text>
+                  <v-timeline class="text-center" direction="horizontal" side="end" size="small" density="compact">
+                    <v-timeline-item icon="mdi-flag-checkered" dot-color="green">
+                      <div class="mt-n4">
+                        <p>{{ withCommas(sum(channels, getCount)) }}</p>
+                        <div class="font-weight-bold text-body-2">最小値</div>
+                      </div>
+                    </v-timeline-item>
+
+                    <v-timeline-item icon="mdi-flag-checkered" dot-color="orange-darken-1">
+                      <div class="mt-n4">
+                        <p>{{ withCommas(getAverageSubscriberCount()) }}</p>
+                        <div class="font-weight-bold text-body-2">平均値</div>
+                      </div>
+                    </v-timeline-item>
+
+                    <v-timeline-item icon="mdi-flag-checkered" dot-color="red">
+                      <div class="mt-n4">
+                        <p>{{ withCommas(sum(channels, (channel) => getMaxSubscriberCount(getCount(channel)))) }}</p>
+                        <div class="font-weight-bold text-body-2">最大値</div>
+                      </div>
+                    </v-timeline-item>
+                  </v-timeline>
+                </v-card-text>
+                <v-card-actions>
+                  <v-spacer></v-spacer>
+
+                  <v-btn text="閉じる" @click="isActive.value = false"></v-btn>
+                </v-card-actions>
+              </v-card>
+            </template>
+          </v-dialog>
+          合計
+        </td>
         <td class="px-2">{{ withCommas(sum(channels, getCount)) }}</td>
         <DifferenceValue
           class="px-2"
