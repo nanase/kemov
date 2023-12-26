@@ -84,7 +84,7 @@ onBeforeUnmount(() => {
     <template v-slot:activator="{ props }">
       <v-btn
         v-bind="props"
-        :icon="theme.global.current.value.dark ? 'mdi-white-balance-sunny' : 'mdi-weather-night'"
+        :icon="theme.global.current.value.dark ? 'mdi-weather-night' : 'mdi-white-balance-sunny'"
         @click="toggleTheme"
         aria-label="テーマを切り替え"
       />
