@@ -85,15 +85,15 @@ function getAverageSubscriberCount(): number {
   <v-table density="compact" hover>
     <thead v-if="channels.length !== 0">
       <tr>
-        <th class="pl-4 pr-2">&nbsp;</th>
-        <th class="px-2 text-right font-weight-bold">{{ getColumnName() }}</th>
-        <th class="px-2 text-right font-weight-bold" v-if="type === 'subscriber'">1時間</th>
-        <th class="pl-2 pr-4 text-right font-weight-bold">24時間</th>
+        <th scope="col" class="pl-4 pr-2">&nbsp;</th>
+        <th scope="col" class="px-2 text-right font-weight-bold">{{ getColumnName() }}</th>
+        <th scope="col" class="px-2 text-right font-weight-bold" v-if="type === 'subscriber'">1時間</th>
+        <th scope="col" class="pl-2 pr-4 text-right font-weight-bold">24時間</th>
       </tr>
     </thead>
     <tbody>
       <tr class="channel text-right" v-for="channel in channels" :key="channel.id">
-        <td class="pl-4 pr-2">
+        <th scope="row" class="channel-name-head pl-4 pr-2">
           <v-list-item
             class="channel-name text-left px-0"
             :href="`https://www.youtube.com/${channel.customUrl}`"
@@ -109,7 +109,7 @@ function getAverageSubscriberCount(): number {
               </v-avatar>
             </template>
           </v-list-item>
-        </td>
+        </th>
         <td class="px-2 text-h6">{{ withCommas(getCount(channel)) }}</td>
         <DifferenceValue
           class="px-2 text-h6"
@@ -128,7 +128,7 @@ function getAverageSubscriberCount(): number {
     </tbody>
     <tfoot v-if="channels.length !== 0">
       <tr class="text-right text-h6">
-        <td class="pl-4 pr-2 text-body-1 font-weight-bold">
+        <th scope="row" class="pl-4 pr-2 text-right text-body-1 font-weight-bold">
           <v-dialog v-if="type === 'subscriber'" max-width="640">
             <template v-slot:activator="{ props }">
               <v-btn
@@ -185,7 +185,7 @@ function getAverageSubscriberCount(): number {
             </template>
           </v-dialog>
           合計
-        </td>
+        </th>
         <td class="px-2">{{ withCommas(sum(channels, getCount)) }}</td>
         <DifferenceValue
           class="px-2"
@@ -201,8 +201,28 @@ function getAverageSubscriberCount(): number {
 </template>
 
 <style lang="scss">
-.v-table th {
-  white-space: nowrap;
+.v-table {
+  th {
+    white-space: nowrap;
+  }
+
+  table > tbody {
+    > tr > th {
+      position: relative;
+    }
+
+    > tr:hover > th::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      /* stylelint-disable-next-line color-function-notation */
+      background: rgba(var(--v-border-color), var(--v-hover-opacity));
+      pointer-events: none;
+    }
+  }
 }
 
 .channel {
