@@ -11,15 +11,22 @@ const opened = defineModel<boolean>('opened');
 </script>
 
 <template>
-  <v-navigation-drawer class="bg-background" v-model="opened" floating>
-    <v-list class="pb-0 d-flex flex-column fill-height">
-      <v-list-item link title="リアルタイム統計" href="/kemov/stats/">
+  <v-navigation-drawer class="bg-background" v-model="opened" floating aria-label="サイトページ一覧">
+    <v-list class="pb-0 d-flex flex-column fill-height" role="menu">
+      <v-list-item link title="リアルタイム統計" href="/kemov/stats/" role="menuitem">
         <template v-slot:prepend>
           <v-icon icon="mdi-finance" size="large" />
         </template>
       </v-list-item>
 
-      <v-list nav link active-class="bg-primary" density="compact" class="flex-grow-1 flex-shrink-1 overflow-auto">
+      <v-list
+        nav
+        link
+        active-class="bg-primary"
+        density="compact"
+        class="flex-grow-1 flex-shrink-1 overflow-auto"
+        role="menu"
+      >
         <v-list-item
           v-for="channel in channels"
           :key="channel.id"
@@ -27,6 +34,7 @@ const opened = defineModel<boolean>('opened');
           :subtitle="channel.globalname"
           :href="`/kemov/stats/detail/#/${channel.id}`"
           :active="activeChannelId === channel.id"
+          role="menuitem"
         >
           <template v-slot:prepend>
             <v-avatar :color="channel.color.key" variant="outlined" size="small">
@@ -41,8 +49,8 @@ const opened = defineModel<boolean>('opened');
       </v-list>
 
       <v-divider />
-      <v-list density="compact" link nav class="flex-grow-0 flex-shrink-0">
-        <v-list-item title="ジェネット楽曲一覧" href="/kemov/genet/music/" prepend-icon="mdi-music">
+      <v-list density="compact" link nav class="flex-grow-0 flex-shrink-0" role="menu">
+        <v-list-item title="ジェネット楽曲一覧" href="/kemov/genet/music/" prepend-icon="mdi-music" role="menuitem">
           <template v-slot:prepend>
             <v-icon icon="mdi-music" size="small" />
           </template>

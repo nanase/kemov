@@ -80,7 +80,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <v-tooltip text="テーマを切り替え">
+  <v-tooltip text="テーマを切り替え" aria-label="テーマを切り替え">
     <template v-slot:activator="{ props }">
       <v-btn
         v-bind="props"
