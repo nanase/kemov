@@ -248,8 +248,8 @@ const sorting = ref<Sorting>('descending');
             <v-btn prepend-icon="mdi-cellphone-play" value="shorts">ショート</v-btn>
           </v-btn-toggle>
           <v-btn-toggle v-model="sorting" class="ml-2" divided color="secondary" mandatory>
-            <v-btn icon="mdi-sort-descending" value="descending"></v-btn>
-            <v-btn icon="mdi-sort-ascending" value="ascending"></v-btn>
+            <v-btn icon="mdi-sort-descending" value="descending" aria-label="降順" />
+            <v-btn icon="mdi-sort-ascending" value="ascending" aria-label="昇順" />
           </v-btn-toggle>
           <v-card flat>
             <VideoRanking
