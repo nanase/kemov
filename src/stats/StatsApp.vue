@@ -10,8 +10,7 @@ import { type YouTubeStreamer, type YouTubeChannelStreamer, type YouTubeChannelS
 import { channelsUri, statsUri } from './config';
 import { mergeArrayBy } from '@/lib/array';
 
-import axios from 'axios';
-import axiosRetry from 'axios-retry';
+import axios from '@/lib/axios';
 import dayjs, { Dayjs } from 'dayjs';
 
 const channels = ref<YouTubeChannelStreamer[]>([]);
@@ -20,8 +19,6 @@ const fetchChannelsDataInterval = ref<number>();
 const tab = ref<StatDataType>('subscriber');
 const drawer = ref<boolean>();
 const errorSnackbar = ref<boolean>();
-
-axiosRetry(axios, { retries: 3, retryDelay: axiosRetry.exponentialDelay });
 
 async function fetchChannelsData() {
   try {

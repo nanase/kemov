@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue';
 import { computedAsync } from '@vueuse/core';
-import axios from 'axios';
-import axiosRetry from 'axios-retry';
+import axios from '@/lib/axios';
 import dayjs from 'dayjs';
 
 import { mergeArrayBy, sum } from '@/lib/array';
@@ -15,8 +14,6 @@ import type { VideoType } from '@/stats/detail/types';
 import NavigationDrawer from '@/components/common/NavigationDrawer.vue';
 import ThemeToggleButton from '@/components/common/ThemeToggleButton.vue';
 import VideoRanking, { type Sorting, type TargetProperty } from '@/components/stats/detail/VideoRanking.vue';
-
-axiosRetry(axios, { retries: 3, retryDelay: axiosRetry.exponentialDelay });
 
 const { channelId } = defineProps<{
   channelId: string;
