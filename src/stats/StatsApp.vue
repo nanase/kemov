@@ -7,7 +7,7 @@ import StatTable, { type StatDataType } from '@/components/stats/StatTable.vue';
 import UpdateTime from '../components/stats/UpdateTime.vue';
 import { type YouTubeStreamer, type YouTubeChannelStreamer, type YouTubeChannelStatsResponse } from './types';
 
-import { channelsUri, statsUri } from './config';
+import { channelsUri, statsUri } from '@/config';
 import { mergeArrayBy } from '@/lib/array';
 
 import axios from '@/lib/axios';
