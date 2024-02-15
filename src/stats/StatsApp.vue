@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue';
-
+import { ref } from 'vue';
 import NavigationDrawer from '@/components/common/NavigationDrawer.vue';
 import ThemeToggleButton from '@/components/common/ThemeToggleButton.vue';
 import StatTable, { type StatDataType } from '@/components/stats/StatTable.vue';
@@ -9,41 +8,32 @@ import { type YouTubeStreamer, type YouTubeChannelStreamer, type YouTubeChannelS
 
 import { channelsUri, statsUri } from '@/config';
 import { mergeArrayBy } from '@/lib/array';
-
 import axios from '@/lib/axios';
 import dayjs, { Dayjs } from '@/lib/dayjs';
+import { definePeriodicCall } from '@/lib/vue';
 
 const channels = ref<YouTubeChannelStreamer[]>([]);
 const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
-const fetchChannelsDataInterval = ref<number>();
 const tab = ref<StatDataType>('subscriber');
 const drawer = ref<boolean>();
 const errorSnackbar = ref<boolean>();
 
-async function fetchChannelsData() {
-  try {
+definePeriodicCall(
+  async () => {
     errorSnackbar.value = false;
     const streamers = (await axios.get<YouTubeStreamer[]>(channelsUri)).data;
     const stats = (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data;
     channels.value = mergeArrayBy('id', streamers, stats.data);
 
     fetchedTime.value = dayjs.unix(stats.fetched_at);
-    const waitTime = Math.floor(600000 - (dayjs().unix() - stats.fetched_at) * 1000) + 5000;
-    fetchChannelsDataInterval.value = setTimeout(fetchChannelsData, waitTime);
-  } catch (ex) {
-    console.error(`Fetching error. Retrying in 10 minutes: ${ex}`);
+    return Math.floor(600 - (dayjs().unix() - stats.fetched_at)) + 5;
+  },
+  async (error) => {
+    console.error(`Fetching error. Retrying in 10 minutes: ${error}`);
     errorSnackbar.value = true;
-    fetchChannelsDataInterval.value = setTimeout(fetchChannelsData, 600000);
-  }
-}
-
-onMounted(async () => {
-  await fetchChannelsData();
-});
-
-onBeforeUnmount(() => {
-  clearInterval(fetchChannelsDataInterval.value);
-});
+    return 600;
+  },
+);
 </script>
 
 <template>
