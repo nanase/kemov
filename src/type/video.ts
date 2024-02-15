@@ -1,4 +1,4 @@
-import dayjs, { Dayjs, duration } from '@/lib/date';
+import dayjs, { Dayjs, duration } from '@/lib/dayjs';
 
 export type LiveBroadcastContentType = 'none' | 'upcoming' | 'live';
 export type VideoType = 'video' | 'streaming' | 'shorts';

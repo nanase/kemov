@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { videoTypeToString, type Streaming, type Video, type EmbeddedVideo } from '@/genet/music/types';
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
-import { JST, toDateTimeText } from '@/lib/date';
+import { JST, toDateTimeText } from '@/lib/dayjs';
 import { url } from '@/lib/style';
 import VideoLink from '@/components/genet/VideoLink.vue';
 import VideoEmbed from '@/components/genet/VideoEmbed.vue';

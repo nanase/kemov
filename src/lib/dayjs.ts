@@ -2,11 +2,13 @@ import dayjs, { Dayjs } from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import advancedFormat from 'dayjs/plugin/advancedFormat';
+import duration from 'dayjs/plugin/duration';
 import 'dayjs/locale/ja';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 dayjs.extend(advancedFormat);
+dayjs.extend(duration);
 
 type DayjsDate = Parameters<typeof dayjs>[0];
 
@@ -31,3 +33,6 @@ export function toDateTimeText(datetime: string, baseDayjs?: ((date?: DayjsDate)
     return datetime;
   }
 }
+
+export { Dayjs, utc, timezone, advancedFormat, duration };
+export default dayjs;

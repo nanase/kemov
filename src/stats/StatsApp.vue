@@ -11,7 +11,7 @@ import { channelsUri, statsUri } from './config';
 import { mergeArrayBy } from '@/lib/array';
 
 import axios from '@/lib/axios';
-import dayjs, { Dayjs } from 'dayjs';
+import dayjs, { Dayjs } from '@/lib/dayjs';
 
 const channels = ref<YouTubeChannelStreamer[]>([]);
 const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
