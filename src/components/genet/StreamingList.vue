@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import InfiniteLoading from 'v3-infinite-loading';
-import type { StateHandler } from 'v3-infinite-loading/lib/types';
+
+import FinishScore from './FinishScore.vue';
+import StreamingItem from '@/components/genet/StreamingItem.vue';
+
 import { load as loadYaml } from 'js-yaml';
 import { StreamingSearch } from './search';
-import axios from 'axios';
-
+import axios from '@/lib/axios';
+import InfiniteLoading from 'v3-infinite-loading';
+import type { StateHandler } from 'v3-infinite-loading/lib/types';
 import type { Streaming } from '@/type/genet/music';
-import StreamingItem from '@/components/genet/StreamingItem.vue';
-import FinishScore from './FinishScore.vue';
 
 const { filterQuery } = defineProps<{
   filterQuery: string;

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 
-import { withCommas } from '@/lib/number';
+import VideoThumbnail from './VideoThumbnail.vue';
+
 import { JST } from '@/lib/dayjs';
 import { type Video } from '@/type/video';
-
-import VideoThumbnail from './VideoThumbnail.vue';
+import { withCommas } from '@/lib/number';
 
 const { video } = defineProps<{
   video: Video;

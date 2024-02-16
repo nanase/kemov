@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+
 import { type Streaming } from '@/type/genet/music';
 import { empty, existsDuplicate } from '@/lib/array';
 

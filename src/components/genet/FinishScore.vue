@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+
 import { url } from '@/lib/style';
 
 const MaxScore = 5;

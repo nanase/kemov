@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { type VideoBase } from '@/type/genet/music';
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
+import { type VideoBase } from '@/type/genet/music';
 import { url } from '@/lib/style';
 
 const { video, title } = defineProps<{

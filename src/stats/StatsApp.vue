@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+
 import NavigationDrawer from '@/components/common/NavigationDrawer.vue';
 import ThemeToggleButton from '@/components/common/ThemeToggleButton.vue';
 import StatTable, { type StatDataType } from '@/components/stats/StatTable.vue';
-import UpdateTime from '../components/stats/UpdateTime.vue';
+import UpdateTime from '@/components/stats/UpdateTime.vue';
 
-import { type YouTubeStreamer, type YouTubeChannelStreamer, type YouTubeChannelStatsResponse } from '@/type/youtube';
 import { channelsUri, statsUri } from '@/config';
+import { definePeriodicCall } from '@/lib/vue';
 import { mergeArrayBy } from '@/lib/array';
+import { type YouTubeStreamer, type YouTubeChannelStreamer, type YouTubeChannelStatsResponse } from '@/type/youtube';
 import axios from '@/lib/axios';
 import dayjs, { Dayjs } from '@/lib/dayjs';
-import { definePeriodicCall } from '@/lib/vue';
 
 const channels = ref<YouTubeChannelStreamer[]>([]);
 const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));

@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { videoTypeToString, type Streaming, type Video, type EmbeddedVideo } from '@/type/genet/music';
+import { computed, ref } from 'vue';
+
+import MarkDown from '@/components/genet/MarkDown.vue';
+import StreamingItemVerifier from '@/components/genet/StreamingItemVerifier.vue';
+import VideoEmbed from '@/components/genet/VideoEmbed.vue';
+import VideoLink from '@/components/genet/VideoLink.vue';
+
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 import { JST, toDateTimeText } from '@/lib/dayjs';
 import { url } from '@/lib/style';
-import VideoLink from '@/components/genet/VideoLink.vue';
-import VideoEmbed from '@/components/genet/VideoEmbed.vue';
-import MarkDown from '@/components/genet/MarkDown.vue';
-import StreamingItemVerifier from '@/components/genet/StreamingItemVerifier.vue';
-import { computed, ref } from 'vue';
+import { videoTypeToString, type Streaming, type Video, type EmbeddedVideo } from '@/type/genet/music';
 
 const { data } = defineProps<{
   data: Streaming;

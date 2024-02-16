@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue';
 import { computedAsync } from '@vueuse/core';
-import axios from '@/lib/axios';
-import dayjs from '@/lib/dayjs';
-
-import { mergeArrayBy, sum } from '@/lib/array';
-import { withCommas } from '@/lib/number';
-import { channelsUri, videoUri, statsUri } from '@/config';
-import { type Video, parse as parseAsVideo } from '@/type/video';
-import { type YouTubeChannelStreamer, type YouTubeChannelStatsResponse, type YouTubeChannel } from '@/type/youtube';
-import type { VideoType } from '@/type/video';
 
 import NavigationDrawer from '@/components/common/NavigationDrawer.vue';
 import ThemeToggleButton from '@/components/common/ThemeToggleButton.vue';
 import VideoRanking, { type Sorting, type TargetProperty } from '@/components/stats/detail/VideoRanking.vue';
+
+import { channelsUri, videoUri, statsUri } from '@/config';
+import { mergeArrayBy, sum } from '@/lib/array';
+import { type Video, parse as parseAsVideo } from '@/type/video';
+import { type YouTubeChannelStreamer, type YouTubeChannelStatsResponse, type YouTubeChannel } from '@/type/youtube';
+import { withCommas } from '@/lib/number';
+import axios from '@/lib/axios';
+import dayjs from '@/lib/dayjs';
+import type { VideoType } from '@/type/video';
 
 const { channelId } = defineProps<{
   channelId: string;

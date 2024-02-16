@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
-import { unescapeHtml } from '@/lib/string';
+
 import WatchButton, { type ClickWatchButton } from './WatchButton.vue';
+
+import { marked } from 'marked';
+import { unescapeHtml } from '@/lib/string';
+import DOMPurify from 'dompurify';
 
 const { source } = defineProps<{
   /**
