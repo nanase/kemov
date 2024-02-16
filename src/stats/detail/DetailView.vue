@@ -4,10 +4,11 @@ import { computedAsync } from '@vueuse/core';
 
 import NavigationDrawer from '@/components/common/NavigationDrawer.vue';
 import ThemeToggleButton from '@/components/common/ThemeToggleButton.vue';
-import VideoRanking, { type Sorting, type TargetProperty } from '@/components/stats/detail/VideoRanking.vue';
+import VideoRanking, { type TargetProperty } from '@/components/stats/detail/VideoRanking.vue';
 
 import { channelsUri, videoUri, statsUri } from '@/config';
 import { mergeArrayBy, sum } from '@/lib/array';
+import { type SortOrder } from '@/lib/sort';
 import { type Video, parse as parseAsVideo } from '@/type/video';
 import { type YouTubeChannelStreamer, type YouTubeChannelStatsResponse, type YouTubeChannel } from '@/type/youtube';
 import { withCommas } from '@/lib/number';
@@ -59,7 +60,7 @@ const errorSnackbar = ref<boolean>();
 const drawer = ref<boolean>();
 const targetProperty = ref<TargetProperty>('viewCount');
 const filterType = ref<VideoType[]>(['video', 'streaming', 'shorts']);
-const sorting = ref<Sorting>('descending');
+const sortOrder = ref<SortOrder>('descending');
 </script>
 
 <template>
@@ -244,14 +245,14 @@ const sorting = ref<Sorting>('descending');
             <v-btn prepend-icon="mdi-video" value="video">動画</v-btn>
             <v-btn prepend-icon="mdi-cellphone-play" value="shorts">ショート</v-btn>
           </v-btn-toggle>
-          <v-btn-toggle v-model="sorting" class="ml-2" divided color="secondary" mandatory>
+          <v-btn-toggle v-model="sortOrder" class="ml-2" divided color="secondary" mandatory>
             <v-btn icon="mdi-sort-descending" value="descending" aria-label="降順" />
             <v-btn icon="mdi-sort-ascending" value="ascending" aria-label="昇順" />
           </v-btn-toggle>
           <v-card flat>
             <VideoRanking
               :data="videos"
-              :sorting="sorting"
+              :sortOrder="sortOrder"
               :filter-type="filterType"
               :target-property="targetProperty"
               :max-number="30"

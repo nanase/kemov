@@ -1,5 +1,4 @@
 <script lang="ts">
-export type Sorting = 'descending' | 'ascending';
 export type TargetProperty =
   | 'viewCount'
   | 'likeCount'
@@ -128,6 +127,7 @@ import { computed } from 'vue';
 import VideoDetail from './VideoDetail.vue';
 import VideoThumbnail from './VideoThumbnail.vue';
 
+import { compareWithNull, type SortOrder } from '@/lib/sort';
 import { type Video, type VideoType } from '@/type/video';
 import { withCommas } from '@/lib/number';
 import dayjs from '@/lib/dayjs';
@@ -136,13 +136,13 @@ const {
   data,
   targetProperty,
   filterType = ['streaming', 'video', 'shorts'],
-  sorting = 'descending',
+  sortOrder = 'descending',
   maxNumber = 10,
 } = defineProps<{
   data: readonly Video[];
   targetProperty: TargetProperty;
   filterType?: VideoType[];
-  sorting?: Sorting;
+  sortOrder?: SortOrder;
   maxNumber?: number;
 }>();
 
@@ -155,26 +155,7 @@ const filteredVideos = computed(() =>
       const value = readProperty(v, targetProperty) ?? 0;
       return isFinite(value) && value > 0;
     })
-    .sort((x, y) => {
-      const a = readProperty(x, targetProperty);
-      const b = readProperty(y, targetProperty);
-
-      if (a !== a && b !== b) return 0;
-      if (a !== a) return 1;
-      if (b !== b) return -1;
-
-      if (a == null && b == null) return 0;
-      if (a == null) return 1;
-      if (b == null) return -1;
-
-      if (a < b) {
-        return sorting === 'descending' ? 1 : -1;
-      } else if (a > b) {
-        return sorting === 'descending' ? -1 : 1;
-      } else {
-        return 0;
-      }
-    })
+    .sort((x, y) => compareWithNull(readProperty(x, targetProperty), readProperty(y, targetProperty), sortOrder))
     .slice(0, maxNumber),
 );
 </script>
