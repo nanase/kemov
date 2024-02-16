@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import DifferenceValue from '@/components/stats/DifferenceValue.vue';
-import { type YouTubeChannelStreamer } from '@/stats/types';
 
+import { type YouTubeChannelStreamer } from '@/type/youtube';
 import { sum } from '@/lib/array';
 import { withCommas } from '@/lib/number';
 

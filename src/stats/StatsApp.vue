@@ -4,8 +4,8 @@ import NavigationDrawer from '@/components/common/NavigationDrawer.vue';
 import ThemeToggleButton from '@/components/common/ThemeToggleButton.vue';
 import StatTable, { type StatDataType } from '@/components/stats/StatTable.vue';
 import UpdateTime from '../components/stats/UpdateTime.vue';
-import { type YouTubeStreamer, type YouTubeChannelStreamer, type YouTubeChannelStatsResponse } from './types';
 
+import { type YouTubeStreamer, type YouTubeChannelStreamer, type YouTubeChannelStatsResponse } from '@/type/youtube';
 import { channelsUri, statsUri } from '@/config';
 import { mergeArrayBy } from '@/lib/array';
 import axios from '@/lib/axios';

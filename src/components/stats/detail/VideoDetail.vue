@@ -3,7 +3,7 @@ import { ref } from 'vue';
 
 import { withCommas } from '@/lib/number';
 import { JST } from '@/lib/dayjs';
-import { type Video } from '@/stats/detail/types';
+import { type Video } from '@/type/video';
 
 import VideoThumbnail from './VideoThumbnail.vue';
 

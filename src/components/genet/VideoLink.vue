@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type VideoBase } from '@/genet/music/types';
+import { type VideoBase } from '@/type/genet/music';
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 import { url } from '@/lib/style';
 

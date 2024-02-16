@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { defineModel } from 'vue';
 
-import { type YouTubeChannelStreamer } from '@/stats/types';
+import { type YouTubeChannelStreamer } from '@/type/youtube';
 
 const { channels, activeChannelId } = defineProps<{
   channels?: readonly YouTubeChannelStreamer[];

@@ -8,7 +8,7 @@ import { mergeArrayBy, sum } from '@/lib/array';
 import { withCommas } from '@/lib/number';
 import { channelsUri, videoUri, statsUri } from '../config';
 import { type Video, parse as parseAsVideo } from './types';
-import { type YouTubeChannelStreamer, type YouTubeChannelStatsResponse, type YouTubeChannel } from '../../stats/types';
+import { type YouTubeChannelStreamer, type YouTubeChannelStatsResponse, type YouTubeChannel } from '@/type/youtube';
 import type { VideoType } from '@/stats/detail/types';
 
 import NavigationDrawer from '@/components/common/NavigationDrawer.vue';

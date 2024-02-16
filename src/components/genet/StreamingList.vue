@@ -6,7 +6,7 @@ import { load as loadYaml } from 'js-yaml';
 import { StreamingSearch } from './search';
 import axios from 'axios';
 
-import type { Streaming } from '@/genet/music/types';
+import type { Streaming } from '@/type/genet/music';
 import StreamingItem from '@/components/genet/StreamingItem.vue';
 import FinishScore from './FinishScore.vue';
 

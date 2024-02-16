@@ -126,8 +126,8 @@ function formatProperty(property: TargetProperty, value: number | undefined): st
 import { computed } from 'vue';
 
 import { withCommas } from '@/lib/number';
-import { type Video, type VideoType } from '@/stats/detail/types';
 import dayjs from 'dayjs';
+import { type Video, type VideoType } from '@/type/video';
 
 import VideoThumbnail from './VideoThumbnail.vue';
 import VideoDetail from './VideoDetail.vue';

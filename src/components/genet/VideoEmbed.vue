@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type EmbeddedVideo } from '@/genet/music/types';
+import { type EmbeddedVideo } from '@/type/genet/music';
 import { getEmbedURL } from '@/lib/youtube';
 
 const { video } = defineProps<{
