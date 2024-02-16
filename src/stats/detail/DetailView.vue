@@ -7,9 +7,9 @@ import dayjs from '@/lib/dayjs';
 import { mergeArrayBy, sum } from '@/lib/array';
 import { withCommas } from '@/lib/number';
 import { channelsUri, videoUri, statsUri } from '@/config';
-import { type Video, parse as parseAsVideo } from './types';
+import { type Video, parse as parseAsVideo } from '@/type/video';
 import { type YouTubeChannelStreamer, type YouTubeChannelStatsResponse, type YouTubeChannel } from '@/type/youtube';
-import type { VideoType } from '@/stats/detail/types';
+import type { VideoType } from '@/type/video';
 
 import NavigationDrawer from '@/components/common/NavigationDrawer.vue';
 import ThemeToggleButton from '@/components/common/ThemeToggleButton.vue';

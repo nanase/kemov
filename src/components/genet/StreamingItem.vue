@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { videoTypeToString, type Streaming, type Video, type EmbeddedVideo } from '@/genet/music/types';
+import { videoTypeToString, type Streaming, type Video, type EmbeddedVideo } from '@/type/genet/music';
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
 import { JST, toDateTimeText } from '@/lib/dayjs';
 import { url } from '@/lib/style';

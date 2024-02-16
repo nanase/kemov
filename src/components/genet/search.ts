@@ -1,4 +1,4 @@
-import type { Streaming } from '@/genet/music/types';
+import type { Streaming } from '@/type/genet/music';
 import { escapeRegex } from '@/lib/string';
 
 const conversionTable: [string, string][] = [
