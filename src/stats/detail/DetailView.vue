@@ -2,7 +2,7 @@
 import { computed, ref, onMounted } from 'vue';
 import { computedAsync } from '@vueuse/core';
 import axios from '@/lib/axios';
-import dayjs from 'dayjs';
+import dayjs from '@/lib/dayjs';
 
 import { mergeArrayBy, sum } from '@/lib/array';
 import { withCommas } from '@/lib/number';
