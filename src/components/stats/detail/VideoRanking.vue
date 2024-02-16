@@ -1,126 +1,3 @@
-<script lang="ts">
-export type TargetProperty =
-  | 'viewCount'
-  | 'likeCount'
-  | 'commentCount'
-  | 'chatMessageCount'
-  | 'chatUniqueUserCount'
-  | 'chatMessageCountPerUniqueUser'
-  | 'duration'
-  | 'viewCountPerSecond'
-  | 'likeCountPerSecond'
-  | 'commentCountPerSecond'
-  | 'chatMessageCountPerSecond';
-
-function readProperty(video: Video, property: TargetProperty): number | undefined {
-  switch (property) {
-    case 'viewCount':
-      return video.viewCount;
-
-    case 'likeCount':
-      return video.likeCount;
-
-    case 'commentCount':
-      return video.commentCount;
-
-    case 'chatMessageCount':
-      return video.chatMessageCount;
-
-    case 'chatUniqueUserCount':
-      return video.chatUniqueUserCount;
-
-    case 'chatMessageCountPerUniqueUser':
-      return video.chatMessageCount == null || video.chatUniqueUserCount == null
-        ? 0
-        : video.chatMessageCount / video.chatUniqueUserCount;
-
-    case 'duration':
-      return video.duration?.asSeconds();
-
-    case 'viewCountPerSecond':
-      return video.viewCount == null || video.duration == null ? 0 : video.viewCount / video.duration?.asSeconds();
-
-    case 'likeCountPerSecond':
-      return video.likeCount == null || video.duration == null ? 0 : video.likeCount / video.duration?.asSeconds();
-
-    case 'commentCountPerSecond':
-      return video.commentCount == null || video.duration == null
-        ? 0
-        : video.commentCount / video.duration?.asSeconds();
-
-    case 'chatMessageCountPerSecond':
-      return video.chatMessageCount == null || video.duration == null
-        ? 0
-        : video.chatMessageCount / video.duration?.asSeconds();
-  }
-}
-
-function getPropertyName(property: TargetProperty): string {
-  switch (property) {
-    case 'viewCount':
-      return '再生数';
-
-    case 'likeCount':
-      return '高評価数';
-
-    case 'commentCount':
-      return 'コメント数';
-
-    case 'chatMessageCount':
-      return 'チャット数';
-
-    case 'chatUniqueUserCount':
-      return 'チャットユーザ数';
-
-    case 'chatMessageCountPerUniqueUser':
-      return 'ユーザあたりチャット数';
-
-    case 'duration':
-      return '再生時間';
-
-    case 'viewCountPerSecond':
-      return '時間あたり再生数';
-
-    case 'likeCountPerSecond':
-      return '時間あたり高評価数';
-
-    case 'commentCountPerSecond':
-      return '時間あたりコメント数';
-
-    case 'chatMessageCountPerSecond':
-      return '時間あたりチャット数';
-  }
-}
-
-function formatProperty(property: TargetProperty, value: number | undefined): string {
-  switch (property) {
-    case 'viewCount':
-    case 'likeCount':
-    case 'commentCount':
-    case 'chatMessageCount':
-    case 'chatUniqueUserCount':
-      return withCommas(value);
-
-    case 'duration': {
-      if (!value) {
-        return '00:00';
-      } else if (value < 3600) {
-        return dayjs.duration(value, 'seconds').format('mm:ss');
-      } else {
-        return dayjs.duration(value, 'seconds').format('H:mm:ss');
-      }
-    }
-
-    case 'chatMessageCountPerUniqueUser':
-    case 'viewCountPerSecond':
-    case 'likeCountPerSecond':
-    case 'commentCountPerSecond':
-    case 'chatMessageCountPerSecond':
-      return value ? value.toFixed(1) : '0';
-  }
-}
-</script>
-
 <script setup lang="ts">
 import { computed } from 'vue';
 
@@ -128,9 +5,14 @@ import VideoDetail from './VideoDetail.vue';
 import VideoThumbnail from './VideoThumbnail.vue';
 
 import { compareWithNull, type SortOrder } from '@/lib/sort';
-import { type Video, type VideoType } from '@/type/video';
-import { withCommas } from '@/lib/number';
-import dayjs from '@/lib/dayjs';
+import {
+  type Video,
+  type VideoType,
+  type VideoProperty,
+  readProperty,
+  getPropertyName,
+  formatProperty,
+} from '@/type/video';
 
 const {
   data,
@@ -140,7 +22,7 @@ const {
   maxNumber = 10,
 } = defineProps<{
   data: readonly Video[];
-  targetProperty: TargetProperty;
+  targetProperty: VideoProperty;
   filterType?: VideoType[];
   sortOrder?: SortOrder;
   maxNumber?: number;

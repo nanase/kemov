@@ -4,12 +4,12 @@ import { computedAsync } from '@vueuse/core';
 
 import NavigationDrawer from '@/components/common/NavigationDrawer.vue';
 import ThemeToggleButton from '@/components/common/ThemeToggleButton.vue';
-import VideoRanking, { type TargetProperty } from '@/components/stats/detail/VideoRanking.vue';
+import VideoRanking from '@/components/stats/detail/VideoRanking.vue';
 
 import { channelsUri, videoUri, statsUri } from '@/config';
 import { mergeArrayBy, sum } from '@/lib/array';
 import { type SortOrder } from '@/lib/sort';
-import { type Video, parse as parseAsVideo } from '@/type/video';
+import { type Video, parse as parseAsVideo, type VideoProperty } from '@/type/video';
 import { type YouTubeChannelStreamer, type YouTubeChannelStatsResponse, type YouTubeChannel } from '@/type/youtube';
 import { withCommas } from '@/lib/number';
 import axios from '@/lib/axios';
@@ -58,7 +58,7 @@ const activityDays = computed(() =>
 
 const errorSnackbar = ref<boolean>();
 const drawer = ref<boolean>();
-const targetProperty = ref<TargetProperty>('viewCount');
+const targetProperty = ref<VideoProperty>('viewCount');
 const filterType = ref<VideoType[]>(['video', 'streaming', 'shorts']);
 const sortOrder = ref<SortOrder>('descending');
 </script>
