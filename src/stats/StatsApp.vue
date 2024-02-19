@@ -27,7 +27,7 @@ definePeriodicCall(
     channels.value = mergeArrayBy('id', streamers, stats.data);
 
     fetchedTime.value = dayjs.unix(stats.fetched_at);
-    return Math.floor(600 - (dayjs().unix() - stats.fetched_at)) + 5;
+    return Math.max(Math.floor(600 - (dayjs().unix() - stats.fetched_at)) + 5, 30);
   },
   async (error) => {
     console.error(`Fetching error. Retrying in 10 minutes: ${error}`);
