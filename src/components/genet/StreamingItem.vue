@@ -78,12 +78,15 @@ function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
             <MarkDown class="title" :source="tune.title" />
             <MarkDown class="original-title" v-if="tune.originalTitle != null" :source="tune.originalTitle" />
           </div>
-          <MarkDown
-            v-for="attribute in tune.attributes"
-            :key="attribute.name"
-            class="attribute"
-            :source="`${attribute.name}${attribute.noSeparator ? '' : ' : '}${attribute.text}`"
-          />
+          <template v-for="attribute in tune.attributes">
+            <MarkDown
+              v-if="attribute.name"
+              :key="attribute.name"
+              class="attribute"
+              :source="`${attribute.name}${attribute.noSeparator ? '' : ' : '}${attribute.text}`"
+            />
+            <MarkDown v-else :key="attribute.text" class="attribute" :source="attribute.text" />
+          </template>
           <MarkDown
             class="description"
             :source="tune.description"

@@ -19,7 +19,6 @@ const warnings = computed(() => ({
   noTuneTitle: data.tunes.some((t) => empty(t.title)),
   sameTuneOriginalTitle: data.tunes.some((t) => t.title === t.originalTitle),
   noTuneAttributes: data.tunes.some((t) => empty(t.attributes)),
-  noAttributeName: data.tunes.some((t) => t.attributes?.some((a) => empty(a.name))),
   noAttributeText: data.tunes.some((t) => t.attributes?.some((a) => empty(a.text))),
   sameAttributeName: data.tunes.some((t) => t.attributes != null && existsDuplicate(t.attributes.map((a) => a.name))),
   sameAttributeText: data.tunes.some((t) => t.attributes != null && existsDuplicate(t.attributes.map((a) => a.text))),
@@ -50,7 +49,6 @@ const warnings = computed(() => ({
     <div class="warning" v-if="warnings.noTuneTitle">{{ `noTuneTitle` }}</div>
     <div class="warning" v-if="warnings.sameTuneOriginalTitle">{{ `sameTuneOriginalTitle` }}</div>
     <div class="warning" v-if="warnings.noTuneAttributes">{{ `noTuneAttributes` }}</div>
-    <div class="warning" v-if="warnings.noAttributeName">{{ `noAttributeName` }}</div>
     <div class="warning" v-if="warnings.noAttributeText">{{ `noAttributeText` }}</div>
     <div class="warning" v-if="warnings.sameAttributeName">{{ `sameAttributeName` }}</div>
     <div class="warning" v-if="warnings.sameAttributeText">{{ `sameAttributeText` }}</div>
