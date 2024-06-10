@@ -6,6 +6,28 @@ const vuetifyColorSchemeName = 'vuetify-color-scheme';
 const theme = useTheme();
 type PrefersColorScheme = 'unspecified' | 'light' | 'dark';
 
+function applyColorScheme(scheme: PrefersColorScheme) {
+  if (scheme === 'unspecified') {
+    theme.global.name.value = '';
+
+    document.querySelectorAll('.color-responsive').forEach((element) => {
+      element.classList.remove('.color-responsive-dark', '.color-responsive-light');
+    });
+  } else {
+    theme.global.name.value = scheme;
+
+    document.querySelectorAll('.color-responsive').forEach((element) => {
+      if (scheme === 'light') {
+        element.classList.add('.color-responsive-light');
+        element.classList.remove('.color-responsive-dark');
+      } else {
+        element.classList.add('.color-responsive-dark');
+        element.classList.remove('.color-responsive-light');
+      }
+    });
+  }
+}
+
 function getPrefersColorScheme(): PrefersColorScheme {
   if (!window.matchMedia) {
     return 'unspecified';
@@ -30,7 +52,7 @@ function toggleTheme() {
       localStorage.setItem(vuetifyColorSchemeName, 'light');
     }
 
-    theme.global.name.value = 'light';
+    applyColorScheme('light');
   } else {
     if (getPrefersColorScheme() === 'dark') {
       localStorage.removeItem(vuetifyColorSchemeName);
@@ -38,7 +60,7 @@ function toggleTheme() {
       localStorage.setItem(vuetifyColorSchemeName, 'dark');
     }
 
-    theme.global.name.value = 'dark';
+    applyColorScheme('dark');
   }
 }
 
@@ -46,7 +68,7 @@ function onSchemeChanged(event: MediaQueryListEvent) {
   const colorScheme = localStorage.getItem(vuetifyColorSchemeName);
 
   if (colorScheme === null) {
-    theme.global.name.value = event.matches ? 'dark' : 'light';
+    applyColorScheme(event.matches ? 'dark' : 'light');
   } else if ((colorScheme === 'dark' && event.matches) || (colorScheme === 'light' && !event.matches)) {
     localStorage.removeItem(vuetifyColorSchemeName);
   }
@@ -60,14 +82,14 @@ onMounted(() => {
   const colorScheme = localStorage.getItem(vuetifyColorSchemeName);
 
   if (colorScheme === 'light') {
-    theme.global.name.value = 'light';
+    applyColorScheme('light');
   } else if (colorScheme === 'dark') {
-    theme.global.name.value = 'dark';
+    applyColorScheme('dark');
   } else {
     if (getPrefersColorScheme() === 'dark') {
-      theme.global.name.value = 'dark';
+      applyColorScheme('dark');
     } else {
-      theme.global.name.value = 'light';
+      applyColorScheme('light');
     }
   }
 });
@@ -81,7 +103,7 @@ onBeforeUnmount(() => {
 
 <template>
   <v-tooltip text="テーマを切り替え" aria-label="テーマを切り替え">
-    <template v-slot:activator="{ props }">
+    <template #activator="{ props }">
       <v-btn
         v-bind="props"
         :icon="theme.global.current.value.dark ? 'mdi-weather-night' : 'mdi-white-balance-sunny'"
