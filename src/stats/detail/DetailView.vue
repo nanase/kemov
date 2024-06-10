@@ -22,15 +22,15 @@ const { channelId } = defineProps<{
 
 //
 const stats = ref<YouTubeChannel[]>([]);
-const channels = ref<readonly YouTubeChannelStreamer[]>([]);
+const channels = ref<YouTubeChannelStreamer[]>([]);
 const channel = computed(() => channels.value.find((c) => c.id === channelId));
 const videos = computedAsync(async () => {
   if (channel.value != null) {
     try {
       errorSnackbar.value = false;
-      return (
-        await axios.get<readonly Video[]>(videoUri(channel.value.id), { transformResponse: parseAsVideo })
-      ).data.filter((v) => v.availability === 'public');
+      return (await axios.get<Video[]>(videoUri(channel.value.id), { transformResponse: parseAsVideo })).data.filter(
+        (v) => v.availability === 'public',
+      );
     } catch {
       errorSnackbar.value = true;
       return [];

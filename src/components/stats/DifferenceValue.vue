@@ -28,7 +28,7 @@ function formatDifference(value: number): string {
   }
 }
 
-function getDifferenceClasses(value: number): readonly string[] {
+function getDifferenceClasses(value: number): string[] {
   if (value === 0) {
     return [''];
   } else if (value >= strong) {

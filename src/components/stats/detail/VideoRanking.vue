@@ -21,16 +21,15 @@ const {
   sortOrder = 'descending',
   maxNumber = 10,
 } = defineProps<{
-  data: readonly Video[];
+  data: Video[];
   targetProperty: VideoProperty;
   filterType?: VideoType[];
   sortOrder?: SortOrder;
   maxNumber?: number;
 }>();
 
-const videos = computed(() => [...data]);
-const filteredVideos = computed(() =>
-  videos.value
+const filteredVideos = computed<Video[]>(() =>
+  data
     .filter((v) => v.availability === 'public')
     .filter((v) => v.type && filterType.includes(v.type))
     .filter((v) => {

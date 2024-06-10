@@ -8,7 +8,7 @@ import { withCommas } from '@/lib/number';
 export type StatDataType = 'subscriber' | 'view' | 'video';
 
 const { channels, type } = defineProps<{
-  channels: readonly YouTubeChannelStreamer[];
+  channels: YouTubeChannelStreamer[];
   type: StatDataType;
 }>();
 

@@ -4,7 +4,7 @@ import { defineModel } from 'vue';
 import { type YouTubeChannelStreamer } from '@/type/youtube';
 
 const { channels, activeChannelId } = defineProps<{
-  channels?: readonly YouTubeChannelStreamer[];
+  channels?: YouTubeChannelStreamer[];
   activeChannelId?: string;
 }>();
 const opened = defineModel<boolean>('opened');

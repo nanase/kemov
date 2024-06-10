@@ -27,9 +27,9 @@ export function mergeArrayBy<K extends PropertyKey, T1 extends Record<K, any>, T
     .filter((e): e is NonNullable<typeof e> => e !== null);
 }
 
-export function sum(array: readonly number[]): number;
-export function sum<T>(array: readonly T[], key?: (element: T) => number): number;
-export function sum<T>(array: readonly T[], key?: (element: T) => number): number {
+export function sum(array: number[]): number;
+export function sum<T>(array: T[], key?: (element: T) => number): number;
+export function sum<T>(array: T[], key?: (element: T) => number): number {
   if (key == null) {
     return array.reduce((prev, element) => prev + Number(element), 0);
   } else {
@@ -45,10 +45,7 @@ export function existsDuplicate<T>(array: T[]): boolean {
   return array.some((element, index) => array.indexOf(element) !== index);
 }
 
-export function count<T>(
-  array?: readonly T[],
-  condition?: (element: T, index: number, array: readonly T[]) => boolean,
-): number {
+export function count<T>(array?: T[], condition?: (element: T, index: number, array: T[]) => boolean): number {
   if (!array) {
     return 0;
   }

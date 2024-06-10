@@ -37,7 +37,7 @@ export type VideoProperty =
   | 'commentCountPerSecond'
   | 'chatMessageCountPerSecond';
 
-export function parse(text: string): readonly Video[] {
+export function parse(text: string): Video[] {
   return JSON.parse(text, (key, value) => {
     switch (key) {
       case 'videoId':
@@ -78,7 +78,7 @@ export function parse(text: string): readonly Video[] {
       default:
         return value;
     }
-  }) as readonly Video[];
+  }) as Video[];
 }
 
 export function readProperty(video: Video, property: VideoProperty): number | undefined {
