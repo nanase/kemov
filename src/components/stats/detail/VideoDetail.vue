@@ -20,7 +20,7 @@ const dialog = ref<boolean>();
       <v-container>
         <v-row>
           <v-col cols="12" sm="6">
-            <VideoThumbnail :videoId="video.videoId" size="max" link style="width: 100%"></VideoThumbnail>
+            <VideoThumbnail :videoId="video.videoId" size="max" link style="width: 100%" />
             <div class="mb-2 text-h6 font-weight-bold">
               {{ video.title }}
             </div>
@@ -36,7 +36,7 @@ const dialog = ref<boolean>();
                 <v-col cols="6" sm="12" md="6" class="pa-1">
                   <v-card color="indigo" variant="outlined" class="summary-card">
                     <v-card-text class="pa-2 text-subtitle-2">
-                      <v-icon icon="mdi-play"></v-icon>
+                      <v-icon icon="mdi-play" />
                       再生数
                     </v-card-text>
                     <v-card-text class="py-2 mt-n3 text-h6 text-right">
@@ -48,7 +48,7 @@ const dialog = ref<boolean>();
                 <v-col cols="6" sm="12" md="6" class="pa-1">
                   <v-card color="orange-darken-1" variant="outlined" class="summary-card">
                     <v-card-text class="pa-2 text-subtitle-2">
-                      <v-icon icon="mdi-thumb-up"></v-icon>
+                      <v-icon icon="mdi-thumb-up" />
                       高評価数
                     </v-card-text>
                     <v-card-text class="pa-2 mt-n3 text-h6 text-right">
@@ -60,7 +60,7 @@ const dialog = ref<boolean>();
                 <v-col cols="6" sm="12" md="6" class="pa-1">
                   <v-card color="deep-purple-lighten-3" variant="outlined" class="summary-card">
                     <v-card-text class="pa-2 text-subtitle-2">
-                      <v-icon icon="mdi-comment"></v-icon>
+                      <v-icon icon="mdi-comment" />
                       コメント数
                     </v-card-text>
                     <v-card-text class="py-2 mt-n3 text-h6 text-right">
@@ -77,7 +77,7 @@ const dialog = ref<boolean>();
                     :disabled="(video.chatMessageCount ?? 0) === 0"
                   >
                     <v-card-text class="pa-2 text-subtitle-2">
-                      <v-icon icon="mdi-chat"></v-icon>
+                      <v-icon icon="mdi-chat" />
                       チャット数
                     </v-card-text>
                     <v-card-text class="py-2 mt-n3 text-h6 text-right">
@@ -94,7 +94,7 @@ const dialog = ref<boolean>();
                     :disabled="(video.chatUniqueUserCount ?? 0) === 0"
                   >
                     <v-card-text class="pa-2 text-subtitle-2">
-                      <v-icon icon="mdi-account-multiple"></v-icon>
+                      <v-icon icon="mdi-account-multiple" />
                       チャットユーザ数
                     </v-card-text>
                     <v-card-text class="pa-2 mt-n3 text-h6 text-right">
@@ -111,7 +111,7 @@ const dialog = ref<boolean>();
                     :disabled="video.scheduledStartTime == null"
                   >
                     <v-card-text class="pa-2 text-subtitle-2">
-                      <v-icon icon="mdi-calendar"></v-icon>
+                      <v-icon icon="mdi-calendar" />
                       配信開始予定日時
                     </v-card-text>
                     <v-card-text class="py-2 mt-n3 text-body-2 text-right">
@@ -130,7 +130,7 @@ const dialog = ref<boolean>();
                     :disabled="video.actualStartTime == null"
                   >
                     <v-card-text class="pa-2 text-subtitle-2">
-                      <v-icon icon="mdi-calendar-start"></v-icon>
+                      <v-icon icon="mdi-calendar-start" />
                       配信開始日時
                     </v-card-text>
                     <v-card-text class="py-2 mt-n3 text-body-2 text-right">
@@ -142,7 +142,7 @@ const dialog = ref<boolean>();
                 <v-col cols="6" sm="12" md="6" class="pa-1">
                   <v-card color="blue" variant="outlined" class="summary-card" :disabled="video.actualEndTime == null">
                     <v-card-text class="pa-2 text-subtitle-2">
-                      <v-icon icon="mdi-calendar-end"></v-icon>
+                      <v-icon icon="mdi-calendar-end" />
                       配信終了日時
                     </v-card-text>
                     <v-card-text class="py-2 mt-n3 text-body-2 text-right">
@@ -157,7 +157,7 @@ const dialog = ref<boolean>();
         </v-row>
       </v-container>
       <v-card-actions>
-        <v-spacer></v-spacer>
+        <v-spacer />
         <v-btn color="green-darken-1" variant="text" @click="dialog = false">閉じる</v-btn>
       </v-card-actions>
     </v-card>
