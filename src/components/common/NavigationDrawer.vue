@@ -11,10 +11,10 @@ const opened = defineModel<boolean>('opened');
 </script>
 
 <template>
-  <v-navigation-drawer class="bg-background" v-model="opened" floating aria-label="サイトページ一覧">
+  <v-navigation-drawer v-model="opened" floating aria-label="サイトページ一覧">
     <v-list class="pb-0 d-flex flex-column fill-height" role="menu">
       <v-list-item link title="リアルタイム統計" href="/kemov/stats/" role="menuitem">
-        <template v-slot:prepend>
+        <template #prepend>
           <v-icon icon="mdi-finance" size="large" />
         </template>
       </v-list-item>
@@ -36,7 +36,7 @@ const opened = defineModel<boolean>('opened');
           :active="activeChannelId === channel.id"
           role="menuitem"
         >
-          <template v-slot:prepend>
+          <template #prepend>
             <v-avatar :color="channel.color.key" variant="outlined" size="small">
               <v-img :src="channel.thumbnails.default.url" :alt="channel.fullname" />
             </v-avatar>
@@ -44,14 +44,14 @@ const opened = defineModel<boolean>('opened');
         </v-list-item>
 
         <v-list-item v-if="channels?.length === 0" class="pa-4 text-center">
-          <v-progress-circular color="primary" indeterminate></v-progress-circular>
+          <v-progress-circular color="primary" indeterminate />
         </v-list-item>
       </v-list>
 
       <v-divider />
       <v-list density="compact" link nav class="flex-grow-0 flex-shrink-0" role="menu">
-        <v-list-item title="ジェネット楽曲一覧" href="/kemov/genet/music/" prepend-icon="mdi-music" role="menuitem">
-          <template v-slot:prepend>
+        <v-list-item title="ジェネット楽曲一覧" href="/kemov/genet/music/" role="menuitem">
+          <template #prepend>
             <v-icon icon="mdi-music" size="small" />
           </template>
         </v-list-item>
