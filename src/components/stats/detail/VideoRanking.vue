@@ -52,7 +52,7 @@ const filteredVideos = computed<Video[]>(() =>
       </tr>
     </thead>
     <tbody>
-      <tr v-for="(video, i) of filteredVideos" :key="video.videoId">
+      <tr v-for="(video, i) of filteredVideos" :key="video.videoId" style="cursor: pointer">
         <td>{{ i + 1 }}</td>
         <td>{{ formatProperty(targetProperty, readProperty(video, targetProperty)) }}</td>
         <td><VideoThumbnail :videoId="video.videoId" size="mq" /></td>
