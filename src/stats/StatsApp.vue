@@ -39,20 +39,20 @@ definePeriodicCall(
 
 <template>
   <v-app>
-    <NavigationDrawer v-model:opened="drawer" :channels="channels" />
+    <NavigationDrawer $opened="drawer" :channels />
 
     <v-main>
       <v-app-bar flat density="compact">
         <v-app-bar-nav-icon variant="text" @click.stop="drawer = !drawer" aria-label="ナビゲーションを表示" />
         <v-toolbar-title>けもV リアルタイム統計</v-toolbar-title>
-        <template v-slot:append>
+        <template #append>
           <ThemeToggleButton />
         </template>
       </v-app-bar>
 
-      <v-snackbar v-model="errorSnackbar" timeout="10000">
+      <v-snackbar $="errorSnackbar" timeout="10000">
         データの読み込みができませんでした。しばらくしてから再読み込みしてください。
-        <template v-slot:actions>
+        <template #actions>
           <v-btn color="red-lighten-2" variant="text" @click="errorSnackbar = false">閉じる</v-btn>
         </template>
       </v-snackbar>
@@ -60,7 +60,7 @@ definePeriodicCall(
       <v-container>
         <v-row justify="center">
           <v-col cols="12" md="12" lg="10" xl="7" xxl="6">
-            <v-tabs v-model="tab" color="primary" align-tabs="center" density="compact">
+            <v-tabs $="tab" color="primary" align-tabs="center" density="compact">
               <v-tab value="subscriber">
                 <v-icon start>mdi-account-check</v-icon>
                 <span class="font-weight-bold">チャンネル登録者数</span>
@@ -75,7 +75,7 @@ definePeriodicCall(
               </v-tab>
             </v-tabs>
 
-            <StatTable :channels="channels" :type="tab" />
+            <StatTable :channels :type="tab" />
 
             <v-card class="text-right px-4 py-2" variant="flat">
               <UpdateTime class="update-time" :time="fetchedTime" />
