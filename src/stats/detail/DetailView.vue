@@ -64,20 +64,20 @@ const sortOrder = ref<SortOrder>('descending');
 </script>
 
 <template>
-  <NavigationDrawer v-model:opened="drawer" :channels="channels" :active-channel-id="channelId" />
+  <NavigationDrawer $opened="drawer" :channels :active-channel-id="channelId" />
 
   <v-main>
     <v-app-bar flat density="compact">
       <v-app-bar-nav-icon variant="text" @click.stop="drawer = !drawer" aria-label="ナビゲーションを表示" />
       <v-toolbar-title>{{ channel?.fullname }}</v-toolbar-title>
-      <template v-slot:append>
+      <template #append>
         <ThemeToggleButton />
       </template>
     </v-app-bar>
 
-    <v-snackbar v-model="errorSnackbar" timeout="10000">
+    <v-snackbar $="errorSnackbar" timeout="10000">
       データの読み込みができませんでした。しばらくしてから再読み込みしてください。
-      <template v-slot:actions>
+      <template #actions>
         <v-btn color="red-lighten-2" variant="text" @click="errorSnackbar = false">閉じる</v-btn>
       </template>
     </v-snackbar>
@@ -113,7 +113,7 @@ const sortOrder = ref<SortOrder>('descending');
         <v-col cols="6" sm="4" class="pa-1">
           <v-card color="green" variant="flat" class="summary-card">
             <v-card-text class="pa-2 text-subtitle-2">
-              <v-icon icon="mdi-video"></v-icon>
+              <v-icon icon="mdi-video" />
               公開中の配信・動画
             </v-card-text>
             <v-skeleton-loader
@@ -138,7 +138,7 @@ const sortOrder = ref<SortOrder>('descending');
         <v-col cols="6" sm="4" class="pa-1">
           <v-card color="teal" variant="flat" class="summary-card">
             <v-card-text class="pa-2 text-subtitle-2">
-              <v-icon icon="mdi-calendar-clock"></v-icon>
+              <v-icon icon="mdi-calendar-clock" />
               配信活動日数
             </v-card-text>
             <v-skeleton-loader v-if="!channel || !Number.isFinite(activityDays)" color="transparent" type="text@2" />
@@ -159,7 +159,7 @@ const sortOrder = ref<SortOrder>('descending');
         <v-col cols="6" sm="4" class="pa-1">
           <v-card color="indigo" variant="flat" class="summary-card">
             <v-card-text class="pa-2 text-subtitle-2">
-              <v-icon icon="mdi-play"></v-icon>
+              <v-icon icon="mdi-play" />
               総再生数
             </v-card-text>
             <v-skeleton-loader v-if="videos.length === 0" color="transparent" type="text@2" />
@@ -181,7 +181,7 @@ const sortOrder = ref<SortOrder>('descending');
         <v-col cols="6" sm="4" class="pa-1">
           <v-card color="orange-darken-1" variant="flat" class="summary-card">
             <v-card-text class="pa-2 text-subtitle-2">
-              <v-icon icon="mdi-thumb-up"></v-icon>
+              <v-icon icon="mdi-thumb-up" />
               総高評価数
             </v-card-text>
             <v-skeleton-loader v-if="videos.length === 0" color="transparent" type="text@2" />
@@ -203,7 +203,7 @@ const sortOrder = ref<SortOrder>('descending');
         <v-col cols="6" sm="4" class="pa-1">
           <v-card color="deep-purple" variant="flat" class="summary-card">
             <v-card-text class="pa-2 text-subtitle-2">
-              <v-icon icon="mdi-comment"></v-icon>
+              <v-icon icon="mdi-comment" />
               総コメント数
             </v-card-text>
             <v-skeleton-loader v-if="videos.length === 0" color="transparent" type="text@2" />
@@ -226,7 +226,7 @@ const sortOrder = ref<SortOrder>('descending');
 
       <v-container class="pa-1 mt-4">
         <v-card>
-          <v-tabs v-model="targetProperty" bg-color="primary" center-active show-arrows>
+          <v-tabs $="targetProperty" bg-color="primary" center-active show-arrows>
             <v-tab value="viewCount">再生数</v-tab>
             <v-tab value="likeCount">高評価数</v-tab>
             <v-tab value="commentCount">コメント数</v-tab>
@@ -239,24 +239,18 @@ const sortOrder = ref<SortOrder>('descending');
             <v-tab value="commentCountPerSecond">時間あたりコメント数</v-tab>
             <v-tab value="chatMessageCountPerSecond">時間あたりチャット数</v-tab>
           </v-tabs>
-          <v-btn-toggle v-model="filterType" multiple divided color="secondary">
+          <v-btn-toggle $="filterType" multiple divided color="secondary">
             <v-card-text>対象</v-card-text>
             <v-btn prepend-icon="mdi-microphone" value="streaming">配信</v-btn>
             <v-btn prepend-icon="mdi-video" value="video">動画</v-btn>
             <v-btn prepend-icon="mdi-cellphone-play" value="shorts">ショート</v-btn>
           </v-btn-toggle>
-          <v-btn-toggle v-model="sortOrder" class="ml-2" divided color="secondary" mandatory>
+          <v-btn-toggle $="sortOrder" class="ml-2" divided color="secondary" mandatory>
             <v-btn icon="mdi-sort-descending" value="descending" aria-label="降順" />
             <v-btn icon="mdi-sort-ascending" value="ascending" aria-label="昇順" />
           </v-btn-toggle>
           <v-card flat>
-            <VideoRanking
-              :data="videos"
-              :sortOrder="sortOrder"
-              :filter-type="filterType"
-              :target-property="targetProperty"
-              :max-number="30"
-            ></VideoRanking>
+            <VideoRanking :data="videos" :sort-order :filter-type :target-property :max-number="30" />
           </v-card>
         </v-card>
       </v-container>
