@@ -98,7 +98,7 @@ function getAverageSubscriberCount(): number {
             class="channel-name text-left px-0"
             :href="`https://www.youtube.com/${channel.customUrl}`"
             :ripple="false"
-            :slim="true"
+            slim
           >
             <template v-slot:title>
               <span class="channel-name-text">{{ channel.name }}</span>
@@ -122,7 +122,7 @@ function getAverageSubscriberCount(): number {
       </tr>
       <tr v-if="channels.length === 0">
         <td colspan="4" class="pa-4 text-center">
-          <v-progress-circular color="primary" indeterminate></v-progress-circular>
+          <v-progress-circular color="primary" indeterminate />
         </td>
       </tr>
     </tbody>
@@ -130,7 +130,7 @@ function getAverageSubscriberCount(): number {
       <tr class="text-right text-h6">
         <th scope="row" class="pl-4 pr-2 text-right text-body-1 font-weight-bold">
           <v-dialog v-if="type === 'subscriber'" max-width="640">
-            <template v-slot:activator="{ props }">
+            <template #activator="{ props }">
               <v-btn
                 v-bind="props"
                 icon="mdi-information-outline"
@@ -140,7 +140,7 @@ function getAverageSubscriberCount(): number {
               />
             </template>
 
-            <template v-slot:default="{ isActive }">
+            <template #default="{ isActive }">
               <v-card title="チャンネル登録者数について">
                 <v-card-text>
                   <p>
@@ -177,9 +177,9 @@ function getAverageSubscriberCount(): number {
                   </v-timeline>
                 </v-card-text>
                 <v-card-actions>
-                  <v-spacer></v-spacer>
+                  <v-spacer />
 
-                  <v-btn text="閉じる" @click="isActive.value = false"></v-btn>
+                  <v-btn text="閉じる" @click="isActive.value = false" />
                 </v-card-actions>
               </v-card>
             </template>
