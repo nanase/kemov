@@ -5,9 +5,9 @@
   "type": "module",
   "engines": {
     "npm": "use yarn instead",
-    "yarn": "4.0.2"
+    "yarn": "4.3.1"
   },
-  "packageManager": "yarn@4.0.2",
+  "packageManager": "yarn@4.3.1",
   "scripts": {
     "dev": "vite",
     "build": "run-p type-check build-only",
