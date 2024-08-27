@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, provide } from 'vue';
 
 import AppBase from '@/components/common/AppBase.vue';
 import StatTable, { type StatDataType } from '@/components/stats/StatTable.vue';
@@ -16,6 +16,8 @@ const appBase = ref<InstanceType<typeof AppBase>>();
 const channels = ref<YouTubeChannelStreamer[]>([]);
 const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
 const tab = ref<StatDataType>('subscriber');
+
+provide('streamerChannels', channels);
 
 definePeriodicCall(
   async () => {
@@ -72,60 +74,4 @@ definePeriodicCall(
       </v-footer>
     </template>
   </AppBase>
-
-  <!-- <v-app>
-    <NavigationDrawer page-id="stats" $opened="drawer" :channels />
-
-    <v-main>
-      <v-app-bar flat density="compact">
-        <v-app-bar-nav-icon variant="text" @click.stop="drawer = !drawer" aria-label="ナビゲーションを表示" />
-        <v-toolbar-title>けもV リアルタイム統計</v-toolbar-title>
-        <template #append>
-          <ThemeToggleButton />
-        </template>
-      </v-app-bar>
-
-      <v-snackbar $="errorSnackbar" timeout="10000">
-        データの読み込みができませんでした。しばらくしてから再読み込みしてください。
-        <template #actions>
-          <v-btn color="red-lighten-2" variant="text" @click="errorSnackbar = false">閉じる</v-btn>
-        </template>
-      </v-snackbar>
-
-      <v-container>
-        <v-row justify="center">
-          <v-col cols="12" md="12" lg="10" xl="7" xxl="6">
-            <v-tabs $="tab" color="primary" align-tabs="center" density="compact">
-              <v-tab value="subscriber">
-                <v-icon start>mdi-account-check</v-icon>
-                <span class="font-weight-bold">チャンネル登録者数</span>
-              </v-tab>
-              <v-tab value="view">
-                <v-icon start>mdi-play</v-icon>
-                <span class="font-weight-bold">総再生数</span>
-              </v-tab>
-              <v-tab value="video">
-                <v-icon start>mdi-video</v-icon>
-                <span class="font-weight-bold">配信・動画数</span>
-              </v-tab>
-            </v-tabs>
-
-            <StatTable :channels :type="tab" />
-
-            <v-card class="text-right px-4 py-2" variant="flat">
-              <UpdateTime class="update-time" :time="fetchedTime" />
-            </v-card>
-          </v-col>
-        </v-row>
-      </v-container>
-
-      <v-footer class="bg-secondary text-left d-flex flex-column mt-10">
-        <ul>
-          <li>およそ10分ごとに自動で更新されます。数値は減少することがあります</li>
-          <li>総再生数と配信・動画数は配信終了後から反映されます</li>
-          <li>このサイトは非公式のファンサイトです</li>
-        </ul>
-      </v-footer>
-    </v-main>
-  </v-app> -->
 </template>
