@@ -2696,17 +2696,6 @@ __metadata:
   linkType: hard
 
 "axios@npm:^1":
-  version: 1.6.2
-  resolution: "axios@npm:1.6.2"
-  dependencies:
-    follow-redirects: "npm:^1.15.0"
-    form-data: "npm:^4.0.0"
-    proxy-from-env: "npm:^1.1.0"
-  checksum: 10c0/9b77e030e85e4f9cbcba7bb52fbff67d6ce906c92d213e0bd932346a50140faf83733bf786f55bd58301bd92f9973885c7b87d6348023e10f7eaf286d0791a1d
-  languageName: node
-  linkType: hard
-
-"axios@npm:^1.7.5":
   version: 1.7.5
   resolution: "axios@npm:1.7.5"
   dependencies:
@@ -4245,7 +4234,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"follow-redirects@npm:^1.15.0, follow-redirects@npm:^1.15.6":
+"follow-redirects@npm:^1.15.6":
   version: 1.15.6
   resolution: "follow-redirects@npm:1.15.6"
   peerDependenciesMeta:
@@ -5775,7 +5764,6 @@ __metadata:
     "@vue/eslint-config-typescript": "npm:^13.0.0"
     "@vue/tsconfig": "npm:^0.5.1"
     "@vueuse/core": "npm:^11.0.3"
-    axios: "npm:^1.7.5"
     axios-retry: "npm:^4.5.0"
     dayjs: "npm:^1.11.13"
     dompurify: "npm:^3.1.6"
