@@ -3,8 +3,6 @@ import { computed, ref, onMounted, provide } from 'vue';
 import { computedAsync } from '@vueuse/core';
 
 import AppBase from '@/components/common/AppBase.vue';
-import NavigationDrawer from '@/components/common/NavigationDrawer.vue';
-import ThemeToggleButton from '@/components/common/ThemeToggleButton.vue';
 import VideoRanking from '@/components/stats/detail/VideoRanking.vue';
 
 import { channelsUri, videoUri, statsUri } from '@/config';

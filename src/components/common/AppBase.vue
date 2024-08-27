@@ -33,7 +33,7 @@ defineExpose({
     </v-snackbar>
 
     <v-main>
-      <v-app-bar flat floating color="primary" density="compact">
+      <v-app-bar flat floating density="compact">
         <v-app-bar-nav-icon variant="text" @click.stop="drawer = !drawer" aria-label="ナビゲーションを表示" />
         <v-toolbar-title>{{ toolbarTitle }}</v-toolbar-title>
         <template #append>
