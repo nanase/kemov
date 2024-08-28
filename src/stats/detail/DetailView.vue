@@ -26,12 +26,12 @@ const channel = computed(() => channels.value.find((c) => c.id === channelId));
 const videos = computedAsync(async () => {
   if (channel.value != null) {
     try {
-      errorSnackbar.value = false;
+      appBase.value?.closeErrorSnackbar();
       return (await axios.get<Video[]>(videoUri(channel.value.id), { transformResponse: parseAsVideo })).data.filter(
         (v) => v.availability === 'public',
       );
     } catch {
-      errorSnackbar.value = true;
+      appBase.value?.showErrorSnackbar();
       return [];
     }
   } else {
@@ -43,11 +43,11 @@ provide('streamerChannels', channels);
 
 onMounted(async () => {
   try {
-    errorSnackbar.value = false;
+    appBase.value?.closeErrorSnackbar();
     stats.value = (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data.data;
     channels.value = mergeArrayBy('id', (await axios.get<YouTubeChannelStreamer[]>(channelsUri)).data, stats.value);
   } catch {
-    errorSnackbar.value = true;
+    appBase.value?.showErrorSnackbar();
   }
 });
 
@@ -56,7 +56,6 @@ const activityDays = computed(() =>
   dayjs(channel?.value?.activityEndDate ?? undefined).diff(dayjs(channel?.value?.activityStartDate), 'days', true),
 );
 
-const errorSnackbar = ref<boolean>();
 const targetProperty = ref<VideoProperty>('viewCount');
 const filterType = ref<VideoType[]>(['video', 'streaming', 'shorts']);
 const sortOrder = ref<SortOrder>('descending');
