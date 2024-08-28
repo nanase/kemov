@@ -68,7 +68,7 @@ definePeriodicCall(
 
     <v-row>
       <v-col>
-        <v-checkbox v-model="activeOnly" class="active-only" label="活動中の配信者のみ表示" />
+        <v-checkbox v-model="activeOnly" class="active-only" label="活動中の配信者のみ表示" hide-details />
       </v-col>
     </v-row>
 
