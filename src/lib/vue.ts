@@ -1,4 +1,4 @@
-import { onMounted, onBeforeUnmount } from 'vue';
+import { onMounted, onBeforeUnmount, type Ref, watch } from 'vue';
 
 export function definePeriodicCall(
   onCalled: () => Promise<number | undefined>,
@@ -32,4 +32,46 @@ export function definePeriodicCall(
   onBeforeUnmount(() => {
     clearInterval(intervalObj);
   });
+}
+
+interface StorageOptions {
+  type: 'local' | 'session';
+  readable: boolean;
+  writable: boolean;
+  immediate: boolean;
+}
+
+export function storage<T>(value: Ref<T>, key: string, options?: Partial<StorageOptions>) {
+  const storage = (options?.type ?? 'local') === 'local' ? localStorage : sessionStorage;
+
+  const save = () => {
+    if (typeof value.value !== 'undefined') {
+      storage.setItem(key, JSON.stringify(value.value));
+    }
+  };
+  const load = () => {
+    const data = storage.getItem(key);
+
+    if (data != null) {
+      value.value = JSON.parse(data);
+    }
+  };
+
+  if ((options?.immediate ?? true) && (options?.readable ?? true)) {
+    load();
+  }
+
+  if (options?.writable ?? true) {
+    watch(() => value.value, save, {
+      immediate: options?.immediate ?? true,
+    });
+  }
+
+  return {
+    remove: () => {
+      storage.removeItem(key);
+    },
+    save,
+    load,
+  };
 }
