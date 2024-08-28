@@ -6,7 +6,7 @@ import StatTable, { type StatDataType } from '@/components/stats/StatTable.vue';
 import UpdateTime from '@/components/stats/UpdateTime.vue';
 
 import { channelsUri, statsUri } from '@/config';
-import { definePeriodicCall } from '@/lib/vue';
+import { definePeriodicCall, storage } from '@/lib/vue';
 import { mergeArrayBy } from '@/lib/array';
 import { type YouTubeStreamer, type YouTubeChannelStreamer, type YouTubeChannelStatsResponse } from '@/type/youtube';
 import axios from '@/lib/axios';
@@ -16,7 +16,9 @@ const appBase = ref<InstanceType<typeof AppBase>>();
 const channels = ref<YouTubeChannelStreamer[]>([]);
 const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
 const tab = ref<StatDataType>('subscriber');
+const activeOnly = ref<boolean>();
 
+storage(activeOnly, 'kemov/stats/activeOnly');
 provide('streamerChannels', channels);
 
 definePeriodicCall(
@@ -56,11 +58,17 @@ definePeriodicCall(
           </v-tab>
         </v-tabs>
 
-        <StatTable :channels :type="tab" />
+        <StatTable :channels :type="tab" :active-only />
 
         <v-card class="text-right px-4 py-2" variant="flat">
           <UpdateTime class="update-time" :time="fetchedTime" />
         </v-card>
+      </v-col>
+    </v-row>
+
+    <v-row>
+      <v-col>
+        <v-checkbox v-model="activeOnly" class="active-only" label="活動中の配信者のみ表示" />
       </v-col>
     </v-row>
 
@@ -75,3 +83,9 @@ definePeriodicCall(
     </template>
   </AppBase>
 </template>
+
+<style lang="scss" scoped>
+.active-only :deep(.v-checkbox-btn) {
+  justify-content: center;
+}
+</style>

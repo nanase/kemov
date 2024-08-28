@@ -4,12 +4,14 @@ import DifferenceValue from '@/components/stats/DifferenceValue.vue';
 import { sum } from '@/lib/array';
 import { type YouTubeChannelStreamer } from '@/type/youtube';
 import { withCommas } from '@/lib/number';
+import dayjs from '@/lib/dayjs';
 
 export type StatDataType = 'subscriber' | 'view' | 'video';
 
-const { channels, type } = defineProps<{
+const { channels, type, activeOnly } = defineProps<{
   channels: YouTubeChannelStreamer[];
   type: StatDataType;
+  activeOnly?: boolean;
 }>();
 
 function getColumnName(): string {
@@ -79,6 +81,10 @@ function getAverageSubscriberCount(): number {
   const total = sum(channels, getCount);
   return Math.round(total + (sum(channels, (channel) => getMaxSubscriberCount(getCount(channel))) - total) / 2);
 }
+
+function getChannelVisibility(channel: YouTubeChannelStreamer): boolean {
+  return activeOnly && typeof channel.activityEndDate === 'string' ? dayjs().isBefore(channel.activityEndDate) : true;
+}
 </script>
 
 <template>
@@ -92,7 +98,7 @@ function getAverageSubscriberCount(): number {
       </tr>
     </thead>
     <tbody>
-      <tr class="channel text-right" v-for="channel in channels" :key="channel.id">
+      <tr class="channel text-right" v-for="channel in channels.filter(getChannelVisibility)" :key="channel.id">
         <th scope="row" class="channel-name-head pl-4 pr-2">
           <v-list-item
             class="channel-name text-left px-0"
