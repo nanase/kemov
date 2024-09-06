@@ -1,13 +1,9 @@
 /// <reference types="vitest" />
-import { fileURLToPath, URL } from 'node:url';
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
 import VueMacros from 'unplugin-vue-macros/vite';
 import Vue from '@vitejs/plugin-vue';
 import webfontDownload from 'vite-plugin-webfont-dl';
-
-// const root = resolve(__dirname, 'src');
-// const outDir = resolve(__dirname, 'docs');
 
 const root = resolve(__dirname);
 const srcDir = resolve(root, 'src');
