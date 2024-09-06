@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-
-import { definePeriodicCall } from '@nanase/alnilam';
+import { ref, watch, computed } from 'vue';
+import { useIntervalFn } from '@vueuse/core';
 import dayjs, { Dayjs } from '@/lib/dayjs';
-import { computed } from 'vue';
 
 const { time } = defineProps<{
   time: Dayjs;
@@ -14,11 +12,10 @@ const readableElapsedTime = computed(() =>
   elapsedTime.value >= 60 ? `${Math.floor(elapsedTime.value / 60)}分` : `${elapsedTime.value}秒`,
 );
 
-async function updateElapsedTime() {
+function updateElapsedTime() {
   elapsedTime.value = dayjs().diff(time, 's');
-  return 1;
 }
-definePeriodicCall(updateElapsedTime);
+useIntervalFn(updateElapsedTime, 1000);
 watch(() => time, updateElapsedTime);
 </script>
 
