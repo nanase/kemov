@@ -1,4 +1,4 @@
-import { getThumbnailURL, getWatchURL, getEmbedURL } from '../../src/lib/youtube';
+import { getThumbnailURL, getWatchURL, getEmbedURL } from '@/lib/youtube';
 
 describe('getThumbnailURL', () => {
   test('with no options (default)', () => {

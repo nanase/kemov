@@ -1,4 +1,4 @@
-import { url } from '../../src/lib/style';
+import { url } from '@/lib/style';
 
 describe('url', () => {
   test('empty url', () => {

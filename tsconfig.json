@@ -1,7 +1,6 @@
 {
-  // "extends": "@vue/tsconfig/",
   "extends": "@vue/tsconfig/tsconfig.json",
-  "include": ["env.d.ts", "src/**/*", "src/**/*.vue"],
+  "include": ["env.d.ts", "src/**/*", "src/**/*.vue", "test/**/*"],
   "compilerOptions": {
     "target": "ES2022",
     "module": "ES2022",
@@ -22,14 +21,9 @@
 
       // No `ScriptHost` because Vue 3 dropped support for IE
     ],
-    "types": ["unplugin-vue-macros/macros-global"]
+    "types": ["unplugin-vue-macros/macros-global", "vitest/globals"]
   },
   "vueCompilerOptions": {
     "plugins": ["@vue-macros/volar/short-vmodel"]
-  },
-  "references": [
-    {
-      "path": "./tsconfig.node.json"
-    }
-  ]
+  }
 }

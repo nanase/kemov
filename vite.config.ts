@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { fileURLToPath, URL } from 'node:url';
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
@@ -5,15 +6,18 @@ import VueMacros from 'unplugin-vue-macros/vite';
 import Vue from '@vitejs/plugin-vue';
 import webfontDownload from 'vite-plugin-webfont-dl';
 
-const root = resolve(__dirname, 'src');
-const outDir = resolve(__dirname, 'docs');
+// const root = resolve(__dirname, 'src');
+// const outDir = resolve(__dirname, 'docs');
+
+const root = resolve(__dirname);
+const srcDir = resolve(root, 'src');
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  root,
+  root: srcDir,
   base: '/kemov/',
-  publicDir: '../public',
-  envDir: '../',
+  publicDir: resolve(root, 'public'),
+  envDir: root,
   plugins: [
     VueMacros({
       plugins: {
@@ -30,26 +34,39 @@ export default defineConfig({
     webfontDownload(),
   ],
   resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-    },
+    alias: [{ find: '@', replacement: srcDir }],
   },
   css: {
     devSourcemap: true,
   },
   build: {
-    outDir,
+    outDir: resolve(root, 'docs'),
     rollupOptions: {
       input: {
-        stats: resolve(root, 'stats', 'index.html'),
-        statsDetail: resolve(root, 'stats', 'detail', 'index.html'),
-        genetMusic: resolve(root, 'genet', 'music', 'index.html'),
+        stats: resolve(srcDir, 'stats', 'index.html'),
+        statsDetail: resolve(srcDir, 'stats', 'detail', 'index.html'),
+        genetMusic: resolve(srcDir, 'genet', 'music', 'index.html'),
       },
       output: {
         chunkFileNames: 'assets/kemov-[name]-[hash].js',
       },
     },
     emptyOutDir: true,
+  },
+  test: {
+    root,
+    include: ['test/**/*.test.ts'],
+    globals: true,
+    coverage: {
+      reporter: ['text', 'json'],
+      include: ['src/**/*.{ts,vue}'],
+      exclude: ['**/index.ts'],
+    },
+    server: {
+      deps: {
+        inline: ['vuetify'],
+      },
+    },
   },
   server: {
     port: 5173,

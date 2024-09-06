@@ -1,3 +1,9 @@
+node_modules
+.DS_Store
+dist-ssr
+coverage
+*.local
+
 # Logs
 logs
 *.log
@@ -7,13 +13,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-.DS_Store
-dist
-dist-ssr
-coverage
-*.local
-
+# cypress
 /cypress/videos/
 /cypress/screenshots/
 
@@ -26,9 +26,15 @@ coverage
 *.njsproj
 *.sln
 *.sw?
+.vs/
 
+# coverage
+coverage/
+
+# Stylelint
 .stylelintcache
 
+# yarn
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -37,4 +43,5 @@ coverage
 !.yarn/sdks
 !.yarn/versions
 
+# tsc
 tsconfig.node.tsbuildinfo

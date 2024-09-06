@@ -1,4 +1,4 @@
-import { JST, UTC, toDateTimeText } from '../../src/lib/dayjs';
+import { JST, UTC, toDateTimeText } from '@/lib/dayjs';
 
 describe('JST', () => {
   test('of locale', () => {
