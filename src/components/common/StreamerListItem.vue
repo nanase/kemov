@@ -10,14 +10,7 @@ const { pageId } = defineProps<{
 </script>
 
 <template>
-  <v-list
-    nav
-    link
-    active-class="bg-primary"
-    density="compact"
-    class="flex-grow-1 flex-shrink-1 overflow-auto"
-    role="menu"
-  >
+  <v-list nav link active-class="bg-primary" density="compact" role="menu">
     <v-list-item
       v-for="channel in channels"
       :key="channel.id"

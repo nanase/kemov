@@ -16,7 +16,7 @@ const opened = defineModel<boolean>('opened');
         </template>
       </v-list-item>
 
-      <StreamerListItem :pageId />
+      <StreamerListItem :pageId class="flex-grow-1 flex-shrink-1 overflow-auto" />
 
       <v-divider />
       <v-list density="compact" link nav class="flex-grow-0 flex-shrink-0" role="menu">
