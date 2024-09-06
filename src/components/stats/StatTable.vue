@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import DifferenceValue from '@/components/stats/DifferenceValue.vue';
 
-import { sum } from '@/lib/array';
+import { sum, withCommas } from '@nanase/alnilam';
 import { type YouTubeChannelStreamer } from '@/type/youtube';
-import { withCommas } from '@/lib/number';
 import dayjs from '@/lib/dayjs';
 
 export type StatDataType = 'subscriber' | 'view' | 'video';

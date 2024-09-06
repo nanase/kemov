@@ -1280,6 +1280,20 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@nanase/alnilam@https://github.com/nanase/alnilam.git#0.3.0":
+  version: 0.3.0
+  resolution: "@nanase/alnilam@https://github.com/nanase/alnilam.git#commit=c9d33830971ed43b5fb72ddede8469582ee8d797"
+  dependencies:
+    axios: "npm:^1.7.6"
+    axios-retry: "npm:^4.5.0"
+    dayjs: "npm:^1.11.13"
+    vue: "npm:^3.4.38"
+    vue-router: "npm:^4.4.3"
+    vuetify: "npm:^3.7.1"
+  checksum: 10c0/28d4250dcb7578c35e0b7bfe15931d920e445e581be186cfda3add38543da4d3ee7fad66a733d6e87d2daa67d490614ee3bc96d9a9b0ae39458860dc2e8a78c8
+  languageName: node
+  linkType: hard
+
 "@nodelib/fs.scandir@npm:2.1.5":
   version: 2.1.5
   resolution: "@nodelib/fs.scandir@npm:2.1.5"
@@ -2798,7 +2812,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"axios@npm:^1.7.7":
+"axios@npm:^1.7.6, axios@npm:^1.7.7":
   version: 1.7.7
   resolution: "axios@npm:1.7.7"
   dependencies:
@@ -5882,6 +5896,7 @@ __metadata:
   resolution: "kemov@workspace:."
   dependencies:
     "@mdi/font": "npm:^7.4.47"
+    "@nanase/alnilam": "https://github.com/nanase/alnilam.git#0.3.0"
     "@rushstack/eslint-patch": "npm:^1.10.4"
     "@types/dompurify": "npm:^3.0.5"
     "@types/jest": "npm:^29.5.12"
@@ -8678,7 +8693,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"vue@npm:^3.5.2, vue@npm:^3.5.3":
+"vue@npm:^3.4.38, vue@npm:^3.5.2, vue@npm:^3.5.3":
   version: 3.5.3
   resolution: "vue@npm:3.5.3"
   dependencies:

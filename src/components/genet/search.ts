@@ -1,5 +1,5 @@
 import type { Streaming } from '@/type/genet/music';
-import { escapeRegex } from '@/lib/string';
+import { escapeRegex } from '@nanase/alnilam';
 
 const conversionTable: [string, string][] = [
   ['バ', 'ヴァ'],

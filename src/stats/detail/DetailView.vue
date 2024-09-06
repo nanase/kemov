@@ -6,11 +6,10 @@ import AppBase from '@/components/common/AppBase.vue';
 import VideoRanking from '@/components/stats/detail/VideoRanking.vue';
 
 import { channelsUri, videoUri, statsUri } from '@/config';
-import { mergeArrayBy, sum } from '@/lib/array';
-import { type SortOrder } from '@/lib/sort';
+import { mergeArrayBy, sum } from '@nanase/alnilam';
+import { type SortOrder, withCommas } from '@nanase/alnilam';
 import { type Video, parse as parseAsVideo, type VideoProperty } from '@/type/video';
 import { type YouTubeChannelStreamer, type YouTubeChannelStatsResponse, type YouTubeChannel } from '@/type/youtube';
-import { withCommas } from '@/lib/number';
 import axios from '@/lib/axios';
 import dayjs from '@/lib/dayjs';
 import type { VideoType } from '@/type/video';

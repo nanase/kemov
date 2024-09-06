@@ -1,4 +1,4 @@
-import { withCommas } from '@/lib/number';
+import { withCommas } from '@nanase/alnilam';
 import dayjs, { Dayjs, duration } from '@/lib/dayjs';
 
 export type LiveBroadcastContentType = 'none' | 'upcoming' | 'live';

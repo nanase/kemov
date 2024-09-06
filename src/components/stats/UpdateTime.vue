@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 
-import { definePeriodicCall } from '@/lib/vue';
+import { definePeriodicCall } from '@nanase/alnilam';
 import dayjs, { Dayjs } from '@/lib/dayjs';
 import { computed } from 'vue';
 

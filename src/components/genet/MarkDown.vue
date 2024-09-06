@@ -4,7 +4,7 @@ import { computed } from 'vue';
 import WatchButton, { type ClickWatchButton } from './WatchButton.vue';
 
 import { marked } from 'marked';
-import { unescapeHtml } from '@/lib/string';
+import { unescapeHtml } from '@nanase/alnilam';
 import DOMPurify from 'dompurify';
 
 const { source } = defineProps<{

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { withCommas } from '@/lib/number';
+import { withCommas } from '@nanase/alnilam';
 
 const {
   value,

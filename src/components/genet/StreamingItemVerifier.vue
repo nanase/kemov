@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 
 import { type Streaming } from '@/type/genet/music';
-import { empty, existsDuplicate } from '@/lib/array';
+import { empty, existsDuplicate } from '@nanase/alnilam';
 
 const { data } = defineProps<{
   data: Streaming;
