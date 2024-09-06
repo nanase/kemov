@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, provide } from 'vue';
+import { useStorage } from '@vueuse/core';
 
 import AppBase from '@/components/common/AppBase.vue';
 import StatTable, { type StatDataType } from '@/components/stats/StatTable.vue';
 import UpdateTime from '@/components/stats/UpdateTime.vue';
 
 import { channelsUri, statsUri } from '@/config';
-import { definePeriodicCall, storage } from '@/lib/vue';
+import { definePeriodicCall } from '@/lib/vue';
 import { mergeArrayBy } from '@/lib/array';
 import { type YouTubeStreamer, type YouTubeChannelStreamer, type YouTubeChannelStatsResponse } from '@/type/youtube';
 import axios from '@/lib/axios';
@@ -16,9 +17,8 @@ const appBase = ref<InstanceType<typeof AppBase>>();
 const channels = ref<YouTubeChannelStreamer[]>([]);
 const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
 const tab = ref<StatDataType>('subscriber');
-const activeOnly = ref<boolean>();
+const activeOnly = useStorage<boolean>('kemov/stats/activeOnly', false);
 
-storage(activeOnly, 'kemov/stats/activeOnly');
 provide('streamerChannels', channels);
 
 definePeriodicCall(
