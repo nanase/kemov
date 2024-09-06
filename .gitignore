@@ -45,3 +45,6 @@ coverage/
 
 # tsc
 tsconfig.node.tsbuildinfo
+
+#vite
+vite.config.ts.timestamp-*
