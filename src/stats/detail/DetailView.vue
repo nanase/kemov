@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, provide } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { computedAsync } from '@vueuse/core';
 
-import AppBase from '@/components/common/AppBase.vue';
+import StatsAppBase from '@/components/common/StatsAppBase.vue';
 import VideoRanking from '@/components/stats/detail/VideoRanking.vue';
 
 import { channelsUri, videoUri, statsUri } from '@/config';
@@ -19,19 +19,19 @@ const { channelId } = defineProps<{
   channelId: string;
 }>();
 
-const appBase = ref<InstanceType<typeof AppBase>>();
 const stats = ref<YouTubeChannel[]>([]);
+const errorSnackbarShown = ref<boolean>();
 const channels = ref<YouTubeChannelStreamer[]>([]);
 const channel = computed(() => channels.value.find((c) => c.id === channelId));
 const videos = computedAsync(async () => {
   if (channel.value != null) {
     try {
-      appBase.value?.closeErrorSnackbar();
+      errorSnackbarShown.value = false;
       return (await axios.get<Video[]>(videoUri(channel.value.id), { transformResponse: parseAsVideo })).data.filter(
         (v) => v.availability === 'public',
       );
     } catch {
-      appBase.value?.showErrorSnackbar();
+      errorSnackbarShown.value = true;
       return [];
     }
   } else {
@@ -39,15 +39,13 @@ const videos = computedAsync(async () => {
   }
 }, []);
 
-provide('streamerChannels', channels);
-
 onMounted(async () => {
   try {
-    appBase.value?.closeErrorSnackbar();
+    errorSnackbarShown.value = false;
     stats.value = (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data.data;
     channels.value = mergeArrayBy('id', (await axios.get<YouTubeChannelStreamer[]>(channelsUri)).data, stats.value);
   } catch {
-    appBase.value?.showErrorSnackbar();
+    errorSnackbarShown.value = true;
   }
 });
 
@@ -62,7 +60,12 @@ const sortOrder = ref<SortOrder>('descending');
 </script>
 
 <template>
-  <AppBase ref="appBase" :page-id="`stats/detail/${channelId}`" :toolbar-title="channel?.fullname">
+  <StatsAppBase
+    :page-id="`stats/detail/${channelId}`"
+    :title="channel?.fullname"
+    :channels
+    v-model:error-snackbar-shown="errorSnackbarShown"
+  >
     <v-row class="ma-0">
       <v-col cols="6" sm="4" class="pa-1">
         <v-card color="red" variant="flat" class="summary-card">
@@ -243,7 +246,7 @@ const sortOrder = ref<SortOrder>('descending');
         </ul>
       </v-footer>
     </template>
-  </AppBase>
+  </StatsAppBase>
 </template>
 
 <style scoped lang="scss">
