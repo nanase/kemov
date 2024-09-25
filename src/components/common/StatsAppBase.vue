@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue';
 import { useVuetifyTheme } from '@nanase/alnilam/use';
 import { AppBaseV2 } from '@nanase/alnilam/components';
 import type { YouTubeChannelStreamer } from '@/type/youtube';
 
-const { channels } = defineProps<{
+const { channels, pageId } = defineProps<{
   channels: readonly YouTubeChannelStreamer[];
+  pageId?: string;
 }>();
 const errorSnackbarShown = defineModel<boolean>('errorSnackbarShown');
 const { isDark, toggle: toggleTheme } = useVuetifyTheme();
@@ -13,7 +13,7 @@ const { isDark, toggle: toggleTheme } = useVuetifyTheme();
 
 <template>
   <AppBaseV2 :page-sections="[]" v-model:error-snackbar-shown="errorSnackbarShown">
-    <template #drawerMenu="{ currentPage }">
+    <template #drawerMenu>
       <v-list-item
         class="py-2"
         link
@@ -43,7 +43,7 @@ const { isDark, toggle: toggleTheme } = useVuetifyTheme();
           color="v2DrawerListActive"
           base-color="v2DrawerList"
           style="font-size: 0.9rem"
-          :active="currentPage?.id === `stats/detail/${channel.id}`"
+          :active="pageId === `stats/detail/${channel.id}`"
         >
           <template #prepend>
             <v-avatar :color="channel.color.key" variant="outlined" size="small">
