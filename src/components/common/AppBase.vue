@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { ThemeToggleButton } from '@nanase/alnilam';
+import { ThemeToggleButton } from '@nanase/alnilam/components';
 import NavigationDrawer from './NavigationDrawer.vue';
 
 const { pageId, toolbarTitle } = defineProps<{

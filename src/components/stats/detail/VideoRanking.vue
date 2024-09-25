@@ -4,7 +4,7 @@ import { computed } from 'vue';
 import VideoDetail from './VideoDetail.vue';
 import VideoThumbnail from './VideoThumbnail.vue';
 
-import { compareWithNull, type SortOrder } from '@nanase/alnilam';
+import { compareWithNull, type SortOrder } from '@nanase/alnilam/sort';
 import {
   type Video,
   type VideoType,
