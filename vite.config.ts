@@ -1,4 +1,3 @@
-/// <reference types="vitest" />
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
 import VueMacros from 'unplugin-vue-macros/vite';
@@ -53,21 +52,6 @@ export default defineConfig({
       },
     },
     emptyOutDir: true,
-  },
-  test: {
-    root,
-    include: ['test/**/*.test.ts'],
-    globals: true,
-    coverage: {
-      reporter: ['text', 'json'],
-      include: ['src/**/*.{ts,vue}'],
-      exclude: ['**/index.ts'],
-    },
-    server: {
-      deps: {
-        inline: ['vuetify'],
-      },
-    },
   },
   server: {
     port: 5173,
