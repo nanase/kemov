@@ -21,7 +21,8 @@
 
       // No `ScriptHost` because Vue 3 dropped support for IE
     ],
-    "types": ["unplugin-vue-macros/macros-global", "vitest/globals"]
+    "types": ["unplugin-vue-macros/macros-global", "vitest/globals"],
+    "verbatimModuleSyntax": true
   },
   "vueCompilerOptions": {
     "plugins": ["@vue-macros/volar/short-vmodel"]
