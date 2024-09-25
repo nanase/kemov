@@ -3,15 +3,19 @@ import { ref } from 'vue';
 
 import VideoThumbnail from './VideoThumbnail.vue';
 
-import { JST } from '@/lib/dayjs';
 import { type Video } from '@/type/video';
 import { withCommas } from '@nanase/alnilam/number';
+import dayjs, { Dayjs, fromLocale } from '@nanase/alnilam/dayjs';
 
 const { video } = defineProps<{
   video: Video;
 }>();
 
 const dialog = ref<boolean>();
+
+function JST(date: Parameters<typeof dayjs>[0]): Dayjs {
+  return fromLocale('ja-JP', date);
+}
 </script>
 
 <template>

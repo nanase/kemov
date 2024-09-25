@@ -3,8 +3,8 @@ import DifferenceValue from '@/components/stats/DifferenceValue.vue';
 
 import { sum } from '@nanase/alnilam/array';
 import { withCommas } from '@nanase/alnilam/number';
+import dayjs from '@nanase/alnilam/dayjs';
 import { type YouTubeChannelStreamer } from '@/type/youtube';
-import dayjs from '@/lib/dayjs';
 
 export type StatDataType = 'subscriber' | 'view' | 'video';
 

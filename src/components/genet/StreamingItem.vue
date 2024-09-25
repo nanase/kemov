@@ -7,7 +7,7 @@ import VideoEmbed from '@/components/genet/VideoEmbed.vue';
 import VideoLink from '@/components/genet/VideoLink.vue';
 
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
-import { JST, toDateTimeText } from '@/lib/dayjs';
+import dayjs, { Dayjs, fromLocale } from '@nanase/alnilam/dayjs';
 import { url } from '@/lib/style';
 import { videoTypeToString, type Streaming, type Video, type EmbeddedVideo } from '@/type/genet/music';
 
@@ -35,6 +35,26 @@ function insertBreakToName(name: string) {
 function setEmbedVideo(parentVideo?: Video, targetVideo?: EmbeddedVideo): void {
   parentMedia.value = parentVideo;
   targetMedia.value = targetVideo;
+}
+
+type DayjsDate = Parameters<typeof dayjs>[0];
+
+function JST(date: DayjsDate): Dayjs {
+  return fromLocale('ja-JP', date);
+}
+
+function toDateTimeText(datetime: string, baseDayjs?: ((date?: DayjsDate) => Dayjs) | Dayjs): string {
+  const date = baseDayjs == null ? dayjs(datetime) : typeof baseDayjs === 'function' ? baseDayjs(datetime) : baseDayjs;
+
+  if (date.isValid()) {
+    if (datetime.indexOf(':') !== -1) {
+      return date.format('YYYY/MM/DD (ddd) HH:mm');
+    } else {
+      return date.format('YYYY/MM/DD (ddd)');
+    }
+  } else {
+    return datetime;
+  }
 }
 </script>
 

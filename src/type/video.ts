@@ -1,5 +1,5 @@
 import { withCommas } from '@nanase/alnilam/number';
-import dayjs, { Dayjs, duration } from '@/lib/dayjs';
+import dayjs, { Dayjs, duration } from '@nanase/alnilam/dayjs';
 
 export type LiveBroadcastContentType = 'none' | 'upcoming' | 'live';
 export type VideoType = 'video' | 'streaming' | 'shorts';

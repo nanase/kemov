@@ -9,10 +9,10 @@ import { channelsUri, videoUri, statsUri } from '@/config';
 import { mergeArrayBy, sum } from '@nanase/alnilam/array';
 import { withCommas } from '@nanase/alnilam/number';
 import { type SortOrder } from '@nanase/alnilam/sort';
+import dayjs from '@nanase/alnilam/dayjs';
 import { type Video, parse as parseAsVideo, type VideoProperty } from '@/type/video';
 import { type YouTubeChannelStreamer, type YouTubeChannelStatsResponse, type YouTubeChannel } from '@/type/youtube';
 import axios from '@/lib/axios';
-import dayjs from '@/lib/dayjs';
 import type { VideoType } from '@/type/video';
 
 const { channelId } = defineProps<{
