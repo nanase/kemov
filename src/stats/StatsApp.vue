@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, provide } from 'vue';
+import { ref } from 'vue';
 import { useStorage, useIntervalFn } from '@vueuse/core';
 
-import AppBase from '@/components/common/AppBase.vue';
 import StatTable, { type StatDataType } from '@/components/stats/StatTable.vue';
 import UpdateTime from '@/components/stats/UpdateTime.vue';
 
@@ -11,19 +10,18 @@ import { mergeArrayBy } from '@nanase/alnilam/array';
 import dayjs, { Dayjs } from '@nanase/alnilam/dayjs';
 import { type YouTubeStreamer, type YouTubeChannelStreamer, type YouTubeChannelStatsResponse } from '@/type/youtube';
 import axios from '@/lib/axios';
+import StatsAppBase from '@/components/common/StatsAppBase.vue';
 
-const appBase = ref<InstanceType<typeof AppBase>>();
 const channels = ref<YouTubeChannelStreamer[]>([]);
 const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
 const tab = ref<StatDataType>('subscriber');
 const activeOnly = useStorage<boolean>('kemov/stats/activeOnly', false);
-const fetchInterval = ref<number>(0);
-
-provide('streamerChannels', channels);
+const fetchInterval = ref<number>(1);
+const errorSnackbarShown = ref<boolean>();
 
 useIntervalFn(async () => {
   try {
-    appBase.value?.closeErrorSnackbar();
+    errorSnackbarShown.value = false;
     const streamers = (await axios.get<YouTubeStreamer[]>(channelsUri)).data;
     const stats = (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data;
     channels.value = mergeArrayBy('id', streamers, stats.data);
@@ -32,14 +30,19 @@ useIntervalFn(async () => {
     fetchInterval.value = Math.max(Math.floor(600 - (dayjs().unix() - stats.fetched_at)) + 5, 30) * 1000;
   } catch (error) {
     console.error(`Fetching error. Retrying in 10 minutes: ${error}`);
-    appBase.value?.showErrorSnackbar();
+    errorSnackbarShown.value = true;
     fetchInterval.value = 600 * 1000;
   }
-});
+}, fetchInterval);
 </script>
 
 <template>
-  <AppBase ref="appBase" page-id="stats" toolbar-title="けもV リアルタイム統計">
+  <StatsAppBase
+    page-id="stats"
+    title="けもV リアルタイム統計"
+    :channels
+    v-model:error-snackbar-shown="errorSnackbarShown"
+  >
     <v-row justify="center">
       <v-col cols="12" md="12" lg="10" xl="7" xxl="6">
         <v-tabs $="tab" color="primary" align-tabs="center" density="compact">
@@ -80,7 +83,7 @@ useIntervalFn(async () => {
         </ul>
       </v-footer>
     </template>
-  </AppBase>
+  </StatsAppBase>
 </template>
 
 <style lang="scss" scoped>
