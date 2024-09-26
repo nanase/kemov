@@ -16,7 +16,7 @@ const channels = ref<YouTubeChannelStreamer[]>([]);
 const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
 const tab = ref<StatDataType>('subscriber');
 const activeOnly = useStorage<boolean>('kemov/stats/activeOnly', false);
-const fetchInterval = ref<number>(1);
+const fetchInterval = ref<number>(1000);
 const errorSnackbarShown = ref<boolean>();
 
 useIntervalFn(async () => {
