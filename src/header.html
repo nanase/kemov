@@ -1,0 +1,37 @@
+<meta charset="UTF-8" />
+<style>
+  @media (prefers-color-scheme: dark) {
+    body {
+      background-color: #121212;
+    }
+  }
+</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="{=$description}" />
+<meta property="og:title" content="{=$title}" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://nanase.cc/kemov/{=$page-id}" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="preconnect" href="https://i.ytimg.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;700&family=Roboto:ital@0;1&display=swap"
+  rel="stylesheet">
+<link rel="icon" sizes="16x16" href="/favicon.ico" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<script>
+  (function setBackgroundColorPreliminary() {
+    const vuetifyColorSchemeName = 'vuetify-color-scheme';
+    const darkBackground = '#121212';
+    const lightBackground = '#ffffff';
+
+    function getColorScheme() {
+      return localStorage.getItem(vuetifyColorSchemeName) ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    }
+
+    window.document.documentElement.style.backgroundColor = getColorScheme() === 'dark' ? darkBackground : lightBackground;
+  })();
+
+  window.pageId = '{=$page-id}';
+</script>
+<title>{=$title}</title>

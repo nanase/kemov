@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 import VueMacros from 'unplugin-vue-macros/vite';
 import Vue from '@vitejs/plugin-vue';
 import webfontDownload from 'vite-plugin-webfont-dl';
+import injectHTML from 'vite-plugin-html-inject';
 
 const root = resolve(__dirname);
 const srcDir = resolve(root, 'src');
@@ -27,6 +28,7 @@ export default defineConfig({
       },
     }),
     webfontDownload(),
+    injectHTML(),
   ],
   resolve: {
     alias: [{ find: '@', replacement: srcDir }],

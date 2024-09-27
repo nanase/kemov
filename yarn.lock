@@ -4423,6 +4423,7 @@ __metadata:
     unplugin-vue-macros: "npm:^2.12.2"
     v3-infinite-loading: "npm:^1.3.2"
     vite: "npm:^5.4.8"
+    vite-plugin-html-inject: "npm:^1.1.2"
     vite-plugin-webfont-dl: "npm:^3.9.5"
     vitest: "npm:^2.1.1"
     vue: "npm:^3.5.9"
@@ -6822,6 +6823,13 @@ __metadata:
   bin:
     vite-node: vite-node.mjs
   checksum: 10c0/8a8b958df3d48af915e07e7efb042ee4c036ca0b73d2c411dc29254fd3533ada0807ce5096d8339894d3e786418b7d1a9c4ae02718c6aca11b5098de2b14c336
+  languageName: node
+  linkType: hard
+
+"vite-plugin-html-inject@npm:^1.1.2":
+  version: 1.1.2
+  resolution: "vite-plugin-html-inject@npm:1.1.2"
+  checksum: 10c0/3a24da990c0a5b35029d3412f3fb13096e1c26b9d67fe0af1840b46aa2b2b98d70ac85d2f588eda328f484385fe94191c347afa586a3e642a71a08fa0518372b
   languageName: node
   linkType: hard
 
