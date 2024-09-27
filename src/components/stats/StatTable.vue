@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import DifferenceValue from '@/components/stats/DifferenceValue.vue';
 
+import { useNow } from '@vueuse/core';
 import { sum } from '@nanase/alnilam/array';
 import { withCommas } from '@nanase/alnilam/number';
 import dayjs from '@nanase/alnilam/dayjs';
@@ -17,6 +18,7 @@ const { channels, latestStreamings, type, activeOnly } = defineProps<{
   type: StatDataType;
   activeOnly?: boolean;
 }>();
+const now = useNow({ interval: 5000 });
 
 function getColumnName(): string {
   switch (type) {
@@ -97,7 +99,7 @@ function hasLive(channelId: string): boolean {
     typeof latestStreaming !== 'undefined' &&
     latestStreaming.success &&
     latestStreaming.isLiveBroadcast === true &&
-    dayjs().isAfter(latestStreaming.startedAt)
+    dayjs(now.value).isAfter(latestStreaming.startedAt)
   );
 }
 
@@ -108,7 +110,7 @@ function hasLiveBeforeStart(channelId: string): boolean {
     typeof latestStreaming !== 'undefined' &&
     latestStreaming.success &&
     latestStreaming.isLiveBroadcast === true &&
-    dayjs().isBetween(latestStreaming.startedAt, dayjs(latestStreaming.startedAt).add(-1, 'hour'))
+    dayjs(now.value).isBetween(latestStreaming.startedAt, dayjs(latestStreaming.startedAt).add(-1, 'hour'))
   );
 }
 </script>
