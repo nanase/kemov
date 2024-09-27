@@ -51,3 +51,27 @@ export interface YouTubeStreamer {
 }
 
 export type YouTubeChannelStreamer = YouTubeStreamer & YouTubeChannel;
+
+export type LatestStreaming =
+  | {
+      success: true;
+      channelId: string;
+      streamingId?: string;
+      isLiveBroadcast?: boolean;
+      requiresSubscription?: boolean;
+      publishedAt?: string;
+      uploadedAt?: string;
+      startedAt?: string;
+      interactionCount?: number;
+      name?: string;
+      description?: string;
+    }
+  | {
+      success: false;
+      channelId: string;
+    };
+
+export interface LatestStreamingResponse {
+  fetchedAt: string;
+  data: readonly LatestStreaming[];
+}

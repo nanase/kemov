@@ -4,12 +4,16 @@ import DifferenceValue from '@/components/stats/DifferenceValue.vue';
 import { sum } from '@nanase/alnilam/array';
 import { withCommas } from '@nanase/alnilam/number';
 import dayjs from '@nanase/alnilam/dayjs';
-import { type YouTubeChannelStreamer } from '@/type/youtube';
+import isBetween from 'dayjs/plugin/isBetween';
+import type { LatestStreaming, YouTubeChannelStreamer } from '@/type/youtube';
+
+dayjs.extend(isBetween);
 
 export type StatDataType = 'subscriber' | 'view' | 'video';
 
-const { channels, type, activeOnly } = defineProps<{
+const { channels, latestStreamings, type, activeOnly } = defineProps<{
   channels: YouTubeChannelStreamer[];
+  latestStreamings: readonly LatestStreaming[];
   type: StatDataType;
   activeOnly?: boolean;
 }>();
@@ -85,6 +89,28 @@ function getAverageSubscriberCount(): number {
 function getChannelVisibility(channel: YouTubeChannelStreamer): boolean {
   return activeOnly && typeof channel.activityEndDate === 'string' ? dayjs().isBefore(channel.activityEndDate) : true;
 }
+
+function hasLive(channelId: string): boolean {
+  const latestStreaming = latestStreamings.find((streaming) => streaming.channelId === channelId);
+
+  return (
+    typeof latestStreaming !== 'undefined' &&
+    latestStreaming.success &&
+    latestStreaming.isLiveBroadcast === true &&
+    dayjs().isAfter(latestStreaming.startedAt)
+  );
+}
+
+function hasLiveBeforeStart(channelId: string): boolean {
+  const latestStreaming = latestStreamings.find((streaming) => streaming.channelId === channelId);
+
+  return (
+    typeof latestStreaming !== 'undefined' &&
+    latestStreaming.success &&
+    latestStreaming.isLiveBroadcast === true &&
+    dayjs().isBetween(latestStreaming.startedAt, dayjs(latestStreaming.startedAt).add(-1, 'hour'))
+  );
+}
 </script>
 
 <template>
@@ -107,9 +133,13 @@ function getChannelVisibility(channel: YouTubeChannelStreamer): boolean {
             slim
           >
             <template v-slot:title>
-              <span class="channel-name-text">{{ channel.name }}</span>
+              <div class="channel-name-box">
+                <span class="channel-name-text">{{ channel.name }}</span>
+              </div>
             </template>
             <template v-slot:prepend>
+              <div v-if="hasLive(channel.id)" class="has-live"></div>
+              <div v-else-if="hasLiveBeforeStart(channel.id)" class="has-live-before-start"></div>
               <v-avatar class="avatar" :color="channel.color.key" variant="outlined" size="small">
                 <v-img :src="channel.thumbnails.default.url" :alt="channel.fullname" />
               </v-avatar>
@@ -236,13 +266,52 @@ function getChannelVisibility(channel: YouTubeChannelStreamer): boolean {
     background-color: transparent;
   }
 
+  .channel-name-box {
+    transition: transform 0.3s;
+  }
+
   .channel-name-text {
     font-family: 'IBM Plex Sans JP', sans-serif;
     font-size: 125%;
     font-weight: bold;
     font-stretch: condensed;
-    transition: transform 0.3s;
     display: inline-block;
+  }
+
+  .has-live {
+    display: inline-block;
+    color: white;
+    font-size: 60%;
+    background: red;
+    border: 1px solid red;
+    border-radius: 2px;
+    padding: 0 2px;
+    margin: auto 4px;
+    vertical-align: middle;
+    position: absolute;
+    left: 16px;
+    top: 24px;
+    z-index: 1;
+    transition: transform 0.3s;
+
+    &::before {
+      content: 'LIVE';
+    }
+  }
+
+  .has-live-before-start {
+    display: inline-block;
+    background: #1bb145;
+    border: 1.5px solid rgb(var(--v-theme-surface));
+    border-radius: 100%;
+    vertical-align: middle;
+    position: absolute;
+    left: 23px;
+    top: 26px;
+    z-index: 1;
+    transition: transform 0.3s;
+    width: 10px;
+    height: 10px;
   }
 
   .avatar {
@@ -251,7 +320,9 @@ function getChannelVisibility(channel: YouTubeChannelStreamer): boolean {
   }
 
   &:hover {
-    .channel-name-text {
+    .channel-name-box,
+    .has-live,
+    .has-live-before-start {
       transform: translate(10px);
     }
 
