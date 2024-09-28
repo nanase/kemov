@@ -103,7 +103,7 @@ function hasLive(channelId: string): boolean {
   );
 }
 
-function hasLiveBeforeStart(channelId: string): boolean {
+function hasLiveToStartSoon(channelId: string): boolean {
   const latestStreaming = latestStreamings.find((streaming) => streaming.channelId === channelId);
 
   return (
@@ -111,6 +111,17 @@ function hasLiveBeforeStart(channelId: string): boolean {
     latestStreaming.success &&
     latestStreaming.isLiveBroadcast === true &&
     dayjs(now.value).isBetween(latestStreaming.startedAt, dayjs(latestStreaming.startedAt).add(-1, 'hour'))
+  );
+}
+
+function hasLiveBeforeStart(channelId: string): boolean {
+  const latestStreaming = latestStreamings.find((streaming) => streaming.channelId === channelId);
+
+  return (
+    typeof latestStreaming !== 'undefined' &&
+    latestStreaming.success &&
+    latestStreaming.isLiveBroadcast === true &&
+    dayjs(now.value).isBetween(latestStreaming.startedAt, dayjs(latestStreaming.startedAt).add(-3, 'hour'))
   );
 }
 </script>
@@ -140,8 +151,9 @@ function hasLiveBeforeStart(channelId: string): boolean {
               </div>
             </template>
             <template v-slot:prepend>
-              <div v-if="hasLive(channel.id)" class="has-live"></div>
-              <div v-else-if="hasLiveBeforeStart(channel.id)" class="has-live-before-start"></div>
+              <div v-if="hasLive(channel.id)" class="live-badge has-live"></div>
+              <div v-else-if="hasLiveToStartSoon(channel.id)" class="live-badge has-live-to-start-soon"></div>
+              <div v-else-if="hasLiveBeforeStart(channel.id)" class="live-badge has-live-before-start"></div>
               <v-avatar class="avatar" :color="channel.color.key" variant="outlined" size="small">
                 <v-img :src="channel.thumbnails.default.url" :alt="channel.fullname" />
               </v-avatar>
@@ -280,8 +292,14 @@ function hasLiveBeforeStart(channelId: string): boolean {
     display: inline-block;
   }
 
-  .has-live {
+  .live-badge {
     display: inline-block;
+    position: absolute;
+    z-index: 1;
+    transition: transform 0.3s;
+  }
+
+  .has-live {
     color: white;
     font-size: 60%;
     background: red;
@@ -289,31 +307,32 @@ function hasLiveBeforeStart(channelId: string): boolean {
     border-radius: 2px;
     padding: 0 2px;
     margin: auto 4px;
-    vertical-align: middle;
-    position: absolute;
     left: 16px;
     top: 24px;
-    z-index: 1;
-    transition: transform 0.3s;
 
     &::before {
       content: 'LIVE';
     }
   }
 
-  .has-live-before-start {
-    display: inline-block;
-    background: #1bb145;
-    border: 1.5px solid rgb(var(--v-theme-surface));
+  .has-live-to-start-soon {
+    background: #ffb60c;
+    border: 2px solid rgb(var(--v-theme-surface));
     border-radius: 100%;
-    vertical-align: middle;
-    position: absolute;
     left: 23px;
     top: 26px;
-    z-index: 1;
-    transition: transform 0.3s;
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
+  }
+
+  .has-live-before-start {
+    background: #1bb145;
+    border: 2px solid rgb(var(--v-theme-surface));
+    border-radius: 100%;
+    left: 23px;
+    top: 26px;
+    width: 12px;
+    height: 12px;
   }
 
   .avatar {
@@ -323,8 +342,7 @@ function hasLiveBeforeStart(channelId: string): boolean {
 
   &:hover {
     .channel-name-box,
-    .has-live,
-    .has-live-before-start {
+    .live-badge {
       transform: translate(10px);
     }
 
