@@ -1,55 +1,24 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useStorage, useIntervalFn } from '@vueuse/core';
+import { onMounted, ref } from 'vue';
+import { useStorage } from '@vueuse/core';
 
 import StatTable, { type StatDataType } from '@/components/stats/StatTable.vue';
 import UpdateTime from '@/components/stats/UpdateTime.vue';
-
-import { channelsUri, liveUri, statsUri } from '@/config';
-import { mergeArrayBy } from '@nanase/alnilam/array';
-import dayjs, { Dayjs } from '@nanase/alnilam/dayjs';
-import type {
-  YouTubeStreamer,
-  YouTubeChannelStreamer,
-  YouTubeChannelStatsResponse,
-  LatestStreaming,
-  LatestStreamingResponse,
-} from '@/type/youtube';
-import axios from '@/lib/axios';
 import StatsAppBase from '@/components/common/StatsAppBase.vue';
+import useStatsStore from './store';
 
-const channels = ref<YouTubeChannelStreamer[]>([]);
-const latestStreamings = ref<readonly LatestStreaming[]>([]);
-const fetchedTime = ref<Dayjs>(dayjs(Number.NaN));
+const { fetchedAt, fetching, errorOccurred } = useStatsStore();
 const tab = ref<StatDataType>('subscriber');
 const activeOnly = useStorage<boolean>('kemov/stats/activeOnly', false);
-const fetchInterval = ref<number>(1000);
-const errorSnackbarShown = ref<boolean>();
 
-useIntervalFn(async () => {
-  try {
-    errorSnackbarShown.value = false;
-    const streamers = (await axios.get<YouTubeStreamer[]>(channelsUri)).data;
-    const stats = (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data;
-    channels.value = mergeArrayBy('id', streamers, stats.data);
-    latestStreamings.value = (await axios.get<LatestStreamingResponse>(liveUri)).data.data;
-    fetchedTime.value = dayjs.unix(stats.fetched_at);
-    fetchInterval.value = Math.max(Math.floor(600 - (dayjs().unix() - stats.fetched_at)) + 5, 30) * 1000;
-  } catch (error) {
-    console.error(`Fetching error. Retrying in 10 minutes: ${error}`);
-    errorSnackbarShown.value = true;
-    fetchInterval.value = 600 * 1000;
-  }
-}, fetchInterval);
+onMounted(async () => {
+  await fetching.channels.start();
+  await fetching.latestStreamings.start();
+});
 </script>
 
 <template>
-  <StatsAppBase
-    page-id="stats"
-    title="けもV リアルタイム統計"
-    :channels
-    v-model:error-snackbar-shown="errorSnackbarShown"
-  >
+  <StatsAppBase page-id="stats" title="けもV リアルタイム統計" :error-snackbar-shown="errorOccurred">
     <v-row justify="center">
       <v-col cols="12" md="12" lg="10" xl="7" xxl="6">
         <v-tabs $="tab" color="primary" align-tabs="center" density="compact">
@@ -67,10 +36,10 @@ useIntervalFn(async () => {
           </v-tab>
         </v-tabs>
 
-        <StatTable :channels :latest-streamings :type="tab" :active-only />
+        <StatTable :type="tab" :active-only />
 
         <v-card class="text-right px-4 py-2" variant="flat">
-          <UpdateTime class="update-time" :time="fetchedTime" />
+          <UpdateTime class="update-time" :time="fetchedAt" />
         </v-card>
       </v-col>
     </v-row>

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { useVuetifyTheme } from '@nanase/alnilam/use';
 import { AppBaseV2 } from '@nanase/alnilam/components';
-import type { YouTubeChannelStreamer } from '@/type/youtube';
+import useStatsStore from '@/stats/store';
 
-const { channels, pageId } = defineProps<{
-  channels: readonly YouTubeChannelStreamer[];
+const { channels } = useStatsStore();
+const { pageId } = defineProps<{
   pageId?: string;
 }>();
 const errorSnackbarShown = defineModel<boolean>('errorSnackbarShown');

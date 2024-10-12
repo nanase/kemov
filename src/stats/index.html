@@ -17,6 +17,7 @@
     import { theme } from './theme'
     import * as components from 'vuetify/components';
     import * as directives from 'vuetify/directives';
+    import { createPinia } from 'pinia'
 
     import StatsApp from '../stats/StatsApp.vue';
     import './main.scss';
@@ -30,7 +31,9 @@
       theme,
     });
     const app = createApp(StatsApp);
+    const pinia = createPinia();
     app.use(vuetify);
+    app.use(pinia);
     app.mount('#app');
   </script>
 </body>

@@ -1,62 +1,32 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue';
-import { computedAsync } from '@vueuse/core';
-
-import StatsAppBase from '@/components/common/StatsAppBase.vue';
-import VideoRanking from '@/components/stats/detail/VideoRanking.vue';
-
-import { channelsUri, videoUri, statsUri } from '@/config';
-import { mergeArrayBy, sum } from '@nanase/alnilam/array';
+import { computed, ref, onMounted, watch } from 'vue';
+import { sum } from '@nanase/alnilam/array';
 import { withCommas } from '@nanase/alnilam/number';
 import { type SortOrder } from '@nanase/alnilam/sort';
 import dayjs from '@nanase/alnilam/dayjs';
-import { type Video, parse as parseAsVideo, type VideoProperty } from '@/type/video';
-import { type YouTubeChannelStreamer, type YouTubeChannelStatsResponse, type YouTubeChannel } from '@/type/youtube';
-import axios from '@/lib/axios';
-import type { VideoType } from '@/type/video';
+import type { VideoType, VideoProperty } from '@/type/video';
 
-const { channelId } = defineProps<{
-  channelId: string;
-}>();
+import StatsAppBase from '@/components/common/StatsAppBase.vue';
+import VideoRanking from '@/components/stats/detail/VideoRanking.vue';
+import useStatsStore from '@/stats/store';
 
-const stats = ref<YouTubeChannel[]>([]);
-const errorSnackbarShown = ref<boolean>();
-const channels = ref<YouTubeChannelStreamer[]>([]);
-const channel = computed(() => channels.value.find((c) => c.id === channelId));
-const videos = computedAsync(async () => {
-  if (channel.value != null) {
-    try {
-      errorSnackbarShown.value = false;
-      return (await axios.get<Video[]>(videoUri(channel.value.id), { transformResponse: parseAsVideo })).data.filter(
-        (v) => v.availability === 'public',
-      );
-    } catch {
-      errorSnackbarShown.value = true;
-      return [];
-    }
-  } else {
-    return [];
-  }
-}, []);
+const { channelId } = defineProps<{ channelId: string }>();
+const { channels, fetching, errorOccurred, setChannelId, channel, videos } = useStatsStore();
 
-onMounted(async () => {
-  try {
-    errorSnackbarShown.value = false;
-    stats.value = (await axios.get<YouTubeChannelStatsResponse>(statsUri)).data.data;
-    channels.value = mergeArrayBy('id', (await axios.get<YouTubeChannelStreamer[]>(channelsUri)).data, stats.value);
-  } catch {
-    errorSnackbarShown.value = true;
-  }
-});
-
-const realtimeStats = computed(() => stats.value.find((channel) => channel.id === channelId)?.statistics);
 const activityDays = computed(() =>
-  dayjs(channel?.value?.activityEndDate ?? undefined).diff(dayjs(channel?.value?.activityStartDate), 'days', true),
+  dayjs(channel.value?.activityEndDate ?? undefined).diff(dayjs(channel.value?.activityStartDate), 'days', true),
 );
-
 const targetProperty = ref<VideoProperty>('viewCount');
 const filterType = ref<VideoType[]>(['video', 'streaming', 'shorts']);
 const sortOrder = ref<SortOrder>('descending');
+
+onMounted(async () => await fetching.channels.invoke());
+
+watch(
+  () => channelId,
+  () => setChannelId(channelId),
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -64,7 +34,7 @@ const sortOrder = ref<SortOrder>('descending');
     :page-id="`stats/detail/${channelId}`"
     :title="channel?.fullname"
     :channels
-    v-model:error-snackbar-shown="errorSnackbarShown"
+    :error-snackbar-shown="errorOccurred"
   >
     <v-row class="ma-0">
       <v-col cols="6" sm="4" class="pa-1">
@@ -74,19 +44,19 @@ const sortOrder = ref<SortOrder>('descending');
             チャンネル登録者
           </v-card-text>
           <v-skeleton-loader
-            v-if="!realtimeStats || !Number.isFinite(activityDays) || activityDays === 0"
+            v-if="!channel?.statistics || !Number.isFinite(activityDays) || activityDays === 0"
             color="transparent"
             type="text@2"
           />
           <template v-else>
             <v-card-text class="pa-2 mt-n3 text-h5 text-right">
-              {{ withCommas(realtimeStats?.subscriberCount) }}
+              {{ withCommas(channel.statistics.subscriberCount) }}
               <span class="text-subtitle-2">&nbsp;</span>
             </v-card-text>
             <v-card-text class="pa-2 pt-0 mt-n2 text-subtitle-2 text-right">
               1日あたり
               <span class="pr-2 pt-0 mt-n2 text-h6 text-right">
-                +{{ ((realtimeStats?.subscriberCount ?? 0) / activityDays).toFixed(1) }}
+                +{{ ((channel.statistics.subscriberCount ?? 0) / activityDays).toFixed(1) }}
               </span>
               <span class="text-subtitle-2">&nbsp;</span>
             </v-card-text>

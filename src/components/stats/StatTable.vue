@@ -1,20 +1,21 @@
 <script setup lang="ts">
-import DifferenceValue from '@/components/stats/DifferenceValue.vue';
-
+import { storeToRefs } from 'pinia';
 import { useNow } from '@vueuse/core';
 import { sum } from '@nanase/alnilam/array';
 import { withCommas } from '@nanase/alnilam/number';
 import dayjs from '@nanase/alnilam/dayjs';
 import isBetween from 'dayjs/plugin/isBetween';
-import type { LatestStreaming, YouTubeChannelStreamer } from '@/type/youtube';
+import type { YouTubeChannelStreamer } from '@/type/youtube';
+import useStatsStore from '@/stats/store';
+
+import DifferenceValue from '@/components/stats/DifferenceValue.vue';
 
 dayjs.extend(isBetween);
+const { channels, latestStreamings } = useStatsStore();
 
 export type StatDataType = 'subscriber' | 'view' | 'video';
 
-const { channels, latestStreamings, type, activeOnly } = defineProps<{
-  channels: YouTubeChannelStreamer[];
-  latestStreamings: readonly LatestStreaming[];
+const { type, activeOnly } = defineProps<{
   type: StatDataType;
   activeOnly?: boolean;
 }>();
@@ -84,8 +85,8 @@ function getMaxSubscriberCount(x: number): number {
 }
 
 function getAverageSubscriberCount(): number {
-  const total = sum(channels, getCount);
-  return Math.round(total + (sum(channels, (channel) => getMaxSubscriberCount(getCount(channel))) - total) / 2);
+  const total = sum(channels.value, getCount);
+  return Math.round(total + (sum(channels.value, (channel) => getMaxSubscriberCount(getCount(channel))) - total) / 2);
 }
 
 function getChannelVisibility(channel: YouTubeChannelStreamer): boolean {
@@ -93,7 +94,7 @@ function getChannelVisibility(channel: YouTubeChannelStreamer): boolean {
 }
 
 function hasLive(channelId: string): boolean {
-  const latestStreaming = latestStreamings.find((streaming) => streaming.channelId === channelId);
+  const latestStreaming = latestStreamings.value.find((streaming) => streaming.channelId === channelId);
 
   return (
     typeof latestStreaming !== 'undefined' &&
@@ -104,7 +105,7 @@ function hasLive(channelId: string): boolean {
 }
 
 function hasLiveToStartSoon(channelId: string): boolean {
-  const latestStreaming = latestStreamings.find((streaming) => streaming.channelId === channelId);
+  const latestStreaming = latestStreamings.value.find((streaming) => streaming.channelId === channelId);
 
   return (
     typeof latestStreaming !== 'undefined' &&
@@ -115,7 +116,7 @@ function hasLiveToStartSoon(channelId: string): boolean {
 }
 
 function hasLiveBeforeStart(channelId: string): boolean {
-  const latestStreaming = latestStreamings.find((streaming) => streaming.channelId === channelId);
+  const latestStreaming = latestStreamings.value.find((streaming) => streaming.channelId === channelId);
 
   return (
     typeof latestStreaming !== 'undefined' &&

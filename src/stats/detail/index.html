@@ -20,6 +20,7 @@
     import colors from 'vuetify/lib/util/colors'
     import * as components from 'vuetify/components';
     import * as directives from 'vuetify/directives';
+    import { createPinia } from 'pinia'
 
     import DetailApp from './DetailApp.vue';
     import '../main.scss';
@@ -33,8 +34,10 @@
       theme,
     });
     const app = createApp(DetailApp);
+    const pinia = createPinia();
     app.use(router);
     app.use(vuetify);
+    app.use(pinia);
     app.mount('#app');
   </script>
 </body>
