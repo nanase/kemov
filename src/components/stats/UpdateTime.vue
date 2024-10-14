@@ -3,8 +3,9 @@ import { ref, watch, computed } from 'vue';
 import { useIntervalFn } from '@vueuse/core';
 import dayjs, { Dayjs } from '@nanase/alnilam/dayjs';
 
-const { time } = defineProps<{
+const { time, updateInterval = 1000 } = defineProps<{
   time: Dayjs;
+  updateInterval?: number;
 }>();
 
 const elapsedTime = ref<number>(Number.NaN);
@@ -15,12 +16,14 @@ const readableElapsedTime = computed(() =>
 function updateElapsedTime() {
   elapsedTime.value = dayjs().diff(time, 's');
 }
-useIntervalFn(updateElapsedTime, 1000);
+useIntervalFn(updateElapsedTime, updateInterval);
 watch(() => time, updateElapsedTime);
 </script>
 
 <template>
   <div class="update-time" v-if="time.isValid() && !Number.isNaN(elapsedTime)">
-    {{ `${time.format('YYYY/MM/DD HH:mm:ss')} (${readableElapsedTime}前) 更新` }}
+    <slot :readableElapsedTime>
+      {{ readableElapsedTime }}
+    </slot>
   </div>
 </template>

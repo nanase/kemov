@@ -4,6 +4,7 @@ import { useStorage } from '@vueuse/core';
 
 import StatTable, { type StatDataType } from '@/components/stats/StatTable.vue';
 import UpdateTime from '@/components/stats/UpdateTime.vue';
+import UpdateCircle from '@/components/common/UpdateCircle.vue';
 import StatsAppBase from '@/components/common/StatsAppBase.vue';
 import useStatsStore from './store';
 
@@ -38,15 +39,41 @@ onMounted(async () => {
 
         <StatTable :type="tab" :active-only />
 
-        <v-card class="text-right px-4 py-2" variant="flat">
-          <UpdateTime class="update-time" :time="fetchedAt" />
-        </v-card>
-      </v-col>
-    </v-row>
+        <v-card class="text-right px-3 py-0" variant="flat">
+          <v-row no-gutters>
+            <v-col>
+              <v-checkbox v-model="activeOnly" label="活動中の配信者のみ表示" hide-details density="compact" />
+            </v-col>
+            <v-col class="d-flex align-center justify-end">
+              <v-menu>
+                <template #activator="{ props }">
+                  <UpdateCircle
+                    class="cursor-pointer mr-1"
+                    v-bind="props"
+                    :time="fetchedAt"
+                    :update-interval="5000"
+                    :green-seconds="60 * 10"
+                    :yellow-seconds="60 * 30"
+                  />
+                  <UpdateTime
+                    class="cursor-pointer opacity-70 text-subtitle-2"
+                    v-bind="props"
+                    :time="fetchedAt"
+                    :update-interval="5000"
+                  >
+                    <template #="{ readableElapsedTime }"> {{ readableElapsedTime }}前 </template>
+                  </UpdateTime>
+                </template>
 
-    <v-row>
-      <v-col>
-        <v-checkbox v-model="activeOnly" class="active-only" label="活動中の配信者のみ表示" hide-details />
+                <v-list density="compact">
+                  <v-list-item slim :subtitle="`更新: ${fetchedAt.format('YYYY-MM-DD H:mm:ss')}`" />
+                </v-list>
+              </v-menu>
+
+              <!-- <UpdateTime class="update-time" :time="fetchedAt" /> -->
+            </v-col>
+          </v-row>
+        </v-card>
       </v-col>
     </v-row>
 
@@ -61,9 +88,3 @@ onMounted(async () => {
     </template>
   </StatsAppBase>
 </template>
-
-<style lang="scss" scoped>
-.active-only :deep(.v-checkbox-btn) {
-  justify-content: center;
-}
-</style>
