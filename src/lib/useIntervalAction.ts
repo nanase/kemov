@@ -22,7 +22,11 @@ export function useIntervalAction(
   async function invoke() {
     try {
       error.value = undefined;
-      await action();
+      const newInterval = await action();
+
+      if (typeof newInterval === 'number') {
+        interval.value = newInterval;
+      }
     } catch (e) {
       error.value = e;
       await errorAction?.(e);
@@ -38,7 +42,7 @@ export function useIntervalAction(
 
     timeoutId = setTimeout(async () => {
       timeoutId = undefined;
-      await invoke();
+      await start();
     }, interval.value);
   }
 
