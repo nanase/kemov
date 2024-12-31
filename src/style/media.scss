@@ -1,3 +1,5 @@
+@use "sass:map";
+
 $media: (
   "sm": "screen and (width <= 576px)",
   "md": "screen and (width <= 768px)",
@@ -6,7 +8,7 @@ $media: (
   ) !default;
 
 @mixin size($size) {
-  @media #{map-get($media, $size)} {
+  @media #{map.get($media, $size)} {
     @content;
   }
 }
