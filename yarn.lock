@@ -1450,15 +1450,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/dompurify@npm:^3.2.0":
-  version: 3.2.0
-  resolution: "@types/dompurify@npm:3.2.0"
-  dependencies:
-    dompurify: "npm:*"
-  checksum: 10c0/e83fec586ffbb1b43f7c8479f2a99c223814d240db912d53fb126aaeea52a4091deceeb75632b5d76004d88ef0fbf444984887b121dece6fa69f4172ed4b2b07
-  languageName: node
-  linkType: hard
-
 "@types/estree@npm:1.0.6, @types/estree@npm:^1.0.6":
   version: 1.0.6
   resolution: "@types/estree@npm:1.0.6"
@@ -1493,13 +1484,6 @@ __metadata:
   dependencies:
     undici-types: "npm:~6.20.0"
   checksum: 10c0/a2e7ed7bb0690e439004779baedeb05159c5cc41ef6d81c7a6ebea5303fde4033669e1c0e41ff7453b45fd2fea8dbd55fddfcd052950c7fcae3167c970bca725
-  languageName: node
-  linkType: hard
-
-"@types/trusted-types@npm:^2.0.7":
-  version: 2.0.7
-  resolution: "@types/trusted-types@npm:2.0.7"
-  checksum: 10c0/4c4855f10de7c6c135e0d32ce462419d8abbbc33713b31d294596c0cc34ae1fa6112a2f9da729c8f7a20707782b0d69da3b1f8df6645b0366d08825ca1522e0c
   languageName: node
   linkType: hard
 
@@ -3320,30 +3304,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"dompurify@npm:*":
-  version: 3.2.3
-  resolution: "dompurify@npm:3.2.3"
-  dependencies:
-    "@types/trusted-types": "npm:^2.0.7"
-  dependenciesMeta:
-    "@types/trusted-types":
-      optional: true
-  checksum: 10c0/0ce5cb89b76f396d800751bcb48e0d137792891d350ccc049f1bc9a5eca7332cc69030c25007ff4962e0824a5696904d4d74264df9277b5ad955642dfb6f313f
-  languageName: node
-  linkType: hard
-
-"dompurify@npm:^3.2.4":
-  version: 3.2.4
-  resolution: "dompurify@npm:3.2.4"
-  dependencies:
-    "@types/trusted-types": "npm:^2.0.7"
-  dependenciesMeta:
-    "@types/trusted-types":
-      optional: true
-  checksum: 10c0/6be56810fb7ad2776155c8fc2967af5056783c030094362c7d0cf1ad13f2129cf922d8eefab528a34bdebfb98e2f44b306a983ab93aefb9d6f24c18a3d027a05
-  languageName: node
-  linkType: hard
-
 "domutils@npm:^3.0.1":
   version: 3.1.0
   resolution: "domutils@npm:3.1.0"
@@ -5070,7 +5030,6 @@ __metadata:
     "@mdi/font": "npm:^7.4.47"
     "@nanase/alnilam": "https://github.com/nanase/alnilam.git#0.5.2"
     "@rushstack/eslint-patch": "npm:^1.10.5"
-    "@types/dompurify": "npm:^3.2.0"
     "@types/js-yaml": "npm:^4.0.9"
     "@types/node": "npm:^22.13.5"
     "@vitejs/plugin-vue": "npm:^5.2.1"
@@ -5083,7 +5042,6 @@ __metadata:
     axios: "npm:^1.7.9"
     axios-retry: "npm:^4.5.0"
     dayjs: "npm:^1.11.13"
-    dompurify: "npm:^3.2.4"
     eslint: "npm:^9.21.0"
     eslint-plugin-vue: "npm:^9.32.0"
     floating-vue: "npm:^5.2.2"
