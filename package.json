@@ -44,7 +44,7 @@
     "@vue/eslint-config-prettier": "^10.2.0",
     "@vue/eslint-config-typescript": "^14.4.0",
     "@vue/tsconfig": "^0.7.0",
-    "axios": "^1.7.9",
+    "axios": "^1.8.2",
     "axios-retry": "^4.5.0",
     "dompurify": "^3.2.4",
     "eslint": "^9.21.0",
