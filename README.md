@@ -23,8 +23,18 @@ See [Vite Configuration Reference](https://vitejs.dev/config/).
 
 ## Project Setup
 
+`engines` forbids npm, so `npm install` fails by design. Use yarn.
+
+The toolchain is pinned in two places: Node in `mise.toml`, and yarn in the `packageManager` field of `package.json`. With [mise](https://mise.jdx.dev/) the pinned Node is installed and selected for you:
+
 ```sh
-npm install
+mise install
+```
+
+Then install the dependencies:
+
+```sh
+yarn install --immutable
 ```
 
 ### Compile and Hot-Reload for Development
@@ -32,13 +42,13 @@ npm install
 Default URL: http://localhost:5173/kemov/
 
 ```sh
-npm run dev
+yarn dev
 ```
 
 ### Type-Check, Compile and Minify for Production
 
 ```sh
-npm run build
+yarn build
 ```
 
 ### Preview Compiled Project for Production
@@ -46,19 +56,19 @@ npm run build
 Default URL: http://localhost:4173/kemov/
 
 ```sh
-npm run preview
+yarn preview
 ```
 
 ### Lint with [ESLint](https://eslint.org/)
 
 ```sh
-npm run lint
+yarn lint
 ```
 
 ### CSS Lint with [Stylelint](https://stylelint.io/)
 
 ```sh
-npm run lint:style
+yarn lint:style
 ```
 
 ## LICENSE
