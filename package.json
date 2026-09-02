@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --noEmit",
-    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
+    "lint": "eslint . --fix",
     "lint:style": "stylelint src/**/*.{css,scss,vue}",
     "format": "prettier --write src/",
     "test": "vitest",
@@ -34,7 +34,6 @@
   "devDependencies": {
     "@mdi/font": "^7.4.47",
     "@nanase/alnilam": "https://github.com/nanase/alnilam.git#commit=b7f1229a752132e130aadd536889326428ea823a",
-    "@rushstack/eslint-patch": "^1.10.5",
     "@types/dompurify": "^3.2.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.13.5",
