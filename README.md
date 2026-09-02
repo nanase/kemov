@@ -37,6 +37,12 @@ Then install the dependencies:
 yarn install --immutable
 ```
 
+### Environment Variables
+
+`.env` holds the values the published site is built with. To point the app somewhere else while developing, put the override in `.env.development.local`.
+
+Do not use `.env.local` for this. Vite reads it in every mode, so a value left there also ends up in the production build and ships to visitors.
+
 ### Compile and Hot-Reload for Development
 
 Default URL: http://localhost:5173/kemov/
