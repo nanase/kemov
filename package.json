@@ -33,7 +33,7 @@
   },
   "devDependencies": {
     "@mdi/font": "^7.4.47",
-    "@nanase/alnilam": "https://github.com/nanase/alnilam.git#0.5.2",
+    "@nanase/alnilam": "https://github.com/nanase/alnilam.git#commit=b7f1229a752132e130aadd536889326428ea823a",
     "@rushstack/eslint-patch": "^1.10.5",
     "@types/dompurify": "^3.2.0",
     "@types/js-yaml": "^4.0.9",

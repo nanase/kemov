@@ -845,9 +845,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@nanase/alnilam@https://github.com/nanase/alnilam.git#0.5.2":
+"@nanase/alnilam@https://github.com/nanase/alnilam.git#commit=b7f1229a752132e130aadd536889326428ea823a":
   version: 0.5.2
-  resolution: "@nanase/alnilam@https://github.com/nanase/alnilam.git#commit=73a7e32a26246b6a75e6c1c566c24fb4fc55b1f8"
+  resolution: "@nanase/alnilam@https://github.com/nanase/alnilam.git#commit=b7f1229a752132e130aadd536889326428ea823a"
   dependencies:
     dayjs: "npm:^1.11.13"
     vue: "npm:^3.5.12"
@@ -4917,7 +4917,7 @@ __metadata:
   resolution: "kemov@workspace:."
   dependencies:
     "@mdi/font": "npm:^7.4.47"
-    "@nanase/alnilam": "https://github.com/nanase/alnilam.git#0.5.2"
+    "@nanase/alnilam": "https://github.com/nanase/alnilam.git#commit=b7f1229a752132e130aadd536889326428ea823a"
     "@rushstack/eslint-patch": "npm:^1.10.5"
     "@types/dompurify": "npm:^3.2.0"
     "@types/js-yaml": "npm:^4.0.9"
