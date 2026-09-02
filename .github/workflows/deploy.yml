@@ -1,0 +1,71 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Only the deploy job needs more than read access, so the extra
+# permissions are granted there rather than to the whole workflow.
+permissions:
+  contents: read
+
+# Never let two deployments race. Queue instead of cancelling: a cancelled
+# deployment could leave the site mid-update.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the Node pinned in mise.toml
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # Publish only what passes. main is protected by CI on the way in, but
+      # this makes a broken build unable to reach the site even if something
+      # lands another way.
+      - name: Type check
+        run: yarn type-check
+
+      - name: Test
+        run: yarn vitest run
+
+      - name: Build
+        run: yarn build-only --outDir "$GITHUB_WORKSPACE/dist" --emptyOutDir
+
+      - name: Upload the artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
