@@ -11,8 +11,8 @@ updates:
     open-pull-requests-limit: 5
 
     # Major bumps stay a deliberate decision. They can change what the page
-    # renders, and docs/ is rebuilt and committed by hand here, so a major
-    # should be picked up when someone is ready to look at the result.
+    # renders, and merging now deploys straight to the site, so a major
+    # should land when someone is ready to look at the result.
     #
     # The "version-update:" prefix scopes this to version updates, so a
     # security fix that only exists in a newer major is still offered.
