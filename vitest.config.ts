@@ -19,7 +19,10 @@ export default mergeConfig(
       },
       server: {
         deps: {
-          inline: ['vuetify'],
+          // alnilam's dist imports dayjs subpaths without a file extension,
+          // which node's ESM resolver rejects. Letting vite process it
+          // resolves those the same way the app build does.
+          inline: ['vuetify', '@nanase/alnilam'],
         },
       },
     },
