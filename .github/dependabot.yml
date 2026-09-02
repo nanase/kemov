@@ -1,0 +1,40 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+
+    # Major bumps stay a deliberate decision. They can change what the page
+    # renders, and docs/ is rebuilt and committed by hand here, so a major
+    # should be picked up when someone is ready to look at the result.
+    #
+    # The "version-update:" prefix scopes this to version updates, so a
+    # security fix that only exists in a newer major is still offered.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+
+    groups:
+      # One pull request a week for routine updates, instead of one per
+      # package.
+      minor-and-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+      # Without this, a batch of advisories arrives as a batch of pull
+      # requests: 25 alerts landed that way before this file existed.
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
