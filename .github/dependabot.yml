@@ -38,3 +38,19 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+
+  # Actions are pinned to commit SHAs in the workflows, so without this
+  # nothing would ever move them. Majors are not excluded the way they are
+  # for npm: an action version cannot change what the site renders, and
+  # staying current with them is itself a supply-chain measure.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    groups:
+      actions:
+        patterns:
+          - "*"
