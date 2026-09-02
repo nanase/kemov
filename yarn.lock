@@ -1326,13 +1326,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rushstack/eslint-patch@npm:^1.10.5":
-  version: 1.10.5
-  resolution: "@rushstack/eslint-patch@npm:1.10.5"
-  checksum: 10c0/ea66e8be3a78a48d06e8ff33221cef5749386589236bbcd24013577d2b4e1035e3dc919740c6e0f16d44c1e0b62d06d00898508fc74cc2adb0ac6b667aa5a8e4
-  languageName: node
-  linkType: hard
-
 "@tybys/wasm-util@npm:^0.9.0":
   version: 0.9.0
   resolution: "@tybys/wasm-util@npm:0.9.0"
@@ -4918,7 +4911,6 @@ __metadata:
   dependencies:
     "@mdi/font": "npm:^7.4.47"
     "@nanase/alnilam": "https://github.com/nanase/alnilam.git#commit=b7f1229a752132e130aadd536889326428ea823a"
-    "@rushstack/eslint-patch": "npm:^1.10.5"
     "@types/dompurify": "npm:^3.2.0"
     "@types/js-yaml": "npm:^4.0.9"
     "@types/node": "npm:^22.13.5"
