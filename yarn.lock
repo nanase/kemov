@@ -3158,7 +3158,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"dayjs@npm:^1.11.13, dayjs@npm:^1.11.23":
+"dayjs@npm:^1":
   version: 1.11.23
   resolution: "dayjs@npm:1.11.23"
   checksum: 10c0/69ab04bf19c676e44ab50cc2fca223d265f3dafd107151ef3b0f3ad74d360c37caa602abe62f87cb25d90bd9f6bee003698af47df5b0dbf10a998b7b5f3bb3f1
@@ -7561,7 +7561,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"vue@npm:^3.5.12, vue@npm:^3.5.13, vue@npm:^3.5.42":
+"vue@npm:^3":
   version: 3.5.42
   resolution: "vue@npm:3.5.42"
   dependencies:
@@ -7579,7 +7579,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"vuetify@npm:^3.13.2":
+"vuetify@npm:^3":
   version: 3.13.3
   resolution: "vuetify@npm:3.13.3"
   peerDependencies:
@@ -7595,25 +7595,6 @@ __metadata:
     webpack-plugin-vuetify:
       optional: true
   checksum: 10c0/b7f688df024c4d54bb1b4b229461bf4cc31962aa873234ae5d795177398cc1998874e1536bfa66966a32bc805b0750e90187130697487437554afdb00ade5761
-  languageName: node
-  linkType: hard
-
-"vuetify@npm:^3.7.2":
-  version: 3.7.2
-  resolution: "vuetify@npm:3.7.2"
-  peerDependencies:
-    typescript: ">=4.7"
-    vite-plugin-vuetify: ">=1.0.0"
-    vue: ^3.3.0
-    webpack-plugin-vuetify: ">=2.0.0"
-  peerDependenciesMeta:
-    typescript:
-      optional: true
-    vite-plugin-vuetify:
-      optional: true
-    webpack-plugin-vuetify:
-      optional: true
-  checksum: 10c0/d60cb92c2336327a436f82f26883a74637777a11bf13f74627578dc1693828fbe695cd5d80c79fee407fa94340eaf1315af7943fe8b9f7fbebd6f331b2981ce7
   languageName: node
   linkType: hard
 

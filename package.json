@@ -25,6 +25,11 @@
     "*.{css,scss,vue}": "stylelint --fix",
     "*": "prettier -w -u"
   },
+  "resolutions": {
+    "vue": "^3",
+    "vuetify": "^3",
+    "dayjs": "^1"
+  },
   "dependencies": {
     "@vueuse/core": "^12.8.2",
     "dayjs": "^1.11.23",
