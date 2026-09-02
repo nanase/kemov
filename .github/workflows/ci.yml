@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Nothing in this workflow writes to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # corepack otherwise asks before downloading the pinned yarn.
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the Node pinned in mise.toml
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # The lint script passes --fix, which would rewrite files. Check only.
+      - name: Lint
+        run: yarn eslint .
+
+      - name: Lint styles
+        run: yarn lint:style
+
+      - name: Type check
+        run: yarn type-check
+
+      - name: Test
+        run: yarn vitest run
+
+      # Build somewhere disposable. docs/ is never written to here: this
+      # workflow checks the build, it does not deploy it.
+      - name: Build
+        run: yarn build-only --outDir "$RUNNER_TEMP/build" --emptyOutDir
+
+      # docs/ is committed build output produced by hand on a developer
+      # machine, so nothing otherwise proves it still corresponds to src/.
+      # This compares the two and reports, without failing the run: the
+      # project deliberately lets dependencies move in main while docs/
+      # stays frozen, so a difference here is expected rather than broken.
+      - name: Compare docs/ with a fresh build
+        id: docs-sync
+        continue-on-error: true
+        run: |
+          if diff -r docs "$RUNNER_TEMP/build" > "$RUNNER_TEMP/docs.diff" 2>&1; then
+            echo '### `docs/` matches a fresh build' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo '### `docs/` differs from a fresh build'
+            echo
+            echo 'This does not fail the run. Rebuild and commit `docs/` when you want'
+            echo 'the published site to catch up.'
+            echo
+            echo 'One difference is expected until the `.env.local` question is settled:'
+            echo 'the published bundle was built with a `.env.local` that points'
+            echo '`VITE_GENET_MUSIC_LIST_URL` at raw.githubusercontent.com, and CI has no'
+            echo 'such file, so the genetMusic chunk and the html referencing it differ.'
+            echo
+            echo '```'
+            head -c 8000 "$RUNNER_TEMP/docs.diff"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1

@@ -1,0 +1,48 @@
+name: Audit
+
+on:
+  schedule:
+    # Mondays 09:00 JST.
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the Node pinned in mise.toml
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # Dependabot already raises alerts; this is a second, independent look
+      # that also runs when nobody is watching the security tab.
+      - name: Audit
+        run: yarn npm audit --severity high
+
+      # yarn reports deprecated packages at moderate alongside real
+      # advisories. Those are worth seeing but not worth failing on.
+      - name: Report moderate findings
+        if: always()
+        run: |
+          {
+            echo '### `yarn npm audit --severity moderate`'
+            echo
+            echo '```'
+            yarn npm audit --severity moderate || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
