@@ -8,9 +8,8 @@ import skipFormatting from '@vue/eslint-config-prettier/skip-formatting';
 // skip-formatting last so Prettier keeps ownership of formatting.
 export default defineConfigWithVueTs(
   {
-    // Replaces ignorePatterns: ['/docs/*']. docs/ is committed build output,
-    // not source. node_modules is ignored by ESLint itself.
-    ignores: ['docs/**', 'coverage/**'],
+    // Build output, not source. node_modules is ignored by ESLint itself.
+    ignores: ['dist/**', 'coverage/**'],
   },
   {
     files: ['**/*.{js,jsx,cjs,mjs,ts,tsx,cts,mts,vue}'],

@@ -42,7 +42,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: resolve(root, 'docs'),
+    outDir: resolve(root, 'dist'),
     rollupOptions: {
       input: {
         stats: resolve(srcDir, 'stats', 'index.html'),

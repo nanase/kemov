@@ -77,6 +77,12 @@ yarn lint
 yarn lint:style
 ```
 
+## Deployment
+
+The site is built and published by the `Deploy` workflow on every push to `main`, and GitHub Pages serves that artifact. Build output is not committed: `yarn build` writes to `dist/`, which is ignored.
+
+To roll back, revert the commit and let the workflow redeploy. The workflow can also be run by hand from the Actions tab.
+
 ## LICENSE
 
 MIT
