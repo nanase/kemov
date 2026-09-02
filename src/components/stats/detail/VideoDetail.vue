@@ -5,7 +5,7 @@ import VideoThumbnail from './VideoThumbnail.vue';
 
 import { type Video } from '@/type/video';
 import { withCommas } from '@nanase/alnilam/number';
-import dayjs, { Dayjs, fromLocale } from '@nanase/alnilam/dayjs';
+import dayjs, { type Dayjs, fromLocale } from '@nanase/alnilam/dayjs';
 
 const { video } = defineProps<{
   video: Video;

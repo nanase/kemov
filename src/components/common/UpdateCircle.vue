@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Dayjs } from '@nanase/alnilam/dayjs';
+import { type Dayjs } from '@nanase/alnilam/dayjs';
 import { useElapsedTime } from '@nanase/alnilam/use';
 
 const {

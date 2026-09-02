@@ -923,14 +923,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@nanase/alnilam@https://github.com/nanase/alnilam.git#commit=b7f1229a752132e130aadd536889326428ea823a":
-  version: 0.5.2
-  resolution: "@nanase/alnilam@https://github.com/nanase/alnilam.git#commit=b7f1229a752132e130aadd536889326428ea823a"
-  dependencies:
-    dayjs: "npm:^1.11.13"
-    vue: "npm:^3.5.12"
-    vuetify: "npm:^3.7.2"
-  checksum: 10c0/7401c2e6a11b411cadbe20e8f4759836b9af76bad5169f6317204eccd2aa2dd5a18eb6923c7a202f58d9701f2d28a3b27c4a96afb8b1f27dbe46e3a04a43fd5c
+"@nanase/alnilam@https://github.com/nanase/alnilam.git#commit=2c6e072cdb4b6124d98484de033238e46710a502":
+  version: 0.6.0
+  resolution: "@nanase/alnilam@https://github.com/nanase/alnilam.git#commit=2c6e072cdb4b6124d98484de033238e46710a502"
+  peerDependencies:
+    dayjs: ^1.11
+    vue: ^3.5
+    vuetify: ^3.7
+  checksum: 10c0/bd638239d437da093de1cb312d206e46c405a10bb8e09ad37da983f8db6601ef613336f6add915b2a7fabb1375e70da4630e2478f7c2a961cef02d25fa181405
   languageName: node
   linkType: hard
 
@@ -4852,7 +4852,7 @@ __metadata:
   dependencies:
     "@eslint/js": "npm:^10.0.1"
     "@mdi/font": "npm:^7.4.47"
-    "@nanase/alnilam": "https://github.com/nanase/alnilam.git#commit=b7f1229a752132e130aadd536889326428ea823a"
+    "@nanase/alnilam": "https://github.com/nanase/alnilam.git#commit=2c6e072cdb4b6124d98484de033238e46710a502"
     "@types/js-yaml": "npm:^4.0.9"
     "@types/node": "npm:^22.20.1"
     "@vitejs/plugin-vue": "npm:^5.2.4"

@@ -19,9 +19,10 @@ export default mergeConfig(
       },
       server: {
         deps: {
-          // alnilam's dist imports dayjs subpaths without a file extension,
-          // which node's ESM resolver rejects. Letting vite process it
-          // resolves those the same way the app build does.
+          // @nanase/alnilam/components imports its own stylesheet, and node
+          // cannot load .css. Only that entry needs vite to process it, but
+          // inline does not match subpaths - '@nanase/alnilam/components'
+          // alone was measured not to work - so the package is listed whole.
           inline: ['vuetify', '@nanase/alnilam'],
         },
       },

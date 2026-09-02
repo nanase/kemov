@@ -39,7 +39,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@mdi/font": "^7.4.47",
-    "@nanase/alnilam": "https://github.com/nanase/alnilam.git#commit=b7f1229a752132e130aadd536889326428ea823a",
+    "@nanase/alnilam": "https://github.com/nanase/alnilam.git#commit=2c6e072cdb4b6124d98484de033238e46710a502",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.20.1",
     "@vitejs/plugin-vue": "^5.2.4",

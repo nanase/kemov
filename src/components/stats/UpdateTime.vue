@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { useIntervalFn } from '@vueuse/core';
-import dayjs, { Dayjs } from '@nanase/alnilam/dayjs';
+import dayjs, { type Dayjs } from '@nanase/alnilam/dayjs';
 
 const { time, updateInterval = 1000 } = defineProps<{
   time: Dayjs;
