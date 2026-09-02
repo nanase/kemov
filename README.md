@@ -85,7 +85,7 @@ To roll back, revert the commit and let the workflow redeploy. The workflow can 
 
 ## LICENSE
 
-MIT
+[MIT](LICENSE.md)
 
 ### Copyright Warning
 
