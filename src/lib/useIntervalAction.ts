@@ -6,7 +6,7 @@ interface UseIntervalActionReturn {
   invoke: () => Promise<void>;
   start: () => Promise<void>;
   stop: () => void;
-  error: Ref<any>;
+  error: Ref<unknown>;
   errorOccurred: ComputedRef<boolean>;
 }
 
@@ -16,7 +16,7 @@ export function useIntervalAction(
   errorAction?: (error: unknown) => Promise<number | void>,
 ): UseIntervalActionReturn {
   let timeoutId: TimeoutIdType | undefined = undefined;
-  const error = ref<any>();
+  const error = ref<unknown>();
   const interval = ref<number>(typeof initialInterval === 'number' ? initialInterval : initialInterval());
 
   async function invoke() {

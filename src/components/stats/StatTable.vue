@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { storeToRefs } from 'pinia';
 import { useNow } from '@vueuse/core';
 import { sum } from '@nanase/alnilam/array';
 import { withCommas } from '@nanase/alnilam/number';

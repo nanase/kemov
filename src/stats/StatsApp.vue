@@ -61,7 +61,7 @@ onMounted(async () => {
                     :time="fetchedAt"
                     :update-interval="5000"
                   >
-                    <template #="{ readableElapsedTime }"> {{ readableElapsedTime }}前 </template>
+                    <template #default="{ readableElapsedTime }"> {{ readableElapsedTime }}前 </template>
                   </UpdateTime>
                 </template>
 
