@@ -1389,13 +1389,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/js-yaml@npm:^4.0.9":
-  version: 4.0.9
-  resolution: "@types/js-yaml@npm:4.0.9"
-  checksum: 10c0/24de857aa8d61526bbfbbaa383aa538283ad17363fcd5bb5148e2c7f604547db36646440e739d78241ed008702a8920665d1add5618687b6743858fae00da211
-  languageName: node
-  linkType: hard
-
 "@types/json-schema@npm:^7.0.15":
   version: 7.0.15
   resolution: "@types/json-schema@npm:7.0.15"
@@ -4871,17 +4864,6 @@ __metadata:
   linkType: hard
 
 "js-yaml@npm:^4.1.0":
-  version: 4.1.0
-  resolution: "js-yaml@npm:4.1.0"
-  dependencies:
-    argparse: "npm:^2.0.1"
-  bin:
-    js-yaml: bin/js-yaml.js
-  checksum: 10c0/184a24b4eaacfce40ad9074c64fd42ac83cf74d8c8cd137718d456ced75051229e5061b8633c3366b8aada17945a7a356b337828c19da92b51ae62126575018f
-  languageName: node
-  linkType: hard
-
-"js-yaml@npm:^4.3.2":
   version: 4.3.2
   resolution: "js-yaml@npm:4.3.2"
   dependencies:
@@ -4942,7 +4924,6 @@ __metadata:
     "@nanase/alnilam": "https://github.com/nanase/alnilam.git#0.5.2"
     "@rushstack/eslint-patch": "npm:^1.10.5"
     "@types/dompurify": "npm:^3.2.0"
-    "@types/js-yaml": "npm:^4.0.9"
     "@types/node": "npm:^22.13.5"
     "@vitejs/plugin-vue": "npm:^5.2.1"
     "@vitest/coverage-v8": "npm:^3.2.7"
@@ -4958,7 +4939,6 @@ __metadata:
     eslint: "npm:^9.21.0"
     eslint-plugin-vue: "npm:^9.32.0"
     floating-vue: "npm:^5.2.2"
-    js-yaml: "npm:^4.3.2"
     marked: "npm:^15.0.12"
     npm-run-all: "npm:^4.1.5"
     pinia: "npm:^3.0.1"
