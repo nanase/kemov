@@ -7,7 +7,7 @@ import VideoEmbed from '@/components/genet/VideoEmbed.vue';
 import VideoLink from '@/components/genet/VideoLink.vue';
 
 import { getThumbnailURL, getWatchURL } from '@/lib/youtube';
-import dayjs, { Dayjs, fromLocale } from '@nanase/alnilam/dayjs';
+import dayjs, { type Dayjs, fromLocale } from '@nanase/alnilam/dayjs';
 import { url } from '@/lib/style';
 import { videoTypeToString, type Streaming, type Video, type EmbeddedVideo } from '@/type/genet/music';
 
