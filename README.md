@@ -81,7 +81,7 @@ yarn lint:style
 
 Collection and the HTTP API run as one Cloudflare Worker. Its code lives under `worker/`, separate from the frontend in `src/`, and `wrangler.toml` at the root configures it.
 
-```
+```text
 worker/src/collector/   scheduled collection jobs
 worker/src/api/         the HTTP API
 worker/src/lib/         shared code
