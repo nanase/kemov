@@ -8,8 +8,9 @@ import skipFormatting from '@vue/eslint-config-prettier/skip-formatting';
 // skip-formatting last so Prettier keeps ownership of formatting.
 export default defineConfigWithVueTs(
   {
-    // Build output, not source. node_modules is ignored by ESLint itself.
-    ignores: ['dist/**', 'coverage/**'],
+    // Build output and local wrangler state, not source. node_modules is
+    // ignored by ESLint itself.
+    ignores: ['dist/**', 'coverage/**', '.wrangler/**'],
   },
   {
     files: ['**/*.{js,jsx,cjs,mjs,ts,tsx,cts,mts,vue}'],

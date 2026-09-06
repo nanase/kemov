@@ -1,0 +1,99 @@
+name: Deploy Worker
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Only the deploy job needs the Cloudflare token, and it gets that from the
+# environment it names rather than from anything granted here.
+permissions:
+  contents: read
+
+# Never let two deployments race. Queue instead of cancelling: a cancelled
+# deployment could leave the worker mid-update.
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+env:
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+
+jobs:
+  # Deploy only what passes. main is protected by CI on the way in, but this
+  # makes a broken worker unable to reach Cloudflare even if something lands
+  # another way. It is a job of its own so that it runs outside the
+  # environment holding the token, the way Deploy keeps its build job out of
+  # github-pages.
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # No later step talks to GitHub, so the token has no reason to stay
+          # behind in the local git config.
+          persist-credentials: false
+
+      - name: Install the Node pinned in mise.toml
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Type check the worker
+        run: yarn type-check:worker
+
+      - name: Test the worker
+        run: yarn vitest run --project worker
+
+  deploy:
+    needs: check
+    runs-on: ubuntu-latest
+
+    # The Cloudflare credentials live in this environment rather than in
+    # repository secrets, so only a job that names it can read them.
+    # Repository secrets are readable by every workflow in the repository,
+    # including one running from a pull request branch of it, and most of
+    # those have no business holding a token that can deploy.
+    environment: cloudflare
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # No later step talks to GitHub, so the token has no reason to stay
+          # behind in the local git config.
+          persist-credentials: false
+
+      - name: Install the Node pinned in mise.toml
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # Before the deploy, so the code that lands never meets a schema older
+      # than itself. wrangler records what it has applied in a d1_migrations
+      # table, which makes this a no-op on a run that adds no migration, and
+      # outside a terminal it answers its own confirmation prompt with yes.
+      - name: Apply the migrations
+        run: yarn wrangler d1 migrations apply kemov --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # wrangler comes from the lockfile, so what deploys here is the version
+      # the repository was tested against. It reads the account from the
+      # environment because wrangler.toml deliberately holds no account_id.
+      - name: Deploy the worker
+        run: yarn wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

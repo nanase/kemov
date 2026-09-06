@@ -55,3 +55,9 @@ vite.config.ts.timestamp-*
 .wrangler/
 .dev.vars
 .dev.vars.*
+
+# claude code
+# Each worktree is a real checkout, so `git add -A` would otherwise pull them
+# in as embedded repositories. The handoff notes next to them carry their own
+# .gitignore.
+.claude/worktrees/
