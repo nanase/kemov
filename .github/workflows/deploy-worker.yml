@@ -71,6 +71,16 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      # Before the deploy, so the code that lands never meets a schema older
+      # than itself. wrangler records what it has applied in a d1_migrations
+      # table, which makes this a no-op on a run that adds no migration, and
+      # outside a terminal it answers its own confirmation prompt with yes.
+      - name: Apply the migrations
+        run: yarn wrangler d1 migrations apply kemov --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       # wrangler comes from the lockfile, so what deploys here is the version
       # the repository was tested against. It reads the account from the
       # environment because wrangler.toml deliberately holds no account_id.

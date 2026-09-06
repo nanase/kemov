@@ -167,6 +167,8 @@ Against the real database, which needs the account credentials:
 yarn wrangler d1 migrations apply kemov --remote
 ```
 
+That command is not usually typed by hand. `Deploy Worker` runs it ahead of every deploy, so a migration reaches the real database on the same push as the code that expects it; see [Deployment](#the-worker).
+
 ### Adding a Migration
 
 An applied file is never edited. wrangler tracks files by name, so an edit reaches a fresh database and no existing one, and the two then disagree about what the schema is. Change the schema by adding the next file instead:
@@ -214,7 +216,9 @@ To roll back, revert the commit and let the workflow redeploy. The workflow can 
 
 ### The Worker
 
-`Deploy Worker` runs `yarn wrangler deploy` on every push to `main`, and can also be run by hand from the Actions tab. It type checks and tests the worker first, in a job that holds no credentials. It has no path filter: what Cloudflare runs is whatever is on `main`. The wrangler it uses comes from the lockfile, so a deploy uses the version the repository was tested against.
+`Deploy Worker` applies the migrations and then runs `yarn wrangler deploy`, on every push to `main` and on demand from the Actions tab. Migrations go first so that the code never arrives at a schema older than itself, and the `d1_migrations` table makes the step a no-op on a push that adds none.
+
+It type checks and tests the worker before either, in a job that holds no credentials. It has no path filter: what Cloudflare runs is whatever is on `main`. The wrangler it uses comes from the lockfile, so a deploy uses the version the repository was tested against.
 
 Its credentials come from a GitHub **environment** rather than from repository secrets. An environment secret is only readable by a job that names the environment; a repository secret is readable by every workflow in the repository, including one running from a pull request branch, and most of them have no business holding a token that can deploy.
 
