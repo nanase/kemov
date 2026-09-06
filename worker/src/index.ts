@@ -6,7 +6,10 @@ import type { Env } from './lib/env';
 // one worker so that they share one D1 binding and one deploy.
 const handler: ExportedHandler<Env> = {
   fetch: (request) => handleApiRequest(request),
-  scheduled: (controller) => runScheduled(controller.cron),
+  // waitUntil rather than a plain await: collection touches D1 and the
+  // YouTube API, so it can run past the point where returning would
+  // otherwise let the runtime tear the invocation down.
+  scheduled: (controller, env, ctx) => ctx.waitUntil(runScheduled(controller.cron, env)),
 };
 
 export default handler;
