@@ -1,3 +1,5 @@
+import { env } from 'cloudflare:test';
+
 // Through vite's ?raw rather than node:fs: these tests run on workerd, which
 // has no filesystem.
 import wranglerConfig from '../../wrangler.toml?raw';
@@ -37,23 +39,68 @@ describe('jobsFor', () => {
 });
 
 describe('runScheduled', () => {
-  test('names the jobs the trigger runs', () => {
+  test('names the jobs the trigger runs', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    runScheduled('* * * * *');
+    await runScheduled('* * * * *', env);
 
     expect(log).toHaveBeenCalledWith('scheduled * * * * *: chat-replay');
 
     log.mockRestore();
   });
 
-  test('warns instead of dropping a cron that reaches no job', () => {
+  test('warns instead of dropping a cron that reaches no job', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    runScheduled('0 0 * * *');
+    await runScheduled('0 0 * * *', env);
 
     expect(warn).toHaveBeenCalledWith('no job is registered for cron "0 0 * * *"');
 
+    warn.mockRestore();
+  });
+
+  test('warns instead of dropping a job with no handler yet', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await runScheduled('* * * * *', env);
+
+    expect(warn).toHaveBeenCalledWith('no handler implemented yet for job "chat-replay"');
+
+    warn.mockRestore();
+  });
+
+  // channel-stats is the one implemented handler. Routing to it is proven by
+  // its own behaviour, not a mock: with no channel rows in D1 - the default
+  // for a fresh test - it warns and returns without ever calling the YouTube
+  // API, so this needs no network stub of its own.
+  test('routes channel-stats to its handler', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await runScheduled('*/10 * * * *', env);
+
+    expect(warn).toHaveBeenCalledWith('channel-stats: no channels in D1 to collect');
+    expect(warn).toHaveBeenCalledWith('no handler implemented yet for job "video-discover"');
+    expect(warn).toHaveBeenCalledWith('no handler implemented yet for job "video-update"');
+
+    warn.mockRestore();
+  });
+
+  test('one job failing does not stop the others', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // A genuine D1 failure, not a mock: without its table, channel-stats' own
+    // query throws for real, so this exercises runScheduled's isolation with
+    // the real binding rather than a cast standing in for one.
+    await env.DB.exec('DROP TABLE channel');
+
+    await runScheduled('*/10 * * * *', env);
+
+    expect(error).toHaveBeenCalledWith('job "channel-stats" failed', expect.any(Error));
+    expect(warn).toHaveBeenCalledWith('no handler implemented yet for job "video-discover"');
+    expect(warn).toHaveBeenCalledWith('no handler implemented yet for job "video-update"');
+
+    error.mockRestore();
     warn.mockRestore();
   });
 });
