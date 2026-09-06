@@ -23,6 +23,7 @@ import { callYouTubeApi, chunkIds, uploadsPlaylistId, YOUTUBE_MAX_RESULTS } from
 
 interface PlaylistItemsResponse {
   items?: { contentDetails?: { videoId?: string } }[];
+  nextPageToken?: string;
 }
 
 interface VideosListItem {
@@ -289,21 +290,41 @@ async function collectVideos(
 
     const returned = new Map(items.map((item) => [item.id, item]));
 
-    await Promise.all(
-      chunk.map(async (videoId) => {
-        const item = returned.get(videoId);
+    // Each video's row and its task row, paired so the two can never disagree
+    // about how that video's tick ended.
+    const pairs = chunk.map((videoId) => {
+      const item = returned.get(videoId);
 
+      return {
+        videoId,
+        statements:
+          item === undefined
+            ? [
+                unavailableStatement(env.DB, videoId, fetchedAt),
+                missedStatement(env.DB, kind, videoId, 'unavailable', fetchedAt),
+              ]
+            : [videoStatement(env.DB, item, fetchedAt), collectedStatement(env.DB, kind, videoId, fetchedAt)],
+      };
+    });
+
+    try {
+      // One batch for the whole chunk rather than one per video. D1 allows six
+      // concurrent connections, and this worker can have three jobs in flight
+      // at once (see runScheduled), so fifty batches racing each other is a
+      // good way to be told the database is overloaded.
+      await env.DB.batch(pairs.flatMap(({ statements }) => statements));
+      continue;
+    } catch (error) {
+      // One video's statements failed, and a batch is one transaction, so all
+      // fifty rolled back. Which video it was is not in the error, so the
+      // retry below finds out by isolating them.
+      console.warn(`${kind}: batch of ${pairs.length} failed, retrying one video at a time`, error);
+    }
+
+    await Promise.all(
+      pairs.map(async ({ videoId, statements }) => {
         try {
-          // The row and its task row go in one batch so the two can never
-          // disagree about how this video's tick ended.
-          await env.DB.batch(
-            item === undefined
-              ? [
-                  unavailableStatement(env.DB, videoId, fetchedAt),
-                  missedStatement(env.DB, kind, videoId, 'unavailable', fetchedAt),
-                ]
-              : [videoStatement(env.DB, item, fetchedAt), collectedStatement(env.DB, kind, videoId, fetchedAt)],
-          );
+          await env.DB.batch(statements);
         } catch (error) {
           // The third way to miss, and the one that is easy to leave out of
           // the list: the call answered and the video was in it, but writing
@@ -336,6 +357,11 @@ export async function runVideoDiscover(env: Env, fetchImpl: typeof fetch = fetch
     return;
   }
 
+  // Every id, rather than only the ones the playlists are about to name. The
+  // narrower query would need the playlist responses first and then an IN list
+  // per chunk, and what it would save is one column of 6,424 rows - the whole
+  // table as the audit found it, and growing by 11 channels' uploads. If that
+  // stops being small the narrower query is the fix; it is not one yet.
   const { results: stored } = await env.DB.prepare('SELECT video_id FROM video').all<{ video_id: string }>();
   const known = new Set(stored.map((row) => row.video_id));
   const found: string[] = [];
@@ -358,10 +384,31 @@ export async function runVideoDiscover(env: Env, fetchImpl: typeof fetch = fetch
           fetchImpl,
         );
 
-        for (const item of response.items ?? []) {
-          const videoId = item.contentDetails?.videoId;
+        const page = (response.items ?? [])
+          .map((item) => item.contentDetails?.videoId)
+          .filter((videoId): videoId is string => videoId !== undefined);
+        const fresh = page.filter((videoId) => !known.has(videoId));
 
-          if (videoId !== undefined && !known.has(videoId)) found.push(videoId);
+        found.push(...fresh);
+
+        // Only the newest page is read, so this job finds what a channel has
+        // just published and not what it published years ago. The archive is
+        // #67's to import; following nextPageToken here would either cost a
+        // call per page of every channel's whole history on the first tick, or
+        // stop as soon as a page is entirely known and so never reach the
+        // pages behind it.
+        //
+        // That division only holds while the newest page overlaps what is
+        // already stored. A page with nothing known on it and more pages
+        // behind it means the overlap is gone - #67 has not run, or the worker
+        // has been down for more than fifty uploads - and videos are sitting
+        // where nothing will look. Saying so is cheap; guessing which of the
+        // two it is, is not.
+        if (fresh.length === page.length && page.length > 0 && response.nextPageToken !== undefined) {
+          console.warn(
+            `video-discover: every video on ${channelId}'s newest page is new and more pages follow; ` +
+              'older videos are not being reached (see #67)',
+          );
         }
       } catch (error) {
         // One channel's playlist, not the others'. The target is the channel

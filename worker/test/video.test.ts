@@ -62,8 +62,11 @@ async function insertVideo(
     .run();
 }
 
-function playlistItemsResponse(videoIds: readonly string[]): Response {
-  return jsonResponse({ items: videoIds.map((videoId) => ({ contentDetails: { videoId } })) });
+function playlistItemsResponse(videoIds: readonly string[], nextPageToken?: string): Response {
+  return jsonResponse({
+    items: videoIds.map((videoId) => ({ contentDetails: { videoId } })),
+    nextPageToken,
+  });
 }
 
 interface VideoStub {
@@ -228,6 +231,46 @@ describe('runVideoDiscover', () => {
     expect(callsTo(fetchImpl, 'videos')[0].searchParams.get('id')).toEqual('fresh');
   });
 
+  // Only the newest page is read; the archive is #67's. That holds while the
+  // newest page overlaps what is stored, and this says so when it stops
+  // holding rather than leaving the videos behind it unmentioned.
+  test('warns when the newest page is all new and more pages follow', async () => {
+    await insertChannel('UCaaa');
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchImpl = apiStub({
+      playlistItems: () => playlistItemsResponse(['v1', 'v2'], 'TOKEN_FOR_PAGE_2'),
+      videos: () =>
+        videosListResponse([
+          { id: 'v1', channelId: 'UCaaa', duration: 'PT4M' },
+          { id: 'v2', channelId: 'UCaaa', duration: 'PT4M' },
+        ]),
+    });
+
+    await runVideoDiscover(env, fetchImpl);
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('older videos are not being reached'));
+
+    warn.mockRestore();
+  });
+
+  test('says nothing when the newest page overlaps what is already stored', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('known', 'UCaaa');
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchImpl = apiStub({
+      playlistItems: () => playlistItemsResponse(['fresh', 'known'], 'TOKEN_FOR_PAGE_2'),
+      videos: () => videosListResponse([{ id: 'fresh', channelId: 'UCaaa', duration: 'PT4M' }]),
+    });
+
+    await runVideoDiscover(env, fetchImpl);
+
+    expect(warn).not.toHaveBeenCalled();
+
+    warn.mockRestore();
+  });
+
   test('one channel playlist failing does not stop the others', async () => {
     await insertChannel('UCaaa');
     await insertChannel('UCbbb');
@@ -345,6 +388,7 @@ describe('runVideoUpdate', () => {
     await insertVideo('vid2', 'UCaaa');
 
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const fetchImpl = apiStub({
       videos: () =>
         videosListResponse([
@@ -356,10 +400,14 @@ describe('runVideoUpdate', () => {
     await runVideoUpdate(env, fetchImpl);
 
     expect(await missed('video_update')).toMatchObject([{ target_id: 'vid1', state: 'failed' }]);
-    // The one that could be written still was.
+    // The one that could be written still was. The chunk goes in as one batch,
+    // which is one transaction, so vid1 took vid2 down with it and only the
+    // retry that isolates them got vid2 in.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('retrying one video at a time'), expect.any(Error));
     expect((await allVideos()).find((row) => row.video_id === 'vid2')).toMatchObject({ title: 'fine' });
 
     error.mockRestore();
+    warn.mockRestore();
   });
 
   // #63 asks for a selection with no hole in it. The sweep has no WHERE

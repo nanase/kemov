@@ -85,6 +85,11 @@ describe('runScheduled', () => {
     warn.mockRestore();
   });
 
+  // Keep this test last, and add new ones above it. It drops a table, and
+  // storage rolls back per file rather than per test, so everything after it
+  // in this file would run without `channel`. Dropping is still the right way
+  // to fail a job here: runScheduled takes no fetch of its own, so a job has
+  // to fail before it reaches the network, and a D1 error is what does that.
   test('one job failing does not stop the others', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
