@@ -42,8 +42,12 @@ jobs:
       - name: Type check
         run: yarn type-check
 
+      # Only the frontend project. This workflow publishes the site and
+      # nothing else, so the worker is checked by CI on the way into main and
+      # deployed on its own; a worker test must not be able to hold the site
+      # back.
       - name: Test
-        run: yarn vitest run
+        run: yarn vitest run --project frontend
 
       - name: Build
         run: yarn build-only --outDir "$GITHUB_WORKSPACE/dist" --emptyOutDir

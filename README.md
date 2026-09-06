@@ -77,6 +77,45 @@ yarn lint
 yarn lint:style
 ```
 
+## Worker
+
+Collection and the HTTP API run as one Cloudflare Worker. Its code lives under `worker/`, separate from the frontend in `src/`, and `wrangler.toml` at the root configures it.
+
+```
+worker/src/collector/   scheduled collection jobs
+worker/src/api/         the HTTP API
+worker/src/lib/         shared code
+worker/test/            tests
+```
+
+The worker runs on workerd and shares no lib, global or path alias with the frontend, so it has its own `worker/tsconfig.json` and its own vitest project:
+
+```sh
+yarn type-check          # frontend
+yarn type-check:worker   # worker
+yarn test                # both
+yarn vitest run --project worker   # worker only
+```
+
+`wrangler.toml` still holds placeholders for `account_id` and `database_id`. The Cloudflare account is not set up yet, so no `wrangler` command works against this repository so far.
+
+### Worker Secrets
+
+No secret value belongs in this repository — not in `wrangler.toml`, not in a workflow file, not in `.env`. `wrangler.toml` names bindings; it never carries their values.
+
+Cloudflare stores the values instead, and `wrangler` is how they get there:
+
+```sh
+yarn wrangler secret put YOUTUBE_API_KEY   # prompts, so the value misses the shell history
+yarn wrangler secret list                  # names only, never values
+```
+
+For local runs, put the same names in `.dev.vars` at the repository root as `NAME=value` lines. `.dev.vars` and `.dev.vars.*` are gitignored.
+
+Actions reads the Cloudflare API token from a repository secret rather than from a file. Deploying from Actions is set up in #73.
+
+`.env` is a different thing and is committed on purpose: Vite inlines it into the published bundle, so what it holds is already public.
+
 ## Deployment
 
 The site is built and published by the `Deploy` workflow on every push to `main`, and GitHub Pages serves that artifact. Build output is not committed: `yarn build` writes to `dist/`, which is ignored.

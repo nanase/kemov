@@ -1,0 +1,37 @@
+# Cloudflare Workers configuration.
+#
+# Values that name a Cloudflare account are placeholders. None of them can be
+# filled in before the account exists, so #73 creates the resources and
+# replaces them. Nothing here is read until then.
+
+name = "kemov"
+main = "worker/src/index.ts"
+compatibility_date = "2026-09-06"
+
+# Replaced in #73.
+account_id = "REPLACE_WITH_ACCOUNT_ID"
+
+# The master copy of every channel, video and snapshot. The worker has no other
+# store, so every job and every endpoint goes through this binding.
+#
+# migrations_dir is left at its default, "migrations", which is where #60 puts
+# the schema.
+[[d1_databases]]
+binding = "DB"
+database_name = "kemov"
+# Assigned by `wrangler d1 create`. Replaced in #73.
+database_id = "REPLACE_WITH_DATABASE_ID"
+
+# The collection schedule decided in #58. The jobs themselves arrive in #62 to
+# #65; until then the worker accepts the events and does nothing, which keeps
+# the schedule and the deploy verifiable on their own.
+[triggers]
+crons = [
+  # channel-stats, video-discover, video-update
+  "*/10 * * * *",
+  # chat-replay
+  "* * * * *",
+]
+
+# No secret is listed here. Secrets are set with `wrangler secret put` and read
+# from the environment at runtime; see "Worker secrets" in the README.

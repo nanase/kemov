@@ -49,3 +49,9 @@ tsconfig.node.tsbuildinfo
 
 #vite
 vite.config.ts.timestamp-*
+
+# wrangler
+# .dev.vars holds the local values of what production gets from `wrangler secret`.
+.wrangler/
+.dev.vars
+.dev.vars.*

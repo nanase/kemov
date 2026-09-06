@@ -44,8 +44,19 @@ jobs:
       - name: Type check
         run: yarn type-check
 
+      # The worker has its own tsconfig: it runs on workerd and shares no lib
+      # or global with the frontend, so vue-tsc above does not see it.
+      - name: Type check the worker
+        run: yarn type-check:worker
+
+      # vitest.config.ts declares a project per runtime. Naming each one here
+      # rather than running them together means a project that stops matching
+      # any test file fails the build instead of passing quietly.
       - name: Test
-        run: yarn vitest run
+        run: yarn vitest run --project frontend
+
+      - name: Test the worker
+        run: yarn vitest run --project worker
 
       # Nothing here is published: Deploy builds and uploads its own
       # artifact. This only proves the build still succeeds.

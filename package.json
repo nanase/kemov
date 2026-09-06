@@ -14,6 +14,7 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --noEmit",
+    "type-check:worker": "tsc --noEmit -p worker/tsconfig.json",
     "lint": "eslint . --fix",
     "lint:style": "stylelint src/**/*.{css,scss,vue}",
     "format": "prettier --write src/",
@@ -37,6 +38,7 @@
     "vue": "^3.5.42"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260906.1",
     "@eslint/js": "^10.0.1",
     "@mdi/font": "^7.4.47",
     "@nanase/alnilam": "https://github.com/nanase/alnilam.git#commit=2c6e072cdb4b6124d98484de033238e46710a502",
@@ -73,6 +75,7 @@
     "vitest": "^3.2.7",
     "vue-router": "^4.6.4",
     "vue-tsc": "^2.2.12",
-    "vuetify": "^3.13.2"
+    "vuetify": "^3.13.2",
+    "wrangler": "^4.129.0"
   }
 }
