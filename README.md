@@ -276,7 +276,7 @@ To roll back, revert the commit and let the workflow redeploy. The workflow can 
 
 ### The Worker
 
-`Deploy Worker` applies the migrations and then runs `yarn wrangler deploy`, on every push to `main` and on demand from the Actions tab. Migrations go first so that the code never arrives at a schema older than itself, and the `d1_migrations` table makes the step a no-op on a push that adds none.
+`Deploy Worker` applies the migrations, seeds the `channel` table from `channels.yml`, and then runs `yarn wrangler deploy`, on every push to `main` and on demand from the Actions tab. Migrations go first so that the code never arrives at a schema older than itself, and the `d1_migrations` table makes the step a no-op on a push that adds none. The seed follows them because it needs the columns to exist, and comes before the deploy so that the worker never runs against a `channel` table older than the `channels.yml` it shipped with.
 
 It type checks and tests the worker before either, in a job that holds no credentials. It has no path filter: what Cloudflare runs is whatever is on `main`. The wrangler it uses comes from the lockfile, so a deploy uses the version the repository was tested against.
 

@@ -89,6 +89,24 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      # Generated rather than committed, so what runs is what channels.yml says
+      # at this moment. Doing it here also validates the file a second time,
+      # which puts a channels.yml that reached main unchecked in front of the
+      # database rather than halfway into it. This step needs no credentials.
+      - name: Build the seed from channels.yml
+        run: yarn build-channels-sql "$RUNNER_TEMP/channels.sql"
+
+      # After the migrations, because the columns have to exist, and before the
+      # deploy, so the worker never starts against a channel table older than
+      # the channels.yml it shipped with. --yes because nobody is here to
+      # answer: the migrations step leans on wrangler answering its own outside
+      # a terminal, and saying it outright keeps this one off that assumption.
+      - name: Seed the channel table
+        run: yarn wrangler d1 execute kemov --remote --yes --file "$RUNNER_TEMP/channels.sql"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       # wrangler comes from the lockfile, so what deploys here is the version
       # the repository was tested against. It reads the account from the
       # environment because wrangler.toml deliberately holds no account_id.
