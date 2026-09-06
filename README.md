@@ -97,30 +97,43 @@ yarn test                # both
 yarn vitest run --project worker   # worker only
 ```
 
-`wrangler.toml` still holds placeholders for `account_id` and `database_id`, so anything that reaches Cloudflare fails until #73 fills them in: `wrangler deploy`, and any command given `--remote`.
+`wrangler.toml` carries the D1 `database_id` but no `account_id`. This repository is public, and that value names the account it belongs to. Anything that reaches Cloudflare — `wrangler deploy`, and any command given `--remote` — resolves the account from the session `wrangler login` leaves in your home directory instead. Actions gets it from an environment secret; see [Deployment](#deployment).
 
-`--local` is a different matter and works today. It runs against a SQLite database under `.wrangler/`, wants no account and no network, and carries the placeholders through without looking at them.
+```sh
+yarn wrangler login                                        # once per machine
+yarn wrangler d1 execute DB --remote --command "select 1"
+```
+
+`--local` needs neither an account nor a network. It runs against a SQLite database under `.wrangler/`.
 
 ```sh
 yarn wrangler d1 execute DB --local --command "select 1"
 ```
 
+The D1 database is named `kemov` and lives in the APAC region. A region can only be chosen when the database is created, so moving it means creating another one and copying the data across.
+
 ### Worker Secrets
 
 No secret value belongs in this repository — not in `wrangler.toml`, not in a workflow file, not in `.env`. `wrangler.toml` names bindings; it never carries their values.
 
-Cloudflare stores the values instead, and `wrangler` is how they get there:
+Cloudflare stores the values instead, and `wrangler` is how they get there. Run these from the repository root. `wrangler` is a devDependency rather than something on your `PATH`, so it is `yarn wrangler`:
 
 ```sh
 yarn wrangler secret put YOUTUBE_API_KEY   # prompts, so the value misses the shell history
 yarn wrangler secret list                  # names only, never values
 ```
 
+Secrets belong to a Worker that already exists, so the first `yarn wrangler deploy` has to come first — before it, wrangler answers `Worker "kemov" not found`. The worker is deployed, so nothing is waiting on that today.
+
+The dashboard is the other way in, if you would rather the value never passed through a terminal: Workers & Pages → `kemov` → Settings → Variables and Secrets → Add → type Secret.
+
+| Secret            | Read by                          |
+| ----------------- | -------------------------------- |
+| `YOUTUBE_API_KEY` | the collection jobs (#62 to #65) |
+
 For local runs, put the same names in `.dev.vars` at the repository root as `NAME=value` lines. `.dev.vars` and `.dev.vars.*` are gitignored.
 
-Actions reads the Cloudflare API token from a repository secret rather than from a file. Deploying from Actions is set up in #73.
-
-`.env` is a different thing and is committed on purpose: Vite inlines it into the published bundle, so what it holds is already public.
+`.env` is a different thing and is committed on purpose: Vite inlines it into the published bundle, so what it holds is already public. `wrangler dev` also reads it and hands the worker what it finds, which is another reason nothing secret may go there.
 
 ## Database
 
@@ -198,6 +211,22 @@ Read that file before running it against anything but a local database. For a mi
 The site is built and published by the `Deploy` workflow on every push to `main`, and GitHub Pages serves that artifact. Build output is not committed: `yarn build` writes to `dist/`, which is ignored.
 
 To roll back, revert the commit and let the workflow redeploy. The workflow can also be run by hand from the Actions tab.
+
+### The worker
+
+`Deploy Worker` runs `yarn wrangler deploy` on every push to `main`, and can also be run by hand from the Actions tab. It has no path filter: what Cloudflare runs is whatever is on `main`. The wrangler it uses comes from the lockfile, so a deploy uses the version the repository was tested against.
+
+Its credentials come from a GitHub **environment** rather than from repository secrets. An environment secret is only readable by a job that names the environment; a repository secret is readable by every workflow in the repository, including one running from a pull request branch, and most of them have no business holding a token that can deploy.
+
+|                     |                                                 |
+| ------------------- | ----------------------------------------------- |
+| Environment         | `cloudflare`                                    |
+| Deployment branches | `main` only                                     |
+| Secrets             | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` |
+
+Settings → Environments → New environment → name it `cloudflare` → under Deployment branches choose "Selected branches and tags" and add `main` → then Add environment secret twice, once per name above. The token needs the "Edit Cloudflare Workers" template plus D1 Edit, because the worker carries a D1 binding.
+
+To roll back, revert the commit and let the workflow redeploy. `yarn wrangler rollback` is the faster route when the worker is already broken.
 
 ## LICENSE
 

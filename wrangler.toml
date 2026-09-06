@@ -1,15 +1,14 @@
 # Cloudflare Workers configuration.
 #
-# Values that name a Cloudflare account are placeholders. None of them can be
-# filled in before the account exists, so #73 creates the resources and
-# replaces them. Nothing here is read until then.
+# There is no account_id here on purpose. This repository is public, and that
+# value names the account it belongs to. `wrangler` resolves the account from
+# the session `wrangler login` leaves in the home directory; Actions hands it
+# CLOUDFLARE_ACCOUNT_ID from an environment secret. Neither route puts it in a
+# file that gets committed.
 
 name = "kemov"
 main = "worker/src/index.ts"
 compatibility_date = "2026-09-06"
-
-# Replaced in #73.
-account_id = "REPLACE_WITH_ACCOUNT_ID"
 
 # The master copy of every channel, video and snapshot. The worker has no other
 # store, so every job and every endpoint goes through this binding.
@@ -19,8 +18,9 @@ account_id = "REPLACE_WITH_ACCOUNT_ID"
 [[d1_databases]]
 binding = "DB"
 database_name = "kemov"
-# Assigned by `wrangler d1 create`. Replaced in #73.
-database_id = "REPLACE_WITH_DATABASE_ID"
+# Assigned by `wrangler d1 create`. Unlike account_id this one is committed: it
+# names a database that nothing without credentials can reach.
+database_id = "ab4f1ccb-f66a-4bec-9ffb-b5dfb9753be5"
 
 # The collection schedule decided in #58. The jobs themselves arrive in #62 to
 # #65; until then the worker accepts the events and does nothing, which keeps

@@ -1,0 +1,62 @@
+name: Deploy Worker
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Nothing in this workflow writes to the repository. The Cloudflare credentials
+# come from the environment below, not from the GITHUB_TOKEN.
+permissions:
+  contents: read
+
+# Never let two deployments race. Queue instead of cancelling: a cancelled
+# deployment could leave the worker mid-update.
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+env:
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    # The Cloudflare token lives in this environment rather than in repository
+    # secrets, so only a job that names the environment can read it. Repository
+    # secrets would also be readable by workflows running from pull request
+    # branches of this repository, and most of them have no business holding a
+    # token that can deploy.
+    environment: cloudflare
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the Node pinned in mise.toml
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # Deploy only what passes. main is protected by CI on the way in, but
+      # this makes a broken worker unable to reach Cloudflare even if something
+      # lands another way.
+      - name: Type check the worker
+        run: yarn type-check:worker
+
+      - name: Test the worker
+        run: yarn vitest run --project worker
+
+      # wrangler comes from the lockfile, so what deploys here is the version
+      # the repository was tested against. It reads the account from the
+      # environment because wrangler.toml deliberately holds no account_id.
+      - name: Deploy the worker
+        run: yarn wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
