@@ -7,14 +7,20 @@
 --     'many' is refused outright. No count can sit in the database as
 --     text the way it did in the spreadsheet.
 --   * Every instant is UTC ISO 8601 at second precision,
---     'YYYY-MM-DDTHH:MM:SSZ', and a CHECK holds it to that shape: Unix
---     seconds, a UTC offset, a fractional second and a bare local time
---     are all refused. The system this replaces mixed Unix seconds with
---     ISO 8601 and could not tell them apart. Dates a human writes are
---     'YYYY-MM-DD'.
---     The patterns say '?' rather than '[0-9]' because D1 caps how long
---     a GLOB pattern may be, so the shape is checked and the digits are
---     not.
+--     'YYYY-MM-DDTHH:MM:SSZ'. Dates a human writes are 'YYYY-MM-DD'.
+--     A CHECK formats the stored text back through strftime and demands
+--     the same string, so the value has to be both the right shape and a
+--     real moment: Unix seconds, a UTC offset, a fractional second, a
+--     bare local time, a space instead of the T, a lowercase z, the 31st
+--     of April and the 29th of February in a common year are all
+--     refused. The system this replaces mixed Unix seconds with ISO 8601
+--     and could not tell them apart.
+--     `IS` rather than `=` because strftime answers NULL for a value it
+--     cannot parse, and NULL = anything is NULL, which a CHECK lets
+--     through. `IS` returns true or false and never NULL, so a nullable
+--     column needs nothing further. The hour is then compared separately
+--     because SQLite accepts 24 as an end-of-day spelling and hands it
+--     back unchanged.
 --   * A CHECK passes when it evaluates to NULL, so a nullable column
 --     needs no "IS NULL OR" of its own.
 --   * A missing measurement is NULL. Never -1, never ''. Why it is
@@ -39,9 +45,9 @@ CREATE TABLE channel (
   color_sub           TEXT NOT NULL,
   color_light         TEXT NOT NULL,
   color_back          TEXT NOT NULL,
-  activity_start_date TEXT NOT NULL CHECK (activity_start_date GLOB '????-??-??'),
+  activity_start_date TEXT NOT NULL CHECK (strftime('%Y-%m-%d', activity_start_date) IS activity_start_date),
   -- NULL while the streamer is active.
-  activity_end_date   TEXT CHECK (activity_end_date GLOB '????-??-??'),
+  activity_end_date   TEXT CHECK (strftime('%Y-%m-%d', activity_end_date) IS activity_end_date),
 
   -- Current values from Channels.list, written by the collector rather
   -- than by the YAML. NULL until the first fetch succeeds.
@@ -50,7 +56,9 @@ CREATE TABLE channel (
   -- the site shows a channel asks for the default one, so only that URL
   -- is kept. The others are one fetch away if a use for them appears.
   thumbnail_url       TEXT,
-  fetched_at          TEXT CHECK (fetched_at GLOB '????-??-??T??:??:??Z')
+  fetched_at          TEXT
+    CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', fetched_at) IS fetched_at
+       AND substr(fetched_at, 12, 2) <> '24')
 ) STRICT;
 
 -- One row per channel per collection tick. This table is the history, so
@@ -62,7 +70,9 @@ CREATE TABLE channel_snapshot (
   -- The tick this reading belongs to, not the instant the call returned.
   -- Every channel in one run shares the value, so a query can line the
   -- channels up by it and compare like with like.
-  fetched_at       TEXT NOT NULL CHECK (fetched_at GLOB '????-??-??T??:??:??Z'),
+  fetched_at       TEXT NOT NULL
+    CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', fetched_at) IS fetched_at
+       AND substr(fetched_at, 12, 2) <> '24'),
   -- NULL when the channel hides the count. YouTube reports 0 in that
   -- case, which cannot be told apart from a channel that truly has none.
   subscriber_count INTEGER CHECK (subscriber_count >= 0),
@@ -81,7 +91,9 @@ CREATE TABLE video (
   video_id               TEXT NOT NULL PRIMARY KEY,
   channel_id             TEXT NOT NULL REFERENCES channel (channel_id),
   title                  TEXT NOT NULL,
-  published_at           TEXT NOT NULL CHECK (published_at GLOB '????-??-??T??:??:??Z'),
+  published_at           TEXT NOT NULL
+    CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', published_at) IS published_at
+       AND substr(published_at, 12, 2) <> '24'),
 
   -- 'unavailable' is spelled out in full. The front end currently reads
   -- it as 'unavalable'; that reader is replaced in #70, and nothing
@@ -103,11 +115,19 @@ CREATE TABLE video (
   chat_unique_user_count INTEGER CHECK (chat_unique_user_count >= 0),
 
   -- Set for streams only.
-  scheduled_start_time   TEXT CHECK (scheduled_start_time GLOB '????-??-??T??:??:??Z'),
-  actual_start_time      TEXT CHECK (actual_start_time GLOB '????-??-??T??:??:??Z'),
-  actual_end_time        TEXT CHECK (actual_end_time GLOB '????-??-??T??:??:??Z'),
+  scheduled_start_time   TEXT
+    CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', scheduled_start_time) IS scheduled_start_time
+       AND substr(scheduled_start_time, 12, 2) <> '24'),
+  actual_start_time      TEXT
+    CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', actual_start_time) IS actual_start_time
+       AND substr(actual_start_time, 12, 2) <> '24'),
+  actual_end_time        TEXT
+    CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', actual_end_time) IS actual_end_time
+       AND substr(actual_end_time, 12, 2) <> '24'),
 
-  fetched_at             TEXT NOT NULL CHECK (fetched_at GLOB '????-??-??T??:??:??Z')
+  fetched_at             TEXT NOT NULL
+    CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', fetched_at) IS fetched_at
+       AND substr(fetched_at, 12, 2) <> '24')
 ) STRICT;
 
 -- One channel's videos, newest first, which is how the list is paged.
@@ -138,11 +158,15 @@ CREATE TABLE collect_task (
   -- When the scheduler may take this row again. While state is 'running'
   -- it is the lease deadline, so a worker that dies mid-task is picked up
   -- by the same query that picks up 'pending' and 'failed'.
-  next_attempt_at TEXT CHECK (next_attempt_at GLOB '????-??-??T??:??:??Z'),
+  next_attempt_at TEXT
+    CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', next_attempt_at) IS next_attempt_at
+       AND substr(next_attempt_at, 12, 2) <> '24'),
   -- Where to carry on from. The chat collector keeps its continuation
   -- token here (#65).
   cursor          TEXT,
-  updated_at      TEXT NOT NULL CHECK (updated_at GLOB '????-??-??T??:??:??Z'),
+  updated_at      TEXT NOT NULL
+    CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', updated_at) IS updated_at
+       AND substr(updated_at, 12, 2) <> '24'),
 
   PRIMARY KEY (kind, target_id)
 ) STRICT;

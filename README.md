@@ -162,13 +162,23 @@ An applied file is never edited. wrangler tracks files by name, so an edit reach
 yarn wrangler d1 migrations create kemov <what-it-does>
 ```
 
-That writes `migrations/000N_<what-it-does>.sql`. Put the forward SQL there and the SQL that undoes it in `migrations/rollback/000N_<what-it-does>.sql`, then apply it locally to prove it runs against an empty database.
+That writes `migrations/000N_<what-it-does>.sql`. Put the forward SQL there and the SQL that undoes it in `migrations/rollback/000N_<what-it-does>.sql`.
+
+Then prove the pair runs against an empty database. The local database keeps whatever earlier runs left in it, and `migrations apply` skips a file it has already recorded, so pointing `--persist-to` at a directory that does not exist yet is what makes the run start from nothing:
+
+```sh
+yarn wrangler d1 migrations apply kemov --local --persist-to .wrangler/check
+yarn wrangler d1 execute kemov --local --persist-to .wrangler/check --file migrations/rollback/000N_<what-it-does>.sql
+rm -rf .wrangler/check
+```
+
+The first command must report every migration as applied, not just the new one. If it reports fewer, the directory was not empty.
 
 ### Rolling Back
 
 D1 has no `migrations revert`. There are two routes, and what went wrong decides which.
 
-**Data was lost or corrupted — time travel.** D1 keeps the last 30 days restorable. This rewinds the data along with the schema, so anything collected after the chosen timestamp is rewound too.
+**Data was lost or corrupted — time travel.** D1 keeps the last 30 days restorable on Workers Paid, which is the plan this project runs on; on the free plan the window is 7 days. This rewinds the data along with the schema, so anything collected after the chosen timestamp is rewound too.
 
 ```sh
 yarn wrangler d1 time-travel info kemov
