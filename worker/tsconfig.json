@@ -1,0 +1,26 @@
+{
+  // The worker runs on workerd, not in a browser. It shares no lib, no global
+  // and no path alias with the frontend, so it gets its own tsconfig instead
+  // of extending the one at the repository root.
+  //
+  // The root tsconfig includes only env.d.ts, src/ and test/, so nothing here
+  // reaches vue-tsc and `yarn type-check` is unaffected.
+  "include": ["src/**/*", "test/**/*"],
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // No DOM: workers-types supplies Request, Response and the rest, and
+    // pulling in DOM as well would let browser-only APIs type-check here.
+    "lib": ["ES2022"],
+    "types": ["@cloudflare/workers-types", "vitest/globals"],
+    "strict": true,
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
+  }
+}
