@@ -72,6 +72,17 @@ jobs:
       - name: Test the scripts
         run: yarn vitest run --project scripts
 
+      # The same command deploy-worker.yml runs against the real database,
+      # with --local in place of --remote, so that a migration wrangler itself
+      # refuses is reported on the way into main rather than at the next
+      # deploy. The worker tests above apply the same files through miniflare;
+      # this is wrangler's own path to them.
+      #
+      # --local needs no account: the database is a file under RUNNER_TEMP,
+      # thrown away with the runner.
+      - name: Apply the migrations to a local D1
+        run: yarn wrangler d1 migrations apply kemov --local --persist-to "$RUNNER_TEMP/d1"
+
       # Nothing here is published: Deploy builds and uploads its own
       # artifact. This only proves the build still succeeds.
       - name: Build

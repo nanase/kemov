@@ -1,4 +1,6 @@
-import { readFile } from 'node:fs/promises';
+// Through vite's ?raw rather than node:fs: these tests run on workerd, which
+// has no filesystem.
+import wranglerConfig from '../../wrangler.toml?raw';
 
 import { jobsFor, runScheduled } from '../src/collector';
 
@@ -22,9 +24,8 @@ describe('jobsFor', () => {
 
   // The mapping is maintained by hand, so the two lists can drift. A cron that
   // reaches no job would deploy and then fire into nothing every time.
-  test('covers every cron declared in wrangler.toml', async () => {
-    const config = await readFile(new URL('../../wrangler.toml', import.meta.url), 'utf8');
-    const declared = /crons\s*=\s*\[([\s\S]*?)]/.exec(config)?.[1] ?? '';
+  test('covers every cron declared in wrangler.toml', () => {
+    const declared = /crons\s*=\s*\[([\s\S]*?)]/.exec(wranglerConfig)?.[1] ?? '';
     const crons = [...declared.matchAll(/"([^"]+)"/g)].map(([, cron]) => cron);
 
     expect(crons).not.toEqual([]);
