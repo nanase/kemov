@@ -224,19 +224,49 @@ describe('runChannelStats', () => {
   test('records a channel in collect_task when writing its snapshot fails', async () => {
     await insertChannel('UCaaa');
 
-    const succeeds = vi.fn(async () =>
-      channelsListResponse([{ id: 'UCaaa', viewCount: 1, subscriberCount: 1, videoCount: 1 }]),
-    );
+    // Fixed clock: two runs must land on the exact same fetchedAt for their
+    // channel_snapshot INSERTs to collide, which real wall-clock time can
+    // only promise if both happen to fall in the same second.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 
-    await runChannelStats(env, succeeds);
-    // Same second, same channel: this run's channel_snapshot INSERT collides
-    // with the row the first run just wrote - a real PRIMARY KEY failure, not
-    // a mocked one.
-    await runChannelStats(env, succeeds);
+    try {
+      const succeeds = vi.fn(async () =>
+        channelsListResponse([{ id: 'UCaaa', viewCount: 1, subscriberCount: 1, videoCount: 1 }]),
+      );
+
+      await runChannelStats(env, succeeds);
+      // Same fetchedAt, same channel: this run's channel_snapshot INSERT
+      // collides with the row the first run just wrote - a real PRIMARY KEY
+      // failure, not a mocked one.
+      await runChannelStats(env, succeeds);
+    } finally {
+      vi.useRealTimers();
+    }
 
     expect(await allSnapshots()).toHaveLength(1);
 
     const tasks = await allCollectTasks();
     expect(tasks).toEqual([expect.objectContaining({ target_id: 'UCaaa', state: 'failed', attempts: 1 })]);
+  });
+
+  test('asks Channels.list for up to 50 results, not the API default of 5', async () => {
+    const channelIds = ['UCa', 'UCb', 'UCc', 'UCd', 'UCe', 'UCf'];
+    await Promise.all(channelIds.map((id) => insertChannel(id)));
+
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      channelsListResponse(channelIds.map((id) => ({ id, viewCount: 1, subscriberCount: 1, videoCount: 1 }))),
+    );
+
+    await runChannelStats(env, fetchImpl);
+
+    const requestedUrl = new URL(fetchImpl.mock.calls[0][0] as string | URL);
+    expect(requestedUrl.searchParams.get('maxResults')).toEqual('50');
+
+    // Without maxResults set, Channels.list's own default of 5 would leave
+    // the 6th channel out of the response and thus out of channel_snapshot.
+    const snapshots = await allSnapshots();
+    expect(snapshots.map((row) => row.channel_id).sort()).toEqual([...channelIds].sort());
+    expect(await allCollectTasks()).toEqual([]);
   });
 });

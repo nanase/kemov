@@ -128,10 +128,15 @@ export async function runChannelStats(env: Env, fetchImpl: typeof fetch = fetch)
   let items: ChannelsListItem[];
 
   try {
+    // maxResults defaults to 5 even when id lists more than that, so without
+    // it Channels.list would silently drop channels past the 5th and the
+    // quota section's "one call for all 11" would stop being true. 50 is the
+    // API's own ceiling on both maxResults and the id list; channelIds is
+    // nowhere near it today, so batching across multiple calls isn't here yet.
     const response = await callYouTubeApi<ChannelsListResponse>(
       'channels',
       env.YOUTUBE_API_KEY,
-      { part: 'snippet,statistics', id: channelIds.join(',') },
+      { part: 'snippet,statistics', id: channelIds.join(','), maxResults: '50' },
       fetchImpl,
     );
 
