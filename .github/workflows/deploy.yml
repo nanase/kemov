@@ -26,6 +26,11 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # No later step uses git, so the token has no reason to stay behind
+          # in the local git config. The artifact upload does reach GitHub, but
+          # over the Actions runtime token rather than anything checkout left.
+          persist-credentials: false
 
       - name: Install the Node pinned in mise.toml
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0

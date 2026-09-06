@@ -24,6 +24,10 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # No later step talks to GitHub, so the token has no reason to stay
+          # behind in the local git config.
+          persist-credentials: false
 
       - name: Install the Node pinned in mise.toml
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
@@ -33,6 +37,13 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --immutable
+
+      # channels.yml masters the columns the deploy upserts into D1. Checking it
+      # here is what makes the file reviewable: a bad id, a colour that is not a
+      # colour or a date that does not exist stops at the pull request instead of
+      # reaching the database.
+      - name: Check channels.yml
+        run: yarn check-channels
 
       # The lint script passes --fix, which would rewrite files. Check only.
       - name: Lint
@@ -57,6 +68,9 @@ jobs:
 
       - name: Test the worker
         run: yarn vitest run --project worker
+
+      - name: Test the scripts
+        run: yarn vitest run --project scripts
 
       # Nothing here is published: Deploy builds and uploads its own
       # artifact. This only proves the build still succeeds.
