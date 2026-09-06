@@ -292,20 +292,39 @@ async function collectVideos(
 
     // Each video's row and its task row, paired so the two can never disagree
     // about how that video's tick ended.
-    const pairs = chunk.map((videoId) => {
+    //
+    // Building a pair can throw: videoStatement refuses an item that came back
+    // without a channelId, a title or a publishedAt, because those are the
+    // NOT NULL columns the API supplies and there is no row without them. That
+    // is one video's problem, so it is caught per video. Left to escape it
+    // would reject the whole chunk, and the other forty-nine would go
+    // unwritten with nothing in collect_task to say why.
+    const pairs: { videoId: string; statements: D1PreparedStatement[] }[] = [];
+    const unbuildable: string[] = [];
+
+    for (const videoId of chunk) {
       const item = returned.get(videoId);
 
-      return {
-        videoId,
-        statements:
-          item === undefined
-            ? [
-                unavailableStatement(env.DB, videoId, fetchedAt),
-                missedStatement(env.DB, kind, videoId, 'unavailable', fetchedAt),
-              ]
-            : [videoStatement(env.DB, item, fetchedAt), collectedStatement(env.DB, kind, videoId, fetchedAt)],
-      };
-    });
+      try {
+        pairs.push({
+          videoId,
+          statements:
+            item === undefined
+              ? [
+                  unavailableStatement(env.DB, videoId, fetchedAt),
+                  missedStatement(env.DB, kind, videoId, 'unavailable', fetchedAt),
+                ]
+              : [videoStatement(env.DB, item, fetchedAt), collectedStatement(env.DB, kind, videoId, fetchedAt)],
+        });
+      } catch (error) {
+        console.error(`${kind}: ${videoId} came back without the columns a row needs`, error);
+        unbuildable.push(videoId);
+      }
+    }
+
+    await Promise.all(unbuildable.map((videoId) => recordTask(env.DB, kind, videoId, 'failed', fetchedAt)));
+
+    if (pairs.length === 0) continue;
 
     try {
       // One batch for the whole chunk rather than one per video. D1 allows six

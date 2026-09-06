@@ -72,7 +72,8 @@ function playlistItemsResponse(videoIds: readonly string[], nextPageToken?: stri
 interface VideoStub {
   id: string;
   channelId: string;
-  title?: string;
+  /** Left out of the response entirely when null, rather than defaulted. */
+  title?: string | null;
   publishedAt?: string;
   duration?: string;
   privacyStatus?: string;
@@ -90,7 +91,7 @@ function videosListResponse(videos: readonly VideoStub[]): Response {
       id: video.id,
       snippet: {
         channelId: video.channelId,
-        title: video.title ?? video.id,
+        title: video.title === null ? undefined : (video.title ?? video.id),
         publishedAt: video.publishedAt ?? '2026-05-05T01:02:03Z',
       },
       contentDetails: video.duration === undefined ? {} : { duration: video.duration },
@@ -408,6 +409,32 @@ describe('runVideoUpdate', () => {
 
     error.mockRestore();
     warn.mockRestore();
+  });
+
+  // A pair is built before anything is sent, and building one throws for an
+  // item missing a NOT NULL column. Escaping, that would reject the whole
+  // chunk before a single statement ran, so the other videos would go
+  // unwritten with nothing saying why.
+  test('a video returned without the columns a row needs does not take the chunk with it', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('vid1', 'UCaaa');
+    await insertVideo('vid2', 'UCaaa');
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fetchImpl = apiStub({
+      videos: () =>
+        videosListResponse([
+          { id: 'vid1', channelId: 'UCaaa', title: null, duration: 'PT4M' },
+          { id: 'vid2', channelId: 'UCaaa', title: 'fine', duration: 'PT4M' },
+        ]),
+    });
+
+    await runVideoUpdate(env, fetchImpl);
+
+    expect(await missed('video_update')).toMatchObject([{ target_id: 'vid1', state: 'failed' }]);
+    expect((await allVideos()).find((row) => row.video_id === 'vid2')).toMatchObject({ title: 'fine' });
+
+    error.mockRestore();
   });
 
   // #63 asks for a selection with no hole in it. The sweep has no WHERE
