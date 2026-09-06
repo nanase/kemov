@@ -84,14 +84,14 @@ CREATE TABLE video (
   published_at           TEXT NOT NULL CHECK (published_at GLOB '????-??-??T??:??:??Z'),
 
   -- 'unavailable' is spelled out in full. The front end currently reads
-  -- it as 'unavalable'; that reader is replaced in #69, and nothing
+  -- it as 'unavalable'; that reader is replaced in #70, and nothing
   -- writes the misspelling here in the meantime.
   availability           TEXT NOT NULL
     CHECK (availability IN ('public', 'membership', 'private', 'unavailable')),
   live_broadcast_content TEXT NOT NULL
     CHECK (live_broadcast_content IN ('none', 'upcoming', 'live')),
   -- NULL until the length is known, because the kind depends on it: a
-  -- video of 60 seconds or less is a short (#64).
+  -- video of 60 seconds or less is a short (#63).
   type                   TEXT CHECK (type IN ('video', 'streaming', 'shorts')),
   duration_seconds       INTEGER CHECK (duration_seconds >= 0),
 
