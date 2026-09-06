@@ -34,6 +34,13 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      # channels.yml masters the columns the deploy upserts into D1. Checking it
+      # here is what makes the file reviewable: a bad id, a colour that is not a
+      # colour or a date that does not exist stops at the pull request instead of
+      # reaching the database.
+      - name: Check channels.yml
+        run: yarn check:channels
+
       # The lint script passes --fix, which would rewrite files. Check only.
       - name: Lint
         run: yarn eslint .

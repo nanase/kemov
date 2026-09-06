@@ -1,0 +1,161 @@
+# The streamers this site follows.
+#
+# This file is the master copy of the columns the deploy writes into the
+# `channel` table of D1. `scripts/check-channels.js` validates it on every CI
+# run, and `scripts/build-channels-sql.js` turns it into the upsert the deploy
+# applies. See "The Channel Master" in README.md.
+#
+# Field names are the column names they land in. `color` is the one exception:
+# the four values are grouped here because a person edits them together, and
+# the seed spreads them across `color_key`, `color_sub`, `color_light` and
+# `color_back`.
+#
+# Never delete an entry. `channel_snapshot` and `video` reference `channel`,
+# and D1 refuses a delete that would orphan them - which is the point, because
+# the history of a streamer who stopped is still the history. A streamer who
+# stops gets an `activity_end_date`.
+#
+# Entries are ordered by `activity_start_date`, oldest first.
+
+- channel_id: UCEcMIuGR8WO2TwL9XIpjKtw
+  name: ケープペンギン
+  fullname: ケープペンギン / African Penguin
+  globalname: African Penguin
+  twitter: Cape_KEMOV
+  color:
+    key: '#F38E0A'
+    sub: '#F8C112'
+    light: '#FFEBA4'
+    back: '#FFEBA4'
+  activity_start_date: '2021-04-26'
+  activity_end_date: '2022-05-21'
+
+- channel_id: UCmYO-WfY7Tasry4D1YB4LJw
+  name: フンボルトペンギン
+  fullname: フンボルトペンギン / Humboldt Penguin
+  globalname: Humboldt Penguin
+  twitter: Hululu_KEMOV
+  color:
+    key: '#EB5B5B'
+    sub: '#FB7F95'
+    light: '#FDD5DE'
+    back: '#FDB9CE'
+  activity_start_date: '2021-04-28'
+  activity_end_date: null
+
+- channel_id: UCMpw36mXEu3SLsqdrJxUKNA
+  name: シマハイイロギツネ
+  fullname: シマハイイロギツネ / Island Fox
+  globalname: Island Fox
+  twitter: Shimahai_KEMOV
+  color:
+    key: '#F98E7C'
+    sub: '#96949D'
+    light: '#FFC1B6'
+    back: '#BEBDC3'
+  activity_start_date: '2021-06-11'
+  activity_end_date: null
+
+- channel_id: UCabMjG8p6G5xLkPJgEoTnDg
+  name: コヨーテ
+  fullname: コヨーテ / Coyote
+  globalname: Coyote
+  twitter: Coyote_KEMOV
+  color:
+    key: '#FED690'
+    sub: '#888580'
+    light: '#FED690'
+    back: '#FED690'
+  activity_start_date: '2021-12-05'
+  activity_end_date: '2025-05-29'
+
+- channel_id: UCdNBhcAohYjXlUVYsz8X2KQ
+  name: ダイアウルフ
+  fullname: ダイアウルフ / Dire Wolf
+  globalname: Dire Wolf
+  twitter: Direwolf_KEMOV
+  color:
+    key: '#363241'
+    sub: '#374174'
+    light: '#6D77A8'
+    back: '#374174'
+  activity_start_date: '2022-03-19'
+  activity_end_date: null
+
+- channel_id: UCxm7yNjJsSvyvcG96-Cvmpw
+  name: カラカル
+  fullname: カラカル / Caracal
+  globalname: Caracal
+  twitter: Caracal_KEMOV
+  color:
+    key: '#FF6833'
+    sub: '#FF9537'
+    light: '#FECB94'
+    back: '#FE9E74'
+  activity_start_date: '2022-05-28'
+  activity_end_date: null
+
+- channel_id: UCNObi6xvj6QeZ0g7BhAbF7w
+  name: ジェネット
+  fullname: ジェネット / Large-spotted Genet
+  globalname: Large-spotted Genet
+  twitter: Genet_KEMOV
+  color:
+    key: '#DD7278'
+    sub: '#FFBB98'
+    light: '#FFBB98'
+    back: '#DD7278'
+  activity_start_date: '2022-09-01'
+  activity_end_date: null
+
+- channel_id: UCYa58DdXGAGMJQHqTxi-isA
+  name: ジョフロイネコ
+  fullname: ジョフロイネコ / Geoffroy’s Cat
+  globalname: Geoffroy’s Cat
+  twitter: Geoffroy_KEMOV
+  color:
+    key: '#FD933F'
+    sub: '#FFE258'
+    light: '#FFE258'
+    back: '#FFE35E'
+  activity_start_date: '2022-09-02'
+  activity_end_date: null
+
+- channel_id: UCKob71cjOlyYF5bgvtGuNKQ
+  name: シマリス
+  fullname: シマリス / Siberian Chipmunk
+  globalname: Siberian Chipmunk
+  twitter: Shimarisu_KEMOV
+  color:
+    key: '#B0E4F9'
+    sub: '#63B2EA'
+    light: '#B0E4F9'
+    back: '#B0E4F9'
+  activity_start_date: '2022-09-09'
+  activity_end_date: '2024-04-28'
+
+- channel_id: UCtJSUW-5FnwfaivXpluABWA
+  name: ジャングルキャット
+  fullname: ジャングルキャット / Jungle Cat
+  globalname: Jungle Cat
+  twitter: Junglecat_KEMOV
+  color:
+    key: '#8FC579'
+    sub: '#FEC7DC'
+    light: '#FEC7DC'
+    back: '#8FC579'
+  activity_start_date: '2022-09-09'
+  activity_end_date: '2025-03-10'
+
+- channel_id: UCnyE-wD1pE2GZOxA6OHjW9g
+  name: ウサギコウモリ
+  fullname: ウサギコウモリ / Brown Long-eared Bat
+  globalname: Brown Long-eared Bat
+  twitter: Usako_KEMOV
+  color:
+    key: '#FAB6DD'
+    sub: '#F383BD'
+    light: '#FAB6DD'
+    back: '#FF3FD3'
+  activity_start_date: '2022-09-09'
+  activity_end_date: null

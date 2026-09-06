@@ -15,6 +15,19 @@ export default defineConfigWithVueTs(
   {
     files: ['**/*.{js,jsx,cjs,mjs,ts,tsx,cts,mts,vue}'],
   },
+  {
+    // scripts/ is the only code here that runs as a node process rather than
+    // in a browser or on workerd, so it is the only place these exist. Naming
+    // the two that are used keeps the rest undefined, which is the point of
+    // no-undef.
+    files: ['scripts/**/*.js'],
+    languageOptions: {
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+      },
+    },
+  },
   js.configs.recommended,
   pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,

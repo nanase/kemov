@@ -150,6 +150,58 @@ A region is chosen when the database is created and never again, so moving it me
 
 Seeding from the YAML therefore upserts those columns by name. Replacing the whole row would blank what the collector has fetched. Every other table is the collector's alone.
 
+### The Channel Master
+
+`channels.yml` at the repository root holds the deploy's half of that table, one entry per streamer, ordered by `activity_start_date`:
+
+```yaml
+- channel_id: UCEcMIuGR8WO2TwL9XIpjKtw
+  name: ケープペンギン
+  fullname: ケープペンギン / African Penguin
+  globalname: African Penguin
+  twitter: Cape_KEMOV
+  color:
+    key: '#F38E0A'
+    sub: '#F8C112'
+    light: '#FFEBA4'
+    back: '#FFEBA4'
+  activity_start_date: '2021-04-26'
+  activity_end_date: '2022-05-21'
+```
+
+Field names are the column names they land in. `color` is the one exception: the four values are grouped because a person edits them together, and the seed spreads them across `color_key`, `color_sub`, `color_light` and `color_back`.
+
+`globalname` and `twitter` may be left out. `activity_end_date` is always written, and `null` is how the file says a streamer is still active — leaving the key out would say the same thing without anybody having decided it.
+
+Quote the dates. Unquoted, YAML reads `2021-04-26` as a timestamp rather than text, and the column wants the text.
+
+The master used to be a hand-written JSON file hosted outside the repository. Editing it took no review and no check; editing this one takes a pull request, and CI reads the file on every one of them:
+
+```sh
+yarn check:channels
+```
+
+That reports every problem in the file at once rather than the first: an id that is not a YouTube channel id, a colour that is not `#RRGGBB`, a handle written with the `@`, a date that does not exist, a field name with a typo in it, the same channel twice, an entry out of order.
+
+#### Retiring a Streamer
+
+Give the entry an `activity_end_date`. Never delete one.
+
+`channel_snapshot` and `video` reference `channel`, so D1 refuses a delete that would leave them pointing at nothing. That refusal is deliberate: a line dropped from this file must not be able to take years of collected history with it. A streamer who stops still has the history of when they did not.
+
+#### Seeding
+
+The deploy turns the file into one `INSERT ... ON CONFLICT DO UPDATE` and applies it. The same two commands fill a local database:
+
+```sh
+yarn build:channels-sql .wrangler/channels.sql
+yarn wrangler d1 execute kemov --local --file .wrangler/channels.sql
+```
+
+The generated SQL is not committed. It is whatever the file says at the moment it runs, and a copy in the repository would be one more thing that can disagree with the file. `.wrangler/` is gitignored, which is why the example writes there.
+
+The statement names the deploy's columns and nothing else, so `custom_url`, `thumbnail_url` and `fetched_at` keep whatever the last collection put there. It inserts and updates only: a channel the file no longer lists keeps its row.
+
 ### Applying Migrations
 
 `migrations/` holds one SQL file per change, applied in filename order. wrangler records what it has applied in a `d1_migrations` table, so applying twice does nothing the second time.
