@@ -13,6 +13,8 @@
  * a second copy of them here would be a second answer to the same question.
  */
 
+import { literal } from './sql.js';
+
 /** The four spellings the schema's availability CHECK accepts. */
 const AVAILABILITY = ['public', 'membership', 'private', 'unavailable'];
 
@@ -172,14 +174,6 @@ export function toVideoRow(record, channelId) {
       fetched_at: fetchedAt,
     },
   };
-}
-
-function quote(value) {
-  return value === null || value === undefined ? 'NULL' : `'${String(value).replaceAll("'", "''")}'`;
-}
-
-function literal(value) {
-  return typeof value === 'number' ? String(value) : quote(value);
 }
 
 /**

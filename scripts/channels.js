@@ -8,6 +8,7 @@
 
 import { readFileSync } from 'node:fs';
 import { load } from 'js-yaml';
+import { quote } from './sql.js';
 
 /** The master file, relative to the repository root. */
 export const channelsPath = 'channels.yml';
@@ -220,11 +221,6 @@ export function loadChannels(path = channelsPath) {
   }
 
   return channels;
-}
-
-/** One SQL string literal, or NULL for a value the YAML left out. */
-function quote(value) {
-  return value === null || value === undefined ? 'NULL' : `'${value.replaceAll("'", "''")}'`;
 }
 
 /**
