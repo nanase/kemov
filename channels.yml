@@ -5,10 +5,15 @@
 # run, and `scripts/build-channels-sql.js` turns it into the upsert the deploy
 # applies. See "The Channel Master" in README.md.
 #
-# Field names are the column names they land in. `color` is the one exception:
-# the four values are grouped here because a person edits them together, and
-# the seed spreads them across `color_key`, `color_sub`, `color_light` and
-# `color_back`.
+# Field names are the column names they land in, with two exceptions. `color`
+# groups the four values because a person edits them together, and the seed
+# spreads them across `color_key`, `color_sub`, `color_light` and `color_back`.
+#
+# `twitch` lands nowhere. The `channel` table has no column for it and nothing
+# in the site reads it, so the seed does not carry it. It is kept because a
+# person wrote these three handles by hand into the JSON this file replaces,
+# and #72 retires that JSON: dropping them here would lose them for good.
+# Showing them later costs one migration, and only if the data survived.
 #
 # Never delete an entry. `channel_snapshot` and `video` reference `channel`,
 # and D1 refuses a delete that would orphan them - which is the point, because
@@ -61,6 +66,7 @@
   fullname: コヨーテ / Coyote
   globalname: Coyote
   twitter: Coyote_KEMOV
+  twitch: coyote_kemov
   color:
     key: '#FED690'
     sub: '#888580'
@@ -74,6 +80,7 @@
   fullname: ダイアウルフ / Dire Wolf
   globalname: Dire Wolf
   twitter: Direwolf_KEMOV
+  twitch: direwolf__kemov
   color:
     key: '#363241'
     sub: '#374174'
@@ -139,6 +146,7 @@
   fullname: ジャングルキャット / Jungle Cat
   globalname: Jungle Cat
   twitter: Junglecat_KEMOV
+  twitch: junglecat__kemov
   color:
     key: '#8FC579'
     sub: '#FEC7DC'

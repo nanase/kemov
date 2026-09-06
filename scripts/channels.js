@@ -20,8 +20,12 @@ export const channelsPath = 'channels.yml';
  */
 const requiredFields = ['channel_id', 'name', 'fullname', 'color', 'activity_start_date', 'activity_end_date'];
 
-/** Fields an entry may leave out. Both are nullable columns. */
-const optionalFields = ['globalname', 'twitter'];
+/**
+ * Fields an entry may leave out. `globalname` and `twitter` are nullable
+ * columns; `twitch` is not a column at all, and `channelsToSql` says why it is
+ * carried anyway.
+ */
+const optionalFields = ['globalname', 'twitter', 'twitch'];
 
 /** The four colours, in the order the site uses them. */
 const colorFields = ['key', 'sub', 'light', 'back'];
@@ -34,6 +38,9 @@ const colorPattern = /^#[0-9A-Fa-f]{6}$/;
 
 /** An X handle, without the `@`: letters, digits and underscore, up to 15. */
 const twitterPattern = /^\w{1,15}$/;
+
+/** A Twitch login: letters, digits and underscore, 4 to 25. */
+const twitchPattern = /^\w{4,25}$/;
 
 /** Shape only. `isRealDate` decides whether the numbers name a day. */
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -111,6 +118,10 @@ function checkEntry(entry, report) {
 
   if ('twitter' in entry && !twitterPattern.test(entry.twitter)) {
     report(`twitter must be a handle without the @, not ${JSON.stringify(entry.twitter)}`);
+  }
+
+  if ('twitch' in entry && !twitchPattern.test(entry.twitch)) {
+    report(`twitch must be a Twitch login, not ${JSON.stringify(entry.twitch)}`);
   }
 
   if ('color' in entry) {
@@ -218,6 +229,11 @@ function quote(value) {
  * mentioned them, would blank what the last collection fetched. Nothing here
  * deletes either. A row dropped from the YAML stays in the table, because the
  * snapshots and videos pointing at it are the history.
+ *
+ * `twitch` is absent for a different reason: no column holds it and nothing
+ * reads it. The YAML carries it so that the three handles a person wrote by
+ * hand outlive the JSON #72 retires. Showing them would take a migration, and
+ * a migration can only add a column, not the data that was thrown away.
  */
 export function channelsToSql(channels) {
   const columns = [

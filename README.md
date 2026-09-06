@@ -169,9 +169,11 @@ Seeding from the YAML therefore upserts those columns by name. Replacing the who
   activity_end_date: '2022-05-21'
 ```
 
-Field names are the column names they land in. `color` is the one exception: the four values are grouped because a person edits them together, and the seed spreads them across `color_key`, `color_sub`, `color_light` and `color_back`.
+Field names are the column names they land in, with two exceptions. `color` groups the four values because a person edits them together, and the seed spreads them across `color_key`, `color_sub`, `color_light` and `color_back`.
 
-`globalname` and `twitter` may be left out. `activity_end_date` is always written, and `null` is how the file says a streamer is still active — leaving the key out would say the same thing without anybody having decided it.
+`twitch` lands nowhere. Three entries carry one, no column holds it and nothing reads it. The file keeps it so that handles a person wrote by hand outlive the JSON described below: showing them later takes a migration, and a migration can add a column but not data that was thrown away.
+
+`globalname`, `twitter` and `twitch` may be left out. `activity_end_date` is always written, and `null` is how the file says a streamer is still active — leaving the key out would say the same thing without anybody having decided it.
 
 Quote the dates. Unquoted, YAML reads `2021-04-26` as a timestamp rather than text, and the column wants the text.
 
