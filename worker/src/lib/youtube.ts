@@ -1,6 +1,37 @@
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
 
 /**
+ * The most ids one call may name, and the most items one call may return.
+ *
+ * The API's own ceiling, and the same number for every endpoint here, so a
+ * caller chunking an id list and a caller setting maxResults share it.
+ */
+export const YOUTUBE_MAX_RESULTS = 50;
+
+/**
+ * The playlist holding everything a channel has uploaded.
+ *
+ * YouTube derives it from the channel id by replacing the leading UC, and
+ * publishes no other way to get it - contentDetails on Channels.list returns
+ * the same string. Deriving it costs no quota, which is what lets #63 look at
+ * all 11 channels on every ten-minute tick.
+ */
+export function uploadsPlaylistId(channelId: string): string {
+  return `UU${channelId.slice(2)}`;
+}
+
+/** Splits ids into groups no larger than one call may name. */
+export function chunkIds(ids: readonly string[], size: number = YOUTUBE_MAX_RESULTS): string[][] {
+  const chunks: string[][] = [];
+
+  for (let index = 0; index < ids.length; index += size) {
+    chunks.push(ids.slice(index, index + size));
+  }
+
+  return chunks;
+}
+
+/**
  * Calls one YouTube Data API v3 endpoint and parses the JSON body.
  *
  * Shared by every collector that talks to the API (#62 to #65): the base URL,

@@ -1,5 +1,6 @@
 import type { Env } from '../lib/env';
 import { runChannelStats } from './channel-stats';
+import { runVideoDiscover, runVideoUpdate } from './video';
 
 /**
  * Which jobs each cron trigger in wrangler.toml runs, from the schedule in
@@ -29,6 +30,8 @@ type JobHandler = (env: Env) => Promise<void>;
  */
 const jobHandlers: Readonly<Record<string, JobHandler>> = {
   'channel-stats': runChannelStats,
+  'video-discover': runVideoDiscover,
+  'video-update': runVideoUpdate,
 };
 
 /**
