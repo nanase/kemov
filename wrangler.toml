@@ -8,7 +8,12 @@
 
 name = "kemov"
 main = "worker/src/index.ts"
-compatibility_date = "2026-09-06"
+
+# The newest compatibility date the workerd bundled with
+# @cloudflare/vitest-pool-workers accepts, so the tests and production share
+# one set of semantics. Overriding it for the tests instead would leave them
+# verifying a behaviour production does not have. See #74.
+compatibility_date = "2026-08-22"
 
 # The master copy of every channel, video and snapshot. The worker has no other
 # store, so every job and every endpoint goes through this binding.
