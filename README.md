@@ -110,8 +110,6 @@ yarn wrangler d1 execute DB --remote --command "select 1"
 yarn wrangler d1 execute DB --local --command "select 1"
 ```
 
-The D1 database is named `kemov` and lives in the APAC region. A region can only be chosen when the database is created, so moving it means creating another one and copying the data across.
-
 ### Worker Secrets
 
 No secret value belongs in this repository — not in `wrangler.toml`, not in a workflow file, not in `.env`. `wrangler.toml` names bindings; it never carries their values.
@@ -137,7 +135,9 @@ For local runs, put the same names in `.dev.vars` at the repository root as `NAM
 
 ## Database
 
-The collected data lives in a Cloudflare D1 database named `kemov`. Everything the site publishes can be rebuilt from it. The commands below need wrangler, which comes with the Worker setup.
+The collected data lives in a Cloudflare D1 database named `kemov`, running in the APAC region. Everything the site publishes can be rebuilt from it. The commands below need wrangler, which comes with the Worker setup.
+
+A region is chosen when the database is created and never again, so moving it means creating another one and copying the data across.
 
 ### Who Writes Which Column
 
