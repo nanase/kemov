@@ -69,18 +69,18 @@ describe('runScheduled', () => {
     warn.mockRestore();
   });
 
-  // channel-stats is the one implemented handler. Routing to it is proven by
-  // its own behaviour, not a mock: with no channel rows in D1 - the default
-  // for a fresh test - it warns and returns without ever calling the YouTube
-  // API, so this needs no network stub of its own.
-  test('routes channel-stats to its handler', async () => {
+  // Routing is proven by each handler's own behaviour, not a mock: with no
+  // rows in D1 - the default for a fresh test - all three of the ten-minute
+  // jobs warn and return without ever calling the YouTube API, and each says
+  // something only it says.
+  test('routes every ten-minute job to its handler', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     await runScheduled('*/10 * * * *', env);
 
     expect(warn).toHaveBeenCalledWith('channel-stats: no channels in D1 to collect');
-    expect(warn).toHaveBeenCalledWith('no handler implemented yet for job "video-discover"');
-    expect(warn).toHaveBeenCalledWith('no handler implemented yet for job "video-update"');
+    expect(warn).toHaveBeenCalledWith('video-discover: no channels in D1 to collect');
+    expect(warn).toHaveBeenCalledWith('video-update: no videos in D1 to refresh');
 
     warn.mockRestore();
   });
@@ -89,16 +89,18 @@ describe('runScheduled', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    // A genuine D1 failure, not a mock: without its table, channel-stats' own
-    // query throws for real, so this exercises runScheduled's isolation with
-    // the real binding rather than a cast standing in for one.
+    // A genuine D1 failure, not a mock: without the table, the two jobs that
+    // read `channel` throw for real, so this exercises runScheduled's
+    // isolation with the real binding rather than a cast standing in for one.
+    // video-update reads only `video`, which is still there, so it is the one
+    // that has to survive its neighbours failing.
     await env.DB.exec('DROP TABLE channel');
 
     await runScheduled('*/10 * * * *', env);
 
     expect(error).toHaveBeenCalledWith('job "channel-stats" failed', expect.any(Error));
-    expect(warn).toHaveBeenCalledWith('no handler implemented yet for job "video-discover"');
-    expect(warn).toHaveBeenCalledWith('no handler implemented yet for job "video-update"');
+    expect(error).toHaveBeenCalledWith('job "video-discover" failed', expect.any(Error));
+    expect(warn).toHaveBeenCalledWith('video-update: no videos in D1 to refresh');
 
     error.mockRestore();
     warn.mockRestore();
