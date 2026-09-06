@@ -5,6 +5,7 @@ import {
   determineLiveBroadcastContent,
   determineVideoType,
   parseDurationSeconds,
+  toCount,
   type LiveStreamingDetails,
 } from '../lib/video';
 import { callYouTubeApi, chunkIds, uploadsPlaylistId, YOUTUBE_MAX_RESULTS } from '../lib/youtube';
@@ -148,15 +149,6 @@ function collectedStatement(db: D1Database, kind: TaskKind, targetId: string, at
          updated_at = excluded.updated_at`,
     )
     .bind(kind, targetId, at);
-}
-
-/** A count the API reports as a string, or null when it hides it. */
-function toCount(value: string | undefined): number | null {
-  if (value === undefined) return null;
-
-  const count = Number(value);
-
-  return Number.isFinite(count) && count >= 0 ? count : null;
 }
 
 /**

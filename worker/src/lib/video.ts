@@ -89,6 +89,26 @@ export function parseDurationSeconds(duration: string | undefined): number | nul
 }
 
 /**
+ * A count the API reports as a string, or null when it does not report one.
+ *
+ * Null covers both a hidden count and a value that is not a count at all. The
+ * schema draws no distinction - it says a NULL is "not collected yet, or
+ * hidden by the uploader" - and its CHECK refuses a negative, so a number that
+ * would be refused becomes the absence it amounts to rather than a row the
+ * database rejects.
+ */
+export function toCount(value: string | undefined): number | null {
+  // Number('') is 0, and so is Number(' '). Reading either as a count would
+  // put a figure nobody measured into a column whose NULL already says the
+  // figure is missing.
+  if (value === undefined || value.trim() === '') return null;
+
+  const count = Number(value);
+
+  return Number.isInteger(count) && count >= 0 ? count : null;
+}
+
+/**
  * Whether a video is finished, running or still to come.
  *
  * Read from `liveStreamingDetails` rather than from
@@ -199,6 +219,13 @@ export function determineAvailability(signals: AvailabilitySignals): Availabilit
  * Only the schedule is read. Matching the title was the alternative and is
  * worse: it is written by hand, in Japanese, and differs per channel, so it
  * would miss the next one that is worded differently.
+ *
+ * **Nothing in this repository calls this yet, and that is deliberate.** A
+ * free chat is a real upcoming stream and its row says so; what it must not be
+ * is the stream `GET /api/live` names as a channel's next one. That endpoint
+ * is #69's, and worker/src/api/ is #69's to write, so the rule lands here
+ * where the collector already keeps its judgement and #69 imports it rather
+ * than restating it. The tests are what make it safe to hand over that way.
  */
 export function isFreeChatPlaceholder(scheduledStartTime: string | null, now: Date): boolean {
   if (scheduledStartTime === null) return false;

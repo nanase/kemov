@@ -4,6 +4,7 @@ import {
   determineVideoType,
   isFreeChatPlaceholder,
   parseDurationSeconds,
+  toCount,
 } from '../src/lib/video';
 
 // The rules themselves, with no D1 and no API in the way. What the collector
@@ -40,6 +41,37 @@ describe('parseDurationSeconds', () => {
     expect(parseDurationSeconds('1M30S')).toBeNull();
     expect(parseDurationSeconds('PT1W')).toBeNull();
     expect(parseDurationSeconds('')).toBeNull();
+  });
+});
+
+describe('toCount', () => {
+  test('reads the string the API reports', () => {
+    expect(toCount('4200')).toEqual(4200);
+  });
+
+  test('reads zero as zero rather than as absent', () => {
+    expect(toCount('0')).toEqual(0);
+  });
+
+  // The schema says a NULL here is "not collected yet, or hidden by the
+  // uploader" and draws no line between them, so neither does this.
+  test('is null when the API reports no count', () => {
+    expect(toCount(undefined)).toBeNull();
+  });
+
+  // The column's CHECK refuses these, so they become the absence they amount
+  // to rather than a row the database throws out.
+  test('is null for a value the column would refuse', () => {
+    expect(toCount('-1')).toBeNull();
+    expect(toCount('12.5')).toBeNull();
+    expect(toCount('many')).toBeNull();
+  });
+
+  // Number('') is 0, so the empty string is the one that reads as a real
+  // count if nothing stops it.
+  test('is null for an empty string rather than zero', () => {
+    expect(toCount('')).toBeNull();
+    expect(toCount('   ')).toBeNull();
   });
 });
 
