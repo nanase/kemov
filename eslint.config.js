@@ -18,12 +18,13 @@ export default defineConfigWithVueTs(
   {
     // scripts/ is the only code here that runs as a node process rather than
     // in a browser or on workerd, so it is the only place these exist. Naming
-    // the two that are used keeps the rest undefined, which is the point of
+    // the ones that are used keeps the rest undefined, which is the point of
     // no-undef.
     files: ['scripts/**/*.js'],
     languageOptions: {
       globals: {
         console: 'readonly',
+        fetch: 'readonly',
         process: 'readonly',
       },
     },
