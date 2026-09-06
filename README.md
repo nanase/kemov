@@ -97,7 +97,13 @@ yarn test                # both
 yarn vitest run --project worker   # worker only
 ```
 
-`wrangler.toml` still holds placeholders for `account_id` and `database_id`. The Cloudflare account is not set up yet, so no `wrangler` command works against this repository so far.
+`wrangler.toml` still holds placeholders for `account_id` and `database_id`, so anything that reaches Cloudflare fails until #73 fills them in: `wrangler deploy`, and any command given `--remote`.
+
+`--local` is a different matter and works today. It runs against a SQLite database under `.wrangler/`, wants no account and no network, and carries the placeholders through without looking at them.
+
+```sh
+yarn wrangler d1 execute DB --local --command "select 1"
+```
 
 ### Worker Secrets
 
