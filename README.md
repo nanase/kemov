@@ -180,7 +180,7 @@ Quote the dates. Unquoted, YAML reads `2021-04-26` as a timestamp rather than te
 The master used to be a hand-written JSON file hosted outside the repository. Editing it took no review and no check; editing this one takes a pull request, and CI reads the file on every one of them:
 
 ```sh
-yarn check:channels
+yarn check-channels
 ```
 
 That reports every problem in the file at once rather than the first: an id that is not a YouTube channel id, a colour that is not `#RRGGBB`, a handle written with the `@`, a date that does not exist, a field name with a typo in it, the same channel twice, an entry out of order.

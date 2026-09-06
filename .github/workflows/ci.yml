@@ -39,7 +39,7 @@ jobs:
       # colour or a date that does not exist stops at the pull request instead of
       # reaching the database.
       - name: Check channels.yml
-        run: yarn check:channels
+        run: yarn check-channels
 
       # The lint script passes --fix, which would rewrite files. Check only.
       - name: Lint
