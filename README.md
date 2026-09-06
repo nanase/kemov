@@ -212,13 +212,13 @@ The site is built and published by the `Deploy` workflow on every push to `main`
 
 To roll back, revert the commit and let the workflow redeploy. The workflow can also be run by hand from the Actions tab.
 
-### The worker
+### The Worker
 
-`Deploy Worker` runs `yarn wrangler deploy` on every push to `main`, and can also be run by hand from the Actions tab. It has no path filter: what Cloudflare runs is whatever is on `main`. The wrangler it uses comes from the lockfile, so a deploy uses the version the repository was tested against.
+`Deploy Worker` runs `yarn wrangler deploy` on every push to `main`, and can also be run by hand from the Actions tab. It type checks and tests the worker first, in a job that holds no credentials. It has no path filter: what Cloudflare runs is whatever is on `main`. The wrangler it uses comes from the lockfile, so a deploy uses the version the repository was tested against.
 
 Its credentials come from a GitHub **environment** rather than from repository secrets. An environment secret is only readable by a job that names the environment; a repository secret is readable by every workflow in the repository, including one running from a pull request branch, and most of them have no business holding a token that can deploy.
 
-|                     |                                                 |
+| Setting             | Value                                           |
 | ------------------- | ----------------------------------------------- |
 | Environment         | `cloudflare`                                    |
 | Deployment branches | `main` only                                     |
