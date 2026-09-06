@@ -93,7 +93,7 @@ The worker runs on workerd and shares no lib, global or path alias with the fron
 ```sh
 yarn type-check          # frontend
 yarn type-check:worker   # worker
-yarn test                # both
+yarn test                # every project
 yarn vitest run --project worker   # worker only
 ```
 
@@ -185,18 +185,24 @@ yarn check:channels
 
 That reports every problem in the file at once rather than the first: an id that is not a YouTube channel id, a colour that is not `#RRGGBB`, a handle written with the `@`, a date that does not exist, a field name with a typo in it, the same channel twice, an entry out of order.
 
-#### Retiring a Streamer
+What the check knows lives in `scripts/`, which is JavaScript rather than TypeScript because it runs under bare node from a CI step and from the deploy, both before anything is built. Like the worker, it is its own vitest project:
+
+```sh
+yarn vitest run --project scripts
+```
+
+### Retiring a Streamer
 
 Give the entry an `activity_end_date`. Never delete one.
 
 `channel_snapshot` and `video` reference `channel`, so D1 refuses a delete that would leave them pointing at nothing. That refusal is deliberate: a line dropped from this file must not be able to take years of collected history with it. A streamer who stops still has the history of when they did not.
 
-#### Seeding
+### Seeding the Channel Table
 
 The deploy turns the file into one `INSERT ... ON CONFLICT DO UPDATE` and applies it. The same two commands fill a local database:
 
 ```sh
-yarn build:channels-sql .wrangler/channels.sql
+yarn build-channels-sql .wrangler/channels.sql
 yarn wrangler d1 execute kemov --local --file .wrangler/channels.sql
 ```
 

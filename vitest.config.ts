@@ -12,14 +12,15 @@ export default mergeConfig(
       root,
       coverage: {
         reporter: ['text', 'json'],
-        include: ['src/**/*.{ts,vue}', 'worker/src/**/*.ts'],
+        include: ['src/**/*.{ts,vue}', 'worker/src/**/*.ts', 'scripts/*.js'],
         // Barrel files in the frontend. The worker's index.ts files hold real
         // code, so the pattern stays scoped to src/.
         exclude: ['src/**/index.ts'],
       },
-      // The frontend and the worker share no runtime: one is a browser bundle
-      // built by the vite config above, the other runs on workerd. Keeping them
-      // as two projects of one run means `yarn test` still covers both.
+      // The frontend, the worker and the scripts share no runtime: a browser
+      // bundle built by the vite config above, workerd, and a bare node
+      // process. Keeping them as projects of one run means `yarn test` still
+      // covers all three.
       projects: [
         {
           extends: true,
@@ -47,6 +48,18 @@ export default mergeConfig(
             name: 'worker',
             root,
             include: ['worker/test/**/*.test.ts'],
+            environment: 'node',
+            globals: true,
+          },
+        },
+        {
+          // Left off for the same reason as the worker's, and the tests are
+          // .js because what they exercise is: scripts/ runs under bare node
+          // with nothing built first.
+          test: {
+            name: 'scripts',
+            root,
+            include: ['scripts/test/**/*.test.js'],
             environment: 'node',
             globals: true,
           },

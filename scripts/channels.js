@@ -63,6 +63,7 @@ function isMapping(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Reports every problem with one entry's `color` mapping through `report`. */
 function checkColor(color, report) {
   if (!isMapping(color)) {
     report('color must be a mapping of key, sub, light and back');
@@ -84,6 +85,12 @@ function checkColor(color, report) {
   }
 }
 
+/**
+ * Reports every problem with one entry through `report`.
+ *
+ * Which entry it is belongs to the caller: `findProblems` knows the position
+ * and can name an entry that has no usable id.
+ */
 function checkEntry(entry, report) {
   if (!isMapping(entry)) {
     report('entry must be a mapping');
@@ -230,10 +237,8 @@ function quote(value) {
  * deletes either. A row dropped from the YAML stays in the table, because the
  * snapshots and videos pointing at it are the history.
  *
- * `twitch` is absent for a different reason: no column holds it and nothing
- * reads it. The YAML carries it so that the three handles a person wrote by
- * hand outlive the JSON #72 retires. Showing them would take a migration, and
- * a migration can only add a column, not the data that was thrown away.
+ * `twitch` is absent for a different reason, which channels.yml gives: no
+ * column holds it, and the file carries it anyway.
  */
 export function channelsToSql(channels) {
   const columns = [

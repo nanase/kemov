@@ -65,6 +65,9 @@ jobs:
       - name: Test the worker
         run: yarn vitest run --project worker
 
+      - name: Test the scripts
+        run: yarn vitest run --project scripts
+
       # Nothing here is published: Deploy builds and uploads its own
       # artifact. This only proves the build still succeeds.
       - name: Build

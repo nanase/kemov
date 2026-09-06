@@ -18,7 +18,7 @@
     "lint": "eslint . --fix",
     "lint:style": "stylelint src/**/*.{css,scss,vue}",
     "check:channels": "node scripts/check-channels.js",
-    "build:channels-sql": "node scripts/build-channels-sql.js",
+    "build-channels-sql": "node scripts/build-channels-sql.js",
     "format": "prettier --write src/",
     "test": "vitest",
     "coverage": "vitest run --coverage"

@@ -28,6 +28,19 @@ export default defineConfigWithVueTs(
       },
     },
   },
+  {
+    // The other test suites are TypeScript, where tsconfig lists vitest/globals
+    // and no-undef is off anyway. These are JavaScript, so the globals vitest
+    // injects have to be named.
+    files: ['scripts/test/**/*.test.js'],
+    languageOptions: {
+      globals: {
+        describe: 'readonly',
+        expect: 'readonly',
+        test: 'readonly',
+      },
+    },
+  },
   js.configs.recommended,
   pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,
