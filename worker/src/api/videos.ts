@@ -29,12 +29,16 @@ interface VideoRow {
   comment_count: number | null;
   chat_message_count: number | null;
   chat_unique_user_count: number | null;
+  scheduled_start_time: string | null;
+  actual_start_time: string | null;
+  actual_end_time: string | null;
   fetched_at: string;
 }
 
 const VIDEO_COLUMNS = `video_id, channel_id, title, published_at, availability, live_broadcast_content,
                        type, duration_seconds, view_count, like_count, comment_count,
-                       chat_message_count, chat_unique_user_count, fetched_at`;
+                       chat_message_count, chat_unique_user_count,
+                       scheduled_start_time, actual_start_time, actual_end_time, fetched_at`;
 
 /** How many videos one page holds unless the caller asks for fewer. */
 export const DEFAULT_PAGE_SIZE = 50;
@@ -63,6 +67,13 @@ function present(row: VideoRow) {
     commentCount: row.comment_count,
     chatMessageCount: row.chat_message_count,
     chatUniqueUserCount: row.chat_unique_user_count,
+    // All three null for a video that was never a stream, and the first two
+    // are how a stream is described: a scheduled one has only scheduled, a
+    // finished one has all three. The detail dialog shows each of them, which
+    // is why they travel with the list rather than needing a second request.
+    scheduledStartTime: row.scheduled_start_time,
+    actualStartTime: row.actual_start_time,
+    actualEndTime: row.actual_end_time,
     fetchedAt: row.fetched_at,
   };
 }

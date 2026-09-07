@@ -10,7 +10,7 @@ const opened = defineModel<boolean>('opened');
 <template>
   <v-navigation-drawer v-model="opened" floating aria-label="サイトページ一覧">
     <v-list class="pb-0 d-flex flex-column fill-height" role="menu">
-      <v-list-item link title="リアルタイム統計" href="/kemov/stats/" role="menuitem" :active="pageId === 'stats'">
+      <v-list-item link title="リアルタイム統計" href="/stats/" role="menuitem" :active="pageId === 'stats'">
         <template #prepend>
           <v-icon icon="mdi-finance" size="large" />
         </template>
@@ -20,12 +20,7 @@ const opened = defineModel<boolean>('opened');
 
       <v-divider />
       <v-list density="compact" link nav class="flex-grow-0 flex-shrink-0" role="menu">
-        <v-list-item
-          title="ジェネット楽曲一覧"
-          href="/kemov/genet/music/"
-          role="menuitem"
-          :active="pageId === 'genet/music'"
-        >
+        <v-list-item title="ジェネット楽曲一覧" href="/genet/music/" role="menuitem" :active="pageId === 'genet/music'">
           <template #prepend>
             <v-icon icon="mdi-music" size="small" />
           </template>

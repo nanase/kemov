@@ -1,126 +1,91 @@
 import { withCommas } from '@nanase/alnilam/number';
-import dayjs, { type Dayjs, duration } from '@nanase/alnilam/dayjs';
+import dayjs from '@nanase/alnilam/dayjs';
 
-export type LiveBroadcastContentType = 'none' | 'upcoming' | 'live';
-export type VideoType = 'video' | 'streaming' | 'shorts';
-export type VideoAvailability = 'public' | 'membership' | 'private' | 'unavalable';
+import type { Video } from '@/type/api';
 
-export interface Video {
-  videoId: string;
-  publishedAt: Dayjs;
-  fetchedAt?: Dayjs;
-  availability?: VideoAvailability;
-  title: string;
-  liveBroadcastContent: LiveBroadcastContentType;
-  type?: VideoType;
-  duration?: duration.Duration;
-  viewCount?: number;
-  likeCount?: number;
-  commentCount?: number;
-  chatMessageCount?: number;
-  chatUniqueUserCount?: number;
-  scheduledStartTime?: Dayjs;
-  actualStartTime?: Dayjs;
-  actualEndTime?: Dayjs;
-}
+/**
+ * The measures a video can be ranked by, and how each one is read, named and
+ * written.
+ *
+ * A video's shape and the reading of a response are @/type/api.ts; this is
+ * what the site does with one.
+ */
 
-export type VideoProperty =
-  | 'viewCount'
-  | 'likeCount'
-  | 'commentCount'
-  | 'chatMessageCount'
-  | 'chatUniqueUserCount'
-  | 'chatMessageCountPerUniqueUser'
-  | 'duration'
-  | 'viewCountPerSecond'
-  | 'likeCountPerSecond'
-  | 'commentCountPerSecond'
-  | 'chatMessageCountPerSecond';
+export const VIDEO_PROPERTIES = [
+  'viewCount',
+  'likeCount',
+  'commentCount',
+  'chatMessageCount',
+  'chatUniqueUserCount',
+  'chatMessageCountPerUniqueUser',
+  'duration',
+  'viewCountPerSecond',
+  'likeCountPerSecond',
+  'commentCountPerSecond',
+  'chatMessageCountPerSecond',
+] as const;
 
-export function parse(text: string): Video[] {
-  return JSON.parse(text, (key, value) => {
-    switch (key) {
-      case 'videoId':
-      case 'title':
-      case 'liveBroadcastContent':
-      case 'availability':
-        return value.toString();
+export type VideoProperty = (typeof VIDEO_PROPERTIES)[number];
 
-      case 'publishedAt':
-        return dayjs(value);
-
-      case 'fetchedAt':
-      case 'scheduledStartTime':
-      case 'actualStartTime':
-      case 'actualEndTime':
-        return value ? dayjs(value) : undefined;
-
-      case 'type':
-        return value ?? undefined;
-
-      case 'duration':
-        return value ? dayjs.duration(value) : undefined;
-
-      case 'viewCount':
-      case 'likeCount':
-      case 'commentCount':
-      case 'chatMessageCount':
-      case 'chatUniqueUserCount': {
-        if (value === '') {
-          return undefined;
-        } else {
-          const num = Number(value);
-
-          return Number.isFinite(num) ? num : undefined;
-        }
-      }
-
-      default:
-        return value;
-    }
-  }) as Video[];
-}
-
+/**
+ * The value a video has for one measure, or undefined when it has none.
+ *
+ * Eight of the eleven are derived from two columns, and the API computes the
+ * same eight in SQL for `GET /api/videos/ranking` - `EXPRESSIONS` in
+ * worker/src/lib/ranking.ts. **The two have to agree, and nothing checks that
+ * they do.** Correcting one without the other would make a ranking of one
+ * channel disagree with a ranking across all of them.
+ *
+ * They are both here on purpose. The ranking on the detail page orders one
+ * channel's archive, ascending or descending, filtered by video type, and it
+ * re-orders the moment a tab is clicked because the whole archive is already
+ * in the browser. The API's ranking is a cross-channel top-N, descending, with
+ * no type filter - it cannot answer that page's question, and turning eleven
+ * instant re-orderings into eleven requests would be a worse site.
+ *
+ * Undefined rather than zero when a part is missing, which is the same rule
+ * `rankingFilter` applies on the API side: a video whose duration has not been
+ * collected yet is left out of a per-second ranking rather than ordered as
+ * though it had been measured and found to be nothing. Every video #67
+ * migrated has a null duration until video-update reaches it.
+ */
 export function readProperty(video: Video, property: VideoProperty): number | undefined {
+  const per = (count: number | null, divisor: number | null): number | undefined =>
+    count === null || divisor === null || divisor <= 0 ? undefined : count / divisor;
+
   switch (property) {
     case 'viewCount':
-      return video.viewCount;
+      return video.viewCount ?? undefined;
 
     case 'likeCount':
-      return video.likeCount;
+      return video.likeCount ?? undefined;
 
     case 'commentCount':
-      return video.commentCount;
+      return video.commentCount ?? undefined;
 
     case 'chatMessageCount':
-      return video.chatMessageCount;
+      return video.chatMessageCount ?? undefined;
 
     case 'chatUniqueUserCount':
-      return video.chatUniqueUserCount;
-
-    case 'chatMessageCountPerUniqueUser':
-      return video.chatMessageCount == null || video.chatUniqueUserCount == null
-        ? 0
-        : video.chatMessageCount / video.chatUniqueUserCount;
+      return video.chatUniqueUserCount ?? undefined;
 
     case 'duration':
-      return video.duration?.asSeconds();
+      return video.durationSeconds ?? undefined;
+
+    case 'chatMessageCountPerUniqueUser':
+      return per(video.chatMessageCount, video.chatUniqueUserCount);
 
     case 'viewCountPerSecond':
-      return video.viewCount == null || video.duration == null ? 0 : video.viewCount / video.duration?.asSeconds();
+      return per(video.viewCount, video.durationSeconds);
 
     case 'likeCountPerSecond':
-      return video.likeCount == null || video.duration == null ? 0 : video.likeCount / video.duration?.asSeconds();
+      return per(video.likeCount, video.durationSeconds);
 
     case 'commentCountPerSecond':
-      return video.commentCount == null || video.duration == null
-        ? 0
-        : video.commentCount / video.duration?.asSeconds();
+      return per(video.commentCount, video.durationSeconds);
 
     case 'chatMessageCountPerSecond':
-      return video.chatMessageCount == null || video.duration == null
-        ? 0
-        : video.chatMessageCount / video.duration?.asSeconds();
+      return per(video.chatMessageCount, video.durationSeconds);
   }
 }
 
@@ -161,6 +126,15 @@ export function getPropertyName(property: VideoProperty): string {
   }
 }
 
+/** A duration in seconds, written the way a video length is read. */
+export function formatDuration(seconds: number | null | undefined): string {
+  if (!seconds) return '00:00';
+
+  return seconds < 3600
+    ? dayjs.duration(seconds, 'seconds').format('mm:ss')
+    : dayjs.duration(seconds, 'seconds').format('H:mm:ss');
+}
+
 export function formatProperty(property: VideoProperty, value: number | undefined): string {
   switch (property) {
     case 'viewCount':
@@ -170,15 +144,8 @@ export function formatProperty(property: VideoProperty, value: number | undefine
     case 'chatUniqueUserCount':
       return withCommas(value);
 
-    case 'duration': {
-      if (!value) {
-        return '00:00';
-      } else if (value < 3600) {
-        return dayjs.duration(value, 'seconds').format('mm:ss');
-      } else {
-        return dayjs.duration(value, 'seconds').format('H:mm:ss');
-      }
-    }
+    case 'duration':
+      return formatDuration(value);
 
     case 'chatMessageCountPerUniqueUser':
     case 'viewCountPerSecond':

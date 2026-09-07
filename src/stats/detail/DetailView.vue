@@ -4,14 +4,28 @@ import { sum } from '@nanase/alnilam/array';
 import { withCommas } from '@nanase/alnilam/number';
 import { type SortOrder } from '@nanase/alnilam/sort';
 import dayjs from '@nanase/alnilam/dayjs';
-import type { VideoType, VideoProperty } from '@/type/video';
+import type { VideoProperty } from '@/type/video';
+import type { VideoType } from '@/type/api';
 
 import StatsAppBase from '@/components/common/StatsAppBase.vue';
 import VideoRanking from '@/components/stats/detail/VideoRanking.vue';
 import useStatsStore from '@/stats/store';
 
 const { channelId } = defineProps<{ channelId: string }>();
-const { channels, fetching, errorOccurred, setChannelId, channel, videos } = useStatsStore();
+const { channels, fetching, errorOccurred, setChannelId, channel, videos, videosComplete, videosError, loadingVideos } =
+  useStatsStore();
+
+/**
+ * Whether the totals below are made from the whole archive.
+ *
+ * Every figure on this row is a sum over every video the channel has, and the
+ * largest channel takes seven requests to read. A page that failed on the
+ * fourth would show a smaller total, and a smaller total reads as a fact - so
+ * the page says so instead of quietly shrinking.
+ */
+const archivePartial = computed<boolean>(
+  () => !loadingVideos.value && !videosComplete.value && videos.value.length > 0,
+);
 
 const activityDays = computed(() =>
   dayjs(channel.value?.activityEndDate ?? undefined).diff(dayjs(channel.value?.activityStartDate), 'days', true),
@@ -36,6 +50,16 @@ watch(
     :channels
     :error-snackbar-shown="errorOccurred"
   >
+    <v-alert
+      v-if="archivePartial"
+      class="ma-1"
+      type="warning"
+      variant="tonal"
+      density="compact"
+      title="動画の一部を読み込めませんでした"
+      :text="`下の合計は ${withCommas(videos.length)} 本ぶんです。すべての動画は含まれていません`"
+    />
+
     <v-row class="ma-0">
       <v-col cols="6" sm="4" class="pa-1">
         <v-card color="red" variant="flat" class="summary-card">
@@ -44,19 +68,19 @@ watch(
             チャンネル登録者
           </v-card-text>
           <v-skeleton-loader
-            v-if="!channel?.statistics || !Number.isFinite(activityDays) || activityDays === 0"
+            v-if="channel?.latest.subscriberCount == null || !Number.isFinite(activityDays) || activityDays === 0"
             color="transparent"
             type="text@2"
           />
           <template v-else>
             <v-card-text class="pa-2 mt-n3 text-h5 text-right">
-              {{ withCommas(channel.statistics.subscriberCount) }}
+              {{ withCommas(channel.latest.subscriberCount) }}
               <span class="text-subtitle-2">&nbsp;</span>
             </v-card-text>
             <v-card-text class="pa-2 pt-0 mt-n2 text-subtitle-2 text-right">
               1日あたり
               <span class="pr-2 pt-0 mt-n2 text-h6 text-right">
-                +{{ ((channel.statistics.subscriberCount ?? 0) / activityDays).toFixed(1) }}
+                +{{ (channel.latest.subscriberCount / activityDays).toFixed(1) }}
               </span>
               <span class="text-subtitle-2">&nbsp;</span>
             </v-card-text>
@@ -211,6 +235,7 @@ watch(
     <template #footer>
       <v-footer class="bg-secondary text-center d-flex flex-column mt-10">
         <ul>
+          <li v-if="videosError">動画の読み込みでエラーが発生しました: {{ videosError.message }}</li>
           <li>数値の反映に数日かかることがあります</li>
           <li>このサイトは非公式のファンサイトです</li>
         </ul>

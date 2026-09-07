@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useStorage } from '@vueuse/core';
 
 import StatTable, { type StatDataType } from '@/components/stats/StatTable.vue';
@@ -8,13 +8,29 @@ import UpdateCircle from '@/components/common/UpdateCircle.vue';
 import StatsAppBase from '@/components/common/StatsAppBase.vue';
 import useStatsStore from './store';
 
-const { fetchedAt, fetching, errorOccurred } = useStatsStore();
+const { fetchedAt, fetching, errorOccurred, freshness, excludedFreeChats } = useStatsStore();
+
+/**
+ * Whether these numbers were served after the database could not be read.
+ *
+ * The API keeps the last good answer for six hours and serves it rather than
+ * failing, which is the whole reason the table is not empty during an outage -
+ * and it is only defensible while the page says so. Serving old numbers
+ * quietly is the defect being removed, wearing a different coat.
+ */
+const servedStale = computed<boolean>(() => freshness.value.state === 'stale');
+
+const staleFor = computed<string>(() => {
+  const minutes = Math.floor(freshness.value.staleSeconds / 60);
+
+  return minutes >= 60 ? `${Math.floor(minutes / 60)} 時間` : `${minutes} 分`;
+});
 const tab = ref<StatDataType>('subscriber');
 const activeOnly = useStorage<boolean>('kemov/stats/activeOnly', false);
 
 onMounted(async () => {
   await fetching.channels.start();
-  await fetching.latestStreamings.start();
+  await fetching.live.start();
 });
 </script>
 
@@ -36,6 +52,16 @@ onMounted(async () => {
             <span class="font-weight-bold">配信・動画数</span>
           </v-tab>
         </v-tabs>
+
+        <v-alert
+          v-if="servedStale"
+          class="mb-2"
+          type="warning"
+          variant="tonal"
+          density="compact"
+          title="最新の数値を取得できていません"
+          :text="`表示しているのは ${staleFor}前の数値です。統計データベースが読めない状態が続いています`"
+        />
 
         <StatTable :type="tab" :active-only />
 
@@ -82,6 +108,11 @@ onMounted(async () => {
         <ul>
           <li>およそ10分ごとに自動で更新されます。数値は減少することがあります</li>
           <li>総再生数と配信・動画数は配信終了後から反映されます</li>
+          <!-- A free chat is a real upcoming stream, and leaving it out is why
+               a channel that has one no longer reads as permanently "about to
+               go live". Saying how many were left out is what keeps that from
+               looking like a channel with nothing scheduled. -->
+          <li v-if="excludedFreeChats > 0">フリーチャット {{ excludedFreeChats }} 件は配信予定に含めていません</li>
           <li>このサイトは非公式のファンサイトです</li>
         </ul>
       </v-footer>

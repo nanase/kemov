@@ -1,8 +1,14 @@
-export const channelsUri = 'https://nanase.cc/asset/kemov/channels.json';
-export const liveUri = 'https://d1zvseiqyto6c5.cloudfront.net/kemov/live.json';
-export const statsUri = 'https://d1zvseiqyto6c5.cloudfront.net/kemov/stats.json';
-export const videoUriBase = 'https://d1zvseiqyto6c5.cloudfront.net/kemov/stats/video/';
-
-export function videoUri(channelId: string | undefined) {
-  return `${videoUriBase}${channelId}.json`;
-}
+/**
+ * Where the site's data comes from.
+ *
+ * One base path, because the API and these pages are served by the same
+ * worker: `/api/*` is answered by its fetch handler and everything else by the
+ * static assets built from this directory. A relative path is therefore a
+ * same-origin one, which is what keeps the browser from a preflight on every
+ * request.
+ *
+ * VITE_API_BASE overrides it for `vite dev`, where these pages are served by
+ * vite on its own port and the worker is not there at all. Point it at a
+ * `wrangler dev` or at the deployment.
+ */
+export const apiBase: string = import.meta.env.VITE_API_BASE ?? '/api';

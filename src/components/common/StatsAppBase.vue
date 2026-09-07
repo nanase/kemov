@@ -19,7 +19,7 @@ const { isDark, toggle: toggleTheme } = useVuetifyTheme();
         link
         slim
         title=""
-        href="/kemov/stats/"
+        href="/stats/"
         role="menuitem"
         density="default"
         base-color="v2DrawerList"
@@ -34,20 +34,21 @@ const { isDark, toggle: toggleTheme } = useVuetifyTheme();
       <v-list class="flex-grow-1 flex-shrink-1 overflow-auto" role="menu" density="compact" nav link>
         <v-list-item
           v-for="channel in channels"
-          :key="channel.id"
+          :key="channel.channelId"
           :title="channel.name"
-          :subtitle="channel.globalname"
-          :href="`/kemov/stats/detail/#/${channel.id}`"
+          :subtitle="channel.globalname ?? undefined"
+          :href="`/stats/detail/#/${channel.channelId}`"
           role="menuitem"
           link
           color="v2DrawerListActive"
           base-color="v2DrawerList"
           style="font-size: 0.9rem"
-          :active="pageId === `stats/detail/${channel.id}`"
+          :active="pageId === `stats/detail/${channel.channelId}`"
         >
           <template #prepend>
             <v-avatar :color="channel.color.key" variant="outlined" size="small">
-              <v-img :src="channel.thumbnails.default.url" :alt="channel.fullname" />
+              <v-img v-if="channel.thumbnailUrl" :src="channel.thumbnailUrl" :alt="channel.fullname" />
+              <span v-else class="text-caption">{{ channel.name.slice(0, 1) }}</span>
             </v-avatar>
           </template>
         </v-list-item>
@@ -59,7 +60,7 @@ const { isDark, toggle: toggleTheme } = useVuetifyTheme();
 
       <v-divider />
       <v-list density="compact" link nav slim class="flex-grow-0 flex-shrink-0" role="menu">
-        <v-list-item title="ジェネット楽曲一覧" href="/kemov/genet/music/" role="menuitem">
+        <v-list-item title="ジェネット楽曲一覧" href="/genet/music/" role="menuitem">
           <template #prepend>
             <v-icon icon="mdi-music" size="small" />
           </template>

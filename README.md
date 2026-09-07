@@ -43,9 +43,21 @@ yarn install --immutable
 
 Do not use `.env.local` for this. Vite reads it in every mode, so a value left there also ends up in the production build and ships to visitors.
 
+| Variable                        | Used by              | Notes                           |
+| ------------------------------- | -------------------- | ------------------------------- |
+| `VITE_GENET_MUSIC_LIST_URL`     | the music list       | Where the list is fetched from  |
+| `VITE_GENET_MUSIC_LIST_SUB_URL` | the music list       | An extra list, read in dev only |
+| `VITE_API_BASE`                 | the statistics pages | `vite dev` only — see below     |
+
+The published site leaves `VITE_API_BASE` unset and asks `/api` on its own origin, because the worker that answers the API also serves these pages. Under `yarn dev` the pages come from vite on port 5173 and the worker is not there at all, so point it at a `wrangler dev` or at the deployment:
+
+```sh
+echo 'VITE_API_BASE=https://kemov.nanase.cc/api' >> .env.development.local
+```
+
 ### Compile and Hot-Reload for Development
 
-Default URL: http://localhost:5173/kemov/
+Default URL: http://localhost:5173/stats/
 
 ```sh
 yarn dev
@@ -59,7 +71,7 @@ yarn build
 
 ### Preview Compiled Project for Production
 
-Default URL: http://localhost:4173/kemov/
+Default URL: http://localhost:4173/stats/
 
 ```sh
 yarn preview
@@ -283,15 +295,27 @@ Read that file before running it against anything but a local database. For a mi
 
 ## Deployment
 
-The site is built and published by the `Deploy` workflow on every push to `main`, and GitHub Pages serves that artifact. Build output is not committed: `yarn build` writes to `dist/`, which is ignored.
+One `Deploy` workflow puts up the worker and the site together, on every push to `main` and on demand from the Actions tab. There is no second project and no GitHub Pages: `wrangler.toml` declares `dist/` as the worker's static assets, so `yarn wrangler deploy` uploads the built site alongside the code that answers `/api`.
 
-To roll back, revert the commit and let the workflow redeploy. The workflow can also be run by hand from the Actions tab.
+Cloudflare serves a request that matches a built file directly and never wakes the worker for it, so the worker's `fetch` sees `/api/*` and the paths that are not files. The split between site and API is therefore a branch in code rather than a route pattern in a dashboard.
 
-### The Worker
+They were two workflows until #70. Two meant one could go green while the other did not, and that happened: the worker deployed successfully with none of its secrets registered, and nothing was collected for two and a half hours.
 
-`Deploy Worker` applies the migrations, seeds the `channel` table from `channels.yml`, and then runs `yarn wrangler deploy`, on every push to `main` and on demand from the Actions tab. Migrations go first so that the code never arrives at a schema older than itself, and the `d1_migrations` table makes the step a no-op on a push that adds none. The seed follows them because it needs the columns to exist, and comes before the deploy so that the worker never runs against a `channel` table older than the `channels.yml` it shipped with.
+Build output is not committed: `yarn build` writes to `dist/`, which is ignored.
 
-It type checks and tests the worker before any of that, in a job that holds no credentials, and afterwards checks that the secrets the worker reads are registered; see [Worker Secrets](#worker-secrets). It has no path filter: what Cloudflare runs is whatever is on `main`. The wrangler it uses comes from the lockfile, so a deploy uses the version the repository was tested against.
+To roll back, revert the commit and let the workflow redeploy. `yarn wrangler rollback` is the faster route when what is deployed is already broken.
+
+### What the workflow does
+
+It builds the site into `dist/`, applies the migrations, seeds the `channel` table from `channels.yml`, and then runs `yarn wrangler deploy`. The build is first because it needs no credentials and a failure there should not leave a migration applied for code that never shipped. Migrations come before the deploy so that the code never arrives at a schema older than itself, and the `d1_migrations` table makes the step a no-op on a push that adds none. The seed follows the migrations because it needs the columns to exist, and precedes the deploy so that the worker never runs against a `channel` table older than the `channels.yml` it shipped with.
+
+It type checks and tests both the frontend and the worker before any of that, in a job that holds no credentials, and afterwards checks that the secrets the worker reads are registered; see [Worker Secrets](#worker-secrets). It has no path filter: what Cloudflare runs is whatever is on `main`. The wrangler it uses comes from the lockfile, so a deploy uses the version the repository was tested against.
+
+### The Hostname
+
+`wrangler.toml` claims `kemov.nanase.cc` as a custom domain, which is why the zone's DNS record is created and kept by Cloudflare rather than by hand.
+
+`workers_dev` is off. The subdomain Cloudflare generates for a worker is built from the account's email address with the local part left in it, and a successful deploy prints that URL — into the Actions logs of a public repository, which anyone can read. Nothing needs it once the custom domain exists. Never turn it off before the domain is in place: it is the only other way to reach the worker.
 
 Its credentials come from a GitHub **environment** rather than from repository secrets. An environment secret is only readable by a job that names the environment; a repository secret is readable by every workflow in the repository, including one running from a pull request branch, and most of them have no business holding a token that can deploy.
 
@@ -301,9 +325,7 @@ Its credentials come from a GitHub **environment** rather than from repository s
 | Deployment branches | `main` only                                     |
 | Secrets             | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` |
 
-Settings → Environments → New environment → name it `cloudflare` → under Deployment branches choose "Selected branches and tags" and add `main` → then Add environment secret twice, once per name above. The token needs the "Edit Cloudflare Workers" template plus D1 Edit, because the worker carries a D1 binding.
-
-To roll back, revert the commit and let the workflow redeploy. `yarn wrangler rollback` is the faster route when the worker is already broken.
+Settings → Environments → New environment → name it `cloudflare` → under Deployment branches choose "Selected branches and tags" and add `main` → then Add environment secret twice, once per name above. The token needs the "Edit Cloudflare Workers" template plus D1 Edit, because the worker carries a D1 binding, and DNS Edit on the zone, because the custom domain above is a DNS record.
 
 ## LICENSE
 

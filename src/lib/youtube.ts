@@ -67,6 +67,15 @@ export function getWatchURL(videoId: string) {
   return `//www.youtube.com/watch?v=${videoId}`;
 }
 
+/**
+ * A channel's page, from the handle Channels.list reports.
+ *
+ * The handle already carries its own leading '@', so nothing is added here.
+ */
+export function getChannelURL(customUrl: string) {
+  return `//www.youtube.com/${customUrl}`;
+}
+
 export function getEmbedURL(videoId: string, nocookie: boolean = true) {
   return nocookie ? `//www.youtube-nocookie.com/embed/${videoId}` : `//www.youtube.com/embed/${videoId}`;
 }

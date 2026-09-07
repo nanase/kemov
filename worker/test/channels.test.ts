@@ -42,6 +42,22 @@ beforeEach(async () => {
   await env.DB.prepare('DELETE FROM channel').run();
 });
 
+/** A channel with everything the deploy and the collector fill in. */
+async function insertFullChannel(channelId: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO channel (channel_id, name, fullname, globalname, twitter,
+                          color_key, color_sub, color_light, color_back,
+                          activity_start_date, activity_end_date,
+                          custom_url, thumbnail_url, fetched_at)
+     VALUES (?1, 'カラカル', 'カラカル / Caracal', 'Caracal', 'Caracal_KEMOV',
+             '#F38E0A', '#F8C112', '#FFEBA4', '#FFEBA4',
+             '2021-04-26', '2022-05-21',
+             '@caracal', 'https://yt3.example/photo.jpg', '2026-09-07T12:00:00Z')`,
+  )
+    .bind(channelId)
+    .run();
+}
+
 describe('listChannels', () => {
   test('answers with every channel even before any statistics exist', async () => {
     await insertChannel('UCaaa');
@@ -52,6 +68,50 @@ describe('listChannels', () => {
     expect(channels.map((channel) => channel.channelId)).toEqual(['UCaaa', 'UCbbb']);
     expect(channels[0]?.fetchedAt).toBeNull();
     expect(channels[0]?.perDay.subscriberCount).toEqual({ value: null, reason: 'nothing collected' });
+  });
+
+  // Every page that shows one of these numbers shows the streamer's name,
+  // colour and avatar beside it. custom_url and thumbnail_url exist nowhere
+  // else - channels.yml does not master them - so a front end without them
+  // has no link to the channel and no picture to draw.
+  test('answers with the streamer beside the numbers', async () => {
+    await insertFullChannel('UCaaa');
+
+    const { channels } = await listChannels(env);
+
+    expect(channels[0]).toMatchObject({
+      channelId: 'UCaaa',
+      name: 'カラカル',
+      fullname: 'カラカル / Caracal',
+      globalname: 'Caracal',
+      twitter: 'Caracal_KEMOV',
+      color: { key: '#F38E0A', sub: '#F8C112', light: '#FFEBA4', back: '#FFEBA4' },
+      activityStartDate: '2021-04-26',
+      activityEndDate: '2022-05-21',
+      customUrl: '@caracal',
+      thumbnailUrl: 'https://yt3.example/photo.jpg',
+    });
+  });
+
+  // Null rather than a broken image or a link to nowhere. A channel the
+  // collector has never read has no avatar, and saying so lets the front end
+  // draw something else.
+  test('says a channel has no avatar rather than inventing one', async () => {
+    await insertChannel('UCaaa');
+
+    const { channels } = await listChannels(env);
+
+    expect(channels[0]).toMatchObject({ customUrl: null, thumbnailUrl: null, globalname: null });
+  });
+
+  test('answers one channel with the same fields as the list', async () => {
+    await insertFullChannel('UCaaa');
+
+    expect(await getChannel(env, 'UCaaa')).toMatchObject({
+      name: 'カラカル',
+      customUrl: '@caracal',
+      thumbnailUrl: 'https://yt3.example/photo.jpg',
+    });
   });
 
   test('reports the newest reading and the change over an hour', async () => {

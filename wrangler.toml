@@ -15,6 +15,13 @@ main = "worker/src/index.ts"
 # verifying a behaviour production does not have. See #74.
 compatibility_date = "2026-08-22"
 
+# The workers.dev subdomain, off. It is generated from the account's email
+# address and the local part appears in it verbatim, so every successful
+# deploy would print it into a log that anyone can read - the Actions logs of
+# a public repository are public. Nothing needs it once the route below
+# exists, and the route is applied by the same deploy that turns this off.
+workers_dev = false
+
 # The master copy of every channel, video and snapshot. The worker has no other
 # store, so every job and every endpoint goes through this binding.
 #
@@ -37,6 +44,24 @@ crons = [
   # chat-replay
   "* * * * *",
 ]
+
+# The site itself, built from src/ by vite.
+#
+# Cloudflare serves a request that matches a built file directly and never
+# wakes the worker for it, so `main` sees /api/* and the paths that are not
+# files. That is what lets one deploy carry both: no route ordering to get
+# right, no second project, and the boundary between the two is a branch in
+# code that the tests can reach rather than a setting nobody can see until
+# something 404s in production.
+[assets]
+directory = "./dist"
+
+# The site's own hostname. A custom domain rather than a route pattern:
+# Cloudflare creates and keeps the DNS record for it, which is what makes this
+# reviewable here instead of being a click somewhere else.
+[[routes]]
+pattern = "kemov.nanase.cc"
+custom_domain = true
 
 # No secret is listed here. Secrets are set with `wrangler secret put` and read
 # from the environment at runtime; see "Worker secrets" in the README.
