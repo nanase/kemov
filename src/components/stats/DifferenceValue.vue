@@ -60,14 +60,26 @@ const title = computed<string | undefined>(() => {
 
   return undefined;
 });
+
+/**
+ * The same sentence, for somebody who is not looking at the screen.
+ *
+ * A tooltip is the only place the reason is written, so leaving it to the
+ * pointer would put the whole point of this component - which kind of missing
+ * this is - out of reach of a keyboard or a screen reader. The mark itself is
+ * not read out: '!' and '—' mean nothing said aloud.
+ */
+const label = computed<string | undefined>(() =>
+  title.value === undefined || difference.value === null ? title.value : `${text.value} ${title.value}`,
+);
 </script>
 
 <template>
   <Tag :class="[...classes, difference.value !== null && difference.missing > 0 ? 'difference-partial' : '']">
     <template v-if="title">
-      <span class="difference-explained">
+      <span class="difference-explained" tabindex="0" role="note" :aria-label="label">
         {{ text }}<span v-if="difference.value !== null && difference.missing > 0" class="difference-mark">*</span>
-        <v-tooltip activator="parent" location="top">{{ title }}</v-tooltip>
+        <v-tooltip activator="parent" open-on-focus location="top">{{ title }}</v-tooltip>
       </span>
     </template>
     <template v-else>{{ text }}</template>
