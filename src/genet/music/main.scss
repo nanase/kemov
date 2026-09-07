@@ -27,9 +27,9 @@ h1 {
 }
 
 body {
-    @include media.size(sm) {
-        margin: 0;
-      }
+  @include media.size(sm) {
+    margin: 0;
+  }
 }
 
 a,

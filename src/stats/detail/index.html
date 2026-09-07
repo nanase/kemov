@@ -1,45 +1,47 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
+  <head>
+    <load
+      src="../../header.html"
+      title="けもV いろいろ統計"
+      description="けもVの配信についてのいろいろな統計を閲覧できるサイトです。"
+      page-id="stats/detail"
+    />
+    <link rel="manifest" href="/stats/manifest.json" />
+  </head>
 
-<head>
-  <load src="../../header.html" title="けもV いろいろ統計" description="けもVの配信についてのいろいろな統計を閲覧できるサイトです。"
-    page-id="stats/detail" />
-  <link rel="manifest" href="/stats/manifest.json" />
-</head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp } from 'vue';
+      import router from './router';
 
-<body>
-  <div id="app"></div>
-  <script type="module">
-    import { createApp } from 'vue';
-    import router from './router';
+      import 'vuetify/styles';
+      import '@mdi/font/css/materialdesignicons.css';
+      import { createVuetify } from 'vuetify';
+      import { theme } from './theme';
+      import colors from 'vuetify/lib/util/colors';
+      import * as components from 'vuetify/components';
+      import * as directives from 'vuetify/directives';
+      import { createPinia } from 'pinia';
 
-    import 'vuetify/styles';
-    import '@mdi/font/css/materialdesignicons.css';
-    import { createVuetify } from 'vuetify';
-    import { theme } from './theme'
-    import colors from 'vuetify/lib/util/colors'
-    import * as components from 'vuetify/components';
-    import * as directives from 'vuetify/directives';
-    import { createPinia } from 'pinia'
+      import DetailApp from './DetailApp.vue';
+      import '../main.scss';
 
-    import DetailApp from './DetailApp.vue';
-    import '../main.scss';
-
-    const vuetify = createVuetify({
-      components,
-      directives,
-      icons: {
-        defaultSet: 'mdi',
-      },
-      theme,
-    });
-    const app = createApp(DetailApp);
-    const pinia = createPinia();
-    app.use(router);
-    app.use(vuetify);
-    app.use(pinia);
-    app.mount('#app');
-  </script>
-</body>
-
+      const vuetify = createVuetify({
+        components,
+        directives,
+        icons: {
+          defaultSet: 'mdi',
+        },
+        theme,
+      });
+      const app = createApp(DetailApp);
+      const pinia = createPinia();
+      app.use(router);
+      app.use(vuetify);
+      app.use(pinia);
+      app.mount('#app');
+    </script>
+  </body>
 </html>
