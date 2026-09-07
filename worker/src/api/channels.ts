@@ -20,6 +20,20 @@ interface SnapshotRow {
 
 interface ChannelRow {
   channel_id: string;
+  // Mastered by channels.yml and written by the deploy.
+  name: string;
+  fullname: string;
+  globalname: string | null;
+  twitter: string | null;
+  color_key: string;
+  color_sub: string;
+  color_light: string;
+  color_back: string;
+  activity_start_date: string;
+  activity_end_date: string | null;
+  // Written by the collector from Channels.list. Null until it first succeeds.
+  custom_url: string | null;
+  thumbnail_url: string | null;
   fetched_at: string | null;
   subscriber_count: number | null;
   view_count: number | null;
@@ -58,11 +72,21 @@ const COLUMN: Readonly<Record<CountName, keyof SnapshotRow>> = {
  * shape uses the (channel_id, fetched_at) primary key throughout and runs in
  * 2-3ms, where the same question asked from `channel_snapshot` scans all
  * 578,160 rows.
+ *
+ * The channel's own columns come back with the counts rather than from a
+ * second endpoint. Every page that shows a number shows the streamer's name,
+ * colour and avatar beside it, and `custom_url` and `thumbnail_url` exist
+ * nowhere but here - channels.yml does not master them, the collector writes
+ * them from Channels.list. #69 left them out, which left #70 with a site it
+ * could not draw.
  */
 async function latestPerChannel(db: D1Database): Promise<ChannelRow[]> {
   const { results } = await db
     .prepare(
-      `SELECT c.channel_id,
+      `SELECT c.channel_id, c.name, c.fullname, c.globalname, c.twitter,
+              c.color_key, c.color_sub, c.color_light, c.color_back,
+              c.activity_start_date, c.activity_end_date,
+              c.custom_url, c.thumbnail_url,
               (SELECT s.fetched_at FROM channel_snapshot s
                 WHERE s.channel_id = c.channel_id ORDER BY s.fetched_at DESC LIMIT 1) AS fetched_at,
               (SELECT s.subscriber_count FROM channel_snapshot s
@@ -123,6 +147,26 @@ async function changesFor(
 function present(row: ChannelRow, perHour: Record<CountName, Delta>, perDay: Record<CountName, Delta>) {
   return {
     channelId: row.channel_id,
+    name: row.name,
+    fullname: row.fullname,
+    globalname: row.globalname,
+    twitter: row.twitter,
+    // Grouped the way a person edits them in channels.yml, rather than as the
+    // four flat columns the table stores.
+    color: {
+      key: row.color_key,
+      sub: row.color_sub,
+      light: row.color_light,
+      back: row.color_back,
+    },
+    activityStartDate: row.activity_start_date,
+    // Null while the streamer is active, which is what the site filters on.
+    activityEndDate: row.activity_end_date,
+    // Null until the collector has read the channel once. A page showing a
+    // channel that has never been fetched has no avatar to show, and that is
+    // the honest answer rather than a broken image.
+    customUrl: row.custom_url,
+    thumbnailUrl: row.thumbnail_url,
     // The instant this channel's numbers were read, not the instant of the
     // request. #70 shows it so a stale figure can be seen to be stale.
     fetchedAt: row.fetched_at,
