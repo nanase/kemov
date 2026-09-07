@@ -435,7 +435,17 @@ export async function runVideoDiscover(env: Env, fetchImpl: typeof fetch = fetch
         // of date. Only the channel-targeted row is settled here; the videos
         // this page found get theirs from collectVideos below, under the same
         // kind but their own ids.
-        await collectedStatement(env.DB, 'video_discover', channelId, fetchedAt).run();
+        //
+        // Its own catch, because the one below names PlaylistItems.list and
+        // this is a D1 write - the same split collectVideos keeps between a
+        // call that failed and a write that did. Nothing this tick reads the
+        // row back, and the next successful tick settles it, so saying so is
+        // all there is to do.
+        try {
+          await collectedStatement(env.DB, 'video_discover', channelId, fetchedAt).run();
+        } catch (error) {
+          console.error(`video-discover: settling ${channelId} failed`, error);
+        }
       } catch (error) {
         // One channel's playlist, not the others'. The target is the channel
         // because no video id was learned to blame.

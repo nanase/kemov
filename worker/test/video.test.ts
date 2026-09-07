@@ -294,6 +294,25 @@ describe('runVideoDiscover', () => {
     error.mockRestore();
   });
 
+  test('records a channel that has never failed, so a monitor can see it is current', async () => {
+    await insertChannel('UCaaa');
+
+    await runVideoDiscover(
+      env,
+      apiStub({
+        playlistItems: () => playlistItemsResponse(['fromA']),
+        videos: () => videosListResponse([{ id: 'fromA', channelId: 'UCaaa', duration: 'PT3M' }]),
+      }),
+    );
+
+    // The INSERT half of the upsert, which the test below only reaches by way
+    // of the ON CONFLICT half.
+    expect((await tasks('video_discover')).find((row) => row.target_id === 'UCaaa')).toMatchObject({
+      state: 'done',
+      attempts: 0,
+    });
+  });
+
   test('settles a channel that failed once its playlist is read again', async () => {
     await insertChannel('UCaaa');
 
