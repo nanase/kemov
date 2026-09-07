@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 
-import { listChannels, getChannel, getHistory, readHistoryRange } from '../src/api/channels';
+import { listChannels, getChannel, getHistory, parseInstant, readHistoryRange } from '../src/api/channels';
 
 /**
  * What the channel endpoints compute, against the real D1 rather than a
@@ -205,5 +205,52 @@ describe('readHistoryRange', () => {
   test('refuses an instant it cannot read rather than defaulting it', () => {
     expect(range('from=yesterday')).toEqual({ error: 'from is not an instant' });
     expect(range('to=soon')).toEqual({ error: 'to is not an instant' });
+  });
+
+  test('takes a bare date as the day it names', () => {
+    expect(range('from=2026-09-01&to=2026-09-02')).toMatchObject({
+      from: '2026-09-01T00:00:00Z',
+      to: '2026-09-02T00:00:00Z',
+    });
+  });
+
+  test('refuses a date that is not on the calendar', () => {
+    expect(range('from=2026-02-30')).toEqual({ error: 'from is not an instant' });
+  });
+});
+
+// No D1 either: this reads one string.
+describe('parseInstant', () => {
+  test('takes an instant in the shape the schema stores', () => {
+    expect(parseInstant('2026-09-07T12:00:00Z')).toEqual('2026-09-07T12:00:00Z');
+  });
+
+  test('takes a bare date as its midnight', () => {
+    expect(parseInstant('2026-09-07')).toEqual('2026-09-07T00:00:00Z');
+  });
+
+  // new Date is not a validator. It refuses a thirteenth month but rolls a
+  // thirtieth of February forward into March, so without the round trip these
+  // would be answered - with 200, and with the wrong month's data.
+  test('refuses a date the calendar does not have', () => {
+    expect(parseInstant('2026-02-30')).toBeNull();
+    expect(parseInstant('2026-04-31')).toBeNull();
+    expect(parseInstant('2025-02-29')).toBeNull();
+    expect(parseInstant('2026-13-01')).toBeNull();
+  });
+
+  test('refuses a time the clock does not have', () => {
+    expect(parseInstant('2026-09-07T25:00:00Z')).toBeNull();
+    expect(parseInstant('2026-09-07T12:60:00Z')).toBeNull();
+  });
+
+  // The schema's timestamp columns are this one shape and no other, so an
+  // offset or a fraction is refused here rather than at the CHECK.
+  test('refuses a shape the schema does not store', () => {
+    expect(parseInstant('2026-9-7')).toBeNull();
+    expect(parseInstant('2026-09-07T12:00:00+09:00')).toBeNull();
+    expect(parseInstant('2026-09-07T12:00:00.000Z')).toBeNull();
+    expect(parseInstant('1789180800000')).toBeNull();
+    expect(parseInstant('')).toBeNull();
   });
 });

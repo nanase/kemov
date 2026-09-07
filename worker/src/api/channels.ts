@@ -196,6 +196,40 @@ export const DEFAULT_HISTORY_DAYS = 7;
 /** What a history request asked for, or why it could not be honoured. */
 export type HistoryRange = { from: string; to: string; bucketSeconds: number } | { error: string };
 
+const A_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const AN_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
+/**
+ * A query string's instant, in the schema's shape, or null.
+ *
+ * `new Date` is not a validator. It refuses a thirteenth month but rolls a
+ * thirtieth of February forward into March, so a request for a range starting
+ * 2026-02-30 would be answered - with 200, and with March's data - unless
+ * something checks. Formatting what was parsed and comparing it with what
+ * arrived is the check: a date that had to be moved does not come back the
+ * same.
+ *
+ * That is the schema's own test, in another language. Every timestamp column
+ * carries `strftime(...) IS <column>` for exactly this, and the comment there
+ * names the 31st of April and the 29th of February in a common year as what it
+ * is for. An API that let those through would be writing them straight at a
+ * CHECK that will not.
+ *
+ * A bare date is accepted as its midnight, because asking for a day is the
+ * natural way to ask for a day.
+ */
+export function parseInstant(value: string): string | null {
+  const candidate = A_DATE.test(value) ? `${value}T00:00:00Z` : value;
+
+  if (!AN_INSTANT.test(candidate)) return null;
+
+  const date = new Date(candidate);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  return formatTimestamp(date) === candidate ? candidate : null;
+}
+
 /**
  * Reads a history request's query string.
  *
@@ -221,9 +255,9 @@ export function readHistoryRange(params: URLSearchParams, now: Date): HistoryRan
 
     if (value === null) return formatTimestamp(fallback);
 
-    const date = new Date(value);
+    const instant = parseInstant(value);
 
-    return Number.isNaN(date.getTime()) ? { error: `${name} is not an instant` } : formatTimestamp(date);
+    return instant === null ? { error: `${name} is not an instant` } : instant;
   };
 
   const to = readInstant('to', now);
