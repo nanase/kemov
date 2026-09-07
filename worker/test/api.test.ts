@@ -120,6 +120,28 @@ describe('what every answer carries', () => {
   test('may be cached by the edge for a minute', async () => {
     expect((await get('/api/health')).headers.get('cache-control')).toEqual('public, max-age=60');
   });
+
+  // The answers that are errors carry them too, including the ones the router
+  // gives before a builder is reached. A caller checking these headers finds
+  // them on every response rather than on the successes only.
+  test('says the same on a refusal as on an answer', async () => {
+    const responses = [
+      await get('/api/nothing'),
+      await get('/api/channels/UCnope'),
+      await get('/api/videos/ranking?metric=charisma'),
+      await handleApiRequest(new Request('https://kemov.nanase.cc/api/channels', { method: 'POST' }), env, testCache()),
+    ];
+
+    expect(responses.map((response) => response.status)).toEqual([404, 404, 400, 405]);
+
+    for (const response of responses) {
+      expect(response.headers.get('x-kemov-cache')).toEqual('none');
+      expect(response.headers.get('x-kemov-stale-seconds')).toEqual('0');
+      // Nothing between here and the caller may hold a refusal: the path that
+      // is 404 now is the one an endpoint is about to be added at.
+      expect(response.headers.get('cache-control')).toEqual('no-store');
+    }
+  });
 });
 
 describe('bad requests', () => {

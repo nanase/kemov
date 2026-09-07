@@ -1,6 +1,5 @@
 import type { Env } from '../lib/env';
-import { errorResponse } from '../lib/json';
-import { cachedJson, NotFound } from './cache';
+import { cachedJson, errorWithCacheHeaders, NotFound } from './cache';
 import { getChannel, getHistory, listChannels, readHistoryRange } from './channels';
 import { health } from './health';
 import { listLive } from './live';
@@ -35,7 +34,7 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
   // Reading only. Anything else is refused before a query is built rather
   // than after, so a POST cannot reach D1 by way of a path that ignores it.
   if (request.method !== 'GET' && request.method !== 'HEAD') {
-    return errorResponse(405, `${request.method} is not allowed here`);
+    return errorWithCacheHeaders(405, `${request.method} is not allowed here`);
   }
 
   // A path of at most four parts, named rather than indexed, so that the
@@ -45,7 +44,7 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
   const segments = pathname.replace(/^\/+|\/+$/g, '').split('/');
   const [prefix, resource, name, sub] = segments;
 
-  if (prefix !== 'api') return errorResponse(404, `no endpoint at ${pathname}`);
+  if (prefix !== 'api') return errorWithCacheHeaders(404, `no endpoint at ${pathname}`);
 
   const cached = (build: () => Promise<unknown>) => cachedJson(request, cacheImpl, build);
 
@@ -56,7 +55,7 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
   if (segments.length === 3 && resource === 'videos' && name === 'ranking') {
     const metric = readMetric(searchParams.get('metric'));
 
-    if (metric === null) return errorResponse(400, `no ranking by ${searchParams.get('metric')}`);
+    if (metric === null) return errorWithCacheHeaders(400, `no ranking by ${searchParams.get('metric')}`);
 
     const limit = readLimit(searchParams.get('limit'), DEFAULT_RANKING_SIZE, MAX_RANKING_SIZE);
 
@@ -85,10 +84,10 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
   if (segments.length === 4 && resource === 'channels' && sub === 'history' && name !== undefined) {
     const range = readHistoryRange(searchParams, new Date());
 
-    if ('error' in range) return errorResponse(400, range.error);
+    if ('error' in range) return errorWithCacheHeaders(400, range.error);
 
     return await cached(() => getHistory(env, name, range.from, range.to, range.bucketSeconds));
   }
 
-  return errorResponse(404, `no endpoint at ${pathname}`);
+  return errorWithCacheHeaders(404, `no endpoint at ${pathname}`);
 }

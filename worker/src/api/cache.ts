@@ -51,7 +51,11 @@ export const STALE_SECONDS = 6 * 60 * 60;
 
 /** What a cached response was, when a caller needs to know. */
 export interface CacheOutcome {
-  /** 'fresh' served from cache, 'miss' built now, 'stale' served after a failure. */
+  /**
+   * 'fresh' served from cache, 'miss' built now, 'stale' served after a
+   * failure. An error reports a fourth value, 'none', which is not in this
+   * union because there is no aged body behind it - see errorWithCacheHeaders.
+   */
   state: 'fresh' | 'miss' | 'stale';
   /** How old the served body is, in seconds. Zero when it was just built. */
   staleSeconds: number;
@@ -81,6 +85,28 @@ function withCacheHeaders(response: Response, outcome: CacheOutcome, now: Date):
   headers.set(STORED_AT, response.headers.get(STORED_AT) ?? now.toISOString());
 
   return new Response(response.body, { status: response.status, headers });
+}
+
+/**
+ * An answer that came from neither the store nor a successful build.
+ *
+ * Every answer this API gives says where it came from, and an error is an
+ * answer. Without this, a caller checking `x-kemov-cache` finds it on the
+ * successes and missing on the failures, which turns "which of these is old?"
+ * into a question that has to be asked differently depending on the outcome.
+ *
+ * `no-store` rather than the usual max-age: a 404 for a channel that is about
+ * to exist, or a 503 from a database that is about to come back, must not be
+ * held by anything between here and the caller.
+ */
+export function errorWithCacheHeaders(status: number, message: string): Response {
+  const response = errorResponse(status, message);
+
+  response.headers.set('x-kemov-cache', 'none');
+  response.headers.set('x-kemov-stale-seconds', '0');
+  response.headers.set('cache-control', 'no-store');
+
+  return response;
 }
 
 /**
@@ -126,8 +152,8 @@ export async function cachedJson(
     // Not a failure to answer: an answer. Never served from the store, and
     // never stored, because "no such channel" is cheap to work out again and
     // a cached one would outlive the channel appearing.
-    if (error instanceof NotFound) return errorResponse(404, error.message);
-    if (error instanceof BadRequest) return errorResponse(400, error.message);
+    if (error instanceof NotFound) return errorWithCacheHeaders(404, error.message);
+    if (error instanceof BadRequest) return errorWithCacheHeaders(400, error.message);
 
     console.error(`api: building ${new URL(request.url).pathname} failed`, error);
 
@@ -137,6 +163,6 @@ export async function cachedJson(
 
     // Nothing to fall back to. Saying so is more useful than an empty 200: the
     // caller can retry, and #71's monitoring has something to alert on.
-    return jsonResponse({ error: 'the database could not be read and no cached answer is available' }, { status: 503 });
+    return errorWithCacheHeaders(503, 'the database could not be read and no cached answer is available');
   }
 }

@@ -1,4 +1,4 @@
-import { cachedJson, CACHE_SECONDS, STALE_SECONDS } from '../src/api/cache';
+import { BadRequest, cachedJson, CACHE_SECONDS, NotFound, STALE_SECONDS } from '../src/api/cache';
 
 /**
  * The path that decides whether the site shows old numbers or nothing at all.
@@ -124,6 +124,51 @@ describe('cachedJson', () => {
     expect(await response.json()).toMatchObject({ error: expect.stringContaining('cached') });
 
     error.mockRestore();
+  });
+
+  // An error is an answer, and every answer here says where it came from.
+  // Without this a caller reading x-kemov-cache finds it on the successes and
+  // missing on the failures, so "is this old?" becomes a question that has to
+  // be asked differently depending on the outcome.
+  test('says as much about an error as about an answer', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const cases = [
+      { thrown: new NotFound('no channel UCnope'), status: 404 },
+      { thrown: new BadRequest('cursor is not one this issued'), status: 400 },
+      { thrown: new Error('D1 is not answering'), status: 503 },
+    ];
+
+    for (const { thrown, status } of cases) {
+      const response = await cachedJson(request(), testCache(), async () => {
+        throw thrown;
+      });
+
+      expect(response.status).toEqual(status);
+      expect(response.headers.get('x-kemov-cache')).toEqual('none');
+      expect(response.headers.get('x-kemov-stale-seconds')).toEqual('0');
+      // A 404 for a channel that is about to exist, and a 503 from a database
+      // that is about to come back, must not be held by anything between here
+      // and the caller.
+      expect(response.headers.get('cache-control')).toEqual('no-store');
+    }
+
+    error.mockRestore();
+  });
+
+  // "No such channel" is cheap to work out again, and a stored one would
+  // outlive the channel appearing.
+  test('does not store an error where the next request would find it', async () => {
+    const cache = testCache();
+
+    await cachedJson(request(), cache, async () => {
+      throw new NotFound('no channel UCnope');
+    });
+
+    const second = await cachedJson(request(), cache, async () => ({ n: 1 }));
+
+    expect(second.status).toEqual(200);
+    expect(await second.json()).toEqual({ n: 1 });
   });
 
   test('keeps one answer per URL', async () => {
