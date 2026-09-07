@@ -80,18 +80,14 @@ async function queue(videoId: string, cursor: string | null = null, attempts = 0
     .run();
 }
 
-/** A watch page carrying what the replay call needs, or missing a piece of it. */
-function watchPage({ playability = 'OK', conversationBar = true } = {}): Response {
-  const body = [
-    `{"playabilityStatus":{"status":"${playability}"},`,
-    '"INNERTUBE_API_KEY":"test-key","INNERTUBE_CLIENT_VERSION":"9.9",',
-    conversationBar
-      ? '"conversationBar":{"liveChatRenderer":{"continuations":[{"reloadContinuationData":{"continuation":"page-1"}}]}},'
-      : '',
-    '"trackingParams":"unused"}',
-  ].join('');
-
-  return new Response(body, { status: 200 });
+/**
+ * What the replay endpoint answers for a video that has no chat replay: a 200
+ * carrying only a response context, with no envelope inside it. Measured
+ * against a real upload; the shape, not the size, is what tells it from the
+ * empty last page of a replay that does exist.
+ */
+function noReplay(): Response {
+  return new Response(JSON.stringify({ responseContext: { visitorData: 'unused' } }), { status: 200 });
 }
 
 /** One replay page. Author ids are invented; a real one's never leaves the run. */
@@ -116,11 +112,12 @@ function replayPage(authorIds: readonly string[], next?: string): Response {
 }
 
 /**
- * A fetch that answers the watch page first and then the given replay pages in
- * order, so a test says what the replay contains and nothing else.
+ * A fetch that answers the given replay pages in order, so a test says what
+ * the replay contains and nothing else. Every request is a replay request now
+ * that the watch page is no longer read (#92).
  */
-function serves(pages: readonly Response[], page: Response = watchPage()) {
-  const replies = [page, ...pages];
+function serves(pages: readonly Response[]) {
+  const replies = [...pages];
   let served = 0;
 
   return vi.fn<typeof fetch>(async () => replies[served++] ?? replayPage([]));
@@ -244,7 +241,9 @@ describe('runChatReplay', () => {
       ]);
     });
 
-    test('reads the watch page once and then only the replay endpoint', async () => {
+    // The whole point of #92: the watch page is a request a Cloudflare address
+    // is refused, and it is not made any more. Only the replay endpoint is.
+    test('asks the replay endpoint and nothing else', async () => {
       await insertVideo('vid-1');
       await queue('vid-1');
 
@@ -252,9 +251,34 @@ describe('runChatReplay', () => {
 
       await runChatReplay(env, fetchImpl);
 
-      expect(fetchImpl).toHaveBeenCalledTimes(3);
-      expect(String((fetchImpl.mock.calls[0][0] as Request | URL | string).toString())).toContain('/watch?v=vid-1');
-      expect((fetchImpl.mock.calls[1][0] as Request).url).toContain('get_live_chat_replay');
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+      for (const [input] of fetchImpl.mock.calls) {
+        const url = String(input instanceof Request ? input.url : input);
+
+        expect(url).toContain('get_live_chat_replay');
+        expect(url).not.toContain('/watch');
+      }
+    });
+
+    // The first continuation is built from the two ids rather than read, so a
+    // video starting out asks for its own replay and not somebody else's.
+    test('starts a video at a continuation built from its own ids', async () => {
+      await insertVideo('vid-1');
+      await insertVideo('vid-2');
+      await queue('vid-1');
+      await queue('vid-2');
+
+      const first = serves([replayPage([])]);
+      await runChatReplay(env, first);
+
+      const second = serves([replayPage([])]);
+      await runChatReplay(env, second);
+
+      const asked = async (mock: typeof first) =>
+        ((await (mock.mock.calls[0][0] as Request).json()) as { continuation: string }).continuation;
+
+      expect(await asked(first)).not.toEqual(await asked(second));
     });
 
     test('writes no count until the last page, so a part-counted video reads as uncounted', async () => {
@@ -263,11 +287,7 @@ describe('runChatReplay', () => {
 
       // Never runs out: every page offers another, so the run ends on its page
       // budget rather than on the replay.
-      const fetchImpl = vi.fn<typeof fetch>(async (input) =>
-        String(input instanceof Request ? input.url : input).includes('/watch')
-          ? watchPage()
-          : replayPage(['author-1'], 'page-next'),
-      );
+      const fetchImpl = vi.fn<typeof fetch>(async () => replayPage(['author-1'], 'page-next'));
 
       await runChatReplay(env, fetchImpl);
 
@@ -295,10 +315,7 @@ describe('runChatReplay', () => {
       let replays = 0;
 
       const fetchImpl = vi.fn<typeof fetch>(async (input) => {
-        if (String(input instanceof Request ? input.url : input).includes('/watch')) {
-          return watchPage();
-        }
-
+        void input;
         replays++;
 
         if (replays > 1) {
@@ -336,10 +353,7 @@ describe('runChatReplay', () => {
       let replays = 0;
 
       const fetchImpl = vi.fn<typeof fetch>(async (input) => {
-        if (String(input instanceof Request ? input.url : input).includes('/watch')) {
-          return watchPage();
-        }
-
+        void input;
         replays++;
 
         if (replays === 1) {
@@ -370,16 +384,13 @@ describe('runChatReplay', () => {
 
     test('carries on from the cursor rather than starting the video again', async () => {
       await insertVideo('vid-1');
-      await queue(
-        'vid-1',
-        JSON.stringify({ continuation: 'page-7', messages: 300, apiKey: 'k', clientVersion: '9.9' }),
-      );
+      await queue('vid-1', JSON.stringify({ continuation: 'page-7', messages: 300 }));
 
       const fetchImpl = vi.fn<typeof fetch>(async () => replayPage(['author-1']));
 
       await runChatReplay(env, fetchImpl);
 
-      // No watch page: the cursor still had usable credentials.
+      // The cursor's continuation is asked for, not one built from the ids.
       expect(fetchImpl).toHaveBeenCalledTimes(1);
       expect(await (fetchImpl.mock.calls[0][0] as Request).json()).toMatchObject({ continuation: 'page-7' });
       expect((await allVideos())[0]).toMatchObject({ chat_message_count: 301 });
@@ -387,18 +398,6 @@ describe('runChatReplay', () => {
 
     // Progress is kept and the credentials are not, so a resumed video reads a
     // fresh watch page and then picks up where it stopped.
-    test('reopens the watch page for a cursor that lost its credentials', async () => {
-      await insertVideo('vid-1');
-      await queue('vid-1', JSON.stringify({ continuation: 'page-7', messages: 300 }));
-
-      const fetchImpl = serves([replayPage(['author-1'])]);
-
-      await runChatReplay(env, fetchImpl);
-
-      expect(await (fetchImpl.mock.calls[1][0] as Request).json()).toMatchObject({ continuation: 'page-7' });
-      expect((await allVideos())[0]).toMatchObject({ chat_message_count: 301 });
-    });
-
     test('counts one person who said several things once in the unique count', async () => {
       await insertVideo('vid-1');
       await queue('vid-1');
@@ -441,11 +440,14 @@ describe('runChatReplay', () => {
   });
 
   describe('when it cannot count', () => {
-    test('settles a playable video with no chat as unavailable, not as a failure', async () => {
+    // The confirmed absence this job can still establish without a watch page:
+    // the replay endpoint answers the video's own continuation with no
+    // envelope at all, on the first page, before anything has been counted.
+    test('settles a video whose replay is absent as unavailable, not as a failure', async () => {
       await insertVideo('vid-nochat');
       await queue('vid-nochat');
 
-      await runChatReplay(env, serves([], watchPage({ conversationBar: false })));
+      await runChatReplay(env, serves([noReplay()]));
 
       expect(await allTasks()).toEqual([
         expect.objectContaining({ target_id: 'vid-nochat', state: 'unavailable', next_attempt_at: null }),
@@ -453,29 +455,37 @@ describe('runChatReplay', () => {
       expect((await allVideos())[0]).toMatchObject({ chat_message_count: null });
     });
 
-    // A video can reach 'absent' after pages of it were counted - the chat was
-    // there and then was not - and nothing comes back for a settled task, so
-    // the working rows would sit there for good.
-    test('clears the working rows of a video that turns out to have no chat', async () => {
+    // Nothing comes back for a settled task, so working rows left behind by
+    // one would sit there for good. A run that banks authors writes the cursor
+    // in the same batch, and a cursor sends this answer down the failure path
+    // instead - so the rows are seeded directly here. The delete guards that
+    // reasoning rather than a state the flow is known to reach.
+    test('clears any working rows when it settles a video as having no chat', async () => {
       await insertVideo('vid-gone-chat');
-      await queue('vid-gone-chat', JSON.stringify({ continuation: 'page-7', messages: 300 }));
+      await queue('vid-gone-chat');
       await env.DB.prepare("INSERT INTO chat_author (video_id, author_id) VALUES ('vid-gone-chat', 'author-1')").run();
 
-      await runChatReplay(env, serves([], watchPage({ conversationBar: false })));
+      await runChatReplay(env, serves([noReplay()]));
 
       expect((await allTasks())[0]).toMatchObject({ state: 'unavailable' });
       expect(await authorCount('vid-gone-chat')).toEqual(0);
     });
 
-    test('keeps a video that will not play retryable rather than calling its chat absent', async () => {
-      await insertVideo('vid-gone');
-      await queue('vid-gone');
+    // The same answer means two different things depending on when it comes.
+    // Before anything is counted it is a video with no replay; after pages
+    // have landed it is an answer that makes no sense, because a replay that
+    // has run out keeps its envelope. Calling the second one 'unavailable'
+    // would throw away a video that was halfway counted.
+    test('treats a missing envelope after a landed page as a failure, not an absence', async () => {
+      await insertVideo('vid-1');
+      await queue('vid-1');
 
-      await runChatReplay(env, serves([], watchPage({ playability: 'ERROR' })));
+      await runChatReplay(env, serves([replayPage(['author-1'], 'page-2'), noReplay()]));
 
       const [task] = await allTasks();
       expect(task).toMatchObject({ state: 'failed', attempts: 1 });
       expect(task.next_attempt_at).not.toBeNull();
+      expect(JSON.parse(task.cursor!)).toEqual({ continuation: 'page-2', messages: 1 });
     });
 
     test('retries when the watch page itself will not load', async () => {
@@ -506,16 +516,6 @@ describe('runChatReplay', () => {
 
     // A replay that has run out drops its continuation; one that drops its
     // envelope is an answer we did not understand.
-    test('retries a response that is not a replay page rather than calling it finished', async () => {
-      await insertVideo('vid-1');
-      await queue('vid-1');
-
-      await runChatReplay(env, serves([new Response('{"error":{"code":400}}', { status: 200 })]));
-
-      expect((await allTasks())[0]).toMatchObject({ state: 'failed', attempts: 1 });
-      expect((await allVideos())[0]).toMatchObject({ chat_message_count: null });
-    });
-
     test('backs off further the more times in a row a video fails', async () => {
       await insertVideo('vid-1');
       await queue('vid-1', null, 3);
@@ -619,7 +619,10 @@ describe('runChatReplay', () => {
       await insertVideo('vid-1');
       await queue('vid-1');
 
-      await runChatReplay(env, serves([], watchPage({ playability: 'ERROR' })));
+      await runChatReplay(
+        env,
+        vi.fn<typeof fetch>(async () => new Response('nope', { status: 503 })),
+      );
 
       const [video] = await allVideos();
       expect(video.chat_message_count).toBeNull();
@@ -637,8 +640,9 @@ describe('runChatReplay', () => {
 
       await runChatReplay(env, fetchImpl);
 
-      // The watch page was read again, and the count starts from this run.
-      expect(String(fetchImpl.mock.calls[0][0])).toContain('/watch?v=vid-1');
+      // Started over from a continuation built for this video, and the count
+      // starts from this run rather than from the number the cursor carried.
+      expect((fetchImpl.mock.calls[0][0] as Request).url).toContain('get_live_chat_replay');
       expect((await allVideos())[0]).toMatchObject({ chat_message_count: 1 });
     });
   });

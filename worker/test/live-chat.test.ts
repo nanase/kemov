@@ -1,25 +1,4 @@
-import { parseReplayPage, parseWatchPage, replayRequest, watchUrl } from '../src/lib/live-chat';
-
-// Shaped like the real thing and made up entirely. Nothing a real chat replay
-// returns belongs in this repository: the ids below name nobody, and the
-// author ids are the only field of a real response this job even reads.
-function watchPage(parts: {
-  playability?: string;
-  conversationBar?: boolean;
-  apiKey?: boolean;
-  continuation?: boolean;
-}) {
-  const { playability = 'OK', conversationBar = true, apiKey = true, continuation = true } = parts;
-
-  return [
-    `{"playabilityStatus":{"status":"${playability}","playableInEmbed":true},`,
-    apiKey ? '"INNERTUBE_API_KEY":"test-key","INNERTUBE_CLIENT_VERSION":"9.99999999.99.99",' : '',
-    conversationBar ? '"conversationBar":{"liveChatRenderer":{"continuations":[' : '',
-    conversationBar && continuation ? '{"reloadContinuationData":{"continuation":"page-one"}}' : '',
-    conversationBar ? ']}},' : '',
-    '"trackingParams":"unused"}',
-  ].join('');
-}
+import { chatContinuation, parseReplayPage, readReplayError, replayRequest } from '../src/lib/live-chat';
 
 /** One replay response. `items` names the renderer and its author, if any. */
 function replayResponse(items: readonly { renderer: string; author?: string }[], next?: string) {
@@ -48,75 +27,78 @@ function replayResponse(items: readonly { renderer: string; author?: string }[],
   };
 }
 
-describe('watchUrl', () => {
-  test('names the video', () => {
-    expect(watchUrl('abcdefghijk')).toEqual('https://www.youtube.com/watch?v=abcdefghijk');
+describe('chatContinuation', () => {
+  // The one that matters: this is the exact string YouTube's own watch page
+  // handed out for this video, captured while the page could still be read.
+  // Building it rather than reading it is what let the job stop asking for a
+  // page that a Cloudflare address is refused (#92), so a change that alters
+  // the bytes has stopped doing the thing this rests on.
+  test('builds the continuation the watch page used to hand out', () => {
+    expect(chatContinuation('UCYa58DdXGAGMJQHqTxi-isA', 'LdoAcMRyX9s')).toEqual(
+      'op2w0wRyGl5DaWtxSndvWVZVTlpZVFU0UkdSWVIwRkhUVXBSU0hGVWVHa3RhWE5CRWd0TVpHOUJZMDFTZVZnNWN4b1Q2cWpkdVFFTkNndE1aRzlCWTAxU2VWZzVjeUFCTUFBJTNEQAFyDAgEGAIgACgAMAA4AHgB',
+    );
   });
 
-  test('escapes an id rather than letting it add parameters', () => {
-    expect(watchUrl('a&b=c')).toEqual('https://www.youtube.com/watch?v=a%26b%3Dc');
+  test('depends on both ids, so no two videos share a continuation', () => {
+    const one = chatContinuation('UCYa58DdXGAGMJQHqTxi-isA', 'LdoAcMRyX9s');
+
+    expect(chatContinuation('UCYa58DdXGAGMJQHqTxi-isA', 'vMi7hvvKY5c')).not.toEqual(one);
+    expect(chatContinuation('UCNObi6xvj6QeZ0g7BhAbF7w', 'LdoAcMRyX9s')).not.toEqual(one);
+  });
+
+  test('carries both ids, which is all it is made of', () => {
+    const decoded = atob(
+      chatContinuation('UCYa58DdXGAGMJQHqTxi-isA', 'LdoAcMRyX9s').replace(/-/g, '+').replace(/_/g, '/'),
+    );
+    const inner = atob(decodeURIComponent(/[A-Za-z0-9+/]{40,}%3D/.exec(decoded)?.[0] ?? ''));
+
+    expect(inner).toContain('UCYa58DdXGAGMJQHqTxi-isA');
+    expect(inner).toContain('LdoAcMRyX9s');
+  });
+
+  // The padding of the nested message arrives URL-escaped in YouTube's own
+  // continuations, and one built with a bare '=' instead is refused.
+  test('escapes the padding of the message it nests', () => {
+    const decoded = atob(
+      chatContinuation('UCYa58DdXGAGMJQHqTxi-isA', 'LdoAcMRyX9s').replace(/-/g, '+').replace(/_/g, '/'),
+    );
+
+    expect(decoded).toContain('%3D');
+    expect(decoded).not.toContain('=');
   });
 });
 
 describe('replayRequest', () => {
-  const request = replayRequest({ apiKey: 'test-key', clientVersion: '9.9', continuation: 'page-one' });
+  const request = replayRequest('page-one');
 
-  test('posts to the replay endpoint with the key', () => {
+  test('posts to the replay endpoint with the key every page carries', () => {
     expect(request.method).toEqual('POST');
     expect(new URL(request.url).pathname).toEqual('/youtubei/v1/live_chat/get_live_chat_replay');
-    expect(new URL(request.url).searchParams.get('key')).toEqual('test-key');
+    expect(new URL(request.url).searchParams.get('key')).not.toBeNull();
   });
 
-  test('carries the continuation and the version the page reported', async () => {
-    expect(await request.json()).toEqual({
-      context: { client: { clientName: 'WEB', clientVersion: '9.9' } },
-      continuation: 'page-one',
-    });
+  test('carries the continuation and a client version', async () => {
+    const body = (await request.json()) as { context: { client: { clientVersion: string } }; continuation: string };
+
+    expect(body.continuation).toEqual('page-one');
+    // Pinned rather than read from a page. A real version is what the endpoint
+    // wants; how old it is does not matter to it.
+    expect(body.context.client.clientVersion).toMatch(/^2\.\d{8}\.\d{2}\.\d{2}$/);
   });
 });
 
-describe('parseWatchPage', () => {
-  test('reads the key, the version and the first continuation', () => {
-    expect(parseWatchPage(watchPage({}))).toEqual({
-      kind: 'replay',
-      apiKey: 'test-key',
-      clientVersion: '9.99999999.99.99',
-      continuation: 'page-one',
-    });
+describe('readReplayError', () => {
+  // 400 is what an invented client version earns, and the pinned version is
+  // the one thing here that goes stale on its own. When every video starts
+  // failing at once, the log has to say where to look.
+  test('names the pinned client version on a 400', () => {
+    expect(readReplayError(400)).toContain('client version');
+    expect(readReplayError(400)).toMatch(/2\.\d{8}\.\d{2}\.\d{2}/);
   });
 
-  // The one case that settles a task as 'unavailable', so the one that must
-  // not be reached by any other shape of page.
-  test('reports a playable video with no chat panel as an absent replay', () => {
-    expect(parseWatchPage(watchPage({ conversationBar: false }))).toEqual({ kind: 'absent' });
-  });
-
-  // A video that will not play says nothing about whether it had a chat, so
-  // none of these may end a task as a confirmed absence.
-  test('refuses to call a video that will not play an absent replay', () => {
-    for (const playability of ['ERROR', 'LOGIN_REQUIRED', 'UNPLAYABLE', 'AGE_VERIFICATION_REQUIRED']) {
-      const page = parseWatchPage(watchPage({ playability, conversationBar: false }));
-
-      expect(page).toMatchObject({ kind: 'unusable' });
-    }
-  });
-
-  test('reports a page with no playability status at all as unusable', () => {
-    expect(parseWatchPage('<html>nothing useful</html>')).toMatchObject({ kind: 'unusable' });
-  });
-
-  test('reports a chat panel it cannot open as unusable rather than absent', () => {
-    const page = parseWatchPage(watchPage({ apiKey: false }));
-
-    expect(page).toMatchObject({ kind: 'unusable' });
-    expect(page.kind === 'unusable' && page.why).toContain('INNERTUBE_API_KEY');
-  });
-
-  test('names every part it could not find', () => {
-    const page = parseWatchPage(watchPage({ apiKey: false, continuation: false }));
-
-    expect(page.kind === 'unusable' && page.why).toContain('INNERTUBE_API_KEY');
-    expect(page.kind === 'unusable' && page.why).toContain('the chat continuation');
+  test('says only the status for anything else', () => {
+    expect(readReplayError(503)).toEqual('the replay endpoint responded 503');
+    expect(readReplayError(403)).not.toContain('client version');
   });
 });
 
@@ -135,9 +117,6 @@ describe('parseReplayPage', () => {
     expect(page).toEqual({ authorIds: ['author-1', 'author-2'], messageCount: 2, continuation: 'page-two' });
   });
 
-  // The reason the count is defined by the author field rather than by a list
-  // of renderer names: these four were measured, and two more turned up on a
-  // different stream. A list would have missed them in silence.
   test('counts anything a viewer posted, whatever the renderer is called', () => {
     const renderers = [
       'liveChatTextMessageRenderer',
@@ -183,9 +162,34 @@ describe('parseReplayPage', () => {
     expect(page).toEqual({ authorIds: ['author-1', 'author-1'], messageCount: 2, continuation: 'next' });
   });
 
-  // How a replay ends: the envelope stays, the replay continuation goes.
-  test('reports the last page by its missing continuation', () => {
-    expect(parseReplayPage(replayResponse([]))).toEqual({ authorIds: [], messageCount: 0, continuation: null });
+  // The two shapes that both mean "nothing more to read here" and must not be
+  // confused. The end of a replay keeps the envelope; a video with no replay
+  // has no envelope at all. Size is not what tells them apart - a stream with
+  // one short page ends with an envelope too - the envelope is.
+  describe('the end of a replay against a video that has none', () => {
+    test('reports the last page of a replay by its missing continuation', () => {
+      expect(parseReplayPage(replayResponse([]))).toEqual({ authorIds: [], messageCount: 0, continuation: null });
+    });
+
+    test('reports a replay that ends after one short page the same way', () => {
+      const page = parseReplayPage(replayResponse([{ renderer: 'liveChatTextMessageRenderer', author: 'author-1' }]));
+
+      expect(page).toEqual({ authorIds: ['author-1'], messageCount: 1, continuation: null });
+    });
+
+    test('reports a video with no replay as null, which is not a page at all', () => {
+      // What the endpoint answers for a video that never had a chat: the
+      // envelope is missing rather than empty.
+      expect(parseReplayPage({ responseContext: { visitorData: 'unused' } })).toBeNull();
+    });
+
+    test('tells an empty page from a missing one', () => {
+      const empty = parseReplayPage(replayResponse([]));
+      const missing = parseReplayPage({ responseContext: {} });
+
+      expect(empty).not.toBeNull();
+      expect(missing).toBeNull();
+    });
   });
 
   test('survives a page with no actions at all', () => {
@@ -196,8 +200,6 @@ describe('parseReplayPage', () => {
     });
   });
 
-  // Distinct from the end of a replay on purpose: one is a finished video, the
-  // other is an answer we did not understand and must retry.
   test('refuses a body that is not a replay page at all', () => {
     for (const body of [{}, null, undefined, { continuationContents: {} }, 'not json at all', 42]) {
       expect(parseReplayPage(body)).toBeNull();
