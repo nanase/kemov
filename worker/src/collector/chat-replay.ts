@@ -51,9 +51,9 @@ const PAGE_RETRY_MS = 500;
  * How long to wait for an answer before cutting the request and asking again.
  *
  * A refusal turned out not to be a slow answer but a held connection. Measured
- * from the edge against one replay, walked to its end three times: a page that
- * is answered comes back in 52 to 150 ms, while a 403 arrives after 6.5 to 9.5
- * seconds carrying a block page and no retry-after. Cutting a request that has
+ * from the edge on 2026-09-07 against one replay, walked to its end three
+ * times: a page that is answered comes back in 52 to 150 ms, while a 403
+ * arrives after 6.5 to 9.5 seconds carrying a block page and no retry-after. Cutting a request that has
  * not answered in a second and asking again took the same 21 pages from 40.9
  * seconds to 4.5, and the try straight after a cut succeeded every time - so
  * the refusal is decided at once and only the connection is kept.
@@ -294,9 +294,11 @@ async function readReplayPage(continuation: string, fetchImpl: typeof fetch): Pr
     } else if (response.ok) {
       return { replay: parseReplayPage(await response.json()), retries, cut };
     } else if (response.status !== 403) {
-      // The other two statuses this endpoint uses are about the request itself
-      // - readReplayError names which - so sending it again unchanged would
-      // only be refused again, and the video is better off in its backoff.
+      // Neither of the other two statuses this endpoint uses gets better for
+      // being asked again. A 400 is about the request; a 404 is about the
+      // video, or about the pinned version, and readReplayError says how to
+      // tell those apart (#100). Sending the same thing a second time changes
+      // none of them, so the video is better off in its backoff.
       throw new Error(readReplayError(response.status));
     }
 
