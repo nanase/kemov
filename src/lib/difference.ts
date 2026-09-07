@@ -20,11 +20,19 @@ export function isFault(reason: DeltaMissing): boolean {
   return reason === 'nothing collected' || reason === 'gap too wide';
 }
 
-/** What each reason is called on the page. */
+/**
+ * What each reason is called on the page.
+ *
+ * The middle two differ by one word on purpose. They read "この期間の記録が
+ * ありません" and "この期間の記録がまだありません", so the only difference
+ * between them is the difference between "this will not arrive" and "this has
+ * not arrived yet" - which is the whole distinction the marks are drawn for.
+ * Rewording either one alone takes that away.
+ */
 export const MISSING_TEXT: Readonly<Record<DeltaMissing, string>> = {
   'nothing collected': '統計を取得できていません',
-  'gap too wide': 'この期間の記録が飛んでいます',
-  'history too short': 'この期間ぶんの記録がまだありません',
+  'gap too wide': 'この期間の記録がありません',
+  'history too short': 'この期間の記録がまだありません',
   'count not collected': 'この値は公開されていません',
 };
 
