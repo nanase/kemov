@@ -69,61 +69,52 @@ const countOf = (rows: TaskState[], kind: string, ...states: string[]) =>
   rows.filter((row) => row.kind === kind && states.includes(row.state)).reduce((total, row) => total + row.n, 0);
 
 /**
- * Success is read from where each job writes its results, not from the
- * failures it did not have.
+ * Success is read from the newest 'done' row of that job's own kind, not from
+ * the absence of failures and not from the tables the jobs write into.
  *
- * A job that has never run and a job that is failing look the same from the
- * failure side, and only one of those is an emergency. channel-stats writes a
- * channel_snapshot row when it succeeds; the video jobs move
- * `video.fetched_at`. chat-replay is the exception - what it produces is a
- * count inside a `video` row rather than a row of its own - so its settled
- * task rows are the record that it finished something.
+ * The failure side cannot answer it: a job that has never run and a job that
+ * is failing look identical from there, and only one of those is an emergency.
  *
- * The counts are grouped by kind alone and never by what a target id looks
- * like. video_discover holds two sorts of target in one kind, a channel for a
- * playlist that would not load and a video for one that would not be written,
- * and telling them apart by the id is a trap: a channel id is 24 characters
- * and a video id is 11, but a video id can begin 'UC' as well, and one in
- * production does. Anything that needs them apart has to join to `channel` or
- * `video`, and nothing here needs them apart.
+ * The result tables cannot answer it either, which took a second look to see.
+ * `video.fetched_at` moves when either video job writes, so reading it would
+ * give both the same instant - and video-update runs every tick, so
+ * video-discover could stop entirely and its answer would keep advancing.
+ * That is not an imprecision, it is a job failing invisibly.
+ *
+ * Every job writes a 'done' row per target on each successful run, and every
+ * one of them writes at least one row per tick, so the newest of them is a
+ * heartbeat for that job alone.
+ *
+ * The rows are grouped by kind and never by what a target id looks like.
+ * video_discover holds two sorts of target in one kind, a channel whose
+ * playlist would not load and a video that would not be written, and telling
+ * them apart by the id is a trap: a channel id is 24 characters and a video id
+ * is 11, but a video id can begin 'UC' as well, and one in production does.
+ * Anything needing them apart has to join to `channel` or `video`, and nothing
+ * here needs them apart - the newest 'done' row of the kind is the job's
+ * heartbeat whichever sort of target it belongs to.
  */
 export async function health(env: Env): Promise<{ jobs: JobHealth[]; databaseReadAt: string }> {
-  const [snapshot, videos, chat, tasks] = await env.DB.batch([
-    env.DB.prepare('SELECT max(fetched_at) AS at FROM channel_snapshot'),
-    env.DB.prepare('SELECT max(fetched_at) AS at FROM video'),
-    env.DB.prepare(`SELECT max(updated_at) AS at FROM collect_task WHERE kind = 'chat_replay' AND state = 'done'`),
-    env.DB.prepare(
-      `SELECT kind, state, count(*) AS n, max(updated_at) AS at
-         FROM collect_task
-        GROUP BY kind, state`,
-    ),
-  ]);
+  const { results } = await env.DB.prepare(
+    `SELECT kind, state, count(*) AS n, max(updated_at) AS at
+       FROM collect_task
+      GROUP BY kind, state`,
+  ).all<TaskState>();
 
-  const at = (result: D1Result) => (result.results[0] as { at: string | null } | undefined)?.at ?? null;
-  const rows = tasks.results as TaskState[];
-
-  // Both video jobs move video.fetched_at and nothing records which of them
-  // last did. Reporting one instant for both is honest about that; a column to
-  // tell them apart would be a schema change this task does not need.
-  const lastVideo = at(videos);
-
-  const lastSuccess: Record<JobName, string | null> = {
-    'channel-stats': at(snapshot),
-    'video-discover': lastVideo,
-    'video-update': lastVideo,
-    // Null until a replay finishes. Null says "never", which a monitor has to
-    // tell apart from "a while ago".
-    'chat-replay': at(chat),
-  };
+  const newest = (kind: string, state: string) =>
+    results.find((row) => row.kind === kind && row.state === state)?.at ?? null;
 
   return {
     jobs: JOBS.map(({ job, kind }) => ({
       job,
-      lastSuccessAt: lastSuccess[job],
-      queued: countOf(rows, kind, 'pending', 'running'),
-      failing: countOf(rows, kind, 'failed'),
-      lastFailureAt: rows.find((row) => row.kind === kind && row.state === 'failed')?.at ?? null,
-      unavailable: countOf(rows, kind, 'unavailable'),
+      // Null says "never", which a monitor has to tell apart from "a while
+      // ago". chat-replay answers null today: it has been failing in
+      // production and has never finished one.
+      lastSuccessAt: newest(kind, 'done'),
+      queued: countOf(results, kind, 'pending', 'running'),
+      failing: countOf(results, kind, 'failed'),
+      lastFailureAt: newest(kind, 'failed'),
+      unavailable: countOf(results, kind, 'unavailable'),
     })),
     // When these figures were read. A cached answer keeps the reading's time
     // rather than taking the reader's, which is what makes a stale answer

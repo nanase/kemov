@@ -70,18 +70,48 @@ describe('health', () => {
     expect(await jobNamed('chat-replay')).toMatchObject({ lastSuccessAt: null });
   });
 
-  test('reads each job success from where that job writes its results', async () => {
-    await insertChannel('UCaaa');
-    await insertSnapshot('UCaaa', '2026-09-07T12:00:00Z');
-    await insertVideo('v1', 'UCaaa');
-    await insertTask('chat_replay', 'v1', 'done', '2026-09-07T11:00:00Z');
+  test('reads each job success from that job own done rows', async () => {
+    await insertTask('channel_stats', 'UCaaa', 'done', '2026-09-07T12:00:00Z');
+    await insertTask('video_discover', 'UCaaa', 'done', '2026-09-07T11:00:00Z');
+    await insertTask('video_update', 'v1', 'done', '2026-09-07T10:00:00Z');
+    await insertTask('chat_replay', 'v1', 'done', '2026-09-07T09:00:00Z');
 
     const { jobs } = await health(env);
-    const byName = Object.fromEntries(jobs.map((job) => [job.job, job.lastSuccessAt]));
 
-    expect(byName['channel-stats']).toEqual('2026-09-07T12:00:00Z');
-    expect(byName['video-discover']).toEqual('2026-09-07T00:00:00Z');
-    expect(byName['chat-replay']).toEqual('2026-09-07T11:00:00Z');
+    expect(Object.fromEntries(jobs.map((job) => [job.job, job.lastSuccessAt]))).toEqual({
+      'channel-stats': '2026-09-07T12:00:00Z',
+      'video-discover': '2026-09-07T11:00:00Z',
+      'video-update': '2026-09-07T10:00:00Z',
+      'chat-replay': '2026-09-07T09:00:00Z',
+    });
+  });
+
+  // The tables the jobs write into cannot answer this, which took a second
+  // look to see. Rows arriving is not the same news as a job running: a
+  // migration writes videos nothing collected, and a row can sit there long
+  // after the job that wrote it stopped.
+  test('does not read success from the tables the jobs write into', async () => {
+    await insertChannel('UCaaa');
+    await insertSnapshot('UCaaa', '2026-09-07T12:00:00Z');
+    await insertVideo('v1', 'UCaaa', '2026-09-07T12:00:00Z');
+
+    const { jobs } = await health(env);
+
+    expect(jobs.map((job) => job.lastSuccessAt)).toEqual([null, null, null, null]);
+  });
+
+  // The failure this separation is for. Both video jobs write video.fetched_at
+  // and video-update runs every tick, so a shared reading would show
+  // video-discover as current while it has been stopped for two days - a job
+  // failing invisibly, which is the one thing this endpoint exists to catch.
+  test('does not let one video job stand in for the other', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('v1', 'UCaaa', '2026-09-07T12:00:00Z');
+    await insertTask('video_update', 'v1', 'done', '2026-09-07T12:00:00Z');
+    await insertTask('video_discover', 'UCaaa', 'done', '2026-09-05T00:00:00Z');
+
+    expect((await jobNamed('video-discover'))?.lastSuccessAt).toEqual('2026-09-05T00:00:00Z');
+    expect((await jobNamed('video-update'))?.lastSuccessAt).toEqual('2026-09-07T12:00:00Z');
   });
 
   // chat-replay keeps a row per video as its resume position, so its queue is
