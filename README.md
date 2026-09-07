@@ -77,6 +77,15 @@ yarn lint
 yarn lint:style
 ```
 
+### Format with [Prettier](https://prettier.io/)
+
+`.prettierrc.json` covers the whole repository and CI checks all of it, so `yarn format` writes to all of it too. Neither reaches what git ignores.
+
+```sh
+yarn format                 # rewrite
+yarn prettier --check .     # what CI runs
+```
+
 ## Worker
 
 Collection and the HTTP API run as one Cloudflare Worker. Its code lives under `worker/`, separate from the frontend in `src/`, and `wrangler.toml` at the root configures it.
@@ -128,6 +137,10 @@ The dashboard is the other way in, if you would rather the value never passed th
 | Secret            | Read by                          |
 | ----------------- | -------------------------------- |
 | `YOUTUBE_API_KEY` | the collection jobs (#62 to #65) |
+
+`Deploy Worker` checks that every secret the worker reads is registered, and fails if one is not. What counts as a secret is decided by absence: a member of `Env` in `worker/src/lib/env.ts` that `wrangler.toml` does not supply as a binding or a `[vars]` entry. Adding a member to `Env` is therefore enough to put it under the check.
+
+It runs after the deploy rather than before, and only names are involved on either side. A missing secret does not stop a deploy — wrangler resolves the bindings and never looks at the secrets — so before this existed the worker shipped and its jobs failed one at a time inside D1, which is what #89 records.
 
 For local runs, put the same names in `.dev.vars` at the repository root as `NAME=value` lines. `.dev.vars` and `.dev.vars.*` are gitignored.
 
@@ -278,7 +291,7 @@ To roll back, revert the commit and let the workflow redeploy. The workflow can 
 
 `Deploy Worker` applies the migrations, seeds the `channel` table from `channels.yml`, and then runs `yarn wrangler deploy`, on every push to `main` and on demand from the Actions tab. Migrations go first so that the code never arrives at a schema older than itself, and the `d1_migrations` table makes the step a no-op on a push that adds none. The seed follows them because it needs the columns to exist, and comes before the deploy so that the worker never runs against a `channel` table older than the `channels.yml` it shipped with.
 
-It type checks and tests the worker before either, in a job that holds no credentials. It has no path filter: what Cloudflare runs is whatever is on `main`. The wrangler it uses comes from the lockfile, so a deploy uses the version the repository was tested against.
+It type checks and tests the worker before any of that, in a job that holds no credentials, and afterwards checks that the secrets the worker reads are registered; see [Worker Secrets](#worker-secrets). It has no path filter: what Cloudflare runs is whatever is on `main`. The wrangler it uses comes from the lockfile, so a deploy uses the version the repository was tested against.
 
 Its credentials come from a GitHub **environment** rather than from repository secrets. An environment secret is only readable by a job that names the environment; a repository secret is readable by every workflow in the repository, including one running from a pull request branch, and most of them have no business holding a token that can deploy.
 

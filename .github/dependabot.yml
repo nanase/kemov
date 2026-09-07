@@ -6,7 +6,7 @@ updates:
     schedule:
       interval: weekly
       day: monday
-      time: "09:00"
+      time: '09:00'
       timezone: Asia/Tokyo
     open-pull-requests-limit: 5
 
@@ -17,7 +17,7 @@ updates:
     # The "version-update:" prefix scopes this to version updates, so a
     # security fix that only exists in a newer major is still offered.
     ignore:
-      - dependency-name: "*"
+      - dependency-name: '*'
         update-types:
           - version-update:semver-major
 
@@ -27,7 +27,7 @@ updates:
       minor-and-patch:
         applies-to: version-updates
         patterns:
-          - "*"
+          - '*'
         update-types:
           - minor
           - patch
@@ -37,7 +37,7 @@ updates:
       security:
         applies-to: security-updates
         patterns:
-          - "*"
+          - '*'
 
   # Actions are pinned to commit SHAs in the workflows, so without this
   # nothing would ever move them. Majors are not excluded the way they are
@@ -48,9 +48,9 @@ updates:
     schedule:
       interval: weekly
       day: monday
-      time: "09:00"
+      time: '09:00'
       timezone: Asia/Tokyo
     groups:
       actions:
         patterns:
-          - "*"
+          - '*'

@@ -45,6 +45,13 @@ jobs:
       - name: Check channels.yml
         run: yarn check-channels
 
+      # Everything prettier is willing to parse, not just what a lint rule
+      # covers: .prettierrc.json applies to the whole repository, so checking
+      # a subset would leave the rest declared and unenforced. --check rather
+      # than the format script, which writes.
+      - name: Check the formatting
+        run: yarn prettier --check .
+
       # The lint script passes --fix, which would rewrite files. Check only.
       - name: Lint
         run: yarn eslint .

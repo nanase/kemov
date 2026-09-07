@@ -73,19 +73,26 @@ function channelsListResponse(
 }
 
 async function allChannels(): Promise<ChannelRow[]> {
-  return (await env.DB.prepare('SELECT channel_id, name, custom_url, thumbnail_url, fetched_at FROM channel ORDER BY channel_id').all<ChannelRow>())
-    .results;
+  return (
+    await env.DB.prepare(
+      'SELECT channel_id, name, custom_url, thumbnail_url, fetched_at FROM channel ORDER BY channel_id',
+    ).all<ChannelRow>()
+  ).results;
 }
 
 async function allSnapshots(): Promise<ChannelSnapshotRow[]> {
   return (
-    await env.DB.prepare('SELECT channel_id, fetched_at, subscriber_count, view_count, video_count FROM channel_snapshot ORDER BY channel_id').all<ChannelSnapshotRow>()
+    await env.DB.prepare(
+      'SELECT channel_id, fetched_at, subscriber_count, view_count, video_count FROM channel_snapshot ORDER BY channel_id',
+    ).all<ChannelSnapshotRow>()
   ).results;
 }
 
 async function allCollectTasks(): Promise<CollectTaskRow[]> {
   return (
-    await env.DB.prepare("SELECT kind, target_id, state, attempts, next_attempt_at FROM collect_task WHERE kind = 'channel_stats' ORDER BY target_id").all<CollectTaskRow>()
+    await env.DB.prepare(
+      "SELECT kind, target_id, state, attempts, next_attempt_at FROM collect_task WHERE kind = 'channel_stats' ORDER BY target_id",
+    ).all<CollectTaskRow>()
   ).results;
 }
 
@@ -115,8 +122,22 @@ describe('runChannelStats', () => {
 
     const fetchImpl = vi.fn<typeof fetch>(async () =>
       channelsListResponse([
-        { id: 'UCaaa', customUrl: '@aaa', thumbnailUrl: 'https://example.com/aaa.jpg', viewCount: 100, subscriberCount: 10, videoCount: 5 },
-        { id: 'UCbbb', customUrl: '@bbb', thumbnailUrl: 'https://example.com/bbb.jpg', viewCount: 200, subscriberCount: 20, videoCount: 8 },
+        {
+          id: 'UCaaa',
+          customUrl: '@aaa',
+          thumbnailUrl: 'https://example.com/aaa.jpg',
+          viewCount: 100,
+          subscriberCount: 10,
+          videoCount: 5,
+        },
+        {
+          id: 'UCbbb',
+          customUrl: '@bbb',
+          thumbnailUrl: 'https://example.com/bbb.jpg',
+          viewCount: 200,
+          subscriberCount: 20,
+          videoCount: 8,
+        },
       ]),
     );
 
@@ -133,14 +154,38 @@ describe('runChannelStats', () => {
     expect(snapshots).toHaveLength(2);
     expect(snapshots[0].fetched_at).toEqual(snapshots[1].fetched_at);
     expect(snapshots).toEqual([
-      { channel_id: 'UCaaa', fetched_at: snapshots[0].fetched_at, subscriber_count: 10, view_count: 100, video_count: 5 },
-      { channel_id: 'UCbbb', fetched_at: snapshots[0].fetched_at, subscriber_count: 20, view_count: 200, video_count: 8 },
+      {
+        channel_id: 'UCaaa',
+        fetched_at: snapshots[0].fetched_at,
+        subscriber_count: 10,
+        view_count: 100,
+        video_count: 5,
+      },
+      {
+        channel_id: 'UCbbb',
+        fetched_at: snapshots[0].fetched_at,
+        subscriber_count: 20,
+        view_count: 200,
+        video_count: 8,
+      },
     ]);
 
     const channels = await allChannels();
     expect(channels).toEqual([
-      { channel_id: 'UCaaa', name: 'UCaaa', custom_url: '@aaa', thumbnail_url: 'https://example.com/aaa.jpg', fetched_at: snapshots[0].fetched_at },
-      { channel_id: 'UCbbb', name: 'UCbbb', custom_url: '@bbb', thumbnail_url: 'https://example.com/bbb.jpg', fetched_at: snapshots[0].fetched_at },
+      {
+        channel_id: 'UCaaa',
+        name: 'UCaaa',
+        custom_url: '@aaa',
+        thumbnail_url: 'https://example.com/aaa.jpg',
+        fetched_at: snapshots[0].fetched_at,
+      },
+      {
+        channel_id: 'UCbbb',
+        name: 'UCbbb',
+        custom_url: '@bbb',
+        thumbnail_url: 'https://example.com/bbb.jpg',
+        fetched_at: snapshots[0].fetched_at,
+      },
     ]);
   });
 
@@ -163,7 +208,9 @@ describe('runChannelStats', () => {
     await runChannelStats(
       env,
       vi.fn(async () =>
-        channelsListResponse([{ id: 'UCaaa', viewCount: 1, subscriberCount: 0, hiddenSubscriberCount: true, videoCount: 1 }]),
+        channelsListResponse([
+          { id: 'UCaaa', viewCount: 1, subscriberCount: 0, hiddenSubscriberCount: true, videoCount: 1 },
+        ]),
       ),
     );
 
