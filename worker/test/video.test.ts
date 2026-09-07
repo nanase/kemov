@@ -106,10 +106,17 @@ function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
 }
 
-/** Routes one fetch stub to whichever endpoint the URL names. */
+/**
+ * Routes one fetch stub to whichever endpoint the URL names.
+ *
+ * `shorts` answers the /shorts/<id> probe. It defaults to the redirect
+ * YouTube sends for anything that is not a short, so a test that says nothing
+ * about shorts gets the common case rather than a failed probe.
+ */
 function apiStub(handlers: {
   playlistItems?: (url: URL) => Response;
   videos?: (url: URL) => Response;
+  shorts?: (videoId: string) => Response;
 }): ReturnType<typeof vi.fn<typeof fetch>> {
   return vi.fn<typeof fetch>(async (input) => {
     const url = new URL(input as string | URL);
@@ -124,8 +131,24 @@ function apiStub(handlers: {
       return handlers.videos(url);
     }
 
+    if (url.pathname.startsWith('/shorts/')) {
+      const videoId = url.pathname.slice('/shorts/'.length);
+
+      return handlers.shorts ? handlers.shorts(videoId) : redirectAwayFromShorts(videoId);
+    }
+
     throw new Error(`unexpected call to ${url.pathname}`);
   });
+}
+
+/** What YouTube answers for a video that is not a short. */
+function redirectAwayFromShorts(videoId: string): Response {
+  return new Response(null, { status: 303, headers: { location: `https://www.youtube.com/watch?v=${videoId}` } });
+}
+
+/** What YouTube answers for one that is. */
+function servedAsShort(): Response {
+  return new Response('', { status: 200 });
 }
 
 function callsTo(fetchImpl: ReturnType<typeof vi.fn<typeof fetch>>, endpoint: string): URL[] {
@@ -349,6 +372,7 @@ describe('runVideoUpdate', () => {
     const fetchImpl = apiStub({
       videos: () =>
         videosListResponse([{ id: 'vid1', channelId: 'UCaaa', title: 'renamed', duration: 'PT30S', viewCount: 4200 }]),
+      shorts: () => servedAsShort(),
     });
 
     await runVideoUpdate(env, fetchImpl);
@@ -356,6 +380,83 @@ describe('runVideoUpdate', () => {
     expect(await allVideos()).toMatchObject([
       { video_id: 'vid1', title: 'renamed', type: 'shorts', duration_seconds: 30, view_count: 4200 },
     ]);
+  });
+
+  // A thirty-second upload is the one case where the kind cannot be read off
+  // the API response, so this is where the probe's answer lands. Redirected
+  // away from /shorts/, it is a video - and the rule this replaces would have
+  // said shorts from the length alone.
+  test('takes a redirect away from /shorts/ as the video not being one', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('vid1', 'UCaaa');
+
+    const fetchImpl = apiStub({
+      videos: () => videosListResponse([{ id: 'vid1', channelId: 'UCaaa', title: 'clip', duration: 'PT30S' }]),
+    });
+
+    await runVideoUpdate(env, fetchImpl);
+
+    expect(await allVideos()).toMatchObject([{ video_id: 'vid1', type: 'video', duration_seconds: 30 }]);
+  });
+
+  // The refusal case, which is the whole reason the probe answers three ways
+  // rather than two. The kind is left unset, and the next sweep asks again.
+  // Writing 'video' here would be #58's -1 in a different column.
+  test('leaves the kind unset when the probe is refused', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('vid1', 'UCaaa');
+
+    const fetchImpl = apiStub({
+      videos: () => videosListResponse([{ id: 'vid1', channelId: 'UCaaa', title: 'clip', duration: 'PT30S' }]),
+      shorts: () => new Response('denied', { status: 403 }),
+    });
+
+    await runVideoUpdate(env, fetchImpl);
+
+    expect(await allVideos()).toMatchObject([{ video_id: 'vid1', type: null, duration_seconds: 30 }]);
+  });
+
+  // The probe costs a request, so it is only spent where the answer is not
+  // already settled. A stream is never a short, whatever its length.
+  test('does not ask about a stream', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('vid1', 'UCaaa');
+
+    const fetchImpl = apiStub({
+      videos: () =>
+        videosListResponse([
+          {
+            id: 'vid1',
+            channelId: 'UCaaa',
+            title: 'a stream that ended at once',
+            duration: 'PT4S',
+            liveStreamingDetails: { actualEndTime: '2026-09-07T13:00:04Z' },
+          },
+        ]),
+      shorts: () => {
+        throw new Error('the probe should not have been spent on a stream');
+      },
+    });
+
+    await runVideoUpdate(env, fetchImpl);
+
+    expect(await allVideos()).toMatchObject([{ video_id: 'vid1', type: 'streaming' }]);
+  });
+
+  test('does not ask about anything longer than a short can be', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('vid1', 'UCaaa');
+
+    const fetchImpl = apiStub({
+      videos: () => videosListResponse([{ id: 'vid1', channelId: 'UCaaa', title: 'a talk', duration: 'PT10M12S' }]),
+      shorts: () => {
+        throw new Error('the probe should not have been spent on a ten-minute video');
+      },
+    });
+
+    await runVideoUpdate(env, fetchImpl);
+
+    expect(await allVideos()).toMatchObject([{ video_id: 'vid1', type: 'video' }]);
   });
 
   // Videos.list does not accept maxResults alongside id, so the batch size is

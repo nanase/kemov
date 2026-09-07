@@ -4,7 +4,9 @@ import {
   determineAvailability,
   determineLiveBroadcastContent,
   determineVideoType,
+  needsShortsProbe,
   parseDurationSeconds,
+  readShortsProbe,
   toCount,
   type LiveStreamingDetails,
 } from '../lib/video';
@@ -162,7 +164,12 @@ function collectedStatement(db: D1Database, kind: TaskKind, targetId: string, at
  * chat columns are the only ones left out, because #65 owns them and this job
  * knows nothing about them.
  */
-function videoStatement(db: D1Database, item: VideosListItem, fetchedAt: string): D1PreparedStatement {
+function videoStatement(
+  db: D1Database,
+  item: VideosListItem,
+  fetchedAt: string,
+  isShort: boolean | null,
+): D1PreparedStatement {
   const channelId = item.snippet?.channelId;
   const title = item.snippet?.title;
   const publishedAt = toSchemaTimestamp(item.snippet?.publishedAt);
@@ -209,7 +216,7 @@ function videoStatement(db: D1Database, item: VideosListItem, fetchedAt: string)
       publishedAt,
       determineAvailability({ returned: true, privacyStatus: item.status?.privacyStatus }),
       liveBroadcastContent,
-      determineVideoType(durationSeconds, liveBroadcastContent, details),
+      determineVideoType(durationSeconds, liveBroadcastContent, details, isShort),
       // A stream that has not finished reports 'P0D', a real 0 that would
       // claim the stream was instantaneous. The kind rule already ignores it;
       // the column stores nothing rather than a zero nobody measured.
@@ -246,6 +253,68 @@ function unavailableStatement(db: D1Database, videoId: string, fetchedAt: string
         WHERE video_id = ?1`,
     )
     .bind(videoId, fetchedAt);
+}
+
+/**
+ * Where YouTube serves a short, and redirects everything else away.
+ *
+ * The one thing Data API v3 will not say is whether a video is a short, so
+ * this is asked of the watch path instead. #66 measured what the answer is
+ * worth: across 22 videos the page agreed with the system being replaced
+ * every time, while deciding it from the duration alone was wrong for 17 of
+ * the archive's rows.
+ */
+const SHORTS_URL_BASE = 'https://www.youtube.com/shorts/';
+
+/**
+ * Asks YouTube which of these videos are shorts.
+ *
+ * Only the ones whose answer is not already settled are asked - a stream is
+ * never a short and neither is anything over the length limit - which is
+ * about two videos in a batch of fifty, so this adds roughly 250 requests a
+ * day beside the 2,000 units the jobs already spend.
+ *
+ * `redirect: 'manual'` because the redirect is the answer. Followed, a
+ * non-short would arrive as the 200 of its own watch page and read as a
+ * short, which is the one mistake this call exists to avoid.
+ *
+ * A video whose probe fails is absent from the map rather than false in it.
+ * The caller passes that through as null, and null keeps the kind unset for
+ * another sweep instead of settling it wrongly.
+ */
+async function probeShorts(
+  items: readonly VideosListItem[],
+  fetchImpl: typeof fetch,
+): Promise<Map<string, boolean | null>> {
+  const answers = new Map<string, boolean | null>();
+
+  const asked = items.filter((item) => {
+    const details = item.liveStreamingDetails;
+
+    return needsShortsProbe(
+      parseDurationSeconds(item.contentDetails?.duration),
+      determineLiveBroadcastContent(details),
+      details,
+    );
+  });
+
+  await Promise.all(
+    asked.map(async (item) => {
+      try {
+        const response = await fetchImpl(`${SHORTS_URL_BASE}${item.id}`, { redirect: 'manual' });
+
+        answers.set(item.id, readShortsProbe(response.status));
+      } catch (error) {
+        // Nothing was learned, which is what null says. Left out of the map
+        // it would read the same, but saying it here keeps the count of
+        // failures visible to anyone reading a log beside the tick.
+        console.warn(`video-update: /shorts/ probe failed for one video`, error);
+        answers.set(item.id, null);
+      }
+    }),
+  );
+
+  return answers;
 }
 
 /**
@@ -290,6 +359,9 @@ async function collectVideos(
     }
 
     const returned = new Map(items.map((item) => [item.id, item]));
+    // Asked before any statement is built, so that one round of questions
+    // covers the whole chunk rather than one per video inside the loop.
+    const shorts = await probeShorts(items, fetchImpl);
 
     // Each video's row and its task row, paired so the two can never disagree
     // about how that video's tick ended.
@@ -315,7 +387,10 @@ async function collectVideos(
                   unavailableStatement(env.DB, videoId, fetchedAt),
                   missedStatement(env.DB, kind, videoId, 'unavailable', fetchedAt),
                 ]
-              : [videoStatement(env.DB, item, fetchedAt), collectedStatement(env.DB, kind, videoId, fetchedAt)],
+              : [
+                  videoStatement(env.DB, item, fetchedAt, shorts.get(videoId) ?? null),
+                  collectedStatement(env.DB, kind, videoId, fetchedAt),
+                ],
         });
       } catch (error) {
         console.error(`${kind}: ${videoId} came back without the columns a row needs`, error);

@@ -3,7 +3,9 @@ import {
   determineLiveBroadcastContent,
   determineVideoType,
   isFreeChatPlaceholder,
+  needsShortsProbe,
   parseDurationSeconds,
+  readShortsProbe,
   toCount,
 } from '../src/lib/video';
 
@@ -109,17 +111,58 @@ describe('determineLiveBroadcastContent', () => {
   });
 });
 
+describe('needsShortsProbe', () => {
+  test('asks about a short video that was never broadcast', () => {
+    expect(needsShortsProbe(61, 'none', undefined)).toBe(true);
+  });
+
+  // Measured: none of the 190 shorts in the archive carries a
+  // liveStreamingDetails, so a stream is settled without asking.
+  test('does not ask about a stream that has ended', () => {
+    expect(needsShortsProbe(44, 'none', { actualEndTime: '2026-09-07T15:22:47Z' })).toBe(false);
+  });
+
+  test('does not ask about a stream that is running or announced', () => {
+    expect(needsShortsProbe(0, 'live', { actualStartTime: '2026-09-07T13:01:12Z' })).toBe(false);
+    expect(needsShortsProbe(0, 'upcoming', { scheduledStartTime: '2026-09-07T13:00:00Z' })).toBe(false);
+  });
+
+  test('does not ask about anything longer than a short can be', () => {
+    expect(needsShortsProbe(182, 'none', undefined)).toBe(false);
+  });
+
+  // The limit is three minutes and the reported duration rounds up, which is
+  // why the five 61-second shorts exist at all.
+  test('asks one second past the limit', () => {
+    expect(needsShortsProbe(181, 'none', undefined)).toBe(true);
+  });
+
+  test('does not ask while the length is unknown', () => {
+    expect(needsShortsProbe(null, 'none', undefined)).toBe(false);
+  });
+});
+
+describe('readShortsProbe', () => {
+  test('reads the shorts page being served as yes', () => {
+    expect(readShortsProbe(200)).toBe(true);
+  });
+
+  test.each([301, 302, 303, 307, 308])('reads a redirect away from /shorts/ as no (%i)', (status) => {
+    expect(readShortsProbe(status)).toBe(false);
+  });
+
+  // The failure #58 exists to remove: a refusal recorded as a verdict. 403 is
+  // not hypothetical - the chat job is being refused several times a tick on
+  // the same host - and a 403 read as "not a short" would settle the kind of
+  // a video nobody had an answer for.
+  test.each([403, 404, 429, 500, 503])('reads %i as no answer rather than as no', (status) => {
+    expect(readShortsProbe(status)).toBeNull();
+  });
+});
+
 describe('determineVideoType', () => {
   test('is video for an ordinary upload', () => {
     expect(determineVideoType(612, 'none', undefined)).toEqual('video');
-  });
-
-  test('is shorts at sixty seconds', () => {
-    expect(determineVideoType(60, 'none', undefined)).toEqual('shorts');
-  });
-
-  test('is video at sixty-one seconds', () => {
-    expect(determineVideoType(61, 'none', undefined)).toEqual('video');
   });
 
   test('is streaming for a stream that has ended', () => {
@@ -140,13 +183,43 @@ describe('determineVideoType', () => {
     expect(determineVideoType(null, 'none', undefined)).toBeNull();
   });
 
+  // #66 checked 22 videos against youtube.com/shorts/<id> itself. Each case
+  // below is one of those readings, and each was decided the other way by the
+  // length rule this replaces.
+
+  // Five videos in the archive report 61 seconds and are served at /shorts/.
+  // The length rule called them video.
+  test('is shorts for a 61-second video YouTube serves at /shorts/', () => {
+    expect(determineVideoType(61, 'none', undefined, true)).toEqual('shorts');
+  });
+
+  // Eight uploads between 17 and 59 seconds are redirected to /watch. The
+  // length rule called them shorts.
+  test('is video for a short upload YouTube redirects to /watch', () => {
+    expect(determineVideoType(44, 'none', undefined, false)).toEqual('video');
+  });
+
+  // A stream that ended after four seconds. It is a stream whatever its
+  // length, and it is not asked about at all - the length rule made it a
+  // short, which is what #63's completion criterion asked for and what
+  // YouTube contradicts.
+  test('is streaming for a stream that ended inside a minute', () => {
+    expect(determineVideoType(4, 'none', { actualEndTime: '2026-09-07T13:00:04Z' })).toEqual('streaming');
+  });
+
+  // The point of the whole change: an unanswered question leaves the kind
+  // unset, and video-update comes back within a day. Settling it either way
+  // would be the old system's -1 in another column.
+  test('is null when YouTube did not answer', () => {
+    expect(determineVideoType(45, 'none', undefined, null)).toBeNull();
+  });
+
   // The old getVideoType answered from the stored value and returned before
-  // reading the length, so 12 of 197 videos of a minute or less stayed
-  // misclassified. Nothing here takes a previous answer at all, so the same
-  // inputs give the same answer whatever came before.
+  // reading anything, so a video classified before its length was known kept
+  // that answer. Nothing here takes a previous answer at all.
   test('decides from the arguments alone, with no previous answer to keep', () => {
-    expect(determineVideoType(45, 'none', undefined)).toEqual('shorts');
-    expect(determineVideoType(45, 'none', undefined)).toEqual('shorts');
+    expect(determineVideoType(45, 'none', undefined, true)).toEqual('shorts');
+    expect(determineVideoType(45, 'none', undefined, true)).toEqual('shorts');
   });
 });
 
