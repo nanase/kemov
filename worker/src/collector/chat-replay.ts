@@ -163,8 +163,8 @@ async function recordFailure(
  * envelope is a video that has no replay to read. Which of those a null means
  * depends on where in a video it arrives, so the decision is the caller's.
  */
-async function readReplayPage(continuation: string, fetchImpl: typeof fetch) {
-  const response = await fetchImpl(replayRequest(continuation));
+async function readReplayPage(apiKey: string, continuation: string, fetchImpl: typeof fetch) {
+  const response = await fetchImpl(replayRequest(apiKey, continuation));
 
   if (!response.ok) {
     throw new Error(readReplayError(response.status));
@@ -394,6 +394,7 @@ async function finishVideo(
 async function collectOne(
   db: D1Database,
   task: TaskRow,
+  apiKey: string,
   lease: string,
   now: Date,
   fetchImpl: typeof fetch,
@@ -421,7 +422,7 @@ async function collectOne(
     let counted = opened?.messages ?? 0;
 
     for (let page = 0; page < PAGES_PER_VIDEO; page++) {
-      const replay = await readReplayPage(continuation, fetchImpl);
+      const replay = await readReplayPage(apiKey, continuation, fetchImpl);
 
       if (!replay) {
         // No envelope at all. On the first page of a video nothing has read
@@ -581,7 +582,7 @@ export async function runChatReplay(env: Env, fetchImpl: typeof fetch = fetch): 
   if (tasks.length > 0) {
     for (const task of tasks) {
       try {
-        await collectOne(env.DB, task, lease, now, fetchImpl);
+        await collectOne(env.DB, task, env.YOUTUBE_INNERTUBE_KEY, lease, now, fetchImpl);
       } catch (error) {
         // collectOne handles its own failures; what reaches here is the one
         // it could not record - a D1 that refused the failure write too. One

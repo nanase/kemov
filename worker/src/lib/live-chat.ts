@@ -22,15 +22,6 @@
 const REPLAY_URL = 'https://www.youtube.com/youtubei/v1/live_chat/get_live_chat_replay';
 
 /**
- * The key every watch page hands out.
- *
- * Not a credential: it is the same string for every visitor, is served in the
- * HTML of any YouTube page, and identifies the web client rather than anyone
- * using it. It has been this value for years.
- */
-const INNERTUBE_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
-
-/**
  * The web client version the requests claim to be.
  *
  * Pinned rather than read from a page, because the page is what #92 removed.
@@ -161,9 +152,15 @@ export function chatContinuation(channelId: string, videoId: string): string {
   return base64(outer).replace(/\+/g, '-').replace(/\//g, '_');
 }
 
-/** The replay request for one continuation. */
-export function replayRequest(continuation: string): Request {
-  return new Request(`${REPLAY_URL}?key=${INNERTUBE_KEY}&prettyPrint=false`, {
+/**
+ * The replay request for one continuation.
+ *
+ * The key is handed in rather than held here, the same way callYouTubeApi
+ * takes one. It is YOUTUBE_INNERTUBE_KEY, which env.ts describes; what it is
+ * and why a value that public is a secret are written down there.
+ */
+export function replayRequest(apiKey: string, continuation: string): Request {
+  return new Request(`${REPLAY_URL}?key=${encodeURIComponent(apiKey)}&prettyPrint=false`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({

@@ -76,12 +76,18 @@ describe('chatContinuation', () => {
 });
 
 describe('replayRequest', () => {
-  const request = replayRequest('page-one');
+  // Handed in rather than held in the source. The real one is a secret now,
+  // for the reason env.ts gives, so nothing in these tests is a real key.
+  const request = replayRequest('test-key', 'page-one');
 
-  test('posts to the replay endpoint with the key every page carries', () => {
+  test('posts to the replay endpoint with the key it was handed', () => {
     expect(request.method).toEqual('POST');
     expect(new URL(request.url).pathname).toEqual('/youtubei/v1/live_chat/get_live_chat_replay');
-    expect(new URL(request.url).searchParams.get('key')).not.toBeNull();
+    expect(new URL(request.url).searchParams.get('key')).toEqual('test-key');
+  });
+
+  test('escapes the key rather than letting it add parameters', () => {
+    expect(new URL(replayRequest('a&b=c', 'page-one').url).searchParams.get('key')).toEqual('a&b=c');
   });
 
   test('carries the continuation and a client version', async () => {
