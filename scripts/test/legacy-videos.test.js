@@ -198,6 +198,25 @@ describe('convertChannel', () => {
   test('answers for an empty file without failing', () => {
     expect(convertChannel([], channelId)).toEqual({ rows: [], skipped: [], read: 0 });
   });
+
+  // What an interrupted run leaves behind. wrangler applies the statements in
+  // order, so a prefix of them lands; oldest first makes that prefix the
+  // history with the newest videos missing, which is exactly what
+  // video-discover's first page checks, so the interruption reports itself.
+  // The reverse would leave the rows that page expects and silence the
+  // warning.
+  test('puts the oldest videos first whatever order the source is in', () => {
+    const { rows } = convertChannel(
+      [
+        record({ videoId: 'newest', publishedAt: '2026-09-05T00:00:00Z' }),
+        record({ videoId: 'oldest', publishedAt: '2021-04-26T14:06:40Z' }),
+        record({ videoId: 'middle', publishedAt: '2024-01-01T00:00:00Z' }),
+      ],
+      channelId,
+    );
+
+    expect(rows.map((row) => row.video_id)).toEqual(['oldest', 'middle', 'newest']);
+  });
 });
 
 describe('rowsToSql', () => {
@@ -209,6 +228,16 @@ describe('rowsToSql', () => {
 
     expect(sql).toContain('ON CONFLICT (video_id) DO NOTHING;');
     expect(sql).not.toContain('DO UPDATE');
+  });
+
+  // Every statement, not just the first. A channel is split across several,
+  // and one written without the clause would be the only one that overwrites -
+  // silently, because the others would still behave.
+  test('guards every statement it writes, not only the first', () => {
+    const sql = rowsToSql(rows(ROWS_PER_STATEMENT * 3), channelId, 'x');
+
+    expect(sql.match(/INSERT INTO video/g)).toHaveLength(3);
+    expect(sql.match(/ON CONFLICT \(video_id\) DO NOTHING;/g)).toHaveLength(3);
   });
 
   // A quoted NULL is the string 'NULL', which STRICT refuses in an INTEGER

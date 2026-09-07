@@ -244,5 +244,21 @@ export function convertChannel(records, channelId) {
     else skipped.push({ channelId, reason: result.skipped });
   }
 
+  // Oldest first, which decides how a half-applied file fails.
+  //
+  // `wrangler d1 execute --file` runs the statements in order, so an
+  // interrupted run leaves a prefix of them applied. Oldest first makes that
+  // prefix the channel's history with its newest videos missing, which is what
+  // video-discover's first page is looking at: nothing on that page is stored,
+  // so it warns and the interruption announces itself. Newest first would
+  // leave exactly the rows that page expects to find, the overlap would look
+  // real, the warning would fall silent, and the missing history behind it
+  // would have nothing left to report it.
+  //
+  // The source files happen to be in this order already. Sorting anyway is the
+  // point: it is this script that owes the guarantee, not the system it is
+  // reading, which is being decommissioned in #72 and answers to nobody here.
+  rows.sort((a, b) => (a.published_at < b.published_at ? -1 : a.published_at > b.published_at ? 1 : 0));
+
   return { rows, skipped, read: records.length };
 }
