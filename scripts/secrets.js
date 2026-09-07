@@ -11,7 +11,10 @@
 
 import { readFileSync } from 'node:fs';
 
-/** The interface that names everything the worker is handed at runtime. */
+/**
+ * The interface that names everything the worker is handed at runtime,
+ * relative to the repository root.
+ */
 export const envPath = 'worker/src/lib/env.ts';
 
 /** The file that names the bindings, relative to the repository root. */
@@ -118,7 +121,7 @@ export function missingSecrets(expected, listed) {
     throw new Error('the secret list is not an array');
   }
 
-  const registered = new Set(listed.map((entry) => entry?.name));
+  const registered = new Set(listed.map(({ name }) => name));
 
   return expected.filter((name) => !registered.has(name));
 }

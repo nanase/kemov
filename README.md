@@ -79,14 +79,12 @@ yarn lint:style
 
 ### Format with [Prettier](https://prettier.io/)
 
-`.prettierrc.json` applies to the whole repository, and CI checks the whole repository against it. `yarn format` rewrites; `prettier --check` is what CI runs, and it only reports.
+`.prettierrc.json` covers the whole repository and CI checks all of it, so `yarn format` writes to all of it too. Neither reaches what git ignores.
 
 ```sh
-yarn format                 # rewrite everything prettier parses
+yarn format                 # rewrite
 yarn prettier --check .     # what CI runs
 ```
-
-Neither reaches what git ignores: prettier reads `.gitignore` as well as `.prettierignore`, so `dist/`, `coverage/` and `.wrangler/` are already out.
 
 ## Worker
 
