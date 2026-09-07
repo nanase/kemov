@@ -77,6 +77,17 @@ yarn lint
 yarn lint:style
 ```
 
+### Format with [Prettier](https://prettier.io/)
+
+`.prettierrc.json` applies to the whole repository, and CI checks the whole repository against it. `yarn format` rewrites; `prettier --check` is what CI runs, and it only reports.
+
+```sh
+yarn format                 # rewrite everything prettier parses
+yarn prettier --check .     # what CI runs
+```
+
+Neither reaches what git ignores: prettier reads `.gitignore` as well as `.prettierignore`, so `dist/`, `coverage/` and `.wrangler/` are already out.
+
 ## Worker
 
 Collection and the HTTP API run as one Cloudflare Worker. Its code lives under `worker/`, separate from the frontend in `src/`, and `wrangler.toml` at the root configures it.
