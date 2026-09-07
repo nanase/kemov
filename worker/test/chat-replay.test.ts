@@ -323,6 +323,51 @@ describe('runChatReplay', () => {
       expect((await allTasks())[0]).toMatchObject({ state: 'done' });
     });
 
+    // Nothing bounds how long a fetch may hang, so a run can still be paging
+    // after its lease has run out and another tick has taken the video. Every
+    // write is conditioned on the lease so that the run which lost it writes
+    // nothing. A stale finish is the one that cannot be undone: it records a
+    // count and deletes the rows the count was built from.
+    test('stops rather than writing over a tick that took the video from it', async () => {
+      await insertVideo('vid-1');
+      await queue('vid-1');
+
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      let replays = 0;
+
+      const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+        if (String(input instanceof Request ? input.url : input).includes('/watch')) {
+          return watchPage();
+        }
+
+        replays++;
+
+        if (replays === 1) {
+          // What a second tick claiming the video looks like: a lease of its
+          // own, further out than the one this run is holding.
+          await env.DB.prepare(
+            `UPDATE collect_task
+                SET state = 'running', next_attempt_at = '2026-01-01T09:00:00Z'
+              WHERE kind = 'chat_replay' AND target_id = 'vid-1'`,
+          ).run();
+        }
+
+        // No next continuation, so a run that carried on would finish the
+        // video and write its counts.
+        return replayPage(['author-1']);
+      });
+
+      await runChatReplay(env, fetchImpl);
+
+      expect(warn).toHaveBeenCalledWith('chat-replay: vid-1 was taken by another tick before it could be finished');
+      // The other tick's claim is untouched, and no count was written.
+      expect((await allTasks())[0]).toMatchObject({ state: 'running', next_attempt_at: '2026-01-01T09:00:00Z' });
+      expect((await allVideos())[0]).toMatchObject({ chat_message_count: null, chat_unique_user_count: null });
+      expect(await authorCount('vid-1')).toEqual(0);
+
+      warn.mockRestore();
+    });
+
     test('carries on from the cursor rather than starting the video again', async () => {
       await insertVideo('vid-1');
       await queue(

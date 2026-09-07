@@ -142,19 +142,22 @@ async function recordFailure(
   task: TaskRow,
   landed: Landed | null,
   failures: number,
+  lease: string,
   now: Date,
-): Promise<void> {
+): Promise<boolean> {
   const attempts = failures + 1;
   const cursor = landed ? JSON.stringify(landed) : null;
 
-  await db
+  const { meta } = await db
     .prepare(
       `UPDATE collect_task
          SET state = 'failed', attempts = ?1, next_attempt_at = ?2, cursor = ?3, updated_at = ?4
-       WHERE kind = 'chat_replay' AND target_id = ?5`,
+       WHERE kind = 'chat_replay' AND target_id = ?5 AND next_attempt_at = ?6`,
     )
-    .bind(attempts, backoffFrom(now, attempts), cursor, formatTimestamp(now), task.target_id)
+    .bind(attempts, backoffFrom(now, attempts), cursor, formatTimestamp(now), task.target_id, lease)
     .run();
+
+  return (meta.changes ?? 0) > 0;
 }
 
 /** Fetches and parses one video's watch page. */
@@ -187,13 +190,42 @@ async function readReplayPage(session: ChatSession, fetchImpl: typeof fetch) {
   return page;
 }
 
-/** The statements that add one page's authors, in a form that repeats safely. */
-function authorInserts(db: D1Database, videoId: string, authorIds: readonly string[]): D1PreparedStatement[] {
-  const insert = db.prepare('INSERT OR IGNORE INTO chat_author (video_id, author_id) VALUES (?1, ?2)');
+/**
+ * Whether a write took.
+ *
+ * Every write here is conditioned on the lease, so a write that changed
+ * nothing does not mean the row is missing. It means another tick holds the
+ * video now, and this run has to stop rather than write over it.
+ */
+function held(result: D1Result): boolean {
+  return (result.meta.changes ?? 0) > 0;
+}
+
+/**
+ * The statements that add one page's authors, in a form that repeats safely.
+ *
+ * Conditioned on the lease like every other write here, so that a run which
+ * has lost the video cannot leave authors behind for one that has since been
+ * counted and had its working rows cleared.
+ */
+function authorInserts(
+  db: D1Database,
+  videoId: string,
+  authorIds: readonly string[],
+  lease: string,
+): D1PreparedStatement[] {
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO chat_author (video_id, author_id)
+     SELECT ?1, ?2
+      WHERE EXISTS (
+            SELECT 1 FROM collect_task
+             WHERE kind = 'chat_replay' AND target_id = ?1 AND next_attempt_at = ?3
+          )`,
+  );
 
   // Deduplicated here as well as by the primary key, only to keep a chatty
   // page from becoming fifty identical statements.
-  return [...new Set(authorIds)].map((authorId) => insert.bind(videoId, authorId));
+  return [...new Set(authorIds)].map((authorId) => insert.bind(videoId, authorId, lease));
 }
 
 /**
@@ -204,17 +236,31 @@ function authorInserts(db: D1Database, videoId: string, authorIds: readonly stri
  * would ever come back for those rows once the task is settled. No count is
  * written on this path, so deleting them loses nothing.
  */
-async function recordAbsent(db: D1Database, videoId: string, now: Date): Promise<void> {
-  await db.batch([
+async function recordAbsent(db: D1Database, videoId: string, lease: string, now: Date): Promise<boolean> {
+  // The delete goes first because the update below is what ends the lease, and
+  // the delete is conditioned on that lease still being there. finishVideo
+  // orders its four statements the same way, and for the same reason.
+  const results = await db.batch([
+    db
+      .prepare(
+        `DELETE FROM chat_author
+          WHERE video_id = ?1
+           AND EXISTS (
+                 SELECT 1 FROM collect_task
+                  WHERE kind = 'chat_replay' AND target_id = ?1 AND next_attempt_at = ?2
+               )`,
+      )
+      .bind(videoId, lease),
     db
       .prepare(
         `UPDATE collect_task
            SET state = 'unavailable', next_attempt_at = NULL, cursor = NULL, updated_at = ?1
-         WHERE kind = 'chat_replay' AND target_id = ?2`,
+         WHERE kind = 'chat_replay' AND target_id = ?2 AND next_attempt_at = ?3`,
       )
-      .bind(formatTimestamp(now), videoId),
-    db.prepare('DELETE FROM chat_author WHERE video_id = ?1').bind(videoId),
+      .bind(formatTimestamp(now), videoId, lease),
   ]);
+
+  return held(results[results.length - 1]);
 }
 
 /**
@@ -233,6 +279,7 @@ async function openSession(
   db: D1Database,
   task: TaskRow,
   opened: Progress | null,
+  lease: string,
   now: Date,
   fetchImpl: typeof fetch,
 ): Promise<ChatSession | null> {
@@ -245,7 +292,7 @@ async function openSession(
   if (page.kind === 'absent') {
     // The one confirmed absence this job can establish: the video plays and
     // has no chat replay to read. Everything else stays retryable.
-    await recordAbsent(db, task.target_id, now);
+    await recordAbsent(db, task.target_id, lease, now);
     console.log(`chat-replay: ${task.target_id} has no chat replay`);
     return null;
   }
@@ -264,24 +311,30 @@ async function openSession(
  * That pairing is the whole point: were the cursor to advance while an author
  * insert failed, the video would carry on from the next page having silently
  * lost the one before, and nothing afterwards could tell.
+ *
+ * The lease is rewritten to the same value it already holds, which keeps the
+ * video claimed for as long as this run keeps making progress.
  */
 async function writePage(
   db: D1Database,
   videoId: string,
   authorIds: readonly string[],
   progress: Progress,
+  lease: string,
   now: Date,
-): Promise<void> {
-  await db.batch([
-    ...authorInserts(db, videoId, authorIds),
+): Promise<boolean> {
+  const results = await db.batch([
+    ...authorInserts(db, videoId, authorIds, lease),
     db
       .prepare(
         `UPDATE collect_task
            SET state = 'running', attempts = 0, cursor = ?1, next_attempt_at = ?2, updated_at = ?3
-         WHERE kind = 'chat_replay' AND target_id = ?4`,
+         WHERE kind = 'chat_replay' AND target_id = ?4 AND next_attempt_at = ?2`,
       )
-      .bind(JSON.stringify(progress), plusMinutes(now, LEASE_MINUTES), formatTimestamp(now), videoId),
+      .bind(JSON.stringify(progress), lease, formatTimestamp(now), videoId),
   ]);
+
+  return held(results[results.length - 1]);
 }
 
 /**
@@ -292,17 +345,19 @@ async function writePage(
  * could take a video this one was still reading; this releases it the moment
  * the run stops, rather than a lease later.
  */
-async function releaseForNextTick(db: D1Database, videoId: string, now: Date): Promise<void> {
+async function releaseForNextTick(db: D1Database, videoId: string, lease: string, now: Date): Promise<boolean> {
   const timestamp = formatTimestamp(now);
 
-  await db
+  const { meta } = await db
     .prepare(
       `UPDATE collect_task
          SET state = 'pending', next_attempt_at = ?1, updated_at = ?1
-       WHERE kind = 'chat_replay' AND target_id = ?2`,
+       WHERE kind = 'chat_replay' AND target_id = ?2 AND next_attempt_at = ?3`,
     )
-    .bind(timestamp, videoId)
+    .bind(timestamp, videoId, lease)
     .run();
+
+  return (meta.changes ?? 0) > 0;
 }
 
 /**
@@ -318,27 +373,43 @@ async function finishVideo(
   videoId: string,
   authorIds: readonly string[],
   messages: number,
+  lease: string,
   now: Date,
-): Promise<void> {
-  await db.batch([
-    ...authorInserts(db, videoId, authorIds),
+): Promise<boolean> {
+  const results = await db.batch([
+    ...authorInserts(db, videoId, authorIds, lease),
     db
       .prepare(
         `UPDATE video
            SET chat_message_count = ?1,
                chat_unique_user_count = (SELECT count(*) FROM chat_author WHERE video_id = ?2)
-         WHERE video_id = ?2`,
+         WHERE video_id = ?2
+           AND EXISTS (
+                 SELECT 1 FROM collect_task
+                  WHERE kind = 'chat_replay' AND target_id = ?2 AND next_attempt_at = ?3
+               )`,
       )
-      .bind(messages, videoId),
-    db.prepare('DELETE FROM chat_author WHERE video_id = ?1').bind(videoId),
+      .bind(messages, videoId, lease),
+    db
+      .prepare(
+        `DELETE FROM chat_author
+          WHERE video_id = ?1
+           AND EXISTS (
+                 SELECT 1 FROM collect_task
+                  WHERE kind = 'chat_replay' AND target_id = ?1 AND next_attempt_at = ?2
+               )`,
+      )
+      .bind(videoId, lease),
     db
       .prepare(
         `UPDATE collect_task
            SET state = 'done', attempts = 0, cursor = NULL, next_attempt_at = NULL, updated_at = ?1
-         WHERE kind = 'chat_replay' AND target_id = ?2`,
+         WHERE kind = 'chat_replay' AND target_id = ?2 AND next_attempt_at = ?3`,
       )
-      .bind(formatTimestamp(now), videoId),
+      .bind(formatTimestamp(now), videoId, lease),
   ]);
+
+  return held(results[results.length - 1]);
 }
 
 /**
@@ -350,7 +421,13 @@ async function finishVideo(
  * load or parse, a replay call that is refused, an answer that is not a replay
  * page, and a D1 write that throws part of the way through the pages.
  */
-async function collectOne(db: D1Database, task: TaskRow, now: Date, fetchImpl: typeof fetch): Promise<void> {
+async function collectOne(
+  db: D1Database,
+  task: TaskRow,
+  lease: string,
+  now: Date,
+  fetchImpl: typeof fetch,
+): Promise<void> {
   const opened = readProgress(task.cursor);
 
   // What a failure would record, and only ever what a write has actually
@@ -364,7 +441,7 @@ async function collectOne(db: D1Database, task: TaskRow, now: Date, fetchImpl: t
   let failures = task.attempts;
 
   try {
-    const session = await openSession(db, task, opened, now, fetchImpl);
+    const session = await openSession(db, task, opened, lease, now, fetchImpl);
 
     if (!session) {
       return;
@@ -381,18 +458,30 @@ async function collectOne(db: D1Database, task: TaskRow, now: Date, fetchImpl: t
       const total = counted + replay.messageCount;
 
       if (!replay.continuation) {
-        await finishVideo(db, task.target_id, replay.authorIds, total, now);
+        if (!(await finishVideo(db, task.target_id, replay.authorIds, total, lease, now))) {
+          console.warn(`chat-replay: ${task.target_id} was taken by another tick before it could be finished`);
+          return;
+        }
+
         console.log(`chat-replay: ${task.target_id} counted ${total} messages over ${page + 1} pages`);
         return;
       }
 
-      await writePage(
+      const kept = await writePage(
         db,
         task.target_id,
         replay.authorIds,
         { ...session, continuation: replay.continuation, messages: total },
+        lease,
         now,
       );
+
+      if (!kept) {
+        // Another tick holds the video now, so it is counting the same pages
+        // from the cursor it found. Carrying on would only write over it.
+        console.warn(`chat-replay: ${task.target_id} was taken by another tick, so this run stops`);
+        return;
+      }
 
       continuation = replay.continuation;
       counted = total;
@@ -400,11 +489,11 @@ async function collectOne(db: D1Database, task: TaskRow, now: Date, fetchImpl: t
       failures = 0;
     }
 
-    await releaseForNextTick(db, task.target_id, now);
+    await releaseForNextTick(db, task.target_id, lease, now);
     console.log(`chat-replay: ${task.target_id} used its ${PAGES_PER_VIDEO} pages and will carry on next tick`);
   } catch (error) {
     console.error(`chat-replay: ${task.target_id} failed`, error);
-    await recordFailure(db, task, landed, failures, now);
+    await recordFailure(db, task, landed, failures, lease, now);
   }
 }
 
@@ -423,7 +512,9 @@ async function collectOne(db: D1Database, task: TaskRow, now: Date, fetchImpl: t
  * then count it. The lease this writes puts the row out of its own subquery's
  * reach, so the second run finds nothing to take.
  */
-async function claimDue(db: D1Database, now: Date): Promise<TaskRow[]> {
+async function claimDue(db: D1Database, now: Date): Promise<{ tasks: TaskRow[]; lease: string }> {
+  const lease = plusMinutes(now, LEASE_MINUTES);
+
   const { results } = await db
     .prepare(
       `UPDATE collect_task
@@ -439,10 +530,10 @@ async function claimDue(db: D1Database, now: Date): Promise<TaskRow[]> {
               )
     RETURNING target_id, cursor, attempts`,
     )
-    .bind(plusMinutes(now, LEASE_MINUTES), formatTimestamp(now), VIDEOS_PER_TICK)
+    .bind(lease, formatTimestamp(now), VIDEOS_PER_TICK)
     .all<TaskRow>();
 
-  return results;
+  return { tasks: results, lease };
 }
 
 /**
@@ -495,12 +586,12 @@ async function enqueueEndedStreams(db: D1Database, now: Date): Promise<number> {
  */
 export async function runChatReplay(env: Env, fetchImpl: typeof fetch = fetch): Promise<void> {
   const now = new Date();
-  const due = await claimDue(env.DB, now);
+  const { tasks, lease } = await claimDue(env.DB, now);
 
-  if (due.length > 0) {
-    for (const task of due) {
+  if (tasks.length > 0) {
+    for (const task of tasks) {
       try {
-        await collectOne(env.DB, task, now, fetchImpl);
+        await collectOne(env.DB, task, lease, now, fetchImpl);
       } catch (error) {
         // collectOne handles its own failures; what reaches here is the one
         // it could not record - a D1 that refused the failure write too. One
