@@ -237,6 +237,36 @@ async function recordFailure(
 }
 
 /**
+ * One request for a page, or null when it was cut for taking too long.
+ *
+ * The deadline is cleared as soon as the headers are in, so what it covers is
+ * the wait for an answer and not the reading of the page behind it. A body
+ * that stalls halfway through is a different failure with no cover here; #104
+ * has that one.
+ */
+async function askForPage(continuation: string, fetchImpl: typeof fetch): Promise<Response | null> {
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), PAGE_DEADLINE_MS);
+
+  try {
+    return await fetchImpl(replayRequest(continuation, controller.signal));
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      return null;
+    }
+
+    // Everything else leaves unchanged, which is the one place this file does
+    // that. A request that failed for some other reason is not a refusal, so
+    // there is nothing here to say about it, and collectOne logs what it
+    // catches - so the error itself carries more than a sentence written here
+    // could.
+    throw error;
+  } finally {
+    clearTimeout(deadline);
+  }
+}
+
+/**
  * Fetches and parses one replay page, or null when the answer carried no
  * replay at all.
  *
@@ -281,31 +311,6 @@ async function readReplayPage(continuation: string, fetchImpl: typeof fetch): Pr
     }
 
     await new Promise((resolve) => setTimeout(resolve, PAGE_RETRY_MS));
-  }
-}
-
-/**
- * One request for a page, or null when it was cut for taking too long.
- *
- * The deadline is cleared as soon as the headers are in, so what it covers is
- * the wait for an answer and not the reading of the page behind it. A body
- * that stalls halfway through is a different failure with no cover here; #104
- * has that one.
- */
-async function askForPage(continuation: string, fetchImpl: typeof fetch): Promise<Response | null> {
-  const controller = new AbortController();
-  const deadline = setTimeout(() => controller.abort(), PAGE_DEADLINE_MS);
-
-  try {
-    return await fetchImpl(replayRequest(continuation, controller.signal));
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      return null;
-    }
-
-    throw error;
-  } finally {
-    clearTimeout(deadline);
   }
 }
 

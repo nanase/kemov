@@ -713,6 +713,24 @@ describe('runChatReplay', () => {
       expect((await allTasks())[0]).toMatchObject({ state: 'failed', attempts: 1 });
     });
 
+    // A request that fails for some other reason is not a refusal, so it is
+    // not asked again. Only the deadline and a 403 buy another try; anything
+    // else goes straight to the backoff, where a tick that comes later can
+    // find out whether it has cleared.
+    test('does not ask again when the request failed for some other reason', async () => {
+      await insertVideo('vid-1');
+      await queue('vid-1');
+
+      const fetchImpl = vi.fn<typeof fetch>(async () => {
+        throw new Error('network down');
+      });
+
+      await runChatReplay(env, fetchImpl);
+
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect((await allTasks())[0]).toMatchObject({ state: 'failed', attempts: 1 });
+    });
+
     // The other half of the same rule, on a status that is about the request
     // rather than about nothing in particular.
     test('does not ask again when the refusal is about the request', async () => {
