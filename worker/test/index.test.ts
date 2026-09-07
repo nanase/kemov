@@ -8,13 +8,29 @@ import handler from '../src/index';
 // reading a binding or a field of the controller fails here rather than at the
 // deploy.
 describe('the worker entry', () => {
-  test('sends requests to the API', async () => {
+  // An endpoint that exists, so this proves the request reached the API and
+  // that the API was handed a D1 binding and a cache to work with. A path that
+  // does not exist would answer 404 whether or not either arrived.
+  test('sends requests to the API, with the bindings it needs', async () => {
     const ctx = createExecutionContext();
     const response = await handler.fetch!(new Request('https://kemov.nanase.cc/api/channels'), env, ctx);
 
     await waitOnExecutionContext(ctx);
 
-    expect(await response.json()).toEqual({ error: 'no endpoint at /api/channels' });
+    expect(response.status).toEqual(200);
+    expect(await response.json()).toMatchObject({ channels: expect.any(Array) });
+    // Set by the cache the entry point passes in. Without one the API could
+    // not have answered at all.
+    expect(response.headers.get('x-kemov-cache')).not.toBeNull();
+  });
+
+  test('answers 404 for a path the API does not serve', async () => {
+    const ctx = createExecutionContext();
+    const response = await handler.fetch!(new Request('https://kemov.nanase.cc/api/nothing'), env, ctx);
+
+    await waitOnExecutionContext(ctx);
+
+    expect(await response.json()).toEqual({ error: 'no endpoint at /api/nothing' });
   });
 
   test('sends scheduled triggers to the collector', async () => {
