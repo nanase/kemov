@@ -293,6 +293,33 @@ describe('runVideoDiscover', () => {
 
     error.mockRestore();
   });
+
+  test('settles a channel that failed once its playlist is read again', async () => {
+    await insertChannel('UCaaa');
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await runVideoDiscover(env, apiStub({ playlistItems: () => new Response('nope', { status: 500 }) }));
+    error.mockRestore();
+
+    expect(await missed('video_discover')).toMatchObject([{ target_id: 'UCaaa', state: 'failed', attempts: 1 }]);
+
+    await runVideoDiscover(
+      env,
+      apiStub({
+        playlistItems: () => playlistItemsResponse(['fromA']),
+        videos: () => videosListResponse([{ id: 'fromA', channelId: 'UCaaa', duration: 'PT3M' }]),
+      }),
+    );
+
+    // The channel's own row, not the video's: both are 'video_discover', and
+    // only the one the failure was recorded against is at stake here.
+    expect(await missed('video_discover')).toEqual([]);
+    expect((await tasks('video_discover')).find((row) => row.target_id === 'UCaaa')).toMatchObject({
+      state: 'done',
+      attempts: 0,
+      next_attempt_at: null,
+    });
+  });
 });
 
 describe('runVideoUpdate', () => {
