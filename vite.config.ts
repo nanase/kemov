@@ -11,7 +11,11 @@ const srcDir = resolve(root, 'src');
 // https://vitejs.dev/config/
 export default defineConfig({
   root: srcDir,
-  base: '/kemov/',
+  // The site has its own host now rather than a directory of another one, so
+  // every asset and every link it writes for itself is rooted here. #70's pull
+  // request notes that nanase.cc/kemov/ needs a redirect set up outside this
+  // repository, because the old paths are the ones people have.
+  base: '/',
   publicDir: resolve(root, 'public'),
   envDir: root,
   plugins: [
