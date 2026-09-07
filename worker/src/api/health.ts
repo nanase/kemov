@@ -1,4 +1,5 @@
 import type { Env } from '../lib/env';
+import { formatTimestamp } from '../lib/time';
 
 /**
  * GET /api/health
@@ -80,6 +81,6 @@ export async function health(env: Env): Promise<{ jobs: JobHealth[]; databaseRea
     // When these figures were read. A cached answer keeps the reading's time
     // rather than taking the reader's, which is what makes a stale answer
     // recognisable as one.
-    databaseReadAt: `${new Date().toISOString().slice(0, 19)}Z`,
+    databaseReadAt: formatTimestamp(new Date()),
   };
 }

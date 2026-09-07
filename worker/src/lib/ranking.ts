@@ -32,6 +32,22 @@ export function isRankingMetric(value: string): value is RankingMetric {
 }
 
 /**
+ * These two functions return SQL, which nothing else in worker/src/lib does,
+ * and their results are interpolated into a query rather than bound.
+ *
+ * That is safe here for one reason, and it is worth naming because it is the
+ * kind of thing that stops being true quietly. Neither function takes text
+ * from a request: both take a RankingMetric, which is a union of eleven
+ * literals, and the only way to obtain one from a caller is isRankingMetric,
+ * which rejects anything else before the query is built. The strings below are
+ * written in this file and nowhere else.
+ *
+ * A metric that had to carry a value from the caller - a threshold, a channel
+ * to filter to - could not be handled this way. That belongs in a bound
+ * parameter, and this pair should not grow one.
+ */
+
+/**
  * The SQL expression each metric orders by.
  *
  * The per-second ones divide by `duration_seconds`, which is why they are

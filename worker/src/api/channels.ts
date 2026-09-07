@@ -1,5 +1,6 @@
 import { changeOver, DAY_SECONDS, HOUR_SECONDS, type Delta, type Sample } from '../lib/delta';
 import type { Env } from '../lib/env';
+import { formatTimestamp } from '../lib/time';
 
 /**
  * The endpoints that read `channel` and `channel_snapshot`.
@@ -93,7 +94,7 @@ async function snapshotAt(db: D1Database, channelId: string, at: string): Promis
 }
 
 function shift(from: string, seconds: number): string {
-  return `${new Date(new Date(from).getTime() - seconds * 1000).toISOString().slice(0, 19)}Z`;
+  return formatTimestamp(new Date(new Date(from).getTime() - seconds * 1000));
 }
 
 function sampleOf(row: SnapshotRow | ChannelRow | null, count: CountName): Sample | undefined {
@@ -166,6 +167,80 @@ export async function getChannel(env: Env, channelId: string) {
   if (row === undefined) return null;
 
   return present(row, await changesFor(env.DB, row, HOUR_SECONDS), await changesFor(env.DB, row, DAY_SECONDS));
+}
+
+/**
+ * The buckets a history request may ask for, by the name it asks with.
+ *
+ * Named here rather than in the router, so that what this endpoint accepts
+ * sits beside what it does with it - the same place ../api/videos.ts keeps
+ * readLimit and readMetric.
+ */
+export const HISTORY_BUCKETS: Readonly<Record<string, number>> = {
+  '10m': 10 * 60,
+  hour: 60 * 60,
+  day: 24 * 60 * 60,
+};
+
+/**
+ * The longest span one request may ask for.
+ *
+ * A year and a bit. Longer than any question the site asks, and short enough
+ * that a request cannot ask this worker to read every snapshot ever taken.
+ */
+export const MAX_HISTORY_DAYS = 400;
+
+/** How far back a request reaches when it does not say. */
+export const DEFAULT_HISTORY_DAYS = 7;
+
+/** What a history request asked for, or why it could not be honoured. */
+export type HistoryRange = { from: string; to: string; bucketSeconds: number } | { error: string };
+
+/**
+ * Reads a history request's query string.
+ *
+ * Refuses rather than clamps, unlike readLimit next door. A limit outside the
+ * range has an obvious sensible reading and a date range does not: silently
+ * moving `from` would answer a different question from the one asked and look
+ * like an answer to the original.
+ */
+export function readHistoryRange(params: URLSearchParams, now: Date): HistoryRange {
+  const bucketName = params.get('bucket') ?? 'hour';
+  const bucketSeconds = HISTORY_BUCKETS[bucketName];
+
+  if (bucketSeconds === undefined) {
+    return { error: `bucket must be one of ${Object.keys(HISTORY_BUCKETS).join(', ')}` };
+  }
+
+  // Absent and unreadable are answered differently. Absent means the caller
+  // did not ask, so the default stands in. Unreadable means the caller asked
+  // for something this cannot honour, and standing a default in there would
+  // answer a week's question as though it were the one that was sent.
+  const readInstant = (name: string, fallback: Date): string | { error: string } => {
+    const value = params.get(name);
+
+    if (value === null) return formatTimestamp(fallback);
+
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime()) ? { error: `${name} is not an instant` } : formatTimestamp(date);
+  };
+
+  const to = readInstant('to', now);
+
+  if (typeof to !== 'string') return to;
+
+  const from = readInstant('from', new Date(now.getTime() - DEFAULT_HISTORY_DAYS * 86400 * 1000));
+
+  if (typeof from !== 'string') return from;
+
+  if (from > to) return { error: 'from is after to' };
+
+  if ((new Date(to).getTime() - new Date(from).getTime()) / 86400 / 1000 > MAX_HISTORY_DAYS) {
+    return { error: `from and to are more than ${MAX_HISTORY_DAYS} days apart` };
+  }
+
+  return { from, to, bucketSeconds };
 }
 
 /**

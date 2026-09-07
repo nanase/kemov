@@ -1,7 +1,7 @@
 import type { Env } from '../lib/env';
 import { errorResponse } from '../lib/json';
 import { cachedJson, NotFound } from './cache';
-import { getChannel, getHistory, listChannels } from './channels';
+import { getChannel, getHistory, listChannels, readHistoryRange } from './channels';
 import { health } from './health';
 import { listLive } from './live';
 import {
@@ -27,29 +27,6 @@ import {
  * old. The site being replaced fetched two static files and waited for both,
  * so one failing emptied the statistics table with nothing to say why.
  */
-
-/** The longest period a history request may ask for. */
-const MAX_HISTORY_DAYS = 400;
-
-/** Buckets a history request may ask for, by name, in seconds. */
-const HISTORY_BUCKETS: Readonly<Record<string, number>> = {
-  '10m': 10 * 60,
-  hour: 60 * 60,
-  day: 24 * 60 * 60,
-};
-
-function timestamp(date: Date): string {
-  return `${date.toISOString().slice(0, 19)}Z`;
-}
-
-/** A query-string instant, or null when it is not one. */
-function readInstant(value: string | null): string | null {
-  if (value === null) return null;
-
-  const date = new Date(value);
-
-  return Number.isNaN(date.getTime()) ? null : timestamp(date);
-}
 
 export async function handleApiRequest(request: Request, env: Env, cacheImpl: Cache): Promise<Response> {
   const url = new URL(request.url);
@@ -106,24 +83,11 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
   }
 
   if (segments.length === 4 && resource === 'channels' && sub === 'history' && name !== undefined) {
-    const bucketName = searchParams.get('bucket') ?? 'hour';
-    const bucketSeconds = HISTORY_BUCKETS[bucketName];
+    const range = readHistoryRange(searchParams, new Date());
 
-    if (bucketSeconds === undefined) {
-      return errorResponse(400, `bucket must be one of ${Object.keys(HISTORY_BUCKETS).join(', ')}`);
-    }
+    if ('error' in range) return errorResponse(400, range.error);
 
-    const now = new Date();
-    const to = readInstant(searchParams.get('to')) ?? timestamp(now);
-    const from = readInstant(searchParams.get('from')) ?? timestamp(new Date(now.getTime() - 7 * 86400 * 1000));
-
-    if (from > to) return errorResponse(400, 'from is after to');
-
-    const days = (new Date(to).getTime() - new Date(from).getTime()) / 86400 / 1000;
-
-    if (days > MAX_HISTORY_DAYS) return errorResponse(400, `from and to are more than ${MAX_HISTORY_DAYS} days apart`);
-
-    return await cached(() => getHistory(env, name, from, to, bucketSeconds));
+    return await cached(() => getHistory(env, name, range.from, range.to, range.bucketSeconds));
   }
 
   return errorResponse(404, `no endpoint at ${pathname}`);

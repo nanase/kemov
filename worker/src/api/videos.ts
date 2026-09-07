@@ -164,7 +164,14 @@ export async function rankVideos(env: Env, metric: RankingMetric, limit: number)
   };
 }
 
-/** The metric a query string asks for, or null when it names one that is not offered. */
+/**
+ * The metric a query string asks for: viewCount when it asks for none, and
+ * null when it names one this API does not offer.
+ *
+ * Refused rather than defaulted, unlike a missing parameter. Asking for a
+ * ranking by something that does not exist and being handed a ranking by views
+ * would look like an answer.
+ */
 export function readMetric(value: string | null): RankingMetric | null {
   if (value === null) return 'viewCount';
 
