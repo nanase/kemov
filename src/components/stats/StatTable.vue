@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { useNow } from '@vueuse/core';
+import { computed } from 'vue';
 import { sum } from '@nanase/alnilam/array';
 import { withCommas } from '@nanase/alnilam/number';
 import dayjs from '@nanase/alnilam/dayjs';
-import isBetween from 'dayjs/plugin/isBetween';
-import type { YouTubeChannelStreamer } from '@/type/youtube';
+
+import { getChannelURL } from '@/lib/youtube';
+import { toDifference, totalDifference, type Difference } from '@/lib/difference';
+import type { Channel, CountName } from '@/type/api';
 import useStatsStore from '@/stats/store';
 
 import DifferenceValue from '@/components/stats/DifferenceValue.vue';
 
-dayjs.extend(isBetween);
-const { channels, latestStreamings } = useStatsStore();
+const { channels, liveStreams } = useStatsStore();
 
 export type StatDataType = 'subscriber' | 'view' | 'video';
 
@@ -18,7 +19,21 @@ const { type, activeOnly } = defineProps<{
   type: StatDataType;
   activeOnly?: boolean;
 }>();
-const now = useNow({ interval: 5000 });
+
+/** Which of the three counts this table is showing, by the tab's name for it. */
+const COUNT_OF: Readonly<Record<StatDataType, CountName>> = {
+  subscriber: 'subscriberCount',
+  view: 'viewCount',
+  video: 'videoCount',
+};
+
+const countName = computed<CountName>(() => COUNT_OF[type]);
+
+const visibleChannels = computed<Channel[]>(() =>
+  channels.value.filter((channel) =>
+    activeOnly && channel.activityEndDate !== null ? dayjs().isBefore(channel.activityEndDate) : true,
+  ),
+);
 
 function getColumnName(): string {
   switch (type) {
@@ -31,38 +46,32 @@ function getColumnName(): string {
   }
 }
 
-function getCount(channel: YouTubeChannelStreamer): number {
-  switch (type) {
-    case 'subscriber':
-      return channel.statistics.subscriberCount;
-    case 'view':
-      return channel.statistics.viewCount;
-    case 'video':
-      return channel.statistics.videoCount;
-  }
+/**
+ * The channel's current count, or null when it has none.
+ *
+ * Null is "the channel hides this", which YouTube reports as zero and the
+ * schema refuses to store as zero for that reason. Shown as a dash rather than
+ * as a number nobody published.
+ */
+function getCount(channel: Channel): number | null {
+  return channel.latest[countName.value];
 }
 
-function getCountPerHour(channel: YouTubeChannelStreamer): number {
-  switch (type) {
-    case 'subscriber':
-      return channel.statistics.subscriberCountPerHour;
-    case 'view':
-      return channel.statistics.viewCountPerHour;
-    case 'video':
-      return channel.statistics.videoCountPerHour;
-  }
+function formatCount(channel: Channel): string {
+  const count = getCount(channel);
+
+  return count === null ? '—' : withCommas(count);
 }
 
-function getCountPerDay(channel: YouTubeChannelStreamer): number {
-  switch (type) {
-    case 'subscriber':
-      return channel.statistics.subscriberCountPerDay;
-    case 'view':
-      return channel.statistics.viewCountPerDay;
-    case 'video':
-      return channel.statistics.videoCountPerDay;
-  }
-}
+const perHour = (channel: Channel): Difference => toDifference(channel.perHour[countName.value]);
+const perDay = (channel: Channel): Difference => toDifference(channel.perDay[countName.value]);
+
+const totalPerHour = computed<Difference>(() =>
+  totalDifference(visibleChannels.value.map((channel) => channel.perHour[countName.value])),
+);
+const totalPerDay = computed<Difference>(() =>
+  totalDifference(visibleChannels.value.map((channel) => channel.perDay[countName.value])),
+);
 
 function getStrong(): number {
   switch (type) {
@@ -83,46 +92,43 @@ function getMaxSubscriberCount(x: number): number {
   }
 }
 
+/** The counts that are there. A channel hiding its count is left out. */
+const knownCount = (channel: Channel): number => getCount(channel) ?? 0;
+
 function getAverageSubscriberCount(): number {
-  const total = sum(channels.value, getCount);
-  return Math.round(total + (sum(channels.value, (channel) => getMaxSubscriberCount(getCount(channel))) - total) / 2);
+  const total = sum(visibleChannels.value, knownCount);
+
+  return Math.round(
+    total + (sum(visibleChannels.value, (channel) => getMaxSubscriberCount(knownCount(channel))) - total) / 2,
+  );
 }
 
-function getChannelVisibility(channel: YouTubeChannelStreamer): boolean {
-  return activeOnly && typeof channel.activityEndDate === 'string' ? dayjs().isBefore(channel.activityEndDate) : true;
+/**
+ * What this channel is doing right now, from /api/live.
+ *
+ * Three states rather than one, because the badge means three different
+ * things: on air, about to start, and announced for later today. The endpoint
+ * says which directly - the collector settled that in #64 - where the list
+ * this replaces reported one "latest streaming" per channel and left the page
+ * to work out what it was from timestamps.
+ */
+function streamOf(channelId: string) {
+  return liveStreams.value.find((stream) => stream.channelId === channelId);
 }
 
 function hasLive(channelId: string): boolean {
-  const latestStreaming = latestStreamings.value.find((streaming) => streaming.channelId === channelId);
-
-  return (
-    typeof latestStreaming !== 'undefined' &&
-    latestStreaming.success &&
-    latestStreaming.isLiveBroadcast === true &&
-    dayjs(now.value).isAfter(latestStreaming.startedAt)
-  );
+  return streamOf(channelId)?.state === 'live';
 }
 
-function hasLiveToStartSoon(channelId: string): boolean {
-  const latestStreaming = latestStreamings.value.find((streaming) => streaming.channelId === channelId);
+/** Announced, and starting within `hours`. */
+function startsWithin(channelId: string, hours: number): boolean {
+  const stream = streamOf(channelId);
 
-  return (
-    typeof latestStreaming !== 'undefined' &&
-    latestStreaming.success &&
-    latestStreaming.isLiveBroadcast === true &&
-    dayjs(now.value).isBetween(latestStreaming.startedAt, dayjs(latestStreaming.startedAt).add(-1, 'hour'))
-  );
-}
+  if (stream === undefined || stream.state !== 'upcoming' || stream.scheduledStartTime === null) return false;
 
-function hasLiveBeforeStart(channelId: string): boolean {
-  const latestStreaming = latestStreamings.value.find((streaming) => streaming.channelId === channelId);
+  const minutes = stream.scheduledStartTime.diff(dayjs(), 'minute');
 
-  return (
-    typeof latestStreaming !== 'undefined' &&
-    latestStreaming.success &&
-    latestStreaming.isLiveBroadcast === true &&
-    dayjs(now.value).isBetween(latestStreaming.startedAt, dayjs(latestStreaming.startedAt).add(-3, 'hour'))
-  );
+  return minutes >= 0 && minutes <= hours * 60;
 }
 </script>
 
@@ -137,11 +143,11 @@ function hasLiveBeforeStart(channelId: string): boolean {
       </tr>
     </thead>
     <tbody>
-      <tr class="channel text-right" v-for="channel in channels.filter(getChannelVisibility)" :key="channel.id">
+      <tr class="channel text-right" v-for="channel in visibleChannels" :key="channel.channelId">
         <th scope="row" class="channel-name-head pl-4 pr-2">
           <v-list-item
             class="channel-name text-left px-0"
-            :href="`https://www.youtube.com/${channel.customUrl}`"
+            :href="channel.customUrl ? getChannelURL(channel.customUrl) : undefined"
             :ripple="false"
             slim
           >
@@ -151,24 +157,25 @@ function hasLiveBeforeStart(channelId: string): boolean {
               </div>
             </template>
             <template v-slot:prepend>
-              <div v-if="hasLive(channel.id)" class="live-badge has-live"></div>
-              <div v-else-if="hasLiveToStartSoon(channel.id)" class="live-badge has-live-to-start-soon"></div>
-              <div v-else-if="hasLiveBeforeStart(channel.id)" class="live-badge has-live-before-start"></div>
+              <div v-if="hasLive(channel.channelId)" class="live-badge has-live"></div>
+              <div v-else-if="startsWithin(channel.channelId, 1)" class="live-badge has-live-to-start-soon"></div>
+              <div v-else-if="startsWithin(channel.channelId, 3)" class="live-badge has-live-before-start"></div>
               <v-avatar class="avatar" :color="channel.color.key" variant="outlined" size="small">
-                <v-img :src="channel.thumbnails.default.url" :alt="channel.fullname" />
+                <v-img v-if="channel.thumbnailUrl" :src="channel.thumbnailUrl" :alt="channel.fullname" />
+                <span v-else class="text-caption">{{ channel.name.slice(0, 1) }}</span>
               </v-avatar>
             </template>
           </v-list-item>
         </th>
-        <td class="px-2 text-h6">{{ withCommas(getCount(channel)) }}</td>
+        <td class="px-2 text-h6">{{ formatCount(channel) }}</td>
         <DifferenceValue
           class="px-2 text-h6"
-          :value="getCountPerHour(channel)"
+          :difference="perHour(channel)"
           :strong="getStrong()"
           tag="td"
           v-if="type === 'subscriber'"
         />
-        <DifferenceValue class="pl-2 pr-4 text-h6" :value="getCountPerDay(channel)" :strong="getStrong()" tag="td" />
+        <DifferenceValue class="pl-2 pr-4 text-h6" :difference="perDay(channel)" :strong="getStrong()" tag="td" />
       </tr>
       <tr v-if="channels.length === 0">
         <td colspan="4" class="pa-4 text-center">
@@ -206,7 +213,7 @@ function hasLiveBeforeStart(channelId: string): boolean {
                   <v-timeline class="text-center" direction="horizontal" side="end" size="small" density="compact">
                     <v-timeline-item icon="mdi-flag-checkered" dot-color="green">
                       <div class="mt-n4">
-                        <p>{{ withCommas(sum(channels, getCount)) }}</p>
+                        <p>{{ withCommas(sum(visibleChannels, knownCount)) }}</p>
                         <div class="font-weight-bold text-body-2">最小値</div>
                       </div>
                     </v-timeline-item>
@@ -220,7 +227,11 @@ function hasLiveBeforeStart(channelId: string): boolean {
 
                     <v-timeline-item icon="mdi-flag-checkered" dot-color="red">
                       <div class="mt-n4">
-                        <p>{{ withCommas(sum(channels, (channel) => getMaxSubscriberCount(getCount(channel)))) }}</p>
+                        <p>
+                          {{
+                            withCommas(sum(visibleChannels, (channel) => getMaxSubscriberCount(knownCount(channel))))
+                          }}
+                        </p>
                         <div class="font-weight-bold text-body-2">最大値</div>
                       </div>
                     </v-timeline-item>
@@ -236,15 +247,15 @@ function hasLiveBeforeStart(channelId: string): boolean {
           </v-dialog>
           合計
         </th>
-        <td class="px-2">{{ withCommas(sum(channels, getCount)) }}</td>
+        <td class="px-2">{{ withCommas(sum(visibleChannels, knownCount)) }}</td>
         <DifferenceValue
           class="px-2"
-          :value="sum(channels, getCountPerHour)"
+          :difference="totalPerHour"
           :strong="getStrong()"
           tag="td"
           v-if="type === 'subscriber'"
         />
-        <DifferenceValue class="pl-2 pr-4" :value="sum(channels, getCountPerDay)" :strong="getStrong()" tag="td" />
+        <DifferenceValue class="pl-2 pr-4" :difference="totalPerDay" :strong="getStrong()" tag="td" />
       </tr>
     </tfoot>
   </v-table>

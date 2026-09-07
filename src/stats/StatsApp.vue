@@ -14,7 +14,7 @@ const activeOnly = useStorage<boolean>('kemov/stats/activeOnly', false);
 
 onMounted(async () => {
   await fetching.channels.start();
-  await fetching.latestStreamings.start();
+  await fetching.live.start();
 });
 </script>
 

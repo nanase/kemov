@@ -1,160 +1,135 @@
 import dayjs from '@nanase/alnilam/dayjs';
-import { formatProperty, getPropertyName, parse, readProperty, type Video, type VideoProperty } from '@/type/video';
 
-function parseOne(video: Record<string, unknown>): Video {
-  return parse(JSON.stringify([video]))[0];
-}
+import type { Video } from '@/type/api';
+import { formatDuration, formatProperty, getPropertyName, readProperty, VIDEO_PROPERTIES } from '@/type/video';
 
-describe('parse', () => {
-  test('reads an array of videos', () => {
-    const videos = parse(JSON.stringify([{ videoId: 'a' }, { videoId: 'b' }]));
+/**
+ * What the site works out about a video from what the API sent.
+ *
+ * The old `parse` is gone with the JSON files it was written for: a response
+ * is checked where it arrives now - test/type/api.test.ts - rather than
+ * rebuilt from a string with a JSON.parse reviver.
+ *
+ * Eight of these eleven measures are also computed in SQL by the API, in
+ * worker/src/lib/ranking.ts, and nothing checks that the two agree. The rule
+ * they have to share is the one below: a video missing a part of a measure is
+ * left out, never counted as zero.
+ */
 
-    expect(videos).toHaveLength(2);
-    expect(videos[1].videoId).toEqual('b');
-  });
+const VIDEO: Video = {
+  videoId: 'v1',
+  channelId: 'UCaaa',
+  title: 'ある配信',
+  publishedAt: dayjs('2026-01-01T00:00:00Z'),
+  availability: 'public',
+  liveBroadcastContent: 'none',
+  type: 'streaming',
+  durationSeconds: 3600,
+  viewCount: 7200,
+  likeCount: 360,
+  commentCount: 180,
+  chatMessageCount: 1800,
+  chatUniqueUserCount: 90,
+  scheduledStartTime: null,
+  actualStartTime: null,
+  actualEndTime: null,
+  fetchedAt: dayjs('2026-09-07T12:00:00Z'),
+};
 
-  test('publishedAt becomes a Dayjs', () => {
-    const video = parseOne({ publishedAt: '2024-03-01T12:00:00Z' });
-
-    expect(dayjs.isDayjs(video.publishedAt)).toBe(true);
-    expect(video.publishedAt.toISOString()).toEqual('2024-03-01T12:00:00.000Z');
-  });
-
-  test('the optional timestamps become Dayjs, or undefined when absent', () => {
-    const present = parseOne({
-      fetchedAt: '2024-03-01T00:00:00Z',
-      scheduledStartTime: '2024-03-01T01:00:00Z',
-      actualStartTime: '2024-03-01T02:00:00Z',
-      actualEndTime: '2024-03-01T03:00:00Z',
-    });
-
-    expect(dayjs.isDayjs(present.fetchedAt)).toBe(true);
-    expect(dayjs.isDayjs(present.scheduledStartTime)).toBe(true);
-    expect(dayjs.isDayjs(present.actualStartTime)).toBe(true);
-    expect(dayjs.isDayjs(present.actualEndTime)).toBe(true);
-
-    const empty = parseOne({ fetchedAt: '', actualEndTime: null });
-
-    expect(empty.fetchedAt).toBeUndefined();
-    expect(empty.actualEndTime).toBeUndefined();
-  });
-
-  test('duration becomes a Duration, or undefined when absent', () => {
-    expect(parseOne({ duration: 'PT1H2M3S' }).duration?.asSeconds()).toEqual(3723);
-    expect(parseOne({ duration: '' }).duration).toBeUndefined();
-  });
-
-  test('counts become numbers', () => {
-    const video = parseOne({ viewCount: '1234', likeCount: 56, commentCount: '0' });
-
-    expect(video.viewCount).toEqual(1234);
-    expect(video.likeCount).toEqual(56);
-    expect(video.commentCount).toEqual(0);
-  });
-
-  test('an empty or unparsable count becomes undefined rather than NaN', () => {
-    const video = parseOne({ viewCount: '', likeCount: 'many', commentCount: null });
-
-    expect(video.viewCount).toBeUndefined();
-    expect(video.likeCount).toBeUndefined();
-    expect(video.commentCount).toEqual(0);
-  });
-
-  test('type falls back to undefined when null', () => {
-    expect(parseOne({ type: 'shorts' }).type).toEqual('shorts');
-    expect(parseOne({ type: null }).type).toBeUndefined();
-  });
-});
+const video = (changes: Partial<Video> = {}): Video => ({ ...VIDEO, ...changes });
 
 describe('readProperty', () => {
-  const video: Video = parseOne({
-    videoId: 'a',
-    publishedAt: '2024-03-01T00:00:00Z',
-    title: 't',
-    liveBroadcastContent: 'none',
-    duration: 'PT1M40S',
-    viewCount: 1000,
-    likeCount: 200,
-    commentCount: 50,
-    chatMessageCount: 300,
-    chatUniqueUserCount: 60,
+  test('reads the counts the row holds', () => {
+    expect(readProperty(VIDEO, 'viewCount')).toEqual(7200);
+    expect(readProperty(VIDEO, 'likeCount')).toEqual(360);
+    expect(readProperty(VIDEO, 'commentCount')).toEqual(180);
+    expect(readProperty(VIDEO, 'chatMessageCount')).toEqual(1800);
+    expect(readProperty(VIDEO, 'chatUniqueUserCount')).toEqual(90);
+    expect(readProperty(VIDEO, 'duration')).toEqual(3600);
   });
 
-  test('reads the stored counts', () => {
-    expect(readProperty(video, 'viewCount')).toEqual(1000);
-    expect(readProperty(video, 'chatUniqueUserCount')).toEqual(60);
+  test('works out the ones that are ratios', () => {
+    expect(readProperty(VIDEO, 'viewCountPerSecond')).toEqual(2);
+    expect(readProperty(VIDEO, 'likeCountPerSecond')).toEqual(0.1);
+    expect(readProperty(VIDEO, 'commentCountPerSecond')).toEqual(0.05);
+    expect(readProperty(VIDEO, 'chatMessageCountPerSecond')).toEqual(0.5);
+    expect(readProperty(VIDEO, 'chatMessageCountPerUniqueUser')).toEqual(20);
   });
 
-  test('duration is read in seconds', () => {
-    expect(readProperty(video, 'duration')).toEqual(100);
+  // Undefined, never zero. Zero would order the video as though it had been
+  // measured and found to be nothing, and it would sort above every video with
+  // a negative - which is the shape of the -1 the old system wrote.
+  test('a count that was not collected has no value rather than a value of zero', () => {
+    expect(readProperty(video({ viewCount: null }), 'viewCount')).toBeUndefined();
+    expect(readProperty(video({ viewCount: null }), 'viewCountPerSecond')).toBeUndefined();
+    expect(readProperty(video({ chatUniqueUserCount: null }), 'chatMessageCountPerUniqueUser')).toBeUndefined();
   });
 
-  test('derives the per-second and per-user values', () => {
-    expect(readProperty(video, 'viewCountPerSecond')).toEqual(10);
-    expect(readProperty(video, 'likeCountPerSecond')).toEqual(2);
-    expect(readProperty(video, 'commentCountPerSecond')).toEqual(0.5);
-    expect(readProperty(video, 'chatMessageCountPerSecond')).toEqual(3);
-    expect(readProperty(video, 'chatMessageCountPerUniqueUser')).toEqual(5);
+  // Every video #67 migrated starts this way, so on the day the migration
+  // lands the per-second rankings are short by however much of the archive
+  // video-update has not swept yet.
+  test('a video with no collected duration has no per-second value', () => {
+    const migrated = video({ durationSeconds: null, type: null });
+
+    expect(readProperty(migrated, 'viewCountPerSecond')).toBeUndefined();
+    expect(readProperty(migrated, 'duration')).toBeUndefined();
+    // The plain counts are still there. It is only the ratios that need the
+    // duration.
+    expect(readProperty(migrated, 'viewCount')).toEqual(7200);
   });
 
-  test('a derived value is 0 when either side is missing', () => {
-    const bare = parseOne({ videoId: 'a', publishedAt: '2024-03-01T00:00:00Z' });
-
-    expect(readProperty(bare, 'viewCountPerSecond')).toEqual(0);
-    expect(readProperty(bare, 'chatMessageCountPerUniqueUser')).toEqual(0);
+  // SQLite answers a division by zero with NULL and the row drops out of the
+  // ranking; this is the same answer rather than an Infinity that sorts first.
+  test('a video of no length has no per-second value either', () => {
+    expect(readProperty(video({ durationSeconds: 0 }), 'viewCountPerSecond')).toBeUndefined();
+    expect(readProperty(video({ chatUniqueUserCount: 0 }), 'chatMessageCountPerUniqueUser')).toBeUndefined();
   });
 
-  test('a stored count that is missing stays undefined, unlike the derived ones', () => {
-    const bare = parseOne({ videoId: 'a', publishedAt: '2024-03-01T00:00:00Z' });
-
-    expect(readProperty(bare, 'viewCount')).toBeUndefined();
-    expect(readProperty(bare, 'duration')).toBeUndefined();
-  });
-});
-
-describe('formatProperty', () => {
-  test('counts are grouped with commas', () => {
-    expect(formatProperty('viewCount', 1234567)).toEqual('1,234,567');
-    expect(formatProperty('likeCount', 0)).toEqual('0');
-  });
-
-  test('a duration under an hour is mm:ss', () => {
-    expect(formatProperty('duration', 125)).toEqual('02:05');
-  });
-
-  test('a duration of an hour or more gains the hour field', () => {
-    expect(formatProperty('duration', 3723)).toEqual('1:02:03');
-  });
-
-  test('a zero or missing duration is 00:00', () => {
-    expect(formatProperty('duration', 0)).toEqual('00:00');
-    expect(formatProperty('duration', undefined)).toEqual('00:00');
-  });
-
-  test('derived values keep one decimal place', () => {
-    expect(formatProperty('viewCountPerSecond', 1.234)).toEqual('1.2');
-    expect(formatProperty('chatMessageCountPerUniqueUser', 0)).toEqual('0');
+  test('every measure it offers can be read', () => {
+    for (const property of VIDEO_PROPERTIES) {
+      expect(readProperty(VIDEO, property)).toBeTypeOf('number');
+    }
   });
 });
 
 describe('getPropertyName', () => {
-  test('every property has a name', () => {
-    const properties: VideoProperty[] = [
-      'viewCount',
-      'likeCount',
-      'commentCount',
-      'chatMessageCount',
-      'chatUniqueUserCount',
-      'chatMessageCountPerUniqueUser',
-      'duration',
-      'viewCountPerSecond',
-      'likeCountPerSecond',
-      'commentCountPerSecond',
-      'chatMessageCountPerSecond',
-    ];
+  test('every measure has a name', () => {
+    for (const property of VIDEO_PROPERTIES) {
+      expect(getPropertyName(property)).toBeTruthy();
+    }
+  });
+});
 
-    for (const property of properties) {
-      expect(getPropertyName(property), property).not.toEqual('');
+describe('formatDuration', () => {
+  test('writes minutes and seconds under an hour, and hours above it', () => {
+    expect(formatDuration(62)).toEqual('01:02');
+    expect(formatDuration(3723)).toEqual('1:02:03');
+  });
+
+  test('a length that was not collected reads as zero rather than as nothing', () => {
+    expect(formatDuration(null)).toEqual('00:00');
+    expect(formatDuration(undefined)).toEqual('00:00');
+  });
+});
+
+describe('formatProperty', () => {
+  test('counts get thousands separators', () => {
+    expect(formatProperty('viewCount', 1234567)).toEqual('1,234,567');
+  });
+
+  test('ratios get one decimal place', () => {
+    expect(formatProperty('viewCountPerSecond', 2.06)).toEqual('2.1');
+    expect(formatProperty('viewCountPerSecond', 2.04)).toEqual('2.0');
+  });
+
+  test('a duration is written as a duration', () => {
+    expect(formatProperty('duration', 3723)).toEqual('1:02:03');
+  });
+
+  test('every measure can be written', () => {
+    for (const property of VIDEO_PROPERTIES) {
+      expect(formatProperty(property, 12)).toBeTypeOf('string');
+      expect(formatProperty(property, undefined)).toBeTypeOf('string');
     }
   });
 });

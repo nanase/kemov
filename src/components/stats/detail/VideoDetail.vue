@@ -3,7 +3,8 @@ import { ref } from 'vue';
 
 import VideoThumbnail from './VideoThumbnail.vue';
 
-import { type Video } from '@/type/video';
+import type { Video } from '@/type/api';
+import { formatDuration } from '@/type/video';
 import { withCommas } from '@nanase/alnilam/number';
 import dayjs, { type Dayjs, fromLocale } from '@nanase/alnilam/dayjs';
 
@@ -29,9 +30,10 @@ function JST(date: Parameters<typeof dayjs>[0]): Dayjs {
               {{ video.title }}
             </div>
             <div class="font-weight-bold">
-              {{ video.duration?.format('H:mm:ss') }} - {{ JST(video.publishedAt).format('YYYY/MM/DD HH:mm:ss') }} 公開
+              {{ formatDuration(video.durationSeconds) }} -
+              {{ JST(video.publishedAt).format('YYYY/MM/DD HH:mm:ss') }} 公開
             </div>
-            <div>ID: {{ video.videoId }} - {{ video.type }}</div>
+            <div>ID: {{ video.videoId }} - {{ video.type ?? '種別は未取得' }}</div>
             <div>{{ JST(video.fetchedAt).format('YYYY/MM/DD HH:mm:ss') }} 情報取得</div>
           </v-col>
           <v-col cols="12" sm="6">
@@ -85,7 +87,7 @@ function JST(date: Parameters<typeof dayjs>[0]): Dayjs {
                       チャット数
                     </v-card-text>
                     <v-card-text class="py-2 mt-n3 text-h6 text-right">
-                      {{ withCommas(video.chatMessageCount) }}
+                      {{ withCommas(video.chatMessageCount ?? undefined) }}
                       <span class="text-subtitle-2"></span>
                     </v-card-text>
                   </v-card>
@@ -102,7 +104,7 @@ function JST(date: Parameters<typeof dayjs>[0]): Dayjs {
                       チャットユーザ数
                     </v-card-text>
                     <v-card-text class="pa-2 mt-n3 text-h6 text-right">
-                      {{ withCommas(video.chatUniqueUserCount) }}
+                      {{ withCommas(video.chatUniqueUserCount ?? undefined) }}
                       <span class="text-subtitle-2">&nbsp;</span>
                     </v-card-text>
                   </v-card>
