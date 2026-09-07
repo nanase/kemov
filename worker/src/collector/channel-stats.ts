@@ -46,9 +46,7 @@ function nextAttemptAfter(fetchedAt: string): string {
  * looking across several ticks, which is out of scope here - see the PR
  * description.
  *
- * `collect_task` is never cleared here on a later success: nothing in #62
- * reads it back, so there is nothing yet for a cleared row to feed. #66,
- * which checks this data against the old system, is the first likely reader.
+ * collectedStatement below clears the row on a later success.
  */
 async function recordMissing(db: D1Database, channelId: string, fetchedAt: string): Promise<void> {
   await db
@@ -66,9 +64,36 @@ async function recordMissing(db: D1Database, channelId: string, fetchedAt: strin
 }
 
 /**
+ * Settles one channel's task row once its snapshot has landed.
+ *
+ * A row that still says 'failed' after a later success is read as a claim
+ * about now, not as a record of what happened once. #71 is meant to notice
+ * that collection has stopped by looking here, and a failure nobody clears
+ * never stops looking like one: eleven of them sat at 'failed' through
+ * every successful tick that followed, which is #90.
+ *
+ * Writing the row on success rather than only on failure also leaves a
+ * heartbeat. `updated_at` on a 'done' row is when this channel last came
+ * back, which is the question a monitor asks anyway.
+ */
+function collectedStatement(db: D1Database, channelId: string, at: string): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO collect_task (kind, target_id, state, attempts, next_attempt_at, updated_at)
+       VALUES ('channel_stats', ?1, 'done', 0, NULL, ?2)
+       ON CONFLICT (kind, target_id) DO UPDATE SET
+         state = 'done',
+         attempts = 0,
+         next_attempt_at = NULL,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(channelId, at);
+}
+
+/**
  * Writes one returned channel's result: the columns `channel` leaves to the
- * collector, plus its `channel_snapshot` row. Paired in one batch so the two
- * never disagree on fetched_at for this channel.
+ * collector, its `channel_snapshot` row, and the settled task row. All three
+ * in one batch so that they never disagree about this channel's tick.
  *
  * A channel with no statistics part, or a D1 failure while writing either
  * statement, falls back to recordMissing - the same trace a channel
@@ -97,6 +122,7 @@ async function writeSnapshot(db: D1Database, item: ChannelsListItem, fetchedAt: 
           'INSERT INTO channel_snapshot (channel_id, fetched_at, subscriber_count, view_count, video_count) VALUES (?1, ?2, ?3, ?4, ?5)',
         )
         .bind(item.id, fetchedAt, subscriberCount, Number(statistics.viewCount), Number(statistics.videoCount)),
+      collectedStatement(db, item.id, fetchedAt),
     ]);
   } catch (error) {
     console.error(`channel-stats: writing ${item.id} failed`, error);

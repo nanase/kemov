@@ -132,11 +132,12 @@ async function recordTask(
 /**
  * Settles a target's task row once it has been collected.
  *
- * #62 leaves its rows alone on a later success, on the grounds that nothing
- * reads them yet. This job writes them because it also writes 'unavailable',
- * which is a verdict rather than a complaint: a video that came back after
- * being absent has to stop saying it is absent, or the column stops meaning
- * "this video is not there" and starts meaning "was not there once".
+ * The reason this job always had one is 'unavailable', which is a verdict
+ * rather than a complaint: a video that came back after being absent has to
+ * stop saying it is absent, or the column stops meaning "this video is not
+ * there" and starts meaning "was not there once". #90 found the same is true
+ * of 'failed' and gave #62 one of these too, so the argument now covers every
+ * row this table holds.
  */
 function collectedStatement(db: D1Database, kind: TaskKind, targetId: string, at: string): D1PreparedStatement {
   return db
@@ -428,6 +429,22 @@ export async function runVideoDiscover(env: Env, fetchImpl: typeof fetch = fetch
             `video-discover: every video on ${channelId}'s newest page is new and more pages follow; ` +
               'older videos are not being reached (see #67)',
           );
+        }
+
+        // The playlist was read, so a row still blaming this channel is out
+        // of date. Only the channel-targeted row is settled here; the videos
+        // this page found get theirs from collectVideos below, under the same
+        // kind but their own ids.
+        //
+        // Its own catch, because the one below names PlaylistItems.list and
+        // this is a D1 write - the same split collectVideos keeps between a
+        // call that failed and a write that did. Nothing this tick reads the
+        // row back, and the next successful tick settles it, so saying so is
+        // all there is to do.
+        try {
+          await collectedStatement(env.DB, 'video_discover', channelId, fetchedAt).run();
+        } catch (error) {
+          console.error(`video-discover: settling ${channelId} failed`, error);
         }
       } catch (error) {
         // One channel's playlist, not the others'. The target is the channel

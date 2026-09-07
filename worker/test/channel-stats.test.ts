@@ -96,6 +96,15 @@ async function allCollectTasks(): Promise<CollectTaskRow[]> {
   ).results;
 }
 
+/**
+ * Only the channels that did not come out of the tick with a snapshot. A
+ * settled row is a record of success, so a test asking what went wrong wants
+ * these and not those.
+ */
+async function missedCollectTasks(): Promise<CollectTaskRow[]> {
+  return (await allCollectTasks()).filter((row) => row.state !== 'done');
+}
+
 describe('runChannelStats', () => {
   // Storage resets per test FILE, not per test: undocumented, and the
   // opposite of what #74's own setup.ts comment says. Reported to HQ; until
@@ -217,6 +226,39 @@ describe('runChannelStats', () => {
     expect((await allSnapshots())[0].subscriber_count).toBeNull();
   });
 
+  test('settles a channel that failed once its stats land again', async () => {
+    await insertChannel('UCaaa');
+
+    // The shape #90 came from: the key was missing, every channel failed, and
+    // the rows stayed at 'failed' through every tick that worked afterwards.
+    await runChannelStats(
+      env,
+      vi.fn(async () => new Response('forbidden', { status: 403 })),
+    );
+    expect(await missedCollectTasks()).toMatchObject([{ target_id: 'UCaaa', state: 'failed', attempts: 1 }]);
+
+    await runChannelStats(
+      env,
+      vi.fn(async () => channelsListResponse([{ id: 'UCaaa', viewCount: 1, subscriberCount: 1, videoCount: 1 }])),
+    );
+
+    expect(await missedCollectTasks()).toEqual([]);
+    expect(await allCollectTasks()).toMatchObject([
+      { target_id: 'UCaaa', state: 'done', attempts: 0, next_attempt_at: null },
+    ]);
+  });
+
+  test('records a channel that has never failed, so a monitor can see it is current', async () => {
+    await insertChannel('UCaaa');
+
+    await runChannelStats(
+      env,
+      vi.fn(async () => channelsListResponse([{ id: 'UCaaa', viewCount: 1, subscriberCount: 1, videoCount: 1 }])),
+    );
+
+    expect(await allCollectTasks()).toMatchObject([{ target_id: 'UCaaa', state: 'done', attempts: 0 }]);
+  });
+
   test('records a missing channel in collect_task without losing the rest', async () => {
     await insertChannel('UCaaa');
     await insertChannel('UCbbb');
@@ -231,7 +273,7 @@ describe('runChannelStats', () => {
     const snapshots = await allSnapshots();
     expect(snapshots.map((row) => row.channel_id)).toEqual(['UCaaa']);
 
-    const tasks = await allCollectTasks();
+    const tasks = await missedCollectTasks();
     expect(tasks).toHaveLength(1);
     expect(tasks[0]).toMatchObject({ kind: 'channel_stats', target_id: 'UCbbb', state: 'failed', attempts: 1 });
     expect(tasks[0].next_attempt_at).not.toBeNull();
@@ -249,7 +291,7 @@ describe('runChannelStats', () => {
 
     expect(await allSnapshots()).toEqual([]);
 
-    const tasks = await allCollectTasks();
+    const tasks = await missedCollectTasks();
     expect(tasks.map((row) => row.target_id)).toEqual(['UCaaa', 'UCbbb']);
     for (const task of tasks) {
       expect(task).toMatchObject({ state: 'failed', attempts: 1 });
@@ -264,7 +306,7 @@ describe('runChannelStats', () => {
     await runChannelStats(env, missing);
     await runChannelStats(env, missing);
 
-    const tasks = await allCollectTasks();
+    const tasks = await missedCollectTasks();
     expect(tasks).toEqual([expect.objectContaining({ target_id: 'UCaaa', attempts: 2 })]);
   });
 
@@ -293,7 +335,7 @@ describe('runChannelStats', () => {
 
     expect(await allSnapshots()).toHaveLength(1);
 
-    const tasks = await allCollectTasks();
+    const tasks = await missedCollectTasks();
     expect(tasks).toEqual([expect.objectContaining({ target_id: 'UCaaa', state: 'failed', attempts: 1 })]);
   });
 
@@ -314,6 +356,6 @@ describe('runChannelStats', () => {
     // the 6th channel out of the response and thus out of channel_snapshot.
     const snapshots = await allSnapshots();
     expect(snapshots.map((row) => row.channel_id).sort()).toEqual([...channelIds].sort());
-    expect(await allCollectTasks()).toEqual([]);
+    expect(await missedCollectTasks()).toEqual([]);
   });
 });
