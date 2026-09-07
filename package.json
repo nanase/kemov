@@ -19,6 +19,7 @@
     "lint:style": "stylelint src/**/*.{css,scss,vue}",
     "check-channels": "node scripts/check-channels.js",
     "build-channels-sql": "node scripts/build-channels-sql.js",
+    "check-secrets": "node scripts/check-secrets.js",
     "format": "prettier --write .",
     "test": "vitest",
     "coverage": "vitest run --coverage --project frontend --project scripts"
