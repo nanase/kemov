@@ -445,11 +445,11 @@ describe('runChatReplay', () => {
       expect(states.filter((state) => state !== 'done')).toHaveLength(1);
     });
 
-    // Real timers here and in the test below, because the run really does
-    // wait: the gap between tries is a setTimeout inside it, and a fake clock
-    // would have to be pushed along from out here between D1 writes this test
-    // cannot see the end of. A second and a half of waiting is the price of
-    // not putting a seam in the job for the tests alone.
+    // Real timers, because this run really does wait: the gap between tries is
+    // a setTimeout inside it, and a fake clock would have to be pushed along
+    // from out here, between D1 writes this test cannot see the end of. A
+    // second of waiting is the price of not putting a seam in the job for the
+    // tests alone.
     test('asks a refused page again rather than losing the video', async () => {
       vi.useRealTimers();
       await insertVideo('vid-1');
@@ -518,11 +518,14 @@ describe('runChatReplay', () => {
       await insertVideo('vid-1');
       await queue('vid-1');
 
-      await runChatReplay(
-        env,
-        vi.fn<typeof fetch>(async () => new Response('nope', { status: 503 })),
-      );
+      const fetchImpl = vi.fn<typeof fetch>(async () => new Response('nope', { status: 503 }));
 
+      await runChatReplay(env, fetchImpl);
+
+      // The next tick is what retries this one, not the run itself: only a 403
+      // is asked again in place, and this is on the fake clock the beforeEach
+      // installs, so a wait that should not happen would hang the test.
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
       expect((await allTasks())[0]).toMatchObject({ state: 'failed', attempts: 1 });
     });
 
@@ -542,7 +545,8 @@ describe('runChatReplay', () => {
 
     // Four tries and no more, and the page before it stays counted: the video
     // goes into its backoff and the next tick carries on from the cursor
-    // rather than reading the replay again.
+    // rather than reading the replay again. Real timers again, for the reason
+    // the retrying test in 'counting' gives: this run really does wait.
     test('gives up on a page refused every time it asks', async () => {
       vi.useRealTimers();
       await insertVideo('vid-1');
@@ -560,8 +564,8 @@ describe('runChatReplay', () => {
       expect(await authorCount('vid-1')).toEqual(1);
     });
 
-    // On the fake clock the beforeEach installs, so a wait that should not
-    // happen would hang this test rather than pass it slowly.
+    // The other half of the same rule, on a status that is about the request
+    // rather than about nothing in particular.
     test('does not ask again when the refusal is about the request', async () => {
       await insertVideo('vid-1');
       await queue('vid-1');

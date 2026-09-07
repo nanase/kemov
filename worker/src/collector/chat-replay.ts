@@ -1,5 +1,5 @@
 import type { Env } from '../lib/env';
-import { type ReplayPage, chatContinuation, parseReplayPage, readReplayError, replayRequest } from '../lib/live-chat';
+import { chatContinuation, parseReplayPage, readReplayError, replayRequest, type ReplayPage } from '../lib/live-chat';
 import { formatTimestamp } from '../lib/time';
 
 /**
@@ -195,6 +195,9 @@ async function recordFailure(
  * time.
  */
 async function readReplayPage(continuation: string, fetchImpl: typeof fetch): Promise<PageRead> {
+  // No condition on the loop, unlike the paging one in collectOne: every way
+  // out of this is a return or a throw, and which of them it is depends on the
+  // answer rather than on the count.
   for (let retries = 0; ; retries++) {
     const response = await fetchImpl(replayRequest(continuation));
 
