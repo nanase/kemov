@@ -267,6 +267,21 @@ function unavailableStatement(db: D1Database, videoId: string, fetchedAt: string
 const SHORTS_URL_BASE = 'https://www.youtube.com/shorts/';
 
 /**
+ * How long one probe may wait before it counts as unanswered.
+ *
+ * Nothing else in the worker sets a deadline, because everything else is the
+ * Data API answering promptly or not at all. This host does neither: measured
+ * on the chat job, which asks the same host, a refusal for a video that still
+ * exists takes 17.2 seconds to arrive.
+ *
+ * Waiting that out buys nothing. A refusal and a timeout are the same answer
+ * here - null, ask again tomorrow - so the only thing the extra seconds spend
+ * is the tick's budget, and this job shares that with the sweep that is the
+ * reason it runs at all.
+ */
+const SHORTS_PROBE_TIMEOUT_MS = 10_000;
+
+/**
  * Asks YouTube which of these videos are shorts.
  *
  * Only the ones whose answer is not already settled are asked - a stream is
@@ -274,9 +289,13 @@ const SHORTS_URL_BASE = 'https://www.youtube.com/shorts/';
  * about two videos in a batch of fifty, so this adds roughly 250 requests a
  * day beside the 2,000 units the jobs already spend.
  *
- * `redirect: 'manual'` because the redirect is the answer. Followed, a
- * non-short would arrive as the 200 of its own watch page and read as a
- * short, which is the one mistake this call exists to avoid.
+ * **`redirect: 'manual'` is the whole method and removing it inverts the
+ * answer.** The redirect is what says "not a short"; followed, it lands on
+ * the video's own watch page and returns that page's 200, so every video
+ * becomes a short. Nothing about the option looks load-bearing from the
+ * outside - the call still succeeds, the types still hold, and a test with a
+ * stubbed fetch still passes unless it checks for the option by name, which
+ * is why one of them does.
  *
  * A video whose probe fails is absent from the map rather than false in it.
  * The caller passes that through as null, and null keeps the kind unset for
@@ -301,7 +320,10 @@ async function probeShorts(
   await Promise.all(
     asked.map(async (item) => {
       try {
-        const response = await fetchImpl(`${SHORTS_URL_BASE}${item.id}`, { redirect: 'manual' });
+        const response = await fetchImpl(`${SHORTS_URL_BASE}${item.id}`, {
+          redirect: 'manual',
+          signal: AbortSignal.timeout(SHORTS_PROBE_TIMEOUT_MS),
+        });
 
         answers.set(item.id, readShortsProbe(response.status));
       } catch (error) {

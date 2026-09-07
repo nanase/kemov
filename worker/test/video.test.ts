@@ -416,6 +416,27 @@ describe('runVideoUpdate', () => {
     expect(await allVideos()).toMatchObject([{ video_id: 'vid1', type: null, duration_seconds: 30 }]);
   });
 
+  // Not a detail of the request but the method itself. Without
+  // redirect: 'manual' the probe follows the redirect to the video's own
+  // watch page and reads that page's 200 as "this is a short", so every video
+  // becomes one. Nothing else here would notice: the call succeeds either
+  // way, and the stub answers whatever it is asked. Hence a test that names
+  // the option, so that removing it fails something.
+  test('asks without following the redirect, which is what the answer is', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('vid1', 'UCaaa');
+
+    const fetchImpl = apiStub({
+      videos: () => videosListResponse([{ id: 'vid1', channelId: 'UCaaa', title: 'clip', duration: 'PT30S' }]),
+    });
+
+    await runVideoUpdate(env, fetchImpl);
+
+    const probe = fetchImpl.mock.calls.find(([input]) => String(input).includes('/shorts/'));
+
+    expect(probe?.[1]?.redirect).toEqual('manual');
+  });
+
   // The probe costs a request, so it is only spent where the answer is not
   // already settled. A stream is never a short, whatever its length.
   test('does not ask about a stream', async () => {
