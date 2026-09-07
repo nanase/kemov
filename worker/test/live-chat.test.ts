@@ -109,13 +109,25 @@ describe('replayRequest', () => {
 });
 
 describe('readReplayError', () => {
-  // 404 is what a client version the endpoint will not take earns, and the
-  // pinned version is the only part of the request that goes stale while
-  // nobody is touching it. When every video starts failing at once, the log
-  // has to say where to look.
+  // A 404 has two causes and the pinned version is one of them, the only part
+  // of the request that goes stale while nobody is touching it. When every
+  // video starts failing at once, the log has to say where to look.
   test('names the pinned client version on a 404', () => {
     expect(readReplayError(404)).toContain('client version');
     expect(readReplayError(404)).toMatch(/2\.\d{8}\.\d{2}\.\d{2}/);
+  });
+
+  // The other cause, and the one #100 measured: a video that had been taken
+  // down, answered 404 while every other video went on working. The message
+  // used to name only the version, and a reader of that line went to edit a
+  // constant that was not the problem.
+  test('offers the missing video as a cause on a 404, and does not settle on one', () => {
+    const message = readReplayError(404);
+
+    expect(message).toContain('video');
+    expect(message).toMatch(/either/i);
+    // How to tell them apart, which is the count rather than the status.
+    expect(message).toContain('every video');
   });
 
   // The other half of the request, and a different fault. These two were
