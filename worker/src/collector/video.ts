@@ -89,21 +89,22 @@ const SHORTS_URL_BASE = 'https://www.youtube.com/shorts/';
 /**
  * How long one probe may wait before it counts as unanswered.
  *
- * Nothing else in the worker sets a deadline, because everything else is the
- * Data API answering promptly or not at all. This host does neither: measured
- * on the chat job, which asks the same host, a refusal for a video that still
- * exists takes 17.2 seconds to arrive.
+ * The Data API answers promptly or refuses, so asking it needs no deadline.
+ * This host does neither. Measured on 2026-09-07 against the chat job, which
+ * asks the same host, a refusal for a video that still exists took 17.2
+ * seconds to arrive - the date matters, because the refusals it was measured
+ * from come and go.
  *
  * Waiting that out buys nothing. A refusal and a timeout are the same answer
  * here - null, ask again tomorrow - so the only thing the extra seconds spend
  * is the tick's budget, and this job shares that with the sweep that is the
  * reason it runs at all.
  *
- * The chat job is exposed to the same stall and is not given a deadline here.
- * That is scope, not a judgement that it does not need one: #65 owns that
- * path, #68 is working in it, and a deadline added from outside would land in
- * the middle of somebody else's change. #66 leaves it named rather than
- * quietly fixed on one side.
+ * Ten seconds against the one second #105 puts on a chat page, because the
+ * two end different things. That deadline cuts a held connection so the
+ * request can go again inside the same tick; this one gives up on the answer
+ * until tomorrow. Three orders of magnitude apart is what that difference
+ * looks like.
  */
 const SHORTS_PROBE_TIMEOUT_MS = 10_000;
 
