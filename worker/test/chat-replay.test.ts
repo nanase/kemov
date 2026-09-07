@@ -396,8 +396,6 @@ describe('runChatReplay', () => {
       expect((await allVideos())[0]).toMatchObject({ chat_message_count: 301 });
     });
 
-    // Progress is kept and the credentials are not, so a resumed video reads a
-    // fresh watch page and then picks up where it stopped.
     test('counts one person who said several things once in the unique count', async () => {
       await insertVideo('vid-1');
       await queue('vid-1');
@@ -488,7 +486,7 @@ describe('runChatReplay', () => {
       expect(JSON.parse(task.cursor!)).toEqual({ continuation: 'page-2', messages: 1 });
     });
 
-    test('retries when the watch page itself will not load', async () => {
+    test('retries when the replay endpoint will not answer at all', async () => {
       await insertVideo('vid-1');
       await queue('vid-1');
 
@@ -514,8 +512,6 @@ describe('runChatReplay', () => {
       expect((await allVideos())[0]).toMatchObject({ chat_message_count: null });
     });
 
-    // A replay that has run out drops its continuation; one that drops its
-    // envelope is an answer we did not understand.
     test('backs off further the more times in a row a video fails', async () => {
       await insertVideo('vid-1');
       await queue('vid-1', null, 3);

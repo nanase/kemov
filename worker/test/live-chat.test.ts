@@ -32,7 +32,14 @@ describe('chatContinuation', () => {
   // handed out for this video, captured while the page could still be read.
   // Building it rather than reading it is what let the job stop asking for a
   // page that a Cloudflare address is refused (#92), so a change that alters
-  // the bytes has stopped doing the thing this rests on.
+  // the bytes has stopped doing the thing this rests on. Two field numbers in
+  // chatContinuation are copied without being understood; this is what says
+  // they are still right.
+  //
+  // Real values on purpose, and the only place in these tests with any. What
+  // must not be written down is who said what in a chat - author names and
+  // ids. A continuation holds neither: it is a channel id, which channels.yml
+  // already lists, and the id of a public video.
   test('builds the continuation the watch page used to hand out', () => {
     expect(chatContinuation('UCYa58DdXGAGMJQHqTxi-isA', 'LdoAcMRyX9s')).toEqual(
       'op2w0wRyGl5DaWtxSndvWVZVTlpZVFU0UkdSWVIwRkhUVXBSU0hGVWVHa3RhWE5CRWd0TVpHOUJZMDFTZVZnNWN4b1Q2cWpkdVFFTkNndE1aRzlCWTAxU2VWZzVjeUFCTUFBJTNEQAFyDAgEGAIgACgAMAA4AHgB',

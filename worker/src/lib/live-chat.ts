@@ -78,8 +78,16 @@ interface ReplayResponse {
   };
 }
 
-/* Protobuf, by hand. The continuation is a protobuf message in base64, and
- * writing the four field types it uses is smaller than a dependency. */
+/* Protobuf, by hand.
+ *
+ * These are general enough to belong somewhere general, and they are here
+ * anyway: a continuation is the only protobuf this worker will ever write, and
+ * moving five one-line helpers into a lib of their own would make a module
+ * with one caller. They stay private, so a second caller is what would move
+ * them.
+ *
+ * Only the two wire types a continuation uses are written - varint and
+ * length-delimited - which is why this is smaller than a dependency. */
 
 function varint(value: number): number[] {
   const out: number[] = [];
@@ -115,8 +123,13 @@ function base64(bytes: number[]): string {
  * carries the channel id, the video id and a handful of constants, and
  * nothing else - no signature, no timestamp, no nonce. So one can be written
  * from the two ids, which is what lets the collector skip the watch page
- * entirely. Field 48687757 has no name anybody has published; it is copied
- * because a continuation without it is refused.
+ * entirely.
+ *
+ * The two large field numbers, 156074452 outside and 48687757 inside, are
+ * copied rather than understood. YouTube publishes no schema, and a
+ * continuation missing either of them is refused. Nothing here can explain
+ * what they mean; the test that compares the whole string against one YouTube
+ * itself handed out is what says they are still right.
  *
  * The inner message is base64 and then URL-escaped before going into the
  * outer one, which is how YouTube's own continuations carry it: the padding
@@ -167,6 +180,11 @@ export function replayRequest(continuation: string): Request {
  * a pinned version is the one thing here that goes stale on its own - so if
  * every video starts failing at once, the log should say where to look rather
  * than leaving somebody to find out from production a second time (#92).
+ *
+ * A function rather than a message written where it is thrown, which is how
+ * the rest of the worker does it, because this one has to name CLIENT_VERSION
+ * and that constant does not leave this file. The wording is the alarm, so it
+ * is worth a test of its own.
  */
 export function readReplayError(status: number): string {
   return status === 400

@@ -107,8 +107,8 @@ function readProgress(cursor: string | null): Progress | null {
 
     return parsed as Progress;
   } catch {
-    // Unreadable is the same as absent: the video restarts from its watch
-    // page rather than the job stopping on it.
+    // Unreadable is the same as absent: the video starts over from a
+    // continuation built for it, rather than the job stopping on it.
     return null;
   }
 }
@@ -116,14 +116,13 @@ function readProgress(cursor: string | null): Progress | null {
 /**
  * Ends a video's task without a count, leaving it due again later.
  *
- * Every way this job can fail one video comes through here - the watch page,
- * the replay call, a response that will not parse, and a D1 write that throws
- * mid-paging - so that none of them can quietly become a video that is never
- * looked at again.
+ * Every way this job can fail one video comes through here - a replay call
+ * that is refused, a video with no row left in `video`, an answer that makes
+ * no sense where it arrives, and a D1 write that throws mid-paging - so that
+ * none of them can quietly become a video that is never looked at again.
  *
- * Whatever pages were already counted stay in the cursor and in chat_author;
- * the credentials are dropped so the retry reads a fresh watch page, which is
- * what a rejected replay call most often needs.
+ * Whatever pages were already counted stay in the cursor and in chat_author,
+ * so a retry carries on from them rather than reading the replay again.
  *
  * `failures` counts the attempts in a row that got nowhere, which is not the
  * same as the attempts the row was claimed with: a run that wrote a page made
@@ -387,9 +386,10 @@ async function finishVideo(
  * PAGES_PER_VIDEO pages.
  *
  * Every way this can go wrong ends in the one catch below, which is what keeps
- * a video from quietly falling out of the queue: a watch page that will not
- * load or parse, a replay call that is refused, an answer that is not a replay
- * page, and a D1 write that throws part of the way through the pages.
+ * a video from quietly falling out of the queue: a replay call that is
+ * refused, a video whose row in `video` has gone, an answer with no envelope
+ * arriving after pages have already landed, and a D1 write that throws part of
+ * the way through the pages.
  */
 async function collectOne(
   db: D1Database,
@@ -403,6 +403,12 @@ async function collectOne(
   // What a failure would record, and only ever what a write has actually
   // taken. Held out here so a failure part-way through the pages keeps the
   // pages before it rather than the cursor this run started from.
+  //
+  // It answers a second question as well, which the loop below leans on:
+  // whether anything has ever been counted for this video. Null means nothing
+  // has - not by an earlier tick, whose progress would be in the cursor, and
+  // not by this one - and that is what makes an answer with no envelope a
+  // video without a replay rather than a broken reply.
   let landed: Progress | null = opened && { continuation: opened.continuation, messages: opened.messages };
 
   // Attempts in a row that got nowhere. It starts at what the row was
