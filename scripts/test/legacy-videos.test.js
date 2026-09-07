@@ -176,6 +176,14 @@ describe('toVideoRow on a record that cannot become a row', () => {
     expect(toVideoRow(record({ videoId: '' }), channelId)).toEqual({ skipped: 'no videoId' });
   });
 
+  // Reading a property off null would throw rather than skip, which stops the
+  // run and breaks the one thing it checks about itself.
+  test('skips something that is not a record at all', () => {
+    for (const value of [null, undefined, 'a string', 42, ['an', 'array']]) {
+      expect(toVideoRow(value, channelId)).toEqual({ skipped: 'not a record' });
+    }
+  });
+
   test('does not skip one whose availability the schema accepts', () => {
     for (const availability of ['public', 'membership', 'private', 'unavailable']) {
       expect(toVideoRow(record({ availability }), channelId).row).toBeDefined();
@@ -197,6 +205,17 @@ describe('convertChannel', () => {
 
   test('answers for an empty file without failing', () => {
     expect(convertChannel([], channelId)).toEqual({ rows: [], skipped: [], read: 0 });
+  });
+
+  // The arithmetic has to survive the array holding something unexpected, or
+  // the check the script performs on itself is the thing that breaks first.
+  test('counts a null in the array rather than throwing on it', () => {
+    const result = convertChannel([record(), null, record({ videoId: 'bbbbbbbbbbb' })], channelId);
+
+    expect(result.read).toEqual(3);
+    expect(result.rows).toHaveLength(2);
+    expect(result.skipped).toEqual([{ channelId, reason: 'not a record' }]);
+    expect(result.rows.length + result.skipped.length).toEqual(result.read);
   });
 
   // What an interrupted run leaves behind. wrangler applies the statements in

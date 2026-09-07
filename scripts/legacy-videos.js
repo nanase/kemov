@@ -112,6 +112,15 @@ export function toTimestamp(value) {
  * uploads playlist.
  */
 export function toVideoRow(record, channelId) {
+  // Before anything is read off it. A null in the array would throw here
+  // rather than count as a skip, which would stop the run and, worse, break
+  // the one thing the run checks about itself: that every record read became a
+  // row or a skip. A record that is not an object is a record that cannot
+  // become a row, which is what `skipped` is for.
+  if (record === null || typeof record !== 'object' || Array.isArray(record)) {
+    return { skipped: 'not a record' };
+  }
+
   const videoId = record.videoId;
 
   if (typeof videoId !== 'string' || videoId === '') return { skipped: 'no videoId' };

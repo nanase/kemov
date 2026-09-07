@@ -33,9 +33,24 @@ import { convertChannel, rowsToSql } from './legacy-videos.js';
  */
 const VIDEO_URI_BASE = 'https://d1zvseiqyto6c5.cloudfront.net/kemov/stats/video/';
 
+/**
+ * How long one channel's file may take to arrive, headers and body together.
+ *
+ * The largest measured is half a megabyte, so this is not a limit any healthy
+ * response comes near. It is here for the unhealthy one: without a deadline a
+ * stalled connection waits for ever, and a script that has stopped looks
+ * exactly like a script that is still working. Every other way this can fail
+ * says so and stops - a bad status, a body that is not an array, a record that
+ * cannot become a row - and a hang is the only one that would not.
+ */
+const FETCH_TIMEOUT_MS = 30_000;
+
 async function fetchChannel(channelId) {
   const url = `${VIDEO_URI_BASE}${channelId}.json`;
-  const response = await fetch(url);
+  // One signal for the whole exchange. It stays armed while the body is read,
+  // so a response that begins and then stalls is caught as well as one that
+  // never begins.
+  const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 
   if (!response.ok) throw new Error(`${url} responded ${response.status}`);
 

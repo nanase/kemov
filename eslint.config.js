@@ -23,6 +23,7 @@ export default defineConfigWithVueTs(
     files: ['scripts/**/*.js'],
     languageOptions: {
       globals: {
+        AbortSignal: 'readonly',
         console: 'readonly',
         fetch: 'readonly',
         process: 'readonly',
