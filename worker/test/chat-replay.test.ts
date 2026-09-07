@@ -27,13 +27,17 @@ const QUIET_MINUTE = new Date('2026-01-01T00:11:00Z');
  * Every column `video` requires, so a test can say what it means: a stream
  * that ended and has no chat count yet. #63 owns the real writer.
  */
-async function insertVideo(videoId: string, endedAt: string | null = '2026-01-01T00:00:00Z'): Promise<void> {
+async function insertVideo(
+  videoId: string,
+  endedAt: string | null = '2026-01-01T00:00:00Z',
+  availability = 'public',
+): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO video (video_id, channel_id, title, published_at, availability, live_broadcast_content,
                         actual_end_time, fetched_at)
-     VALUES (?1, 'UCtest', ?1, '2026-01-01T00:00:00Z', 'public', 'none', ?2, '2026-01-01T00:00:00Z')`,
+     VALUES (?1, 'UCtest', ?1, '2026-01-01T00:00:00Z', ?3, 'none', ?2, '2026-01-01T00:00:00Z')`,
   )
-    .bind(videoId, endedAt)
+    .bind(videoId, endedAt, availability)
     .run();
 }
 
@@ -202,6 +206,25 @@ describe('runChatReplay', () => {
       await runChatReplay(env, vi.fn<typeof fetch>());
 
       expect(await allTasks()).toEqual([expect.objectContaining({ state: 'unavailable' })]);
+    });
+
+    test('leaves out a video that cannot be read', async () => {
+      await insertVideo('vid-gone', '2026-01-01T00:00:00Z', 'unavailable');
+
+      await runChatReplay(env, vi.fn<typeof fetch>());
+
+      expect(await allTasks()).toEqual([]);
+    });
+
+    // The list is named rather than written as "anything but public", so a
+    // value nobody has confirmed unreadable keeps its turn. Production has no
+    // membership rows; if that changes, this says what the job does with one.
+    test('still queues a members-only video, which nothing has shown cannot be read', async () => {
+      await insertVideo('vid-members', '2026-01-01T00:00:00Z', 'membership');
+
+      await runChatReplay(env, vi.fn<typeof fetch>());
+
+      expect(await allTasks()).toMatchObject([{ target_id: 'vid-members', state: 'pending' }]);
     });
 
     // The scan is the expensive half and has no index to use (#83), so a tick
@@ -466,6 +489,80 @@ describe('runChatReplay', () => {
   });
 
   describe('when it cannot count', () => {
+    // `video.availability` already carries this answer, written by the job
+    // that refreshes videos. Asking the replay endpoint about a video that is
+    // gone spends a tick to be told what D1 could have said for nothing, and
+    // 38 videos were doing exactly that (#100).
+    test('settles a video that is gone without asking the endpoint about it', async () => {
+      await insertVideo('vid-gone', '2026-01-01T00:00:00Z', 'unavailable');
+      await queue('vid-gone');
+
+      const fetchImpl = vi.fn<typeof fetch>();
+
+      await runChatReplay(env, fetchImpl);
+
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(await allTasks()).toEqual([
+        expect.objectContaining({ target_id: 'vid-gone', state: 'unavailable', next_attempt_at: null }),
+      ]);
+    });
+
+    test('settles a private video the same way', async () => {
+      await insertVideo('vid-private', '2026-01-01T00:00:00Z', 'private');
+      await queue('vid-private');
+
+      const fetchImpl = vi.fn<typeof fetch>();
+
+      await runChatReplay(env, fetchImpl);
+
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect((await allTasks())[0]).toMatchObject({ state: 'unavailable' });
+    });
+
+    // The case a check at queueing time cannot reach, and the one production
+    // is actually stuck on: every video in the queue was fine when it was
+    // queued. These are from 2022 and 2023 and went away years later, so the
+    // row exists, has been asked for many times, and carries a cursor.
+    test('settles a video that went away after it was queued, cursor and all', async () => {
+      await insertVideo('vid-was-fine', '2026-01-01T00:00:00Z', 'unavailable');
+      await queue('vid-was-fine', JSON.stringify({ continuation: 'page-7', messages: 300 }), 5);
+
+      const fetchImpl = vi.fn<typeof fetch>();
+
+      await runChatReplay(env, fetchImpl);
+
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect((await allTasks())[0]).toMatchObject({ state: 'unavailable', cursor: null, next_attempt_at: null });
+      // Nothing is written for a video settled this way, so the pages it had
+      // already counted are not a count.
+      expect((await allVideos())[0]).toMatchObject({ chat_message_count: null });
+    });
+
+    test('clears the working rows of a video it settles as gone', async () => {
+      await insertVideo('vid-gone', '2026-01-01T00:00:00Z', 'unavailable');
+      await queue('vid-gone');
+      await env.DB.prepare("INSERT INTO chat_author (video_id, author_id) VALUES ('vid-gone', 'author-1')").run();
+
+      await runChatReplay(env, vi.fn<typeof fetch>());
+
+      expect(await authorCount('vid-gone')).toEqual(0);
+    });
+
+    // The other half of the queueing test above: named values, not "anything
+    // but public". Dropping a video that could have been read would never
+    // count its chat, because nothing offers a settled row again.
+    test('still asks about a members-only video rather than settling it unread', async () => {
+      await insertVideo('vid-members', '2026-01-01T00:00:00Z', 'membership');
+      await queue('vid-members');
+
+      const fetchImpl = serves([replayPage(['author-1'])]);
+
+      await runChatReplay(env, fetchImpl);
+
+      expect(fetchImpl).toHaveBeenCalled();
+      expect((await allVideos())[0]).toMatchObject({ chat_message_count: 1 });
+    });
+
     // The confirmed absence this job can still establish without a watch page:
     // the replay endpoint answers the video's own continuation with no
     // envelope at all, on the first page, before anything has been counted.

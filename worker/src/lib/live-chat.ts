@@ -205,6 +205,14 @@ export function replayRequest(continuation: string): Request {
  * a message that guesses between them is worse than one that says only the
  * status. Each is named by what it actually is.
  *
+ * The 404 keeps the version in it and no longer blames it. It said the
+ * version "may no longer be accepted", and #100 measured a 404 that was a
+ * video which had been taken down while every other video went on working.
+ * A reader of that line went to edit a constant that was not the problem. It
+ * now names both causes and how to tell them apart, which is the count: the
+ * version failing takes every video with it, a missing video takes only its
+ * own.
+ *
  * A function rather than a message written where it is thrown, which is how
  * the rest of the worker does it, because the 404 has to name CLIENT_VERSION
  * and that constant does not leave this file. The wording is the alarm, so it
@@ -212,7 +220,10 @@ export function replayRequest(continuation: string): Request {
  */
 export function readReplayError(status: number): string {
   if (status === 404) {
-    return `the replay endpoint refused the request (404). The pinned client version ${CLIENT_VERSION} may no longer be accepted`;
+    return (
+      `the replay endpoint answered 404. Either this video is gone, or the pinned client version ` +
+      `${CLIENT_VERSION} is no longer accepted. The second fails every video at once; the first only this one`
+    );
   }
 
   if (status === 400) {
