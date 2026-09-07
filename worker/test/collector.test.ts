@@ -59,10 +59,14 @@ describe('runScheduled', () => {
     warn.mockRestore();
   });
 
-  test('warns instead of dropping a job with no handler yet', async () => {
+  // The branch is the net under the next job somebody adds, and once #63 to
+  // #65 have all landed no job is missing a handler, so nothing real reaches
+  // it any more. The map is passed in rather than a job being invented in
+  // jobsByCron, which would leave the schedule naming a job that never runs.
+  test('warns instead of dropping a job with no handler', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    await runScheduled('* * * * *', env);
+    await runScheduled('* * * * *', env, {});
 
     expect(warn).toHaveBeenCalledWith('no handler implemented yet for job "chat-replay"');
 
@@ -83,6 +87,27 @@ describe('runScheduled', () => {
     expect(warn).toHaveBeenCalledWith('video-update: no videos in D1 to refresh');
 
     warn.mockRestore();
+  });
+
+  // The same argument as the ten-minute jobs above: with no queued work and
+  // no uncounted streams in D1, chat-replay says so and returns without
+  // reaching the network, so routing to it needs no stub either. The clock is
+  // pinned to a minute the job is allowed to scan on, which is what logs.
+  test('routes chat-replay to its handler', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+
+    try {
+      await runScheduled('* * * * *', env);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(log).toHaveBeenCalledWith('chat-replay: nothing due and no uncounted streams to queue');
+
+    log.mockRestore();
   });
 
   // Keep this test last, and add new ones above it. It drops a table, and

@@ -34,8 +34,11 @@ export function chunkIds(ids: readonly string[], size: number = YOUTUBE_MAX_RESU
 /**
  * Calls one YouTube Data API v3 endpoint and parses the JSON body.
  *
- * Shared by every collector that talks to the API (#62 to #65): the base URL,
- * the `key` parameter and non-2xx handling are the same for all of them.
+ * Shared by every collector that talks to the Data API (#62 to #64): the base
+ * URL, the `key` parameter and non-2xx handling are the same for all of them.
+ * The chat replay in #65 does not come through here - it reads an internal
+ * endpoint on another host, with no key of ours - and has lib/live-chat.ts
+ * instead.
  *
  * fetchImpl defaults to the global fetch. A collector's own test overrides it,
  * because a test has no live key to call the real API with.
