@@ -146,7 +146,7 @@ describe('runChatReplay', () => {
 
   // Grouped rather than left flat, which the other worker suites are: one tick
   // does one of three things, and which of them it did is what almost every
-  // test below is about. Flat, the twenty-eight names would not say which.
+  // test below is about. Flat, the thirty-odd names would not say which.
   describe('queueing', () => {
     test('touches nothing and calls nobody when there are no videos', async () => {
       const fetchImpl = vi.fn<typeof fetch>();
@@ -276,6 +276,51 @@ describe('runChatReplay', () => {
       const [task] = await allTasks();
       expect(task).toMatchObject({ state: 'pending', attempts: 0 });
       expect(JSON.parse(task.cursor!)).toMatchObject({ continuation: 'page-next', messages: 40 });
+      // Released the moment the run stopped, so the next tick carries on
+      // rather than waiting out a lease.
+      expect(task.next_attempt_at).toEqual('2026-01-01T00:10:00Z');
+    });
+
+    // A cron trigger does not wait for the tick before it. While a run is
+    // paging, its video has to stay claimed, or the next tick takes it and the
+    // two count the same replay from different places.
+    test('holds the lease across pages rather than releasing it on each one', async () => {
+      await insertVideo('vid-1');
+      await queue('vid-1');
+
+      // Read part-way through rather than afterwards: what matters is the row
+      // a second tick would find while this one is still paging, and that is
+      // gone by the time the run returns.
+      const between: TaskRow[] = [];
+      let replays = 0;
+
+      const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+        if (String(input instanceof Request ? input.url : input).includes('/watch')) {
+          return watchPage();
+        }
+
+        replays++;
+
+        if (replays > 1) {
+          // Every page but the first is asked for after the page before it was
+          // written, so this is the row as that write left it.
+          between.push((await allTasks())[0]);
+        }
+
+        return replays < 3 ? replayPage(['author-1'], `page-${replays + 1}`) : replayPage([]);
+      });
+
+      await runChatReplay(env, fetchImpl);
+
+      expect(between).toHaveLength(2);
+
+      for (const task of between) {
+        expect(task.state).toEqual('running');
+        // Held out to the lease deadline, not left due on the spot.
+        expect(task.next_attempt_at).toEqual('2026-01-01T00:25:00Z');
+      }
+
+      expect((await allTasks())[0]).toMatchObject({ state: 'done' });
     });
 
     test('carries on from the cursor rather than starting the video again', async () => {
@@ -363,6 +408,20 @@ describe('runChatReplay', () => {
       expect((await allVideos())[0]).toMatchObject({ chat_message_count: null });
     });
 
+    // A video can reach 'absent' after pages of it were counted - the chat was
+    // there and then was not - and nothing comes back for a settled task, so
+    // the working rows would sit there for good.
+    test('clears the working rows of a video that turns out to have no chat', async () => {
+      await insertVideo('vid-gone-chat');
+      await queue('vid-gone-chat', JSON.stringify({ continuation: 'page-7', messages: 300 }));
+      await env.DB.prepare("INSERT INTO chat_author (video_id, author_id) VALUES ('vid-gone-chat', 'author-1')").run();
+
+      await runChatReplay(env, serves([], watchPage({ conversationBar: false })));
+
+      expect((await allTasks())[0]).toMatchObject({ state: 'unavailable' });
+      expect(await authorCount('vid-gone-chat')).toEqual(0);
+    });
+
     test('keeps a video that will not play retryable rather than calling its chat absent', async () => {
       await insertVideo('vid-gone');
       await queue('vid-gone');
@@ -434,6 +493,21 @@ describe('runChatReplay', () => {
       await runChatReplay(env, serves([replayPage(['author-1'], 'page-2'), replayPage([])]));
 
       expect((await allTasks())[0]).toMatchObject({ state: 'done', attempts: 0 });
+    });
+
+    // A video that is moving, one page at a time, must not inherit the backoff
+    // of one that has never managed anything: the count of failures in a row
+    // is what the delay is built on, and a page that landed ends the row.
+    test('counts a failure after a landed page as the first, not the next', async () => {
+      await insertVideo('vid-1');
+      await queue('vid-1', null, 3);
+
+      await runChatReplay(env, serves([replayPage(['author-1'], 'page-2'), new Response('nope', { status: 500 })]));
+
+      const [task] = await allTasks();
+      expect(task.attempts).toEqual(1);
+      // 5 minutes doubled once, not four times, from the pinned clock.
+      expect(task.next_attempt_at).toEqual('2026-01-01T00:20:00Z');
     });
 
     // The path the schema's own comment cares about: a page's authors and the
