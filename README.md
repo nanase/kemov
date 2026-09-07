@@ -307,7 +307,7 @@ To roll back, revert the commit and let the workflow redeploy. `yarn wrangler ro
 
 ### What the workflow does
 
-It applies the migrations, seeds the `channel` table from `channels.yml`, builds the site into `dist/`, and then runs `yarn wrangler deploy`. Migrations go first so that the code never arrives at a schema older than itself, and the `d1_migrations` table makes the step a no-op on a push that adds none. The seed follows them because it needs the columns to exist, and comes before the deploy so that the worker never runs against a `channel` table older than the `channels.yml` it shipped with.
+It builds the site into `dist/`, applies the migrations, seeds the `channel` table from `channels.yml`, and then runs `yarn wrangler deploy`. The build is first because it needs no credentials and a failure there should not leave a migration applied for code that never shipped. Migrations come before the deploy so that the code never arrives at a schema older than itself, and the `d1_migrations` table makes the step a no-op on a push that adds none. The seed follows the migrations because it needs the columns to exist, and precedes the deploy so that the worker never runs against a `channel` table older than the `channels.yml` it shipped with.
 
 It type checks and tests both the frontend and the worker before any of that, in a job that holds no credentials, and afterwards checks that the secrets the worker reads are registered; see [Worker Secrets](#worker-secrets). It has no path filter: what Cloudflare runs is whatever is on `main`. The wrangler it uses comes from the lockfile, so a deploy uses the version the repository was tested against.
 
