@@ -1,7 +1,16 @@
 import dayjs from '@nanase/alnilam/dayjs';
 
 import type { Video } from '@/type/api';
-import { formatDuration, formatProperty, getPropertyName, readProperty, VIDEO_PROPERTIES } from '@/type/video';
+import {
+  COUNT_PROPERTIES,
+  formatDuration,
+  formatProperty,
+  getPropertyDescription,
+  getPropertyName,
+  RATE_PROPERTIES,
+  readProperty,
+  VIDEO_PROPERTIES,
+} from '@/type/video';
 
 /**
  * What the site works out about a video from what the API sent.
@@ -97,6 +106,53 @@ describe('getPropertyName', () => {
     for (const property of VIDEO_PROPERTIES) {
       expect(getPropertyName(property)).toBeTruthy();
     }
+  });
+
+  // 時間 is both "time" and "an hour". These divide by a duration in seconds,
+  // and one reading of the shorter word is 3,600 times the other.
+  test('the rates say which unit they are per', () => {
+    for (const property of RATE_PROPERTIES) {
+      if (property === 'chatMessageCountPerUniqueUser') continue;
+
+      expect(getPropertyName(property)).toContain('秒あたり');
+      expect(getPropertyName(property)).not.toContain('時間あたり');
+    }
+  });
+});
+
+describe('the two sorts of measure', () => {
+  test('every measure is in exactly one group', () => {
+    expect([...COUNT_PROPERTIES, ...RATE_PROPERTIES].sort()).toEqual([...VIDEO_PROPERTIES].sort());
+    expect(COUNT_PROPERTIES.filter((p) => (RATE_PROPERTIES as readonly string[]).includes(p))).toEqual([]);
+  });
+
+  // A count answers "how big" and, across channels, mostly reports who has the
+  // most subscribers. A rate answers "how dense", which is a property of the
+  // video. The cross-channel page opens on the second sort for that reason.
+  test('the rates are the ones that divide by something', () => {
+    expect([...RATE_PROPERTIES].sort()).toEqual(
+      [
+        'chatMessageCountPerSecond',
+        'chatMessageCountPerUniqueUser',
+        'commentCountPerSecond',
+        'likeCountPerSecond',
+        'viewCountPerSecond',
+      ].sort(),
+    );
+  });
+});
+
+describe('getPropertyDescription', () => {
+  test('every measure has a sentence', () => {
+    for (const property of VIDEO_PROPERTIES) {
+      expect(getPropertyDescription(property)).toBeTruthy();
+    }
+  });
+
+  // The name does not say that 1,136 means one person wrote 1,136 times.
+  test('says what a rate is divided by', () => {
+    expect(getPropertyDescription('viewCountPerSecond')).toContain('1 秒あたり');
+    expect(getPropertyDescription('chatMessageCountPerUniqueUser')).toContain('1 人');
   });
 });
 
