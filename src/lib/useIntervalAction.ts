@@ -22,14 +22,23 @@ export function useIntervalAction(
   async function invoke() {
     try {
       error.value = undefined;
-      const newInterval = await action();
 
-      if (typeof newInterval === 'number') {
-        interval.value = newInterval;
-      }
+      applyInterval(await action());
     } catch (e) {
       error.value = e;
-      await errorAction?.(e);
+
+      // The number errorAction returns is how long to wait before trying
+      // again, and it was being discarded. A first call that failed left the
+      // interval at its initial value, which for the statistics store is one
+      // second - so a failing API was asked again every second, by every open
+      // tab, for as long as it stayed down.
+      applyInterval(await errorAction?.(e));
+    }
+  }
+
+  function applyInterval(next: number | void): void {
+    if (typeof next === 'number') {
+      interval.value = next;
     }
   }
 
