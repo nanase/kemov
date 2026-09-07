@@ -220,12 +220,40 @@ async function readReplayPage(continuation: string, fetchImpl: typeof fetch): Pr
   }
 }
 
-/** The channel a video belongs to, which is half of its continuation. */
-async function channelOf(db: D1Database, videoId: string): Promise<string> {
+/**
+ * The values of `video.availability` that leave nothing here to read.
+ *
+ * Named one at a time rather than written as "anything but public", because
+ * the two ways of being wrong do not weigh the same. Keeping a video in the
+ * rotation that cannot be read costs a tick and says so in the log. Dropping
+ * one that could have been read means its chat is never counted, and no path
+ * brings a settled row back: `enqueueEndedStreams` inserts or ignores, so a
+ * row that has been decided is never offered again.
+ *
+ * 'membership' is the fourth value the schema allows and is deliberately not
+ * here. Production holds none, so adding it would change nothing that can be
+ * measured, and whether a members-only replay answers an unauthenticated
+ * request has not been established. Leaving it out costs what it costs today:
+ * one failure and a backoff.
+ *
+ * A video can leave these values again - 'private' especially, which is
+ * something a streamer does and undoes - and this job will not notice,
+ * because the row is settled by then. That is the existing rule for settled
+ * rows rather than something #100 introduced; changing it is its own issue.
+ */
+const UNREADABLE_AVAILABILITY: readonly string[] = ['private', 'unavailable'];
+
+/** What this job reads out of `video`: half of the continuation, and whether there is a video left. */
+interface VideoRow {
+  channel_id: string;
+  availability: string;
+}
+
+async function videoOf(db: D1Database, videoId: string): Promise<VideoRow> {
   const row = await db
-    .prepare('SELECT channel_id FROM video WHERE video_id = ?1')
+    .prepare('SELECT channel_id, availability FROM video WHERE video_id = ?1')
     .bind(videoId)
-    .first<{ channel_id: string }>();
+    .first<VideoRow>();
 
   if (!row) {
     // The scan only queues videos it read out of this table, so a row that is
@@ -233,7 +261,7 @@ async function channelOf(db: D1Database, videoId: string): Promise<string> {
     throw new Error('no row in video for this id');
   }
 
-  return row.channel_id;
+  return row;
 }
 
 /**
@@ -275,7 +303,14 @@ function authorInserts(
 }
 
 /**
- * Settles a video as having no chat replay to read.
+ * Settles a video as having nothing to read.
+ *
+ * Two ways lead here. The replay answered without an envelope, which says the
+ * video is there and its chat is not; or `video.availability` says the video
+ * itself is not there (#100). The schema's 'unavailable' covers both - it
+ * means confirmed absent, an answer rather than a surrender - and which of the
+ * two it was stays readable in `video.availability`, so `collect_task` needs
+ * no column to say so.
  *
  * The working rows go in the same batch. A video can reach this after pages of
  * it were already counted - the chat was there and then was not - and nothing
@@ -307,17 +342,6 @@ async function recordAbsent(db: D1Database, videoId: string, lease: string, now:
   ]);
 
   return held(results[results.length - 1]);
-}
-
-/**
- * Where this run starts reading.
- *
- * A resumed video carries on from its cursor. One starting out has its first
- * continuation built from the two ids, which is what replaced reading the
- * watch page for it (#92).
- */
-async function startOf(db: D1Database, task: TaskRow, opened: Progress | null): Promise<string> {
-  return opened?.continuation ?? chatContinuation(await channelOf(db, task.target_id), task.target_id);
 }
 
 /**
@@ -470,7 +494,28 @@ async function collectOne(
   let failures = task.attempts;
 
   try {
-    let continuation = await startOf(db, task, opened);
+    const video = await videoOf(db, task.target_id);
+
+    // Read on every pass, not only when there is no cursor to start from.
+    // A video is queued while it can still be watched and can stop being
+    // watchable afterwards: the ones this was measured on are from 2022 and
+    // 2023, and they went on being asked for and refused for months. A check
+    // at enqueue time alone would leave every one of them exactly where it is,
+    // because they were all fine when they were queued.
+    if (UNREADABLE_AVAILABILITY.includes(video.availability)) {
+      if (!(await recordAbsent(db, task.target_id, lease, now))) {
+        console.warn(`chat-replay: ${task.target_id} was taken by another tick before it could be settled`);
+        return;
+      }
+
+      console.log(`chat-replay: ${task.target_id} is ${video.availability}; there is nothing left to read`);
+      return;
+    }
+
+    // A resumed video carries on from its cursor. One starting out has its
+    // first continuation built from the two ids, which is what replaced
+    // reading the watch page for it (#92).
+    let continuation = opened?.continuation ?? chatContinuation(video.channel_id, task.target_id);
     let counted = opened?.messages ?? 0;
 
     for (let page = 0; page < PAGES_PER_VIDEO; page++) {
@@ -601,9 +646,20 @@ async function claimDue(db: D1Database, now: Date): Promise<{ tasks: TaskRow[]; 
  *
  * A row is inserted once and then left alone whatever it settles as, so a
  * video counted, or confirmed to have no chat, is never queued a second time.
+ *
+ * Videos that cannot be read are left out here as well. It saves a tick each
+ * rather than being what makes the rule hold: collectOne checks the same
+ * thing before every fetch, and that is the check that catches a video which
+ * went away after it was queued.
  */
 async function enqueueEndedStreams(db: D1Database, now: Date): Promise<number> {
   const timestamp = formatTimestamp(now);
+
+  // The placeholders are counted off UNREADABLE_AVAILABILITY so that a value
+  // added to it reaches this query too. What goes into the SQL text is the
+  // numbering; the values themselves are bound. Nothing from a request is
+  // anywhere near it - the list is a constant in this file.
+  const unreadable = UNREADABLE_AVAILABILITY.map((_, index) => `?${index + 3}`).join(', ');
 
   const { meta } = await db
     .prepare(
@@ -612,13 +668,14 @@ async function enqueueEndedStreams(db: D1Database, now: Date): Promise<number> {
          FROM video
         WHERE actual_end_time IS NOT NULL
           AND chat_message_count IS NULL
+          AND availability NOT IN (${unreadable})
           AND NOT EXISTS (
                 SELECT 1 FROM collect_task
                  WHERE kind = 'chat_replay' AND target_id = video.video_id
               )
         LIMIT ?2`,
     )
-    .bind(timestamp, DISCOVERY_LIMIT)
+    .bind(timestamp, DISCOVERY_LIMIT, ...UNREADABLE_AVAILABILITY)
     .run();
 
   return meta.changes ?? 0;
