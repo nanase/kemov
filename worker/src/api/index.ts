@@ -58,13 +58,13 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
 
     if (metric === null) return errorWithCacheHeaders(400, `no ranking by ${searchParams.get('metric')}`);
 
-    const kind = readKind(searchParams.get('type'));
+    const requested = readKind(searchParams.get('type'));
 
-    if (kind === undefined) return errorWithCacheHeaders(400, `no videos of type ${searchParams.get('type')}`);
+    if ('error' in requested) return errorWithCacheHeaders(400, requested.error);
 
     const limit = readLimit(searchParams.get('limit'), DEFAULT_RANKING_SIZE, MAX_RANKING_SIZE);
 
-    return await cached(() => rankVideos(env, metric, limit, kind));
+    return await cached(() => rankVideos(env, metric, limit, requested.kind));
   }
 
   if (segments.length === 3 && resource === 'channels' && name !== undefined) {

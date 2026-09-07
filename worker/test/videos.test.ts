@@ -249,21 +249,27 @@ describe('rankVideos by kind', () => {
 
 describe('readKind', () => {
   test('takes each kind the schema stores', () => {
-    expect(readKind('streaming')).toEqual('streaming');
-    expect(readKind('video')).toEqual('video');
-    expect(readKind('shorts')).toEqual('shorts');
+    expect(readKind('streaming')).toEqual({ kind: 'streaming' });
+    expect(readKind('video')).toEqual({ kind: 'video' });
+    expect(readKind('shorts')).toEqual({ kind: 'shorts' });
   });
 
   test('an absent kind means every kind', () => {
-    expect(readKind(null)).toBeNull();
+    expect(readKind(null)).toEqual({ kind: null });
   });
 
-  // Absent and unreadable are different questions, the same way readMetric
-  // answers them. Asking for a kind that does not exist and being handed every
-  // kind would look like an answer.
+  // Absent and unreadable are different questions. Asking for a kind that does
+  // not exist and being handed every kind would look like an answer.
   test('a kind it does not have is refused rather than ignored', () => {
-    expect(readKind('podcast')).toBeUndefined();
-    expect(readKind('')).toBeUndefined();
-    expect(readKind('STREAMING')).toBeUndefined();
+    expect(readKind('podcast')).toEqual({ error: 'no videos of type podcast' });
+    expect(readKind('')).toMatchObject({ error: expect.any(String) });
+    expect(readKind('STREAMING')).toMatchObject({ error: expect.any(String) });
+  });
+
+  // "Every kind" is a real answer and has to stay one. Reading the refusal as
+  // null - or as undefined, which src/lib/read.ts treats as the same absence -
+  // would make a word this API does not have into a ranking of everything.
+  test('refusing is not the same shape as covering every kind', () => {
+    expect(readKind('podcast')).not.toEqual(readKind(null));
   });
 });

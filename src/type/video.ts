@@ -34,11 +34,30 @@ export type VideoProperty = (typeof VIDEO_PROPERTIES)[number];
  * "the channel with the most subscribers". A rate answers "how dense", and
  * that is a property of the video rather than of who made it. The cross-channel
  * ranking is worth having for the second sort, which is why it opens on one.
+ *
+ * Written out rather than derived from the names, so that a measure added to
+ * VIDEO_PROPERTIES has to be put in one of them by hand. A rule reading the
+ * suffix would file the next one silently and could easily file it wrongly:
+ * chatMessageCountPerUniqueUser is a rate and does not end in PerSecond. The
+ * test that these two partition VIDEO_PROPERTIES is what makes the hand step
+ * unmissable.
  */
-export const COUNT_PROPERTIES = VIDEO_PROPERTIES.filter(
-  (p) => !p.endsWith('PerSecond') && p !== 'chatMessageCountPerUniqueUser',
-);
-export const RATE_PROPERTIES = VIDEO_PROPERTIES.filter((p) => !(COUNT_PROPERTIES as readonly string[]).includes(p));
+export const COUNT_PROPERTIES = [
+  'viewCount',
+  'likeCount',
+  'commentCount',
+  'chatMessageCount',
+  'chatUniqueUserCount',
+  'duration',
+] as const;
+
+export const RATE_PROPERTIES = [
+  'chatMessageCountPerUniqueUser',
+  'viewCountPerSecond',
+  'likeCountPerSecond',
+  'commentCountPerSecond',
+  'chatMessageCountPerSecond',
+] as const;
 
 /**
  * A sentence saying what the measure counts.

@@ -1,4 +1,4 @@
-import { siteRedirect } from '../src/site';
+import { siteRedirect } from '../src/lib/site';
 
 /**
  * The paths the built site has no file at.

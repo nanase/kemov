@@ -6,7 +6,7 @@ import { withCommas } from '@nanase/alnilam/number';
 import StatsAppBase from '@/components/common/StatsAppBase.vue';
 import VideoDetail from '@/components/stats/detail/VideoDetail.vue';
 import VideoThumbnail from '@/components/stats/detail/VideoThumbnail.vue';
-import { getRanking, type ApiError, type ApiResult } from '@/lib/api';
+import { ApiError, getRanking } from '@/lib/api';
 import type { Channel, VideoRanking, VideoType } from '@/type/api';
 import {
   COUNT_PROPERTIES,
@@ -62,13 +62,29 @@ const metric = ref<VideoProperty>('viewCountPerSecond');
 const kind = ref<VideoType>('streaming');
 const limit = ref<number>(30);
 
+/**
+ * The ranking, or the failure that stopped it.
+ *
+ * Three refs drive one request, so this is a computedAsync rather than the
+ * store's two shapes: useIntervalAction polls on a timer and this does not,
+ * and getAllVideos returns a structure because it can partly succeed while
+ * this either has a ranking or has none.
+ *
+ * Only an ApiError is turned into something to display. Anything else is a
+ * fault in this code rather than in the answer, and it is left to throw where
+ * it can be seen instead of being relabelled as a failed request.
+ */
+type Answer = { ranking: VideoRanking } | { failure: ApiError };
+
 const loading = ref<boolean>(false);
-const answer = computedAsync<ApiResult<VideoRanking> | ApiError | null>(
+const answer = computedAsync<Answer | null>(
   async () => {
     try {
-      return await getRanking(metric.value, kind.value, limit.value);
+      return { ranking: (await getRanking(metric.value, kind.value, limit.value)).data };
     } catch (error) {
-      return error as ApiError;
+      if (error instanceof ApiError) return { failure: error };
+
+      throw error;
     }
   },
   null,
@@ -76,10 +92,10 @@ const answer = computedAsync<ApiResult<VideoRanking> | ApiError | null>(
 );
 
 const ranking = computed<VideoRanking | null>(() =>
-  answer.value !== null && 'data' in answer.value ? answer.value.data : null,
+  answer.value !== null && 'ranking' in answer.value ? answer.value.ranking : null,
 );
 const failure = computed<ApiError | null>(() =>
-  answer.value !== null && !('data' in answer.value) ? answer.value : null,
+  answer.value !== null && 'failure' in answer.value ? answer.value.failure : null,
 );
 
 const channelOf = (channelId: string): Channel | undefined =>

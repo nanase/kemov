@@ -1,6 +1,7 @@
 import axios from '@/lib/axios';
 import { apiBase } from '@/config';
 import { ShapeError } from '@/lib/read';
+import type { VideoProperty } from '@/type/video';
 import {
   readChannelList,
   readLiveList,
@@ -135,7 +136,11 @@ export function getLive(): Promise<ApiResult<LiveList>> {
  * that is not a hypothetical: shorts divide by at most 60 seconds and streams
  * by hours, so an unnarrowed ranking of those is a list of shorts.
  */
-export function getRanking(metric: string, kind: VideoType | null, limit: number): Promise<ApiResult<VideoRanking>> {
+export function getRanking(
+  metric: VideoProperty,
+  kind: VideoType | null,
+  limit: number,
+): Promise<ApiResult<VideoRanking>> {
   const query = new URLSearchParams({ metric, limit: String(limit) });
 
   if (kind !== null) query.set('type', kind);

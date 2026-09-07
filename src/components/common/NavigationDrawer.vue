@@ -18,7 +18,7 @@ const opened = defineModel<boolean>('opened');
         :active="pageId === 'stats/ranking'"
       >
         <template #prepend>
-          <v-icon icon="mdi-trophy" size="small" />
+          <v-icon icon="mdi-trophy" size="large" />
         </template>
       </v-list-item>
       <v-list-item link title="リアルタイム統計" href="/stats/" role="menuitem" :active="pageId === 'stats'">

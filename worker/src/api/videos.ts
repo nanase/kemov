@@ -210,18 +210,29 @@ export function readMetric(value: string | null): RankingMetric | null {
   return isRankingMetric(value) ? value : null;
 }
 
-/**
- * The kind a query string asks for: null when it asks for none, and undefined
- * when it names one this API does not have.
- *
- * Absent and unreadable are answered differently, the way readMetric and
- * readHistoryRange both do. Not asking means every kind; asking for a kind
- * that does not exist and being handed every kind would look like an answer.
- */
-export function readKind(value: string | null): VideoKind | null | undefined {
-  if (value === null) return null;
+/** The kind a ranking was asked to cover, or why the request could not be read. */
+export type RequestedKind = { kind: VideoKind | null } | { error: string };
 
-  return isVideoKind(value) ? value : undefined;
+/**
+ * The kind a query string asks for.
+ *
+ * Three outcomes rather than two: every kind, one kind, or a word this API
+ * does not have. That is one more than readMetric needs, because readMetric
+ * has a sensible default and this does not - so the shape follows
+ * readHistoryRange, which faces the same three and answers with an { error }
+ * beside the successful form.
+ *
+ * Encoding the refusal as null or undefined instead would collide with what
+ * those already mean here: null is the honest answer for "every kind", and
+ * src/lib/read.ts reads null and undefined as the same absence.
+ *
+ * Not asking means every kind. Asking for a kind that does not exist and being
+ * handed every kind would look like an answer.
+ */
+export function readKind(value: string | null): RequestedKind {
+  if (value === null) return { kind: null };
+
+  return isVideoKind(value) ? { kind: value } : { error: `no videos of type ${value}` };
 }
 
 /** A limit from a query string, clamped rather than refused. */
