@@ -196,7 +196,19 @@ describe('runChatReplay', () => {
 
     // Settled rows stay settled: a video confirmed to have no chat, or one
     // already counted, must not come back round on the next scan.
-    test('leaves out a video there is nothing left to read', async () => {
+    test('never queues a video a second time', async () => {
+      await insertVideo('vid-settled');
+      await env.DB.prepare(
+        `INSERT INTO collect_task (kind, target_id, state, attempts, next_attempt_at, updated_at)
+         VALUES ('chat_replay', 'vid-settled', 'unavailable', 0, NULL, '2026-01-01T00:00:00Z')`,
+      ).run();
+
+      await runChatReplay(env, vi.fn<typeof fetch>());
+
+      expect(await allTasks()).toEqual([expect.objectContaining({ state: 'unavailable' })]);
+    });
+
+    test('leaves out a video that cannot be read', async () => {
       await insertVideo('vid-gone', '2026-01-01T00:00:00Z', 'unavailable');
 
       await runChatReplay(env, vi.fn<typeof fetch>());
@@ -213,18 +225,6 @@ describe('runChatReplay', () => {
       await runChatReplay(env, vi.fn<typeof fetch>());
 
       expect(await allTasks()).toMatchObject([{ target_id: 'vid-members', state: 'pending' }]);
-    });
-
-    test('never queues a video a second time', async () => {
-      await insertVideo('vid-settled');
-      await env.DB.prepare(
-        `INSERT INTO collect_task (kind, target_id, state, attempts, next_attempt_at, updated_at)
-         VALUES ('chat_replay', 'vid-settled', 'unavailable', 0, NULL, '2026-01-01T00:00:00Z')`,
-      ).run();
-
-      await runChatReplay(env, vi.fn<typeof fetch>());
-
-      expect(await allTasks()).toEqual([expect.objectContaining({ state: 'unavailable' })]);
     });
 
     // The scan is the expensive half and has no index to use (#83), so a tick

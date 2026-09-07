@@ -1,6 +1,7 @@
 import type { Env } from '../lib/env';
 import { chatContinuation, parseReplayPage, readReplayError, replayRequest, type ReplayPage } from '../lib/live-chat';
 import { formatTimestamp } from '../lib/time';
+import type { Availability } from '../lib/video';
 
 /**
  * How many videos one tick takes on.
@@ -69,6 +70,29 @@ const LEASE_MINUTES = 15;
 /** The first retry delay, doubled per consecutive failure up to the cap. */
 const RETRY_BASE_MINUTES = 5;
 const RETRY_MAX_MINUTES = 360;
+
+/**
+ * The values of `video.availability` that leave nothing here to read.
+ *
+ * Named one at a time rather than written as "anything but public", because
+ * the two ways of being wrong do not weigh the same. Keeping a video in the
+ * rotation that cannot be read costs a tick and says so in the log. Dropping
+ * one that could have been read means its chat is never counted, and no path
+ * brings a settled row back: `enqueueEndedStreams` inserts or ignores, so a
+ * row that has been decided is never offered again.
+ *
+ * 'membership' is the fourth value the schema allows and is deliberately not
+ * here. Production holds none, so adding it would change nothing that can be
+ * measured, and whether a members-only replay answers an unauthenticated
+ * request has not been established. Leaving it out costs what it costs today:
+ * one failure and a backoff.
+ *
+ * A video can leave these values again - 'private' especially, which is
+ * something a streamer does and undoes - and this job will not notice,
+ * because the row is settled by then. That is the existing rule for settled
+ * rows rather than something #100 introduced; changing it is its own issue.
+ */
+const UNREADABLE_AVAILABILITY: readonly Availability[] = ['private', 'unavailable'];
 
 interface TaskRow {
   target_id: string;
@@ -220,35 +244,13 @@ async function readReplayPage(continuation: string, fetchImpl: typeof fetch): Pr
   }
 }
 
-/**
- * The values of `video.availability` that leave nothing here to read.
- *
- * Named one at a time rather than written as "anything but public", because
- * the two ways of being wrong do not weigh the same. Keeping a video in the
- * rotation that cannot be read costs a tick and says so in the log. Dropping
- * one that could have been read means its chat is never counted, and no path
- * brings a settled row back: `enqueueEndedStreams` inserts or ignores, so a
- * row that has been decided is never offered again.
- *
- * 'membership' is the fourth value the schema allows and is deliberately not
- * here. Production holds none, so adding it would change nothing that can be
- * measured, and whether a members-only replay answers an unauthenticated
- * request has not been established. Leaving it out costs what it costs today:
- * one failure and a backoff.
- *
- * A video can leave these values again - 'private' especially, which is
- * something a streamer does and undoes - and this job will not notice,
- * because the row is settled by then. That is the existing rule for settled
- * rows rather than something #100 introduced; changing it is its own issue.
- */
-const UNREADABLE_AVAILABILITY: readonly string[] = ['private', 'unavailable'];
-
 /** What this job reads out of `video`: half of the continuation, and whether there is a video left. */
 interface VideoRow {
   channel_id: string;
-  availability: string;
+  availability: Availability;
 }
 
+/** The channel a video belongs to, which is half of its continuation, and what became of the video. */
 async function videoOf(db: D1Database, videoId: string): Promise<VideoRow> {
   const row = await db
     .prepare('SELECT channel_id, availability FROM video WHERE video_id = ?1')
