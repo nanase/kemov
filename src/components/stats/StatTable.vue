@@ -108,9 +108,8 @@ function getAverageSubscriberCount(): number {
  *
  * Three states rather than one, because the badge means three different
  * things: on air, about to start, and announced for later today. The endpoint
- * says which directly - the collector settled that in #64 - where the list
- * this replaces reported one "latest streaming" per channel and left the page
- * to work out what it was from timestamps.
+ * says which directly - #64 settled that - so none of it is worked out here
+ * from timestamps.
  */
 function streamOf(channelId: string) {
   return liveStreams.value.find((stream) => stream.channelId === channelId);

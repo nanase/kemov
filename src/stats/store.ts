@@ -19,9 +19,8 @@ import type { Channel, LiveStream, Video } from '@/type/api';
  *
  * The three things this deliberately does not do:
  *
- * - It does not treat a failure as an empty result. The old `catch { return
- *   [] }` around the video list made "could not be read" and "has no videos"
- *   the same answer.
+ * - It does not treat a failure as an empty result. An empty array is the
+ *   same answer as "this channel has no videos".
  * - It does not treat a partial result as a whole one. A channel's archive is
  *   up to seven pages, and a page that failed halfway would quietly shrink
  *   every total on the detail page.

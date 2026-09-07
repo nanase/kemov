@@ -7,11 +7,8 @@ import type { Video } from '@/type/api';
  * The measures a video can be ranked by, and how each one is read, named and
  * written.
  *
- * The shape of a video and the reading of a response now live in
- * @/type/api.ts; what is left here is what the site does with one. The old
- * `parse` went with the JSON files it was written for - a response is checked
- * where it arrives now, not reconstructed from a string with a JSON.parse
- * reviver.
+ * A video's shape and the reading of a response are @/type/api.ts; this is
+ * what the site does with one.
  */
 
 export const VIDEO_PROPERTIES = [

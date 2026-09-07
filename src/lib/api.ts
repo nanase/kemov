@@ -15,9 +15,8 @@ import {
  * Talking to the API this site now reads from.
  *
  * One place, so that every call answers the same three questions: did it
- * arrive, was it the shape this code reads, and how old is it. The site being
- * replaced answered none of them - it fetched two static files, waited for
- * both, and put whatever came back on screen.
+ * arrive, was it the shape this code reads, and how old is it. Nothing else in
+ * the site is allowed to answer them for itself.
  */
 
 /** Where an answer came from, as the API reports it. */
@@ -178,8 +177,8 @@ export async function getAllVideos(channelId: string, limit = 200): Promise<Vide
     }
 
     videos.push(...result.data.videos);
-    // The oldest page's freshness, which is the age of the whole set: the
-    // archive is only as current as the last request that built it.
+    // The last request wins, because the set is only as current as the most
+    // recently built part of it.
     freshness = result.freshness;
     cursor = result.data.nextCursor;
 

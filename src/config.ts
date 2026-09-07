@@ -5,7 +5,7 @@
  * worker: `/api/*` is answered by its fetch handler and everything else by the
  * static assets built from this directory. A relative path is therefore a
  * same-origin one, which is what keeps the browser from a preflight on every
- * request - the four absolute URLs this replaced pointed at two other hosts.
+ * request.
  *
  * VITE_API_BASE overrides it for `vite dev`, where these pages are served by
  * vite on its own port and the worker is not there at all. Point it at a

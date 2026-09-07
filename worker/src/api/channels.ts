@@ -76,9 +76,8 @@ const COLUMN: Readonly<Record<CountName, keyof SnapshotRow>> = {
  * The channel's own columns come back with the counts rather than from a
  * second endpoint. Every page that shows a number shows the streamer's name,
  * colour and avatar beside it, and `custom_url` and `thumbnail_url` exist
- * nowhere but here - channels.yml does not master them, the collector writes
- * them from Channels.list. #69 left them out, which left #70 with a site it
- * could not draw.
+ * nowhere but here: channels.yml does not master them, the collector writes
+ * them from Channels.list.
  */
 async function latestPerChannel(db: D1Database): Promise<ChannelRow[]> {
   const { results } = await db
