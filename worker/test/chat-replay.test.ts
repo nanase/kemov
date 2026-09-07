@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 
 import { runChatReplay } from '../src/collector/chat-replay';
+import { chatContinuation } from '../src/lib/live-chat';
 
 interface TaskRow {
   target_id: string;
@@ -630,15 +631,19 @@ describe('runChatReplay', () => {
     // are not negative, so a cursor carrying anything else starts over.
     test('starts a video over rather than carrying on from a count no column would take', async () => {
       await insertVideo('vid-1');
-      await queue('vid-1', JSON.stringify({ continuation: 'page-7', messages: -5, apiKey: 'k', clientVersion: '9.9' }));
+      await queue('vid-1', JSON.stringify({ continuation: 'page-7', messages: -5 }));
 
       const fetchImpl = serves([replayPage(['author-1'])]);
 
       await runChatReplay(env, fetchImpl);
 
-      // Started over from a continuation built for this video, and the count
-      // starts from this run rather than from the number the cursor carried.
-      expect((fetchImpl.mock.calls[0][0] as Request).url).toContain('get_live_chat_replay');
+      // The continuation this video would be built with, not the one the
+      // cursor was carrying: the whole cursor was thrown away, not just the
+      // count in it. And the total starts from this run rather than from -5.
+      const asked = (await (fetchImpl.mock.calls[0][0] as Request).json()) as { continuation: string };
+
+      expect(asked.continuation).toEqual(chatContinuation('UCtest', 'vid-1'));
+      expect(asked.continuation).not.toEqual('page-7');
       expect((await allVideos())[0]).toMatchObject({ chat_message_count: 1 });
     });
   });
