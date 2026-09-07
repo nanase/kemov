@@ -40,9 +40,32 @@ const PAGES_PER_VIDEO = 40;
  * derived from it. No page in those runs ran out of its three tries, which is
  * what the ceiling sitting here rather than higher rests on; a page that does
  * run out costs the video a backoff, not the pages counted before it.
+ *
+ * A page that is cut for taking too long spends the same tries. What that
+ * costs, and why it is the same event, is under PAGE_DEADLINE_MS.
  */
 const PAGE_RETRIES = 3;
 const PAGE_RETRY_MS = 500;
+
+/**
+ * How long to wait for an answer before cutting the request and asking again.
+ *
+ * A refusal turned out not to be a slow answer but a held connection. Measured
+ * from the edge against one replay, walked to its end three times: a page that
+ * is answered comes back in 52 to 150 ms, while a 403 arrives after 6.5 to 9.5
+ * seconds carrying a block page and no retry-after. Cutting a request that has
+ * not answered in a second and asking again took the same 21 pages from 40.9
+ * seconds to 4.5, and the try straight after a cut succeeded every time - so
+ * the refusal is decided at once and only the connection is kept.
+ *
+ * A second is chosen for the failure it cannot have rather than for being
+ * optimal. fetch settles when the headers arrive, so this covers the wait for
+ * an answer and not the reading of the page behind it: a page cannot be cut
+ * for being large. It is a starting value to narrow against production, not a
+ * measured optimum - three runs of one replay say nothing about where the knee
+ * is.
+ */
+const PAGE_DEADLINE_MS = 1000;
 
 /**
  * How many videos one scan of `video` may enqueue.
@@ -118,8 +141,16 @@ interface Progress {
 /** One page as read, and what it took to read it. */
 interface PageRead {
   replay: ReplayPage | null;
-  /** How many times the endpoint refused this page before answering it. */
+  /** How many tries this page took beyond the first. */
   retries: number;
+  /**
+   * How many of those tries were cut rather than refused in so many words.
+   *
+   * Kept apart from the count above because the two move for different
+   * reasons: refusals rising is the endpoint treating us differently, cuts
+   * rising on their own is PAGE_DEADLINE_MS being too tight.
+   */
+  cut: number;
 }
 
 function plusMinutes(from: Date, minutes: number): string {
@@ -214,33 +245,67 @@ async function recordFailure(
  * envelope is a video that has no replay to read. Which of those a null means
  * depends on where in a video it arrives, so the decision is the caller's.
  *
- * A 403 is asked again rather than given up on, up to PAGE_RETRIES times,
- * which is the only refusal that has ever been answered differently the second
- * time.
+ * A 403 is asked again rather than given up on, up to PAGE_RETRIES times, and
+ * so is a request that never answers at all. Those are the same event seen
+ * from two distances - PAGE_DEADLINE_MS says why - so they spend the same
+ * tries.
  */
 async function readReplayPage(continuation: string, fetchImpl: typeof fetch): Promise<PageRead> {
+  let cut = 0;
+
   // No condition on the loop, unlike the paging one in collectOne: every way
   // out of this is a return or a throw, and which of them it is depends on the
   // answer rather than on the count.
   for (let retries = 0; ; retries++) {
-    const response = await fetchImpl(replayRequest(continuation));
+    const response = await askForPage(continuation, fetchImpl);
 
-    if (response.ok) {
-      return { replay: parseReplayPage(await response.json()), retries };
-    }
-
-    // The other two statuses this endpoint uses are about the request itself -
-    // readReplayError names which - so sending it again unchanged would only
-    // be refused again, and the video is better off in its backoff.
-    if (response.status !== 403) {
+    if (!response) {
+      cut++;
+    } else if (response.ok) {
+      return { replay: parseReplayPage(await response.json()), retries, cut };
+    } else if (response.status !== 403) {
+      // The other two statuses this endpoint uses are about the request itself
+      // - readReplayError names which - so sending it again unchanged would
+      // only be refused again, and the video is better off in its backoff.
       throw new Error(readReplayError(response.status));
     }
 
     if (retries === PAGE_RETRIES) {
-      throw new Error(`${readReplayError(response.status)} on ${retries + 1} tries in a row`);
+      const tries = retries + 1;
+
+      // Both numbers, because which of the two this was is the first question
+      // anyone reading the line will have.
+      throw new Error(
+        `the replay endpoint gave no page in ${tries} tries: ${tries - cut} refused, ${cut} held past ${PAGE_DEADLINE_MS}ms`,
+      );
     }
 
     await new Promise((resolve) => setTimeout(resolve, PAGE_RETRY_MS));
+  }
+}
+
+/**
+ * One request for a page, or null when it was cut for taking too long.
+ *
+ * The deadline is cleared as soon as the headers are in, so what it covers is
+ * the wait for an answer and not the reading of the page behind it. A body
+ * that stalls halfway through is a different failure with no cover here; #104
+ * has that one.
+ */
+async function askForPage(continuation: string, fetchImpl: typeof fetch): Promise<Response | null> {
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), PAGE_DEADLINE_MS);
+
+  try {
+    return await fetchImpl(replayRequest(continuation, controller.signal));
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      return null;
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(deadline);
   }
 }
 
@@ -484,11 +549,16 @@ async function collectOne(
   // video without a replay rather than a broken reply.
   let landed: Progress | null = opened && { continuation: opened.continuation, messages: opened.messages };
 
-  // How many times a page had to be asked for twice, summed over the run. The
-  // 403 rate (#96) in the only form a log can carry: one line as a video ends
-  // says whether the rate is moving, where a line per retry would bury every
-  // other line this job writes.
+  // How many times a page had to be asked for twice, summed over the run, and
+  // how many of those were cuts. The 403 rate (#96) in the only form a log can
+  // carry: one line as a video ends says whether the rate is moving, where a
+  // line per retry would bury every other line this job writes.
+  //
+  // The two are reported side by side because they answer different questions.
+  // Refusals rising while cuts do not is the endpoint treating us differently;
+  // cuts rising on their own is PAGE_DEADLINE_MS being too tight.
   let retries = 0;
+  let cut = 0;
 
   // Attempts in a row that got nowhere. It starts at what the row was
   // claimed with and drops to zero the moment a page lands, because a video
@@ -521,9 +591,11 @@ async function collectOne(
     let counted = opened?.messages ?? 0;
 
     for (let page = 0; page < PAGES_PER_VIDEO; page++) {
-      const { replay, retries: refused } = await readReplayPage(continuation, fetchImpl);
+      const read = await readReplayPage(continuation, fetchImpl);
+      const replay = read.replay;
 
-      retries += refused;
+      retries += read.retries;
+      cut += read.cut;
 
       if (!replay) {
         // No envelope at all. On the first page of a video nothing has read
@@ -556,7 +628,7 @@ async function collectOne(
         }
 
         console.log(
-          `chat-replay: ${task.target_id} counted ${total} messages over ${page + 1} pages and ${retries} retries`,
+          `chat-replay: ${task.target_id} counted ${total} messages over ${page + 1} pages and ${retries} retries (${cut} cut)`,
         );
         return;
       }
@@ -585,7 +657,7 @@ async function collectOne(
 
     await releaseForNextTick(db, task.target_id, lease, now);
     console.log(
-      `chat-replay: ${task.target_id} used its ${PAGES_PER_VIDEO} pages and ${retries} retries, so it carries on next tick`,
+      `chat-replay: ${task.target_id} used its ${PAGES_PER_VIDEO} pages and ${retries} retries (${cut} cut), so it carries on next tick`,
     );
   } catch (error) {
     console.error(`chat-replay: ${task.target_id} failed`, error);

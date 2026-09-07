@@ -468,6 +468,39 @@ describe('runChatReplay', () => {
       expect(states.filter((state) => state !== 'done')).toHaveLength(1);
     });
 
+    // The deadline end to end: the reply never comes, so nothing but the
+    // signal reaching fetch can end the request. Real timers, because both the
+    // deadline and the gap after it are waits inside the run.
+    test('cuts a request that is never answered and asks again', async () => {
+      vi.useRealTimers();
+      await insertVideo('vid-1');
+      await queue('vid-1');
+
+      let asked = 0;
+      const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+        asked += 1;
+
+        if (asked === 1) {
+          const { signal } = input as Request;
+
+          // Rejected with what the abort itself carries rather than with an
+          // error invented here, so that what the collector has to recognise
+          // is the runtime's object and not this test's.
+          await new Promise((_, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason));
+          });
+        }
+
+        return replayPage(['author-1']);
+      });
+
+      await runChatReplay(env, fetchImpl);
+
+      expect((fetchImpl.mock.calls[0][0] as Request).signal).toBeInstanceOf(AbortSignal);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect((await allTasks())[0]).toMatchObject({ state: 'done' });
+    });
+
     // Real timers, because this run really does wait: the gap between tries is
     // a setTimeout inside it, and a fake clock would have to be pushed along
     // from out here, between D1 writes this test cannot see the end of. A
@@ -659,6 +692,25 @@ describe('runChatReplay', () => {
       expect(task).toMatchObject({ state: 'failed', attempts: 1 });
       expect(JSON.parse(task.cursor!)).toEqual({ continuation: 'page-2', messages: 1 });
       expect(await authorCount('vid-1')).toEqual(1);
+    });
+
+    // A cut spends the tries a refusal would, so a page nobody ever answers
+    // ends the same way: the video backs off and keeps what it counted. The
+    // abort is raised here rather than waited for, because what this one is
+    // about is the giving up and not the deadline.
+    test('gives up when every try is cut', async () => {
+      vi.useRealTimers();
+      await insertVideo('vid-1');
+      await queue('vid-1');
+
+      const fetchImpl = vi.fn<typeof fetch>(async () => {
+        throw Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
+      });
+
+      await runChatReplay(env, fetchImpl);
+
+      expect(fetchImpl).toHaveBeenCalledTimes(4);
+      expect((await allTasks())[0]).toMatchObject({ state: 'failed', attempts: 1 });
     });
 
     // The other half of the same rule, on a status that is about the request

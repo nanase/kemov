@@ -98,6 +98,23 @@ describe('replayRequest', () => {
     expect(request.url).not.toContain('key=');
   });
 
+  // The one part of this request whose absence looks like nothing. fetch
+  // ignores a signal handed to it beside a Request it has already been given,
+  // without an error and with the types intact, so a deadline built that way
+  // would never fire and every request would take as long as the endpoint
+  // wanted it to (#68). Checking the signal is here is checking the only
+  // place it works.
+  test("carries a signal that is still the caller's, so a deadline can reach it", () => {
+    const controller = new AbortController();
+    const asked = replayRequest('page-one', controller.signal);
+
+    expect(asked.signal.aborted).toBe(false);
+
+    controller.abort();
+
+    expect(asked.signal.aborted).toBe(true);
+  });
+
   test('carries the continuation and a client version', async () => {
     const body = (await request.json()) as { context: { client: { clientVersion: string } }; continuation: string };
 
