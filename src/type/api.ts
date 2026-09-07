@@ -42,7 +42,14 @@ export const DELTA_MISSING = ['nothing collected', 'history too short', 'gap too
 
 export type DeltaMissing = (typeof DELTA_MISSING)[number];
 
-/** A change over a period, or the reason there is none. */
+/**
+ * A change over a period, or the reason there is none.
+ *
+ * `worker/src/lib/delta.ts` has a type of the same name with the same
+ * branches, and they are not interchangeable: the instants there are the
+ * strings D1 stores, and here they have been parsed. Searching the repository
+ * for `Delta` finds both, so the difference is worth saying out loud.
+ */
 export type Delta =
   { value: number; over: { from: Dayjs; to: Dayjs; seconds: number } } | { value: null; reason: DeltaMissing };
 
