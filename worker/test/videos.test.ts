@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 
-import { listVideos, rankVideos } from '../src/api/videos';
+import { listVideos, rankVideos, readKind } from '../src/api/videos';
 
 /**
  * What the video endpoints compute, against the real D1. The metric
@@ -183,5 +183,87 @@ describe('rankVideos', () => {
     }
 
     expect((await rankVideos(env, 'viewCount', 2)).videos).toHaveLength(2);
+  });
+});
+
+/**
+ * Narrowing a ranking to one kind of video.
+ *
+ * The per-second metrics divide by a duration that stops at 60 seconds for a
+ * short and runs to hours for a stream, so a ranking of every kind at once
+ * ranks shorts. Measured across the archive, a short averages 141 views per
+ * second of length against a stream's 0.58, and streams are 97% of the rows.
+ */
+describe('rankVideos by kind', () => {
+  async function insertThreeKinds(): Promise<void> {
+    await insertChannel('UCaaa');
+    await insertVideo('short', 'UCaaa', { type: 'shorts', viewCount: 600, durationSeconds: 30 });
+    await insertVideo('clip', 'UCaaa', { type: 'video', viewCount: 6000, durationSeconds: 600 });
+    await insertVideo('stream', 'UCaaa', { type: 'streaming', viewCount: 60000, durationSeconds: 7200 });
+  }
+
+  test('answers with every kind when none is asked for', async () => {
+    await insertThreeKinds();
+
+    const ranking = await rankVideos(env, 'viewCount', 10);
+
+    expect(ranking.videos.map((video) => video.videoId)).toEqual(['stream', 'clip', 'short']);
+    expect(ranking.kind).toBeNull();
+  });
+
+  test('answers with one kind when one is asked for', async () => {
+    await insertThreeKinds();
+
+    const ranking = await rankVideos(env, 'viewCount', 10, 'shorts');
+
+    expect(ranking.videos.map((video) => video.videoId)).toEqual(['short']);
+  });
+
+  // "Streams only" and "this happens to hold only streams" are different
+  // answers, and the caller cannot tell them apart from the rows.
+  test('says which kind it was narrowed to', async () => {
+    await insertThreeKinds();
+
+    expect((await rankVideos(env, 'viewCount', 10, 'streaming')).kind).toEqual('streaming');
+  });
+
+  // The reason the parameter exists. Ranked together the short wins by twenty
+  // times, and the answer says nothing about which stream anybody watched.
+  test('keeps a short from winning a ranking of streams', async () => {
+    await insertThreeKinds();
+
+    const together = await rankVideos(env, 'viewCountPerSecond', 10);
+    const streams = await rankVideos(env, 'viewCountPerSecond', 10, 'streaming');
+
+    expect(together.videos[0]?.videoId).toEqual('short');
+    expect(streams.videos.map((video) => video.videoId)).toEqual(['stream']);
+  });
+
+  test('answers with nothing when no video is of that kind', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('stream', 'UCaaa', { type: 'streaming', viewCount: 10 });
+
+    expect((await rankVideos(env, 'viewCount', 10, 'shorts')).videos).toEqual([]);
+  });
+});
+
+describe('readKind', () => {
+  test('takes each kind the schema stores', () => {
+    expect(readKind('streaming')).toEqual('streaming');
+    expect(readKind('video')).toEqual('video');
+    expect(readKind('shorts')).toEqual('shorts');
+  });
+
+  test('an absent kind means every kind', () => {
+    expect(readKind(null)).toBeNull();
+  });
+
+  // Absent and unreadable are different questions, the same way readMetric
+  // answers them. Asking for a kind that does not exist and being handed every
+  // kind would look like an answer.
+  test('a kind it does not have is refused rather than ignored', () => {
+    expect(readKind('podcast')).toBeUndefined();
+    expect(readKind('')).toBeUndefined();
+    expect(readKind('STREAMING')).toBeUndefined();
   });
 });

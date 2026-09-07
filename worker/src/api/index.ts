@@ -10,6 +10,7 @@ import {
   MAX_PAGE_SIZE,
   MAX_RANKING_SIZE,
   rankVideos,
+  readKind,
   readLimit,
   readMetric,
 } from './videos';
@@ -57,9 +58,13 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
 
     if (metric === null) return errorWithCacheHeaders(400, `no ranking by ${searchParams.get('metric')}`);
 
+    const kind = readKind(searchParams.get('type'));
+
+    if (kind === undefined) return errorWithCacheHeaders(400, `no videos of type ${searchParams.get('type')}`);
+
     const limit = readLimit(searchParams.get('limit'), DEFAULT_RANKING_SIZE, MAX_RANKING_SIZE);
 
-    return await cached(() => rankVideos(env, metric, limit));
+    return await cached(() => rankVideos(env, metric, limit, kind));
   }
 
   if (segments.length === 3 && resource === 'channels' && name !== undefined) {

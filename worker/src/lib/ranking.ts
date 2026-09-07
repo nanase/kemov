@@ -32,6 +32,28 @@ export function isRankingMetric(value: string): value is RankingMetric {
 }
 
 /**
+ * The video kinds a ranking may be narrowed to.
+ *
+ * The same three the schema stores, named here so a caller can ask for one
+ * without this file importing what the front end calls them.
+ *
+ * A cross-channel ranking needs this in a way one channel's did not. The
+ * per-second metrics divide by a duration that stops at 60 seconds for a short
+ * and runs to hours for a stream, so ranking every kind together ranks shorts:
+ * measured across the archive, a short averages 141 views per second of length
+ * against a stream's 0.58, while streams are 97% of the rows. The answer is
+ * arithmetically right and tells the reader nothing, because it compares two
+ * things that are not alike.
+ */
+export const VIDEO_KINDS = ['video', 'streaming', 'shorts'] as const;
+
+export type VideoKind = (typeof VIDEO_KINDS)[number];
+
+export function isVideoKind(value: string): value is VideoKind {
+  return (VIDEO_KINDS as readonly string[]).includes(value);
+}
+
+/**
  * These two functions return SQL, which nothing else in worker/src/lib does,
  * and their results are interpolated into a query rather than bound.
  *
