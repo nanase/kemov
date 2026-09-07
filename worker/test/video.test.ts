@@ -416,6 +416,28 @@ describe('runVideoUpdate', () => {
     expect(await allVideos()).toMatchObject([{ video_id: 'vid1', type: null, duration_seconds: 30 }]);
   });
 
+  // The other way a probe goes unanswered: the request never returns one at
+  // all, which is what the deadline produces and what a dropped connection
+  // produces. A refused status and a thrown request have to land in the same
+  // place, because the row's kind is unknown either way.
+  test('leaves the kind unset when the probe never answers', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('vid1', 'UCaaa');
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchImpl = apiStub({
+      videos: () => videosListResponse([{ id: 'vid1', channelId: 'UCaaa', title: 'clip', duration: 'PT30S' }]),
+      shorts: () => {
+        throw new Error('connection reset');
+      },
+    });
+
+    await runVideoUpdate(env, fetchImpl);
+
+    expect(await allVideos()).toMatchObject([{ video_id: 'vid1', type: null, duration_seconds: 30 }]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('/shorts/ probe failed'), expect.any(Error));
+  });
+
   // Not a detail of the request but the method itself. Without
   // redirect: 'manual' the probe follows the redirect to the video's own
   // watch page and reads that page's 200 as "this is a short", so every video

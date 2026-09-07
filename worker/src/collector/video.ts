@@ -75,6 +75,38 @@ const LIVE_PRIORITY_MAX = 20;
  */
 const RETRY_AFTER_MINUTES = 10;
 
+/**
+ * Where YouTube serves a short, and redirects everything else away.
+ *
+ * The one thing Data API v3 will not say is whether a video is a short, so
+ * this is asked of the watch path instead. #66 measured what the answer is
+ * worth: across 22 videos the page agreed with the system being replaced
+ * every time, while deciding it from the duration alone was wrong for 17 of
+ * the archive's rows.
+ */
+const SHORTS_URL_BASE = 'https://www.youtube.com/shorts/';
+
+/**
+ * How long one probe may wait before it counts as unanswered.
+ *
+ * Nothing else in the worker sets a deadline, because everything else is the
+ * Data API answering promptly or not at all. This host does neither: measured
+ * on the chat job, which asks the same host, a refusal for a video that still
+ * exists takes 17.2 seconds to arrive.
+ *
+ * Waiting that out buys nothing. A refusal and a timeout are the same answer
+ * here - null, ask again tomorrow - so the only thing the extra seconds spend
+ * is the tick's budget, and this job shares that with the sweep that is the
+ * reason it runs at all.
+ *
+ * The chat job is exposed to the same stall and is not given a deadline here.
+ * That is scope, not a judgement that it does not need one: #65 owns that
+ * path, #68 is working in it, and a deadline added from outside would land in
+ * the middle of somebody else's change. #66 leaves it named rather than
+ * quietly fixed on one side.
+ */
+const SHORTS_PROBE_TIMEOUT_MS = 10_000;
+
 type TaskKind = 'video_discover' | 'video_update';
 type TaskState = 'failed' | 'unavailable';
 
@@ -256,32 +288,6 @@ function unavailableStatement(db: D1Database, videoId: string, fetchedAt: string
 }
 
 /**
- * Where YouTube serves a short, and redirects everything else away.
- *
- * The one thing Data API v3 will not say is whether a video is a short, so
- * this is asked of the watch path instead. #66 measured what the answer is
- * worth: across 22 videos the page agreed with the system being replaced
- * every time, while deciding it from the duration alone was wrong for 17 of
- * the archive's rows.
- */
-const SHORTS_URL_BASE = 'https://www.youtube.com/shorts/';
-
-/**
- * How long one probe may wait before it counts as unanswered.
- *
- * Nothing else in the worker sets a deadline, because everything else is the
- * Data API answering promptly or not at all. This host does neither: measured
- * on the chat job, which asks the same host, a refusal for a video that still
- * exists takes 17.2 seconds to arrive.
- *
- * Waiting that out buys nothing. A refusal and a timeout are the same answer
- * here - null, ask again tomorrow - so the only thing the extra seconds spend
- * is the tick's budget, and this job shares that with the sweep that is the
- * reason it runs at all.
- */
-const SHORTS_PROBE_TIMEOUT_MS = 10_000;
-
-/**
  * Asks YouTube which of these videos are shorts.
  *
  * Only the ones whose answer is not already settled are asked - a stream is
@@ -330,6 +336,11 @@ async function probeShorts(
         // Nothing was learned, which is what null says. Left out of the map
         // it would read the same, but saying it here keeps the count of
         // failures visible to anyone reading a log beside the tick.
+        //
+        // warn rather than error, which in this file marks a tick that lost
+        // something: a row that could not be written, a call that answered
+        // for nobody. This loses nothing. The row is written, every column
+        // but the kind is current, and the sweep asks again within the day.
         console.warn(`video-update: /shorts/ probe failed for one video`, error);
         answers.set(item.id, null);
       }
