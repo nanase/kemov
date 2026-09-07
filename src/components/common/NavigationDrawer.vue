@@ -10,6 +10,17 @@ const opened = defineModel<boolean>('opened');
 <template>
   <v-navigation-drawer v-model="opened" floating aria-label="サイトページ一覧">
     <v-list class="pb-0 d-flex flex-column fill-height" role="menu">
+      <v-list-item
+        link
+        title="横断ランキング"
+        href="/stats/ranking/"
+        role="menuitem"
+        :active="pageId === 'stats/ranking'"
+      >
+        <template #prepend>
+          <v-icon icon="mdi-trophy" size="small" />
+        </template>
+      </v-list-item>
       <v-list-item link title="リアルタイム統計" href="/stats/" role="menuitem" :active="pageId === 'stats'">
         <template #prepend>
           <v-icon icon="mdi-finance" size="large" />

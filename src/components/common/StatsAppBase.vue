@@ -29,6 +29,22 @@ const { isDark, toggle: toggleTheme } = useVuetifyTheme();
         </template>
         <v-list-item-title style="font-size: 100%" class="font-weight-bold">けもV リアルタイム統計</v-list-item-title>
       </v-list-item>
+      <v-list-item
+        class="py-2"
+        link
+        slim
+        title=""
+        href="/stats/ranking/"
+        role="menuitem"
+        density="default"
+        base-color="v2DrawerList"
+        :active="pageId === 'stats/ranking'"
+      >
+        <template #prepend>
+          <v-icon icon="mdi-trophy" size="large" />
+        </template>
+        <v-list-item-title style="font-size: 100%" class="font-weight-bold">けもV 横断ランキング</v-list-item-title>
+      </v-list-item>
       <v-divider class="mx-4" />
 
       <v-list class="flex-grow-1 flex-shrink-1 overflow-auto" role="menu" density="compact" nav link>

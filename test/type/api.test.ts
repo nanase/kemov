@@ -1,5 +1,5 @@
 import { ShapeError } from '@/lib/read';
-import { readChannelList, readLiveList, readVideoPage } from '@/type/api';
+import { readChannelList, readLiveList, readVideoPage, readVideoRanking } from '@/type/api';
 
 /**
  * Reading the API's answers.
@@ -173,6 +173,47 @@ describe('readVideoPage', () => {
 
     expect(page({ ...VIDEO, availability: 'unavalable' })).toThrow(ShapeError);
     expect(page({ ...VIDEO, type: 'podcast' })).toThrow(ShapeError);
+  });
+});
+
+describe('readVideoRanking', () => {
+  const body = (over = {}) => ({
+    metric: 'viewCountPerSecond',
+    kind: 'streaming',
+    videos: [{ ...VIDEO, metricValue: 0.34 }],
+    ...over,
+  });
+
+  test('reads the ranking and the value each row was ordered by', () => {
+    const ranking = readVideoRanking('viewCountPerSecond', 'streaming')(body());
+
+    expect(ranking.metric).toEqual('viewCountPerSecond');
+    expect(ranking.kind).toEqual('streaming');
+    expect(ranking.videos[0].metricValue).toEqual(0.34);
+    expect(ranking.videos[0].title).toEqual('ある配信');
+  });
+
+  test('a ranking of every kind says so with null', () => {
+    expect(readVideoRanking('viewCount', null)(body({ metric: 'viewCount', kind: null })).kind).toBeNull();
+  });
+
+  // Every ranking is a different URL and the API caches by URL. An answer
+  // carrying another metric would look like a correct ranking of the wrong
+  // thing, which nobody could spot from the numbers.
+  test('refuses an answer to a different question', () => {
+    expect(() => readVideoRanking('likeCount', 'streaming')(body())).toThrow('body.metric');
+    expect(() => readVideoRanking('viewCountPerSecond', 'shorts')(body())).toThrow('body.kind');
+    expect(() => readVideoRanking('viewCountPerSecond', null)(body())).toThrow('body.kind');
+  });
+
+  test('refuses a row with no value to have been ordered by', () => {
+    expect(() => readVideoRanking('viewCountPerSecond', 'streaming')(body({ videos: [VIDEO] }))).toThrow(ShapeError);
+  });
+
+  // The rates leave out any video whose duration is not collected yet, so a
+  // short list is the ordinary case rather than a failure.
+  test('an empty ranking is an answer', () => {
+    expect(readVideoRanking('viewCountPerSecond', 'shorts')(body({ kind: 'shorts', videos: [] })).videos).toEqual([]);
   });
 });
 
