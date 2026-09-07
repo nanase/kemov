@@ -1,5 +1,5 @@
 import type { Env } from '../lib/env';
-import { parseReplayPage, parseWatchPage, replayRequest, watchUrl, type ChatSession } from '../lib/live-chat';
+import { chatContinuation, parseReplayPage, readReplayError, replayRequest } from '../lib/live-chat';
 import { formatTimestamp } from '../lib/time';
 
 /**
@@ -57,24 +57,19 @@ interface TaskRow {
 }
 
 /**
- * What `collect_task.cursor` carries for this job.
+ * What `collect_task.cursor` carries for this job, and equally what a failure
+ * records: where the video is up to, as far as a write has actually taken it.
  *
  * More than the continuation the schema's comment names, because more than
  * the continuation is needed to carry on: the running message count has no
  * column of its own, and writing it into video.chat_message_count as it grew
  * would leave readers unable to tell a part-counted video from a finished
- * one. The credentials ride along so that the 1.2 MB watch page is read once
- * per video rather than once per tick.
+ * one.
  */
 interface Progress {
   continuation: string;
   messages: number;
-  apiKey?: string;
-  clientVersion?: string;
 }
-
-/** Where a video is up to, as far as a write has actually taken it. */
-type Landed = Pick<Progress, 'continuation' | 'messages'>;
 
 function plusMinutes(from: Date, minutes: number): string {
   const at = new Date(from);
@@ -112,8 +107,8 @@ function readProgress(cursor: string | null): Progress | null {
 
     return parsed as Progress;
   } catch {
-    // Unreadable is the same as absent: the video restarts from its watch
-    // page rather than the job stopping on it.
+    // Unreadable is the same as absent: the video starts over from a
+    // continuation built for it, rather than the job stopping on it.
     return null;
   }
 }
@@ -121,14 +116,13 @@ function readProgress(cursor: string | null): Progress | null {
 /**
  * Ends a video's task without a count, leaving it due again later.
  *
- * Every way this job can fail one video comes through here - the watch page,
- * the replay call, a response that will not parse, and a D1 write that throws
- * mid-paging - so that none of them can quietly become a video that is never
- * looked at again.
+ * Every way this job can fail one video comes through here - a replay call
+ * that is refused, a video with no row left in `video`, an answer that makes
+ * no sense where it arrives, and a D1 write that throws mid-paging - so that
+ * none of them can quietly become a video that is never looked at again.
  *
- * Whatever pages were already counted stay in the cursor and in chat_author;
- * the credentials are dropped so the retry reads a fresh watch page, which is
- * what a rejected replay call most often needs.
+ * Whatever pages were already counted stay in the cursor and in chat_author,
+ * so a retry carries on from them rather than reading the replay again.
  *
  * `failures` counts the attempts in a row that got nowhere, which is not the
  * same as the attempts the row was claimed with: a run that wrote a page made
@@ -140,7 +134,7 @@ function readProgress(cursor: string | null): Progress | null {
 async function recordFailure(
   db: D1Database,
   task: TaskRow,
-  landed: Landed | null,
+  landed: Progress | null,
   failures: number,
   lease: string,
   now: Date,
@@ -160,34 +154,39 @@ async function recordFailure(
   return (meta.changes ?? 0) > 0;
 }
 
-/** Fetches and parses one video's watch page. */
-async function openReplay(videoId: string, fetchImpl: typeof fetch) {
-  const response = await fetchImpl(watchUrl(videoId));
+/**
+ * Fetches and parses one replay page, or null when the answer carried no
+ * replay at all.
+ *
+ * Null is not the end of a replay. A replay that has run out keeps its
+ * envelope and drops only the continuation inside it; an answer with no
+ * envelope is a video that has no replay to read. Which of those a null means
+ * depends on where in a video it arrives, so the decision is the caller's.
+ */
+async function readReplayPage(continuation: string, fetchImpl: typeof fetch) {
+  const response = await fetchImpl(replayRequest(continuation));
 
   if (!response.ok) {
-    throw new Error(`the watch page responded ${response.status}`);
+    throw new Error(readReplayError(response.status));
   }
 
-  return parseWatchPage(await response.text());
+  return parseReplayPage(await response.json());
 }
 
-/** Fetches and parses one replay page. */
-async function readReplayPage(session: ChatSession, fetchImpl: typeof fetch) {
-  const response = await fetchImpl(replayRequest(session));
+/** The channel a video belongs to, which is half of its continuation. */
+async function channelOf(db: D1Database, videoId: string): Promise<string> {
+  const row = await db
+    .prepare('SELECT channel_id FROM video WHERE video_id = ?1')
+    .bind(videoId)
+    .first<{ channel_id: string }>();
 
-  if (!response.ok) {
-    throw new Error(`the replay endpoint responded ${response.status}`);
+  if (!row) {
+    // The scan only queues videos it read out of this table, so a row that is
+    // gone by the time its turn comes is worth saying out loud.
+    throw new Error('no row in video for this id');
   }
 
-  const page = parseReplayPage(await response.json());
-
-  if (!page) {
-    // A replay that has run out drops its continuation, not its envelope, so
-    // a missing envelope is a broken answer rather than the end.
-    throw new Error('the replay response carried no liveChatContinuation');
-  }
-
-  return page;
+  return row.channel_id;
 }
 
 /**
@@ -264,44 +263,14 @@ async function recordAbsent(db: D1Database, videoId: string, lease: string, now:
 }
 
 /**
- * Where to send the next replay request for this video, or null once the video
- * is settled and there is nothing to send.
+ * Where this run starts reading.
  *
- * A cursor with credentials in it needs nothing else. Without them - a video
- * starting out, or one whose last attempt dropped them - the watch page is
- * read, and only its three answers are acted on here: an absent chat settles
- * the video, an unopenable page is thrown to the caller's one handler, and a
- * usable one supplies the credentials. A resumed video keeps the continuation
- * it had already reached; the watch page's own is only for a video starting
- * out.
+ * A resumed video carries on from its cursor. One starting out has its first
+ * continuation built from the two ids, which is what replaced reading the
+ * watch page for it (#92).
  */
-async function openSession(
-  db: D1Database,
-  task: TaskRow,
-  opened: Progress | null,
-  lease: string,
-  now: Date,
-  fetchImpl: typeof fetch,
-): Promise<ChatSession | null> {
-  if (opened?.apiKey && opened.clientVersion) {
-    return { apiKey: opened.apiKey, clientVersion: opened.clientVersion, continuation: opened.continuation };
-  }
-
-  const page = await openReplay(task.target_id, fetchImpl);
-
-  if (page.kind === 'absent') {
-    // The one confirmed absence this job can establish: the video plays and
-    // has no chat replay to read. Everything else stays retryable.
-    await recordAbsent(db, task.target_id, lease, now);
-    console.log(`chat-replay: ${task.target_id} has no chat replay`);
-    return null;
-  }
-
-  if (page.kind === 'unusable') {
-    throw new Error(page.why);
-  }
-
-  return { ...page, continuation: opened?.continuation ?? page.continuation };
+async function startOf(db: D1Database, task: TaskRow, opened: Progress | null): Promise<string> {
+  return opened?.continuation ?? chatContinuation(await channelOf(db, task.target_id), task.target_id);
 }
 
 /**
@@ -417,9 +386,10 @@ async function finishVideo(
  * PAGES_PER_VIDEO pages.
  *
  * Every way this can go wrong ends in the one catch below, which is what keeps
- * a video from quietly falling out of the queue: a watch page that will not
- * load or parse, a replay call that is refused, an answer that is not a replay
- * page, and a D1 write that throws part of the way through the pages.
+ * a video from quietly falling out of the queue: a replay call that is
+ * refused, a video whose row in `video` has gone, an answer with no envelope
+ * arriving after pages have already landed, and a D1 write that throws part of
+ * the way through the pages.
  */
 async function collectOne(
   db: D1Database,
@@ -433,7 +403,13 @@ async function collectOne(
   // What a failure would record, and only ever what a write has actually
   // taken. Held out here so a failure part-way through the pages keeps the
   // pages before it rather than the cursor this run started from.
-  let landed: Landed | null = opened && { continuation: opened.continuation, messages: opened.messages };
+  //
+  // It answers a second question as well, which the loop below leans on:
+  // whether anything has ever been counted for this video. Null means nothing
+  // has - not by an earlier tick, whose progress would be in the cursor, and
+  // not by this one - and that is what makes an answer with no envelope a
+  // video without a replay rather than a broken reply.
+  let landed: Progress | null = opened && { continuation: opened.continuation, messages: opened.messages };
 
   // Attempts in a row that got nowhere. It starts at what the row was
   // claimed with and drops to zero the moment a page lands, because a video
@@ -441,17 +417,31 @@ async function collectOne(
   let failures = task.attempts;
 
   try {
-    const session = await openSession(db, task, opened, lease, now, fetchImpl);
-
-    if (!session) {
-      return;
-    }
-
-    let { continuation } = session;
+    let continuation = await startOf(db, task, opened);
     let counted = opened?.messages ?? 0;
 
     for (let page = 0; page < PAGES_PER_VIDEO; page++) {
-      const replay = await readReplayPage({ ...session, continuation }, fetchImpl);
+      const replay = await readReplayPage(continuation, fetchImpl);
+
+      if (!replay) {
+        // No envelope at all. On the first page of a video nothing has read
+        // that had one, so this is the confirmed absence the schema means by
+        // 'unavailable': the video has no chat replay. Later on it would be a
+        // broken answer instead, because a replay that has run out keeps its
+        // envelope and drops only the continuation inside it.
+        if (landed) {
+          throw new Error('the replay response carried no liveChatContinuation');
+        }
+
+        if (!(await recordAbsent(db, task.target_id, lease, now))) {
+          console.warn(`chat-replay: ${task.target_id} was taken by another tick before it could be settled`);
+          return;
+        }
+
+        console.log(`chat-replay: ${task.target_id} has no chat replay`);
+        return;
+      }
+
       // Nothing here is believed until the write backing it has gone in.
       // Moving first would let a failed batch be recorded as progress the
       // database never took, which is the silent loss the batching prevents.
@@ -471,7 +461,7 @@ async function collectOne(
         db,
         task.target_id,
         replay.authorIds,
-        { ...session, continuation: replay.continuation, messages: total },
+        { continuation: replay.continuation, messages: total },
         lease,
         now,
       );

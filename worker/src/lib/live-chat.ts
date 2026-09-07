@@ -7,34 +7,37 @@
  * everything here is shaped by what the responses actually contain (#65) and
  * every field is treated as absent until proven otherwise.
  *
- * Nothing in this file touches D1 or the network. The collector does both;
- * these functions only turn text into numbers, which is the part worth
- * testing against a recorded shape.
+ * The watch page used to be read first, for the key and the first
+ * continuation. It is not read any more: from a Cloudflare address it answers
+ * `playabilityStatus: LOGIN_REQUIRED` for every video, which stopped the job
+ * dead in production (#92). The continuation turns out to be constructible
+ * from the two ids the `video` table already holds, so the page it came from
+ * is no longer in the way.
+ *
+ * Nothing here touches D1 or the network. The collector does both; these
+ * functions only turn ids into a request and text into numbers, which is the
+ * part worth testing against a recorded shape.
  */
 
-const WATCH_URL = 'https://www.youtube.com/watch';
 const REPLAY_URL = 'https://www.youtube.com/youtubei/v1/live_chat/get_live_chat_replay';
 
-/** The three values the watch page carries that the replay call needs. */
-export interface ChatSession {
-  apiKey: string;
-  clientVersion: string;
-  continuation: string;
-}
-
 /**
- * What a watch page says about its chat replay.
+ * The web client version the requests claim to be.
  *
- * The three cases are kept apart because they settle a task differently: only
- * `absent` is a confirmed absence, and only a confirmed absence may end a task
- * as 'unavailable'. See runChatReplay.
+ * Pinned rather than read from a page, because the page is what #92 removed.
+ * The endpoint is lenient about how old this is - a version twenty months out
+ * of date was measured to work - but not about whether it is one at all: an
+ * invented version, and an empty one, are both answered 404. If that day
+ * comes, every video fails at once with the message readReplayError builds,
+ * which names this constant so the log says where to look.
+ *
+ * It is the only part of the request the endpoint insists on. The key that
+ * used to sit beside it is gone: see replayRequest.
+ *
+ * This is the only place the version appears. Updating it is a one-line
+ * change here.
  */
-export type WatchPage =
-  | ({ kind: 'replay' } & ChatSession)
-  /** The video plays, and has no chat replay to read. */
-  | { kind: 'absent' }
-  /** The page did not yield what a replay needs; `why` says what was missing. */
-  | { kind: 'unusable'; why: string };
+const CLIENT_VERSION = '2.20260904.01.00';
 
 /** One page of replay, reduced to the three things the count needs. */
 export interface ReplayPage {
@@ -70,76 +73,153 @@ interface ReplayResponse {
   };
 }
 
-/** The watch page URL for one video. */
-export function watchUrl(videoId: string): string {
-  return `${WATCH_URL}?v=${encodeURIComponent(videoId)}`;
+/* Protobuf, by hand.
+ *
+ * These are general enough to belong somewhere general, and they are here
+ * anyway: a continuation is the only protobuf this worker will ever write, and
+ * moving five one-line helpers into a lib of their own would make a module
+ * with one caller. They stay private, so a second caller is what would move
+ * them.
+ *
+ * Only the two wire types a continuation uses are written - varint and
+ * length-delimited - which is why this is smaller than a dependency. */
+
+function varint(value: number): number[] {
+  const out: number[] = [];
+  let rest = value;
+
+  do {
+    const byte = rest % 128;
+
+    rest = Math.floor(rest / 128);
+    out.push(rest > 0 ? byte | 0x80 : byte);
+  } while (rest > 0);
+
+  return out;
+}
+
+const tag = (field: number, wire: number): number[] => varint(field * 8 + wire);
+const lengthDelimited = (field: number, payload: number[]): number[] => [
+  ...tag(field, 2),
+  ...varint(payload.length),
+  ...payload,
+];
+const text = (field: number, value: string): number[] => lengthDelimited(field, [...new TextEncoder().encode(value)]);
+const varintField = (field: number, value: number): number[] => [...tag(field, 0), ...varint(value)];
+
+function base64(bytes: number[]): string {
+  return btoa(String.fromCharCode(...bytes));
+}
+
+/**
+ * Where a video's chat replay starts, built rather than scraped.
+ *
+ * A continuation YouTube hands out was taken apart to get this shape: it
+ * carries the channel id, the video id and a handful of constants, and
+ * nothing else - no signature, no timestamp, no nonce. So one can be written
+ * from the two ids, which is what lets the collector skip the watch page
+ * entirely.
+ *
+ * The two large field numbers, 156074452 outside and 48687757 inside, are
+ * copied rather than understood. YouTube publishes no schema, and a
+ * continuation missing either of them is refused. Nothing here can explain
+ * what they mean; the test that compares the whole string against one YouTube
+ * itself handed out is what says they are still right.
+ *
+ * The inner message is base64 and then URL-escaped before going into the
+ * outer one, which is how YouTube's own continuations carry it: the padding
+ * arrives as %3D rather than =. A continuation built without that escaping is
+ * refused, which was measured.
+ */
+export function chatContinuation(channelId: string, videoId: string): string {
+  const inner = [
+    ...lengthDelimited(1, lengthDelimited(5, [...text(1, channelId), ...text(2, videoId)])),
+    ...lengthDelimited(3, lengthDelimited(48687757, text(1, videoId))),
+    ...varintField(4, 1),
+    ...varintField(6, 0),
+  ];
+
+  const outer = lengthDelimited(156074452, [
+    ...text(3, encodeURIComponent(base64(inner))),
+    ...varintField(8, 1),
+    ...lengthDelimited(14, [
+      ...varintField(1, 4),
+      ...varintField(3, 2),
+      ...varintField(4, 0),
+      ...varintField(5, 0),
+      ...varintField(6, 0),
+      ...varintField(7, 0),
+    ]),
+    ...varintField(15, 1),
+  ]);
+
+  return base64(outer).replace(/\+/g, '-').replace(/\//g, '_');
 }
 
 /**
  * The replay request for one continuation.
  *
- * clientVersion is echoed back from the watch page rather than pinned here.
- * It changes every few days, and a stale one is the kind of thing that starts
- * being refused without warning.
+ * No `key` parameter, which is not an oversight. This endpoint does not check
+ * one: a correct key, a wrong key, an empty key and no key parameter at all
+ * were each measured to be answered identically, down to the same page of the
+ * same replay. The client version in the same request is checked, and an empty
+ * one is refused, so the two are not alike and should not be reasoned about
+ * together. lib/youtube.ts sends a key because the Data API does want one.
+ *
+ * A key did sit here until GitHub reported it as a leaked credential (#92).
+ * It was not one, but nothing reading a repository can tell a value in that
+ * shape from a key that is real, and treating a report as noise is how the
+ * next one gets treated too. Sending nothing settles that better than keeping
+ * a secret nobody needs: there is no value to register, to rotate, or to
+ * explain.
  */
-export function replayRequest(session: ChatSession): Request {
-  return new Request(`${REPLAY_URL}?key=${encodeURIComponent(session.apiKey)}&prettyPrint=false`, {
+export function replayRequest(continuation: string): Request {
+  return new Request(`${REPLAY_URL}?prettyPrint=false`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      context: { client: { clientName: 'WEB', clientVersion: session.clientVersion } },
-      continuation: session.continuation,
+      context: { client: { clientName: 'WEB', clientVersion: CLIENT_VERSION } },
+      continuation,
     }),
   });
 }
 
 /**
- * What one watch page offers.
+ * What to say when the endpoint refuses a request.
  *
- * The order of the checks is the point. A video that does not play tells us
- * nothing about whether it had a chat, so playability is settled first; only a
- * page that plays and still has no chat is a confirmed absence.
+ * Two refusals get a sentence of their own, because each names one half of the
+ * request and they are not the same half. A client version the endpoint will
+ * not take, and an empty one, were both measured to be answered 404; a
+ * continuation it will not take, and an empty one, 400.
  *
- * `conversationBar` is the panel the chat lives in. A regular upload has no
- * such key at all, and neither does a stream whose chat was disabled - both
- * were measured. It is checked before the continuation so that a page missing
- * the panel is reported as an absent chat rather than as an unreadable page.
+ * 404 is the one worth a warning. The version is pinned, so it is the only
+ * part of this that goes stale while nobody is touching it, and the day it
+ * does, every video fails at once. A job failing that way is one nobody
+ * notices until somebody reads a log, which is what #92 cost; the log had
+ * better say where to look.
+ *
+ * This pair was written the wrong way round at first. A 400 seen while the
+ * continuation was still being built wrong was read as the version being
+ * refused, and the message named the version. The two failures look alike
+ * from the outside - every video, all at once, a status and nothing else - so
+ * a message that guesses between them is worse than one that says only the
+ * status. Each is named by what it actually is.
+ *
+ * A function rather than a message written where it is thrown, which is how
+ * the rest of the worker does it, because the 404 has to name CLIENT_VERSION
+ * and that constant does not leave this file. The wording is the alarm, so it
+ * is worth a test of its own.
  */
-export function parseWatchPage(html: string): WatchPage {
-  const playability = /"playabilityStatus":\{"status":"([A-Z_]+)"/.exec(html)?.[1];
-
-  if (playability !== 'OK') {
-    // Deleted, private, members-only, geo-blocked and a transient error all
-    // arrive as one of these, and nothing here can tell them apart. Retrying
-    // costs one page fetch; giving up on a video that came back would repeat
-    // the mistake this whole job exists to undo.
-    return { kind: 'unusable', why: `playabilityStatus is ${playability ?? 'missing'}` };
+export function readReplayError(status: number): string {
+  if (status === 404) {
+    return `the replay endpoint refused the request (404). The pinned client version ${CLIENT_VERSION} may no longer be accepted`;
   }
 
-  if (!html.includes('"conversationBar"')) {
-    return { kind: 'absent' };
+  if (status === 400) {
+    return 'the replay endpoint refused the continuation (400)';
   }
 
-  const apiKey = /"INNERTUBE_API_KEY":"([^"]+)"/.exec(html)?.[1];
-  const clientVersion = /"INNERTUBE_CLIENT_VERSION":"([^"]+)"/.exec(html)?.[1];
-  // Scoped by its own key rather than by position: the page holds one other
-  // kind of continuation (the player's seek), which uses a different key.
-  const continuation = /"reloadContinuationData":\{"continuation":"([^"]+)"/.exec(html)?.[1];
-
-  if (!apiKey || !clientVersion || !continuation) {
-    // The panel is there, so a chat exists, but the page has changed shape
-    // enough that we cannot open it. That is a reason to look again later,
-    // not to record the chat as absent.
-    const missing = [
-      apiKey ? null : 'INNERTUBE_API_KEY',
-      clientVersion ? null : 'INNERTUBE_CLIENT_VERSION',
-      continuation ? null : 'the chat continuation',
-    ].filter((name) => name !== null);
-
-    return { kind: 'unusable', why: `the watch page has a chat panel but no ${missing.join(', no ')}` };
-  }
-
-  return { kind: 'replay', apiKey, clientVersion, continuation };
+  return `the replay endpoint responded ${status}`;
 }
 
 /**
@@ -154,9 +234,12 @@ export function parseWatchPage(html: string): WatchPage {
  * chat_message_count and chat_unique_user_count one population, so the two
  * numbers cannot be read as measuring different things.
  *
- * Returns null when the response is not a replay page at all, which is a
- * failure rather than an end: a replay that has run out says so by dropping
- * its continuation, not by dropping its envelope.
+ * Returns null when the response carries no liveChatContinuation at all.
+ * That is not the end of a replay - a replay that has run out keeps the
+ * envelope and drops only its continuation - it is a video that has no replay
+ * to read. The caller decides which that means: on the first page it is a
+ * confirmed absence, and after pages have already landed it is a broken
+ * answer.
  */
 export function parseReplayPage(body: unknown): ReplayPage | null {
   const chat = (body as ReplayResponse)?.continuationContents?.liveChatContinuation;
