@@ -126,14 +126,9 @@ No secret value belongs in this repository — not in `wrangler.toml`, not in a 
 Cloudflare stores the values instead, and `wrangler` is how they get there. Run these from the repository root. `wrangler` is a devDependency rather than something on your `PATH`, so it is `yarn wrangler`:
 
 ```sh
-yarn wrangler secret put YOUTUBE_API_KEY        # prompts, so the value misses the shell history
-yarn wrangler secret put YOUTUBE_INNERTUBE_KEY
-yarn wrangler secret list                       # names only, never values
+yarn wrangler secret put YOUTUBE_API_KEY   # prompts, so the value misses the shell history
+yarn wrangler secret list                  # names only, never values
 ```
-
-The two keys are different things, and `worker/src/lib/env.ts` says which is which. `YOUTUBE_API_KEY` is this project's own Data API key. `YOUTUBE_INNERTUBE_KEY` is the one the internal endpoints take: the same string for every visitor, served in the HTML of any YouTube page, spending no quota.
-
-That second one is here anyway, and #92 says why. It was a constant in the source until GitHub reported it as a leaked key. It was not one — but nothing reading this repository can tell a value in that shape from a key that is real, and a comment saying "this one is fine" is a claim rather than something a reader can check. Left as it was, it would have taught everyone to read the next such report as noise.
 
 Secrets belong to a Worker that already exists, so the first `yarn wrangler deploy` has to come first — before it, wrangler answers `Worker "kemov" not found`. The worker is deployed, so nothing is waiting on that today.
 

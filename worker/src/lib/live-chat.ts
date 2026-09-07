@@ -26,12 +26,16 @@ const REPLAY_URL = 'https://www.youtube.com/youtubei/v1/live_chat/get_live_chat_
  *
  * Pinned rather than read from a page, because the page is what #92 removed.
  * The endpoint is lenient about how old this is - a version twenty months out
- * of date was measured to work - but not about whether it is a real one: an
- * invented version is refused with HTTP 400. If that day comes, every video
- * fails at once with the message readReplayError builds, which names this
- * constant so the log says where to look.
+ * of date was measured to work - but not about whether it is one at all: an
+ * invented version, and an empty one, are both answered 404. If that day
+ * comes, every video fails at once with the message readReplayError builds,
+ * which names this constant so the log says where to look.
  *
- * This is the only place it appears. Updating it is a one-line change here.
+ * It is the only part of the request the endpoint insists on. The key that
+ * used to sit beside it is gone: see replayRequest.
+ *
+ * This is the only place the version appears. Updating it is a one-line
+ * change here.
  */
 const CLIENT_VERSION = '2.20260904.01.00';
 
@@ -155,12 +159,22 @@ export function chatContinuation(channelId: string, videoId: string): string {
 /**
  * The replay request for one continuation.
  *
- * The key is handed in rather than held here, the same way callYouTubeApi
- * takes one. It is YOUTUBE_INNERTUBE_KEY, which env.ts describes; what it is
- * and why a value that public is a secret are written down there.
+ * No `key` parameter, which is not an oversight. This endpoint does not check
+ * one: a correct key, a wrong key, an empty key and no key parameter at all
+ * were each measured to be answered identically, down to the same page of the
+ * same replay. The client version in the same request is checked, and an empty
+ * one is refused, so the two are not alike and should not be reasoned about
+ * together. lib/youtube.ts sends a key because the Data API does want one.
+ *
+ * A key did sit here until GitHub reported it as a leaked credential (#92).
+ * It was not one, but nothing reading a repository can tell a value in that
+ * shape from a key that is real, and treating a report as noise is how the
+ * next one gets treated too. Sending nothing settles that better than keeping
+ * a secret nobody needs: there is no value to register, to rotate, or to
+ * explain.
  */
-export function replayRequest(apiKey: string, continuation: string): Request {
-  return new Request(`${REPLAY_URL}?key=${encodeURIComponent(apiKey)}&prettyPrint=false`, {
+export function replayRequest(continuation: string): Request {
+  return new Request(`${REPLAY_URL}?prettyPrint=false`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -173,20 +187,39 @@ export function replayRequest(apiKey: string, continuation: string): Request {
 /**
  * What to say when the endpoint refuses a request.
  *
- * 400 gets its own sentence. It is what an invented client version earns, and
- * a pinned version is the one thing here that goes stale on its own - so if
- * every video starts failing at once, the log should say where to look rather
- * than leaving somebody to find out from production a second time (#92).
+ * Two refusals get a sentence of their own, because each names one half of the
+ * request and they are not the same half. A client version the endpoint will
+ * not take, and an empty one, were both measured to be answered 404; a
+ * continuation it will not take, and an empty one, 400.
+ *
+ * 404 is the one worth a warning. The version is pinned, so it is the only
+ * part of this that goes stale while nobody is touching it, and the day it
+ * does, every video fails at once. A job failing that way is one nobody
+ * notices until somebody reads a log, which is what #92 cost; the log had
+ * better say where to look.
+ *
+ * This pair was written the wrong way round at first. A 400 seen while the
+ * continuation was still being built wrong was read as the version being
+ * refused, and the message named the version. The two failures look alike
+ * from the outside - every video, all at once, a status and nothing else - so
+ * a message that guesses between them is worse than one that says only the
+ * status. Each is named by what it actually is.
  *
  * A function rather than a message written where it is thrown, which is how
- * the rest of the worker does it, because this one has to name CLIENT_VERSION
+ * the rest of the worker does it, because the 404 has to name CLIENT_VERSION
  * and that constant does not leave this file. The wording is the alarm, so it
  * is worth a test of its own.
  */
 export function readReplayError(status: number): string {
-  return status === 400
-    ? `the replay endpoint refused the request (400). The pinned client version ${CLIENT_VERSION} may no longer be accepted`
-    : `the replay endpoint responded ${status}`;
+  if (status === 404) {
+    return `the replay endpoint refused the request (404). The pinned client version ${CLIENT_VERSION} may no longer be accepted`;
+  }
+
+  if (status === 400) {
+    return 'the replay endpoint refused the continuation (400)';
+  }
+
+  return `the replay endpoint responded ${status}`;
 }
 
 /**

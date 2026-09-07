@@ -76,18 +76,26 @@ describe('chatContinuation', () => {
 });
 
 describe('replayRequest', () => {
-  // Handed in rather than held in the source. The real one is a secret now,
-  // for the reason env.ts gives, so nothing in these tests is a real key.
-  const request = replayRequest('test-key', 'page-one');
+  const request = replayRequest('page-one');
 
-  test('posts to the replay endpoint with the key it was handed', () => {
+  test('posts to the replay endpoint', () => {
     expect(request.method).toEqual('POST');
     expect(new URL(request.url).pathname).toEqual('/youtubei/v1/live_chat/get_live_chat_replay');
-    expect(new URL(request.url).searchParams.get('key')).toEqual('test-key');
   });
 
-  test('escapes the key rather than letting it add parameters', () => {
-    expect(new URL(replayRequest('a&b=c', 'page-one').url).searchParams.get('key')).toEqual('a&b=c');
+  // Not an omission, and this is what says so. The endpoint was measured to
+  // answer a correct key, a wrong key, an empty key and no key parameter at
+  // all identically - down to the same page of the same replay - so there is
+  // nothing to send. A key that used to sit here was reported as a leaked
+  // credential (#92); the way to stop that report from recurring, and from
+  // teaching everyone to ignore the next one, is to have no such value rather
+  // than a secret holding one nobody needs.
+  //
+  // Left untested, somebody adds a key back for tidiness and the value
+  // returns. This is what catches that.
+  test('sends no key, because the endpoint does not take one', () => {
+    expect(new URL(request.url).searchParams.get('key')).toBeNull();
+    expect(request.url).not.toContain('key=');
   });
 
   test('carries the continuation and a client version', async () => {
@@ -101,17 +109,26 @@ describe('replayRequest', () => {
 });
 
 describe('readReplayError', () => {
-  // 400 is what an invented client version earns, and the pinned version is
-  // the one thing here that goes stale on its own. When every video starts
-  // failing at once, the log has to say where to look.
-  test('names the pinned client version on a 400', () => {
-    expect(readReplayError(400)).toContain('client version');
-    expect(readReplayError(400)).toMatch(/2\.\d{8}\.\d{2}\.\d{2}/);
+  // 404 is what a client version the endpoint will not take earns, and the
+  // pinned version is the only part of the request that goes stale while
+  // nobody is touching it. When every video starts failing at once, the log
+  // has to say where to look.
+  test('names the pinned client version on a 404', () => {
+    expect(readReplayError(404)).toContain('client version');
+    expect(readReplayError(404)).toMatch(/2\.\d{8}\.\d{2}\.\d{2}/);
+  });
+
+  // The other half of the request, and a different fault. These two were
+  // written the wrong way round at first, so each is pinned down here.
+  test('blames the continuation on a 400, and not the version', () => {
+    expect(readReplayError(400)).toContain('continuation');
+    expect(readReplayError(400)).not.toContain('client version');
   });
 
   test('says only the status for anything else', () => {
     expect(readReplayError(503)).toEqual('the replay endpoint responded 503');
     expect(readReplayError(403)).not.toContain('client version');
+    expect(readReplayError(403)).not.toContain('continuation');
   });
 });
 

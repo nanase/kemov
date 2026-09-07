@@ -109,11 +109,7 @@ describe('missingSecrets', () => {
 describe('loadSecretNames', () => {
   // The files themselves, so that a change to either shape is caught here
   // rather than by a deploy that quietly checks nothing.
-  //
-  // Naming them rather than counting them: a secret added to env.ts without
-  // being registered is what #89 cost, and this failing is the reminder to
-  // register the new one before the deploy finds out.
-  test('reads the repository down to the secrets it has', () => {
-    expect(loadSecretNames()).toEqual(['YOUTUBE_API_KEY', 'YOUTUBE_INNERTUBE_KEY']);
+  test('reads the repository down to the one secret it has', () => {
+    expect(loadSecretNames()).toEqual(['YOUTUBE_API_KEY']);
   });
 });
