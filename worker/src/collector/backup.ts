@@ -180,8 +180,9 @@ async function backUpWholeTable(env: Env, table: TableShape, today: string): Pro
  * A failure reaches the worker's log and nothing else. /api/health reports a
  * job by reading its own `collect_task` rows (see the JOBS list in
  * ../api/health.ts), and this job writes none, so a backup that fails every
- * night looks the same from outside as one that works. #115 has that, with
- * the two ways of closing it: rows of its own, which needs the kind CHECK in
+ * night looks the same from outside as one that works. #115 has that, and is
+ * where whatever closes it will be. Two routes were on the table when it was
+ * written: rows of this job's own, which needs the kind CHECK in
  * migrations/0001 widened, or the bucket's newest key per prefix, which is
  * the record this job already keeps.
  */

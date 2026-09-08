@@ -315,18 +315,24 @@ Inside a file, one `INSERT` names at most 200 rows and at most 80,000 bytes, whi
 
 ### Restoring from a Backup
 
-Fetch the files and apply them. Nothing else is needed and no script has to work.
+Fetch the files and apply them. No script has to work for this.
 
 ```sh
 yarn wrangler r2 object get kemov-backup/channel/2026-09-08.sql --file channel.sql --remote
 yarn wrangler d1 execute kemov --remote --file channel.sql
 ```
 
+**A database that has never been migrated needs the schema first.** These files hold `INSERT` statements and nothing else, so the first one fails on a database with no `channel` table. Restoring into a new D1 therefore starts with [Applying Migrations](#applying-migrations):
+
+```sh
+yarn wrangler d1 migrations apply <database name> --remote
+```
+
 **Apply `channel` first.** `video` and `channel_snapshot` both carry a foreign key to it, and the schema refuses a row whose channel is not there yet. Then `video`, then every `channel_snapshot` day. Each file says this in its own header, so the file is enough on its own.
 
 Every statement is `ON CONFLICT DO NOTHING`, so applying a file twice does nothing the second time and applying them out of curiosity costs nothing. A restore is not a calm operation and it should not also be a careful one.
 
-**That same rule is why the target has to be empty.** `DO NOTHING` puts back a row that is missing; it leaves a row that is present alone, whatever it now says. Applied to a database whose rows are wrong rather than gone — a bad migration, a job that wrote nonsense — it changes nothing and reports success. So restore into a fresh database, or empty the one you have first:
+**That same rule is why the target has to be empty of rows.** `DO NOTHING` puts back a row that is missing; it leaves a row that is present alone, whatever it now says. Applied to a database whose rows are wrong rather than gone — a bad migration, a job that wrote nonsense — it changes nothing and reports success. So restore into a migrated but empty database, or empty the one you have first:
 
 ```sh
 yarn wrangler d1 execute kemov --remote --command \
