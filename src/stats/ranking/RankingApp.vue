@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { computedAsync } from '@vueuse/core';
-import { withCommas } from '@nanase/alnilam/number';
 
 import StatsAppBase from '@/components/common/StatsAppBase.vue';
 import VideoDetail from '@/components/stats/detail/VideoDetail.vue';
@@ -109,19 +108,6 @@ const failure = computed<ApiError | null>(() =>
 const channelOf = (channelId: string): Channel | undefined =>
   channels.value.find((channel) => channel.channelId === channelId);
 
-/**
- * Whether fewer videos came back than were asked for.
- *
- * Not a failure. The rates leave out any video whose duration has not been
- * collected, and every row #67 migrated starts that way until video-update
- * reaches it, so the list is short while the sweep runs. Saying which it is
- * costs a line; leaving it unsaid makes "there are only nine" look like
- * "seven of them did not load".
- */
-const short = computed<boolean>(
-  () => !loading.value && ranking.value !== null && ranking.value.videos.length < limit.value,
-);
-
 onMounted(async () => await fetching.channels.start());
 </script>
 
@@ -204,15 +190,10 @@ onMounted(async () => await fetching.channels.start());
                  the same page telling the reader both that it could not fetch
                  and that there is nothing to fetch. -->
             <tr v-if="!loading && ranking !== null && ranking.videos.length === 0">
-              <td colspan="4" class="pa-4 text-center opacity-70">この種別で順位を付けられる動画がまだありません</td>
+              <td colspan="4" class="pa-4 text-center opacity-70">動画がまだありません</td>
             </tr>
           </tbody>
         </v-table>
-
-        <div v-if="short" class="pa-2 text-body-2 opacity-70">
-          {{ withCommas(ranking?.videos.length) }}
-          件しかありません。取得できなかったのではなく、この指標を計算できる動画がそれだけです
-        </div>
       </v-col>
     </v-row>
 
