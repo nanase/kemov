@@ -315,41 +315,43 @@ Inside a file, one `INSERT` names at most 200 rows and at most 80,000 bytes, whi
 
 ### Restoring from a Backup
 
-Fetch the files and apply them. No script has to work for this.
+The steps below were run end to end on 2026-09-08, against a real remote D1 and the real bucket, and are written from the commands that were actually issued. What was not run is in [What This Has Not Been Tried On](#what-this-has-not-been-tried-on) after them; a restore is not the moment to find out which is which.
 
-```sh
-yarn wrangler r2 object get kemov-backup/channel/2026-09-08.sql --file channel.sql --remote
-yarn wrangler d1 execute kemov --remote --file channel.sql
-```
+The target was a database created for the test, empty and never migrated. Substitute its name for `kemov-restore` throughout.
 
-**A database that has never been migrated needs the schema first.** These files hold `INSERT` statements and nothing else, so the first one fails on a database with no `channel` table. Restoring into a new D1 therefore starts with [Applying Migrations](#applying-migrations):
-
-```sh
-yarn wrangler d1 migrations apply kemov --remote
-```
-
-That names the database `wrangler.toml` declares. #111's restore was verified against a throwaway database created for it, where the migration files were applied directly instead, in filename order. `kemov-restore` below is that database's own name — use whatever you called yours:
+**1. Give it the schema.** The backup files hold `INSERT` statements and nothing else, so every one of them fails on a database with no tables. Apply `migrations/` in filename order:
 
 ```sh
 yarn wrangler d1 execute kemov-restore --remote --file migrations/0001_create_initial_schema.sql
 ```
 
-Applying a file that way leaves `d1_migrations` empty, which is right for a database that is being read once and thrown away and wrong for one that is going to replace `kemov`: the next `migrations apply` would try `0001` again and fail on tables that already exist. Use `migrations apply` for a database that has to keep working.
+**2. Fetch a file and apply it, `channel` first.** `video` and `channel_snapshot` both carry a foreign key to `channel`, and the schema refuses a row whose channel is not there yet. Then `video`, then every `channel_snapshot` day. Each file repeats this in its own header, so a file found on its own is enough.
 
-**Apply `channel` first.** `video` and `channel_snapshot` both carry a foreign key to it, and the schema refuses a row whose channel is not there yet. Then `video`, then every `channel_snapshot` day. Each file says this in its own header, so the file is enough on its own.
+```sh
+yarn wrangler r2 object get kemov-backup/channel/2026-09-08.sql --file channel.sql --remote
+yarn wrangler d1 execute kemov-restore --remote --file channel.sql
+```
 
-Every statement is `ON CONFLICT DO NOTHING`, so applying a file twice does nothing the second time and applying them out of curiosity costs nothing. A restore is not a calm operation and it should not also be a careful one.
+**3. Check.** The run this was written from put back 11 channels, 6,433 videos and 1,452 snapshots — 7,896 rows, and every column of every one of them equal to the source.
 
-**That same rule is why the target has to be empty of rows.** `DO NOTHING` puts back a row that is missing; it leaves a row that is present alone, whatever it now says. Applied to a database whose rows are wrong rather than gone — a bad migration, a job that wrote nonsense — it changes nothing and reports success. So restore into a migrated but empty database, or empty the one you have first:
+Every statement is `ON CONFLICT DO NOTHING`, so applying a file twice does nothing the second time: the re-run reported `rows_written: 0` and left the counts alone. A restore is not a calm operation and it should not also be a careful one.
+
+### What This Has Not Been Tried On
+
+**The rest of this is reasoning, not a rehearsal.** It is the best answer available for each case, and none of it has been run.
+
+**Restoring into `kemov` itself.** `DO NOTHING` puts back a row that is missing and leaves a row that is present alone, whatever it now says. Against a database whose rows are wrong rather than gone — a bad migration, a job that wrote nonsense — it would change nothing and report success. Emptying it first is what would make a restore mean anything:
 
 ```sh
 yarn wrangler d1 execute kemov --remote --command \
   "DELETE FROM chat_author; DELETE FROM collect_task; DELETE FROM channel_snapshot; DELETE FROM video; DELETE FROM channel"
 ```
 
-Children before parents, the same order [Rolling Back](#rolling-back) uses and for the same reason. `collect_task` and `chat_author` are not in the backup and are not restored; they rebuild themselves within a tick or two.
+Children before parents, the same order [Rolling Back](#rolling-back) uses and for the same reason. `collect_task` and `chat_author` are not in the backup and would not come back; they rebuild themselves within a tick or two. Losing them is the cost of emptying, so check [time travel](#rolling-back) first: inside 30 days it returns the whole database to a moment, which is a better answer than a restore whenever it is available.
 
-Losing rows that the backup does not carry is the cost of emptying, so check [time travel](#rolling-back) first: inside 30 days it returns the whole database to a moment, which is a better answer than a restore whenever it is available.
+**`migrations apply` against a database `wrangler.toml` does not name.** Step 1 above applies the files directly because that is what was run. `yarn wrangler d1 migrations apply kemov --remote` is the documented route for the database this repository declares, and whether it resolves some other name was not established either way.
+
+Applying the files directly, as step 1 does, leaves `d1_migrations` empty. That is right for a database read once and thrown away, and wrong for one meant to replace `kemov`, where the next `migrations apply` would retry `0001` against tables that already exist.
 
 ### What May Expire and What May Not
 
