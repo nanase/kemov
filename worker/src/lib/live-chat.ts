@@ -172,8 +172,14 @@ export function chatContinuation(channelId: string, videoId: string): string {
  * next one gets treated too. Sending nothing settles that better than keeping
  * a secret nobody needs: there is no value to register, to rotate, or to
  * explain.
+ *
+ * The signal is handed in for the same reason the key used to be: how long to
+ * wait is the collector's decision, not this file's. It goes inside the
+ * Request rather than beside it at the call, because fetch ignores a signal
+ * passed alongside a Request it has already been given - silently, with the
+ * right types and no error. #68 measured that.
  */
-export function replayRequest(continuation: string): Request {
+export function replayRequest(continuation: string, signal?: AbortSignal): Request {
   return new Request(`${REPLAY_URL}?prettyPrint=false`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -181,6 +187,7 @@ export function replayRequest(continuation: string): Request {
       context: { client: { clientName: 'WEB', clientVersion: CLIENT_VERSION } },
       continuation,
     }),
+    signal,
   });
 }
 
