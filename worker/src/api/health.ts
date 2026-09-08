@@ -30,11 +30,28 @@ type JobName = (typeof JOBS)[number]['job'];
  * so a queue of thousands is that job working normally, while one failing row
  * is a video it cannot read. A single figure covering both would be a number
  * that goes up when the job is busy and up when the job is broken.
+ *
+ * The two timestamps are apart for the same sort of reason. lastActivityAt
+ * says whether the job is running, because a tick that failed wrote a row too;
+ * lastSuccessAt says whether it is getting anywhere. A job that runs every
+ * tick and fails every one of them has a fresh activity beside a stale
+ * success, and a job nothing is calling any more has both stale. The missing
+ * YOUTUBE_API_KEY was the first of those for two and a half hours (#89), and
+ * neither field says so on its own.
  */
 interface JobHealth {
   job: JobName;
   /** When this job last produced data. Null means it never has. */
   lastSuccessAt: string | null;
+  /**
+   * When this job last wrote anything at all, success or failure. Null means
+   * it never has.
+   *
+   * lastSuccessAt cannot answer "is it running": a job that fails on every
+   * tick has a stale one, and so does a job nothing is calling any more. This
+   * separates them, because a failure gets written down too.
+   */
+  lastActivityAt: string | null;
   /** Work waiting or in hand. For chat-replay this is the backlog, not trouble. */
   queued: number;
   /** Targets it is backing off from and will try again. */
@@ -48,6 +65,18 @@ interface JobHealth {
    * for - the difference is in this timestamp, not in the count.
    */
   lastFailureAt: string | null;
+  /**
+   * The most consecutive failures any one of its targets is sitting on.
+   *
+   * `failing` says how many targets are in trouble and lastFailureAt says
+   * whether they still are. Neither says how long any one of them has been at
+   * it, which is what tells a blip from a target nothing will ever fix.
+   *
+   * It reads as consecutive because attempts goes back to zero the moment a
+   * target succeeds (#90). Before that it did not, and a row could sit at 25
+   * long after the trouble had passed.
+   */
+  maxAttempts: number;
   /**
    * Targets it has settled as not there.
    *
@@ -63,10 +92,21 @@ interface TaskState {
   state: string;
   n: number;
   at: string | null;
+  attempts: number | null;
 }
 
 const countOf = (rows: TaskState[], kind: string, ...states: string[]) =>
   rows.filter((row) => row.kind === kind && states.includes(row.state)).reduce((total, row) => total + row.n, 0);
+
+/**
+ * The highest attempts on a row of this job that is still failing.
+ *
+ * Only the failing rows, because recordAbsent leaves attempts where it found
+ * them: a settled row can carry a large one for ever, and reporting it would
+ * be reporting trouble that is over.
+ */
+const worstAttempts = (rows: TaskState[], kind: string) =>
+  rows.find((row) => row.kind === kind && row.state === 'failed')?.attempts ?? 0;
 
 /**
  * Success is read from the newest 'done' row of that job's own kind, not from
@@ -81,9 +121,37 @@ const countOf = (rows: TaskState[], kind: string, ...states: string[]) =>
  * video-discover could stop entirely and its answer would keep advancing.
  * That is not an imprecision, it is a job failing invisibly.
  *
- * Every job writes a 'done' row per target on each successful run, and every
- * one of them writes at least one row per tick, so the newest of them is a
- * heartbeat for that job alone.
+ * Every job writes a 'done' row per target on each successful run, so the
+ * newest of them says when this job last produced something of its own.
+ *
+ * It is not a per-tick heartbeat, which this said until #71 and which was only
+ * ever true of three of the four. channel-stats writes a row for each of the
+ * eleven channels every ten minutes; video-discover writes one per channel on
+ * every tick that reads a playlist (#90), which is why a day with no new
+ * videos does not read as a stoppage; and video-update writes up to fifty on a
+ * sweep whose lack of a WHERE clause is what keeps it from running out of
+ * work. Those three always have something to do, so a quiet one has stopped.
+ *
+ * chat-replay is the exception. It writes a 'done' row only once a whole video
+ * has been counted, which was four ticks out of twenty-eight when it was
+ * measured, and a tick with nothing due and no scan to run writes nothing at
+ * all. Quiet is what working looks like there once its queue is empty, so it
+ * is stopped only while `queued` is above zero - which is the reading #71 asks
+ * for, and the reason that field is beside these two.
+ *
+ * That leaves one thing this endpoint cannot see. A chat-replay that is broken
+ * while its queue is empty writes nothing, and so does one that is working
+ * with nothing to do; no field here separates them, and none could, because a
+ * job with no work leaves no evidence. The wait it costs a monitor has a
+ * ceiling, though. The scan runs on a tick with nothing due, one minute in
+ * ten, and it refills from every ended stream with no count against it, so a
+ * queue that empties with work still outstanding is full again inside ten
+ * minutes and the rule above applies from there. It stays empty only when
+ * there is nothing left to count, which is what this job having caught up
+ * looks like.
+ *
+ * How long is too long belongs to #110 rather than here, because a threshold
+ * chosen against a notifier ends up fitting the notifier instead of the data.
  *
  * The rows are grouped by kind and never by what a target id looks like.
  * video_discover holds two sorts of target in one kind, a channel whose
@@ -96,13 +164,22 @@ const countOf = (rows: TaskState[], kind: string, ...states: string[]) =>
  */
 export async function health(env: Env): Promise<{ jobs: JobHealth[]; databaseReadAt: string }> {
   const { results } = await env.DB.prepare(
-    `SELECT kind, state, count(*) AS n, max(updated_at) AS at
+    `SELECT kind, state, count(*) AS n, max(updated_at) AS at, max(attempts) AS attempts
        FROM collect_task
       GROUP BY kind, state`,
   ).all<TaskState>();
 
-  const newest = (kind: string, state: string) =>
-    results.find((row) => row.kind === kind && row.state === state)?.at ?? null;
+  /**
+   * The newest updated_at among this job's rows in the states named, or among
+   * all of its rows when no state is named.
+   */
+  const newest = (kind: string, ...states: string[]) =>
+    results
+      .filter((row) => row.kind === kind && (states.length === 0 || states.includes(row.state)))
+      .reduce<string | null>(
+        (latest, row) => (row.at !== null && (latest === null || row.at > latest) ? row.at : latest),
+        null,
+      );
 
   return {
     jobs: JOBS.map(({ job, kind }) => ({
@@ -111,9 +188,13 @@ export async function health(env: Env): Promise<{ jobs: JobHealth[]; databaseRea
       // ago". chat-replay answers null today: it has been failing in
       // production and has never finished one.
       lastSuccessAt: newest(kind, 'done'),
+      // No state named: a tick that failed wrote a row too, and that is the
+      // point of reading this one.
+      lastActivityAt: newest(kind),
       queued: countOf(results, kind, 'pending', 'running'),
       failing: countOf(results, kind, 'failed'),
       lastFailureAt: newest(kind, 'failed'),
+      maxAttempts: worstAttempts(results, kind),
       unavailable: countOf(results, kind, 'unavailable'),
     })),
     // When these figures were read. A cached answer keeps the reading's time

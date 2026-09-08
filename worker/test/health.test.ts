@@ -38,12 +38,13 @@ async function insertTask(
   targetId: string,
   state: string,
   updatedAt = '2026-09-07T12:00:00Z',
+  attempts = 1,
 ): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO collect_task (kind, target_id, state, attempts, next_attempt_at, updated_at)
-     VALUES (?1, ?2, ?3, 1, NULL, ?4)`,
+     VALUES (?1, ?2, ?3, ?5, NULL, ?4)`,
   )
-    .bind(kind, targetId, state, updatedAt)
+    .bind(kind, targetId, state, updatedAt, attempts)
     .run();
 }
 
@@ -181,11 +182,68 @@ describe('health', () => {
     expect(await jobNamed('chat-replay')).toEqual({
       job: 'chat-replay',
       lastSuccessAt: null,
+      lastActivityAt: null,
       queued: 0,
       failing: 0,
       lastFailureAt: null,
+      maxAttempts: 0,
       unavailable: 0,
     });
+  });
+
+  // The failure #89 was: the key was missing, every tick ran and every tick
+  // failed. Read from lastSuccessAt alone that is indistinguishable from
+  // nobody calling the job at all, and the two want different people woken.
+  test('separates a job failing every tick from a job nothing is calling', async () => {
+    await insertTask('channel_stats', 'UCaaa', 'done', '2026-09-07T09:00:00Z');
+    await insertTask('channel_stats', 'UCbbb', 'failed', '2026-09-07T12:00:00Z');
+
+    expect(await jobNamed('channel-stats')).toMatchObject({
+      lastSuccessAt: '2026-09-07T09:00:00Z',
+      lastActivityAt: '2026-09-07T12:00:00Z',
+    });
+  });
+
+  // Any state counts as activity, not just the two a monitor asks about. A
+  // chat-replay tick that carries a video over writes 'running' and nothing
+  // else, and that tick is the job working.
+  test('takes activity from whatever the job wrote last, in any state', async () => {
+    await insertTask('chat_replay', 'v1', 'done', '2026-09-07T09:00:00Z');
+    await insertTask('chat_replay', 'v2', 'running', '2026-09-07T12:00:00Z');
+
+    expect(await jobNamed('chat-replay')).toMatchObject({ lastActivityAt: '2026-09-07T12:00:00Z' });
+  });
+
+  test('keeps one job activity out of another', async () => {
+    await insertTask('video_update', 'v1', 'done', '2026-09-07T12:00:00Z');
+
+    expect((await jobNamed('video-update'))?.lastActivityAt).toEqual('2026-09-07T12:00:00Z');
+    expect((await jobNamed('video-discover'))?.lastActivityAt).toBeNull();
+  });
+
+  // How long, which the count and the timestamp between them do not say. Two
+  // targets failing once is a blip; one failing twenty-five times running is
+  // something nothing is going to fix on its own.
+  test('says how many times in a row the worst target has failed', async () => {
+    await insertTask('chat_replay', 'v1', 'failed', '2026-09-07T12:00:00Z', 2);
+    await insertTask('chat_replay', 'v2', 'failed', '2026-09-07T12:00:00Z', 25);
+
+    expect(await jobNamed('chat-replay')).toMatchObject({ failing: 2, maxAttempts: 25 });
+  });
+
+  // recordAbsent leaves attempts where it found them, so a settled row can
+  // carry a large one for ever. Counting it would report trouble that is over.
+  test('reads attempts only from what is still failing', async () => {
+    await insertTask('video_update', 'v1', 'unavailable', '2026-09-07T12:00:00Z', 25);
+    await insertTask('video_update', 'v2', 'failed', '2026-09-07T12:00:00Z', 3);
+
+    expect(await jobNamed('video-update')).toMatchObject({ maxAttempts: 3 });
+  });
+
+  test('says nothing has failed in a row when nothing is failing', async () => {
+    await insertTask('video_update', 'v1', 'done', '2026-09-07T12:00:00Z', 7);
+
+    expect(await jobNamed('video-update')).toMatchObject({ failing: 0, maxAttempts: 0 });
   });
 
   test('says when it read the database', async () => {
