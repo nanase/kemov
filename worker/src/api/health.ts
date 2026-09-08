@@ -142,11 +142,13 @@ const worstAttempts = (rows: TaskState[], kind: string) =>
  * That leaves one thing this endpoint cannot see. A chat-replay that is broken
  * while its queue is empty writes nothing, and so does one that is working
  * with nothing to do; no field here separates them, and none could, because a
- * job with no work leaves no evidence. What that costs a monitor is time
- * rather than the reading itself, since the next stream to end queues a video
- * and the rule above applies again from there. The empty queue is not a
- * hypothetical state to guard against either. It is what this job having
- * caught up looks like, once every ended stream has a count against it.
+ * job with no work leaves no evidence. The wait it costs a monitor has a
+ * ceiling, though. The scan runs on a tick with nothing due, one minute in
+ * ten, and it refills from every ended stream with no count against it, so a
+ * queue that empties with work still outstanding is full again inside ten
+ * minutes and the rule above applies from there. It stays empty only when
+ * there is nothing left to count, which is what this job having caught up
+ * looks like.
  *
  * How long is too long belongs to #110 rather than here, because a threshold
  * chosen against a notifier ends up fitting the notifier instead of the data.
