@@ -214,14 +214,13 @@ describe('findProblems', () => {
       expect(findProblems(entries)).toEqual([`${id}: appears twice, at entry 1 and entry 2`]);
     });
 
-    test('refuses entries out of order', () => {
+    // The file's own order is the display order (channels.yml's header
+    // comment), not a function of activity_start_date, so an entry with an
+    // earlier date than the one before it is not a problem.
+    test('accepts entries whose dates are out of order', () => {
       const entries = [channel(), channel({ channel_id: otherId, activity_start_date: '2020-01-01' })];
 
-      expect(findProblems(entries)).toEqual([`${otherId}: is out of order, 2020-01-01 follows 2021-04-26`]);
-    });
-
-    test('accepts two entries that start on the same day', () => {
-      expect(findProblems([channel(), channel({ channel_id: otherId })])).toEqual([]);
+      expect(findProblems(entries)).toEqual([]);
     });
   });
 });
@@ -269,6 +268,7 @@ describe('channelsToSql', () => {
       'color_back',
       'activity_start_date',
       'activity_end_date',
+      'display_order',
     ];
 
     for (const column of columns) {
@@ -276,12 +276,29 @@ describe('channelsToSql', () => {
     }
   });
 
+  test("writes each entry's position in the file as display_order", () => {
+    const two = channelsToSql([channel(), channel({ channel_id: otherId })]);
+
+    expect(
+      two
+        .split('\n')
+        .find((line) => line.includes(id))
+        ?.trimEnd(),
+    ).toMatch(/, 0\),$/);
+    expect(
+      two
+        .split('\n')
+        .find((line) => line.includes(otherId))
+        ?.trimEnd(),
+    ).toMatch(/, 1\)$/);
+  });
+
   test('spreads the colour block across its four columns', () => {
     expect(sql).toContain("'#F38E0A', '#F8C112', '#FFEBA4', '#FFEBA4'");
   });
 
   test('writes NULL rather than a quoted empty string for a value that is not there', () => {
-    expect(channelsToSql([channel({ activity_end_date: null })])).toContain(", '2021-04-26', NULL)");
+    expect(channelsToSql([channel({ activity_end_date: null })])).toContain(", '2021-04-26', NULL, 0)");
   });
 
   test('writes NULL for an optional field the entry leaves out', () => {

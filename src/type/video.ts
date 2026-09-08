@@ -74,7 +74,7 @@ export function getPropertyDescription(property: VideoProperty): string {
       return '再生された回数';
 
     case 'likeCount':
-      return '高評価が付いた数';
+      return '高評価ボタンが押された数';
 
     case 'commentCount':
       return 'コメント欄に書き込まれた数';
@@ -83,25 +83,25 @@ export function getPropertyDescription(property: VideoProperty): string {
       return '配信中のチャットに書き込まれた数';
 
     case 'chatUniqueUserCount':
-      return 'チャットに 1 回以上書き込んだ人数';
+      return 'チャットに 1 回以上書き込んだユニーク人数';
 
     case 'duration':
-      return '動画や配信の長さ';
+      return '動画または配信の再生時間';
 
     case 'chatMessageCountPerUniqueUser':
-      return 'チャットを書いた 1 人が、平均で何回書いたか';
+      return 'チャットに書き込んだユーザの平均書き込み回数';
 
     case 'viewCountPerSecond':
-      return '長さ 1 秒あたりの再生数。短いほど大きくなる';
+      return '再生時間 1 秒あたりの再生数';
 
     case 'likeCountPerSecond':
-      return '長さ 1 秒あたりの高評価数。短いほど大きくなる';
+      return '再生時間 1 秒あたりの高評価数';
 
     case 'commentCountPerSecond':
-      return '長さ 1 秒あたりのコメント数。短いほど大きくなる';
+      return '再生時間 1 秒あたりのコメント数';
 
     case 'chatMessageCountPerSecond':
-      return '長さ 1 秒あたりのチャット数。盛り上がりの密度';
+      return '再生時間 1 秒あたりのチャット数';
   }
 }
 

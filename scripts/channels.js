@@ -8,7 +8,7 @@
 
 import { readFileSync } from 'node:fs';
 import { load } from 'js-yaml';
-import { quote } from './sql.js';
+import { literal, quote } from './sql.js';
 
 /** The master file, relative to the repository root. */
 export const channelsPath = 'channels.yml';
@@ -172,7 +172,6 @@ export function findProblems(channels) {
 
   const problems = [];
   const seenAt = new Map();
-  let previousStart = '';
 
   channels.forEach((entry, index) => {
     // The channel id names the entry once it is known to be one; until then
@@ -193,16 +192,6 @@ export function findProblems(channels) {
       } else {
         problems.push(`${where}: appears twice, at entry ${first} and entry ${index + 1}`);
       }
-    }
-
-    // Ordering is not the database's business, which sorts on demand, but the
-    // file is read by people and a rule nothing checks stops being true.
-    if (isRealDate(entry.activity_start_date)) {
-      if (entry.activity_start_date < previousStart) {
-        problems.push(`${where}: is out of order, ${entry.activity_start_date} follows ${previousStart}`);
-      }
-
-      previousStart = entry.activity_start_date;
     }
   });
 
@@ -235,6 +224,11 @@ export function loadChannels(path = channelsPath) {
  *
  * `twitch` is absent for a different reason, which channels.yml gives: no
  * column holds it, and the file carries it anyway.
+ *
+ * `display_order` has no field of its own in an entry. The file's own
+ * ordering is the order the site shows streamers in - see the comment at the
+ * top of channels.yml - so this writes each entry's position in the array
+ * rather than reading a column back out of it.
  */
 export function channelsToSql(channels) {
   const columns = [
@@ -249,9 +243,10 @@ export function channelsToSql(channels) {
     'color_back',
     'activity_start_date',
     'activity_end_date',
+    'display_order',
   ];
 
-  const rows = channels.map((channel) =>
+  const rows = channels.map((channel, index) =>
     [
       quote(channel.channel_id),
       quote(channel.name),
@@ -264,6 +259,7 @@ export function channelsToSql(channels) {
       quote(channel.color.back),
       quote(channel.activity_start_date),
       quote(channel.activity_end_date),
+      literal(index),
     ].join(', '),
   );
 

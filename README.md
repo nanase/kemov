@@ -168,16 +168,16 @@ A region is chosen when the database is created and never again, so moving it me
 
 `channel` has two writers, and one that ignores the split erases the other's work.
 
-| Columns                                                                            | Written by                          |
-| ---------------------------------------------------------------------------------- | ----------------------------------- |
-| `channel_id`, `name`, `fullname`, `globalname`, `twitter`, `color_*`, `activity_*` | The deploy, from `channels.yml`     |
-| `custom_url`, `thumbnail_url`, `fetched_at`                                        | The collector, from `Channels.list` |
+| Columns                                                                                             | Written by                          |
+| --------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `channel_id`, `name`, `fullname`, `globalname`, `twitter`, `color_*`, `activity_*`, `display_order` | The deploy, from `channels.yml`     |
+| `custom_url`, `thumbnail_url`, `fetched_at`                                                         | The collector, from `Channels.list` |
 
 Seeding from the YAML therefore upserts those columns by name. Replacing the whole row would blank what the collector has fetched. Every other table is the collector's alone.
 
 ### The Channel Master
 
-`channels.yml` at the repository root holds the deploy's half of that table, one entry per streamer, ordered by `activity_start_date`:
+`channels.yml` at the repository root holds the deploy's half of that table, one entry per streamer. The file's own order is the order the site shows streamers in, written into `display_order`; see the comment at the top of the file before reordering it.
 
 ```yaml
 - channel_id: UCEcMIuGR8WO2TwL9XIpjKtw
@@ -208,7 +208,7 @@ The master used to be a hand-written JSON file hosted outside the repository. Ed
 yarn check-channels
 ```
 
-That reports every problem in the file at once rather than the first: an id that is not a YouTube channel id, a colour that is not `#RRGGBB`, a handle written with the `@`, a date that does not exist, a field name with a typo in it, the same channel twice, an entry out of order.
+That reports every problem in the file at once rather than the first: an id that is not a YouTube channel id, a colour that is not `#RRGGBB`, a handle written with the `@`, a date that does not exist, a field name with a typo in it, the same channel twice.
 
 What the check knows lives in `scripts/`, which is JavaScript rather than TypeScript because it runs under bare node from a CI step and from the deploy, both before anything is built. Like the worker, it is its own vitest project:
 

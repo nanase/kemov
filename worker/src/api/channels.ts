@@ -95,7 +95,7 @@ async function latestPerChannel(db: D1Database): Promise<ChannelRow[]> {
               (SELECT s.video_count FROM channel_snapshot s
                 WHERE s.channel_id = c.channel_id ORDER BY s.fetched_at DESC LIMIT 1) AS video_count
          FROM channel c
-        ORDER BY c.channel_id`,
+        ORDER BY c.display_order, c.channel_id`,
     )
     .all<ChannelRow>();
 

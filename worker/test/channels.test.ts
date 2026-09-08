@@ -7,12 +7,12 @@ import { listChannels, getChannel, getHistory, parseInstant, readHistoryRange } 
  * stand-in for one. The routing that reaches them is worker/test/api.test.ts.
  */
 
-async function insertChannel(channelId: string): Promise<void> {
+async function insertChannel(channelId: string, displayOrder = 0): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO channel (channel_id, name, fullname, color_key, color_sub, color_light, color_back, activity_start_date)
-     VALUES (?1, ?1, ?1, '#000000', '#000000', '#000000', '#000000', '2021-01-01')`,
+    `INSERT INTO channel (channel_id, name, fullname, color_key, color_sub, color_light, color_back, activity_start_date, display_order)
+     VALUES (?1, ?1, ?1, '#000000', '#000000', '#000000', '#000000', '2021-01-01', ?2)`,
   )
-    .bind(channelId)
+    .bind(channelId, displayOrder)
     .run();
 }
 
@@ -68,6 +68,20 @@ describe('listChannels', () => {
     expect(channels.map((channel) => channel.channelId)).toEqual(['UCaaa', 'UCbbb']);
     expect(channels[0]?.fetchedAt).toBeNull();
     expect(channels[0]?.perDay.subscriberCount).toEqual({ value: null, reason: 'nothing collected' });
+  });
+
+  // The site orders streamers by channels.yml's own order, written into
+  // display_order by the deploy - not by channel_id, which is a YouTube id
+  // and alphanumeric by accident. Inserted out of order here so the test
+  // would fail if the query fell back to sorting by channel_id.
+  test('orders channels by display_order rather than by channel_id', async () => {
+    await insertChannel('UCbbb', 2);
+    await insertChannel('UCaaa', 1);
+    await insertChannel('UCccc', 0);
+
+    const { channels } = await listChannels(env);
+
+    expect(channels.map((channel) => channel.channelId)).toEqual(['UCccc', 'UCaaa', 'UCbbb']);
   });
 
   // Every page that shows one of these numbers shows the streamer's name,
