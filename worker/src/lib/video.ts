@@ -38,14 +38,19 @@ export interface LiveStreamingDetails {
 }
 
 /**
- * A video of this length or less is a short.
+ * Above this length a video cannot be a short, so nothing needs asking.
  *
- * YouTube's own limit was 60 seconds when the 6,424 videos this replaces were
- * published, and the audit in #58 counted 197 videos at or under it. Raising
- * it to the 3 minutes YouTube now allows would reclassify videos that were
- * never shorts, so the number stays where the data is.
+ * YouTube allows a short of up to three minutes. The reported duration rounds
+ * up - the five 61-second shorts in this archive are the evidence, since the
+ * limit was 60 seconds when they were published - so the bound is a second
+ * past the limit rather than on it.
+ *
+ * This is not a rule for deciding what a short is. Length cannot decide that,
+ * which #66 measured: of 22 videos checked against YouTube itself, a
+ * 44-second clip and a stream that ended in four seconds are not shorts, and
+ * a 61-second video is. It only says which videos are worth asking about.
  */
-export const SHORTS_MAX_SECONDS = 60;
+export const SHORTS_PROBE_MAX_SECONDS = 181;
 
 /**
  * How far ahead a scheduled start has to be before it is a free chat
@@ -133,34 +138,81 @@ export function determineLiveBroadcastContent(details: LiveStreamingDetails | un
 }
 
 /**
- * Which of the three kinds a video is, or null while its length is unknown.
+ * Whether being a short is still an open question for this video.
+ *
+ * A stream is never a short - measured, none of the 190 shorts in the archive
+ * carries a liveStreamingDetails - and neither is anything longer than the
+ * limit, so the question is only open for a short video that was never
+ * broadcast. That is 215 of 6,433 videos, which is what makes asking YouTube
+ * about each one affordable.
+ */
+export function needsShortsProbe(
+  durationSeconds: number | null,
+  liveBroadcastContent: LiveBroadcastContent,
+  details: LiveStreamingDetails | undefined,
+): boolean {
+  if (liveBroadcastContent !== 'none' || details !== undefined) return false;
+
+  return durationSeconds !== null && durationSeconds <= SHORTS_PROBE_MAX_SECONDS;
+}
+
+/**
+ * What YouTube's answer to /shorts/<id> says, or null when it did not answer.
+ *
+ * The watch path is the only place that knows. Data API v3 has no field for
+ * it, the same gap that leaves `membership` out of reach, so the question is
+ * put to the page instead: a short is served at /shorts/<id>, and anything
+ * else is redirected to /watch. Both directions were checked - 10 shorts
+ * answered 200 and 12 non-shorts answered 303 - because one direction alone
+ * would leave "200 means something else too" open.
+ *
+ * **Anything else is null, and null is not "no".** A 403, a 429 or a 5xx says
+ * the question went unanswered, and answering it "not a short" would settle
+ * as a fact something nobody was told. That is the shape of the failure #58
+ * was built to remove: the old system wrote -1 on a refusal and never asked
+ * again. Here the kind stays null, and video-update comes back to every video
+ * within a day, so a refusal costs a day rather than the answer.
+ */
+export function readShortsProbe(status: number): boolean | null {
+  if (status === 200) return true;
+  // 303 is what YouTube sends today. The others are here because a redirect
+  // away from /shorts/ says the same thing whichever of them carries it.
+  if (status === 301 || status === 302 || status === 303 || status === 307 || status === 308) return false;
+
+  return null;
+}
+
+/**
+ * Which of the three kinds a video is, or null while that is not yet known.
  *
  * The order of the tests is the whole content of this function, so it is
  * spelled out:
  *
  *   1. A stream that is running or still to come is `streaming` whatever its
  *      length says. `contentDetails.duration` is 'P0D' for a stream that has
- *      not finished, which parses to a real 0 seconds; without this test first
- *      every live stream would come out a short.
+ *      not finished, which parses to a real 0 seconds.
  *   2. Length unknown is null, not a guess.
- *   3. 60 seconds or less is `shorts`. #63 asks for this without exceptions,
- *      so a stream that ended inside a minute lands here too. That is the one
- *      case where this rule and "a stream is `streaming`" disagree, and #63's
- *      wording decides it. #66 sees both answers and can move it.
- *   4. Anything that was ever a stream is `streaming`.
- *   5. The rest are `video`.
+ *   3. Anything that was ever a stream is `streaming`. This sits above the
+ *      shorts test rather than below it, which is where #66 moved it: a
+ *      stream that ended in four seconds was being called a short, and
+ *      YouTube serves it at /watch.
+ *   4. Longer than a short can be is `video`.
+ *   5. Otherwise the answer is whatever YouTube said, and null while it has
+ *      not said. `isShort` is that answer - see readShortsProbe.
  */
 export function determineVideoType(
   durationSeconds: number | null,
   liveBroadcastContent: LiveBroadcastContent,
   details: LiveStreamingDetails | undefined,
+  isShort: boolean | null = null,
 ): VideoType | null {
   if (liveBroadcastContent !== 'none') return 'streaming';
   if (durationSeconds === null) return null;
-  if (durationSeconds <= SHORTS_MAX_SECONDS) return 'shorts';
   if (details !== undefined) return 'streaming';
+  if (durationSeconds > SHORTS_PROBE_MAX_SECONDS) return 'video';
+  if (isShort === null) return null;
 
-  return 'video';
+  return isShort ? 'shorts' : 'video';
 }
 
 /** What the caller managed to learn about a video's availability. */
@@ -220,12 +272,9 @@ export function determineAvailability(signals: AvailabilitySignals): Availabilit
  * worse: it is written by hand, in Japanese, and differs per channel, so it
  * would miss the next one that is worded differently.
  *
- * **Nothing in this repository calls this yet, and that is deliberate.** A
- * free chat is a real upcoming stream and its row says so; what it must not be
- * is the stream `GET /api/live` names as a channel's next one. That endpoint
- * is #69's, and worker/src/api/ is #69's to write, so the rule lands here
- * where the collector already keeps its judgement and #69 imports it rather
- * than restating it. The tests are what make it safe to hand over that way.
+ * A free chat is a real upcoming stream and its row says so; what it must not
+ * be is the stream `GET /api/live` names as a channel's next one. That is the
+ * one caller, added by #69, and it imports this rule rather than restating it.
  */
 export function isFreeChatPlaceholder(scheduledStartTime: string | null, now: Date): boolean {
   if (scheduledStartTime === null) return false;

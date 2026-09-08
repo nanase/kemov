@@ -24,6 +24,7 @@ export default defineConfigWithVueTs(
     languageOptions: {
       globals: {
         AbortSignal: 'readonly',
+        URL: 'readonly',
         console: 'readonly',
         fetch: 'readonly',
         process: 'readonly',
