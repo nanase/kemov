@@ -75,13 +75,23 @@ async function authorCount(videoId: string): Promise<number> {
   return row?.n ?? 0;
 }
 
-/** Queues one video directly, as a tick that had already scanned would have. */
-async function queue(videoId: string, cursor: string | null = null, attempts = 0): Promise<void> {
+/**
+ * Queues one video directly, as a tick that had already scanned would have.
+ *
+ * `dueAt` is what the claim orders on, so a test that is about which of two
+ * videos gets taken says it here rather than leaving both on one deadline.
+ */
+async function queue(
+  videoId: string,
+  cursor: string | null = null,
+  attempts = 0,
+  dueAt = '2026-01-01T00:00:00Z',
+): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO collect_task (kind, target_id, state, attempts, cursor, next_attempt_at, updated_at)
-     VALUES ('chat_replay', ?1, 'pending', ?2, ?3, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+     VALUES ('chat_replay', ?1, 'pending', ?2, ?3, ?4, '2026-01-01T00:00:00Z')`,
   )
-    .bind(videoId, attempts, cursor)
+    .bind(videoId, attempts, cursor, dueAt)
     .run();
 }
 
@@ -328,7 +338,7 @@ describe('runChatReplay', () => {
       const [task] = await allTasks();
       expect(task).toMatchObject({ state: 'pending', attempts: 0 });
       expect(JSON.parse(task.cursor!)).toMatchObject({ continuation: 'page-next', messages: 40 });
-      // Released the moment the run stopped, so the next tick carries on
+      // Released the moment the run stopped, so a following tick carries on
       // rather than waiting out a lease.
       expect(task.next_attempt_at).toEqual('2026-01-01T00:10:00Z');
     });
@@ -466,6 +476,76 @@ describe('runChatReplay', () => {
       const states = (await allTasks()).map((task) => task.state);
       expect(states.filter((state) => state === 'done')).toHaveLength(1);
       expect(states.filter((state) => state !== 'done')).toHaveLength(1);
+    });
+
+    // Which one of the queue a tick takes (#101). A video is read
+    // PAGES_PER_VIDEO pages at a time, so a long chat needs several ticks; on
+    // the deadline alone, every release put it back behind the whole queue and
+    // production went two hours between one video's ticks. The deadlines here
+    // are the ones that would decide it under that order, so each test says
+    // which rule won.
+    test('takes a part-counted video before one nothing has read yet', async () => {
+      await insertVideo('vid-fresh');
+      await insertVideo('vid-part');
+      await queue('vid-fresh');
+      await queue('vid-part', JSON.stringify({ continuation: 'page-7', messages: 300 }), 0, '2026-01-01T00:05:00Z');
+
+      await runChatReplay(env, serves([replayPage([])]));
+
+      expect(await allTasks()).toMatchObject([
+        { target_id: 'vid-fresh', state: 'pending' },
+        { target_id: 'vid-part', state: 'done' },
+      ]);
+    });
+
+    // A video that failed partway holds a cursor for the same reason a
+    // released one does: pages have landed and are not going to be read again.
+    // The backoff decides when it is due, and the cursor decides its place.
+    test('takes a video that failed partway ahead of one nothing has read yet', async () => {
+      await insertVideo('vid-failed');
+      await insertVideo('vid-fresh');
+      await queue('vid-fresh');
+      await env.DB.prepare(
+        `INSERT INTO collect_task (kind, target_id, state, attempts, cursor, next_attempt_at, updated_at)
+         VALUES ('chat_replay', 'vid-failed', 'failed', 1, ?1, '2026-01-01T00:05:00Z', '2026-01-01T00:05:00Z')`,
+      )
+        .bind(JSON.stringify({ continuation: 'page-7', messages: 300 }))
+        .run();
+
+      await runChatReplay(env, serves([replayPage([])]));
+
+      expect(await allTasks()).toMatchObject([
+        { target_id: 'vid-failed', state: 'done' },
+        { target_id: 'vid-fresh', state: 'pending' },
+      ]);
+    });
+
+    test('takes the part-counted video that has waited longest', async () => {
+      await insertVideo('vid-new');
+      await insertVideo('vid-old');
+      await queue('vid-new', JSON.stringify({ continuation: 'page-9', messages: 100 }), 0, '2026-01-01T00:05:00Z');
+      await queue('vid-old', JSON.stringify({ continuation: 'page-7', messages: 300 }), 0, '2026-01-01T00:01:00Z');
+
+      await runChatReplay(env, serves([replayPage([])]));
+
+      expect(await allTasks()).toMatchObject([
+        { target_id: 'vid-new', state: 'pending' },
+        { target_id: 'vid-old', state: 'done' },
+      ]);
+    });
+
+    test('takes the video that has waited longest when nothing has been read yet', async () => {
+      await insertVideo('vid-new');
+      await insertVideo('vid-old');
+      await queue('vid-new', null, 0, '2026-01-01T00:05:00Z');
+      await queue('vid-old', null, 0, '2026-01-01T00:01:00Z');
+
+      await runChatReplay(env, serves([replayPage([])]));
+
+      expect(await allTasks()).toMatchObject([
+        { target_id: 'vid-new', state: 'pending' },
+        { target_id: 'vid-old', state: 'done' },
+      ]);
     });
 
     // The deadline end to end: the reply never comes, so nothing but the
@@ -674,9 +754,9 @@ describe('runChatReplay', () => {
     });
 
     // Four tries and no more, and the page before it stays counted: the video
-    // goes into its backoff and the next tick carries on from the cursor
-    // rather than reading the replay again. Real timers again, for the reason
-    // the retrying test in 'counting' gives: this run really does wait.
+    // goes into its backoff and carries on from the cursor once that has run
+    // out, rather than reading the replay again. Real timers again, for the
+    // reason the retrying test in 'counting' gives: this run really does wait.
     test('gives up on a page refused every time it asks', async () => {
       vi.useRealTimers();
       await insertVideo('vid-1');

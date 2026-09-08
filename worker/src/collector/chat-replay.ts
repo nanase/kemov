@@ -452,12 +452,17 @@ async function writePage(
 }
 
 /**
- * Hands a part-counted video back for the next tick to carry on with.
+ * Hands a part-counted video back to the queue for a later tick to carry on.
  *
  * The one place a video that is neither finished nor failed becomes due again.
  * Every page before this left the row 'running' on its lease, so no other tick
  * could take a video this one was still reading; this releases it the moment
  * the run stops, rather than a lease later.
+ *
+ * The row keeps its cursor, which is what claimDue puts first, so the video
+ * waits on the other part-counted ones and on nothing else. Due as of now, it
+ * sits at the back of that group: the wait is one tick for each video that is
+ * part-counted alongside it, and not the depth of the whole queue.
  */
 async function releaseForNextTick(db: D1Database, videoId: string, lease: string, now: Date): Promise<boolean> {
   const timestamp = formatTimestamp(now);
@@ -664,7 +669,8 @@ async function collectOne(
 
     await releaseForNextTick(db, task.target_id, lease, now);
     console.log(
-      `chat-replay: ${task.target_id} used its ${PAGES_PER_VIDEO} pages and ${retries} retries (${cut} cut), so it carries on next tick`,
+      `chat-replay: ${task.target_id} used its ${PAGES_PER_VIDEO} pages and ${retries} retries (${cut} cut), ` +
+        `so it queues ahead of the videos nothing has read yet`,
     );
   } catch (error) {
     console.error(`chat-replay: ${task.target_id} failed`, error);
@@ -673,13 +679,25 @@ async function collectOne(
 }
 
 /**
- * Claims up to VIDEOS_PER_TICK videos that are due.
+ * Claims up to VIDEOS_PER_TICK videos that are due, part-counted ones first.
+ *
+ * A video is read PAGES_PER_VIDEO pages at a time, so a long chat takes
+ * several claims to finish. Ordered by next_attempt_at alone, each release put
+ * the video back behind everything else that was due; with VIDEOS_PER_TICK = 1
+ * and a queue 119 deep, two hours passed between one video's ticks (#101).
+ * Rows carrying a cursor go first, which leaves a video waiting on the other
+ * part-counted ones alone. The rate is the same either way - one video a tick
+ * is counted whatever the order - so what this changes is which videos finish
+ * first, not how many.
  *
  * 'running' is in the same net as 'pending' and 'failed' because
  * next_attempt_at doubles as the lease deadline: a tick that died mid-video
  * left its row claimed, and the row becomes due again by the same clause that
- * makes a failed one due. The columns and states here are exactly those the
- * collect_task_due index covers.
+ * makes a failed one due. The kind and the states are the ones collect_task_due
+ * covers, so the index still finds the due rows; it no longer gives their
+ * order, because (cursor IS NULL) is not in it. The plan gains a temp b-tree
+ * over what one kind has due at that moment, which is the queue itself and not
+ * the table.
  *
  * One statement, so that reading a row and taking it cannot be separated. A
  * cron trigger does not wait for the tick before it, so two runs can overlap;
@@ -700,7 +718,7 @@ async function claimDue(db: D1Database, now: Date): Promise<{ tasks: TaskRow[]; 
                  WHERE kind = 'chat_replay'
                    AND state IN ('pending', 'running', 'failed')
                    AND next_attempt_at <= ?2
-                 ORDER BY next_attempt_at
+                 ORDER BY (cursor IS NULL), next_attempt_at
                  LIMIT ?3
               )
     RETURNING target_id, cursor, attempts`,
