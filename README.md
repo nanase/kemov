@@ -324,6 +324,17 @@ yarn wrangler d1 execute kemov --remote --file channel.sql
 
 Every statement is `ON CONFLICT DO NOTHING`, so applying a file twice does nothing the second time and applying them out of curiosity costs nothing. A restore is not a calm operation and it should not also be a careful one.
 
+**That same rule is why the target has to be empty.** `DO NOTHING` puts back a row that is missing; it leaves a row that is present alone, whatever it now says. Applied to a database whose rows are wrong rather than gone — a bad migration, a job that wrote nonsense — it changes nothing and reports success. So restore into a fresh database, or empty the one you have first:
+
+```sh
+yarn wrangler d1 execute kemov --remote --command \
+  "DELETE FROM chat_author; DELETE FROM collect_task; DELETE FROM channel_snapshot; DELETE FROM video; DELETE FROM channel"
+```
+
+Children before parents, the same order [Rolling Back](#rolling-back) uses and for the same reason. `collect_task` and `chat_author` are not in the backup and are not restored; they rebuild themselves within a tick or two.
+
+Losing rows that the backup does not carry is the cost of emptying, so check [time travel](#rolling-back) first: inside 30 days it returns the whole database to a moment, which is a better answer than a restore whenever it is available.
+
 ### What May Expire and What May Not
 
 **No lifecycle rule is set on the bucket, and one covering all of it would be wrong.**
