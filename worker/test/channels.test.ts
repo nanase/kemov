@@ -75,13 +75,13 @@ describe('listChannels', () => {
   // and alphanumeric by accident. Inserted out of order here so the test
   // would fail if the query fell back to sorting by channel_id.
   test('orders channels by display_order rather than by channel_id', async () => {
-    await insertChannel('UCbbb', 1);
-    await insertChannel('UCaaa', 0);
-    await insertChannel('UCccc', 2);
+    await insertChannel('UCbbb', 2);
+    await insertChannel('UCaaa', 1);
+    await insertChannel('UCccc', 0);
 
     const { channels } = await listChannels(env);
 
-    expect(channels.map((channel) => channel.channelId)).toEqual(['UCaaa', 'UCbbb', 'UCccc']);
+    expect(channels.map((channel) => channel.channelId)).toEqual(['UCccc', 'UCaaa', 'UCbbb']);
   });
 
   // Every page that shows one of these numbers shows the streamer's name,
