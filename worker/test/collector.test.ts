@@ -110,6 +110,26 @@ describe('runScheduled', () => {
     log.mockRestore();
   });
 
+  // Again no stub: an empty D1 has nothing to back up, and the job says so
+  // for each whole-table file it writes. The clock is pinned because the job
+  // names today's date in what it writes and in what it logs.
+  test('routes backup to its handler', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-08T00:20:00Z'));
+
+    try {
+      await runScheduled('20 0 * * *', env);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(log).toHaveBeenCalledWith('backup: wrote 0 rows of channel for 2026-09-08');
+
+    log.mockRestore();
+  });
+
   // Keep this test last, and add new ones above it. It drops a table, and
   // storage rolls back per file rather than per test, so everything after it
   // in this file would run without `channel`. Dropping is still the right way

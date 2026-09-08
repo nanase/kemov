@@ -13,6 +13,8 @@
  * moment that program is needed is the moment nothing else is working.
  */
 
+import { formatTimestamp } from './time';
+
 /** A string literal with its quotes doubled, or NULL. */
 export function quote(value: unknown): string {
   return value === null || value === undefined ? 'NULL' : `'${String(value).replaceAll("'", "''")}'`;
@@ -213,12 +215,24 @@ export function dayOf(instant: string): string {
   return instant.slice(0, 10);
 }
 
-/** The instants a UTC day covers, as the schema spells them. */
-export function dayBounds(date: string): { from: string; to: string } {
-  const start = new Date(`${date}T00:00:00Z`);
-  const next = new Date(start.getTime() + 86400 * 1000);
+/** Midnight of a UTC day, as a Date. */
+function midnight(date: string): Date {
+  return new Date(`${date}T00:00:00Z`);
+}
 
-  return { from: `${date}T00:00:00Z`, to: `${next.toISOString().slice(0, 10)}T00:00:00Z` };
+/**
+ * The instants a UTC day covers, as the schema spells them.
+ *
+ * Half open: the instant midnight names belongs to the day that starts rather
+ * than the one that ends, so no snapshot falls in two files or in neither.
+ *
+ * Through formatTimestamp like every other instant this code compares against
+ * a fetched_at, rather than being assembled here out of string pieces.
+ */
+export function dayBounds(date: string): { from: string; to: string } {
+  const start = midnight(date);
+
+  return { from: formatTimestamp(start), to: formatTimestamp(new Date(start.getTime() + 86400 * 1000)) };
 }
 
 /**
@@ -254,10 +268,10 @@ export function missingDays(earliest: string, through: string, present: Readonly
 
 /** The day after this one, in UTC. */
 export function nextDay(date: string): string {
-  return new Date(new Date(`${date}T00:00:00Z`).getTime() + 86400 * 1000).toISOString().slice(0, 10);
+  return dayOf(formatTimestamp(new Date(midnight(date).getTime() + 86400 * 1000)));
 }
 
 /** The day before this one, in UTC. */
 export function previousDay(date: string): string {
-  return new Date(new Date(`${date}T00:00:00Z`).getTime() - 86400 * 1000).toISOString().slice(0, 10);
+  return dayOf(formatTimestamp(new Date(midnight(date).getTime() - 86400 * 1000)));
 }

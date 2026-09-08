@@ -6,8 +6,13 @@ import {
   BYTES_PER_STATEMENT,
   dateFromKey,
   dayBounds,
+  dayOf,
+  literal,
   MAX_DAYS_PER_RUN,
   missingDays,
+  nextDay,
+  previousDay,
+  quote,
   ROWS_PER_STATEMENT,
   toSql,
 } from '../src/lib/backup';
@@ -49,38 +54,60 @@ async function applyFile(sql: string): Promise<void> {
   }
 }
 
-async function seed(): Promise<void> {
+/**
+ * A stored channel, with every column filled.
+ *
+ * Unlike the collectors' own tests, these fill every column rather than the
+ * few a job reads: what is being tested is that a column survives the round
+ * trip, and a column left at its default would survive it either way.
+ */
+async function insertChannel(channelId: string): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO channel (channel_id, name, fullname, globalname, twitter, color_key, color_sub,
                           color_light, color_back, activity_start_date, activity_end_date,
                           custom_url, thumbnail_url, fetched_at)
-     VALUES ('UCaaa', 'あ', 'あの人', NULL, 'aaa', '#000000', '#111111', '#222222', '#333333',
+     VALUES (?1, 'あ', 'あの人', NULL, 'aaa', '#000000', '#111111', '#222222', '#333333',
              '2021-04-01', NULL, '@aaa', 'https://example.invalid/a.jpg', '2026-09-08T00:00:00Z')`,
-  ).run();
+  )
+    .bind(channelId)
+    .run();
+}
 
-  // An apostrophe, a NULL and a zero, because each is a way a generated
-  // literal can be wrong: quoting, the four-letter word, and a falsy number
-  // written as the empty string.
+/**
+ * A stored video, carrying an apostrophe, a NULL and a zero.
+ *
+ * Each is a way a generated literal can be wrong: the quoting, the four-letter
+ * word for the absence, and a falsy number written as the empty string.
+ */
+async function insertVideo(videoId: string, channelId: string): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO video (video_id, channel_id, title, published_at, availability, live_broadcast_content,
                         type, duration_seconds, view_count, like_count, comment_count,
                         chat_message_count, chat_unique_user_count,
                         scheduled_start_time, actual_start_time, actual_end_time, fetched_at)
-     VALUES ('vid1', 'UCaaa', 'it''s a title', '2026-09-01T00:00:00Z', 'public', 'none',
+     VALUES (?1, ?2, 'it''s a title', '2026-09-01T00:00:00Z', 'public', 'none',
              'video', 0, 0, NULL, 3, NULL, NULL, NULL, NULL, NULL, '2026-09-08T00:00:00Z')`,
-  ).run();
+  )
+    .bind(videoId, channelId)
+    .run();
+}
 
-  for (const [day, minute] of [
-    ['2026-09-06', '00'],
-    ['2026-09-06', '10'],
-    ['2026-09-07', '00'],
-  ] as const) {
-    await env.DB.prepare(
-      `INSERT INTO channel_snapshot (channel_id, fetched_at, subscriber_count, view_count, video_count)
-       VALUES ('UCaaa', ?1, 100, 200, 3)`,
-    )
-      .bind(`${day}T00:${minute}:00Z`)
-      .run();
+async function insertSnapshot(channelId: string, fetchedAt: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO channel_snapshot (channel_id, fetched_at, subscriber_count, view_count, video_count)
+     VALUES (?1, ?2, 100, 200, 3)`,
+  )
+    .bind(channelId, fetchedAt)
+    .run();
+}
+
+/** Two snapshot days, so that a run has a finished day and an unfinished one. */
+async function seed(): Promise<void> {
+  await insertChannel('UCaaa');
+  await insertVideo('vid1', 'UCaaa');
+
+  for (const fetchedAt of ['2026-09-06T00:00:00Z', '2026-09-06T00:10:00Z', '2026-09-07T00:00:00Z']) {
+    await insertSnapshot('UCaaa', fetchedAt);
   }
 }
 
@@ -236,6 +263,79 @@ describe('runBackup', () => {
     const keys = (await env.BACKUP.list({ prefix: 'channel_snapshot/' })).objects;
 
     expect(keys).toEqual([]);
+  });
+});
+
+describe('quote', () => {
+  test('doubles an apostrophe rather than ending the string', () => {
+    expect(quote("it's")).toEqual("'it''s'");
+  });
+
+  test('writes the absence as NULL rather than as the word', () => {
+    expect(quote(null)).toEqual('NULL');
+    expect(quote(undefined)).toEqual('NULL');
+    expect(quote('NULL')).toEqual("'NULL'");
+  });
+});
+
+describe('literal', () => {
+  // The tables are STRICT, so a count written as '12' is text offered to an
+  // INTEGER column.
+  test('leaves a number unquoted', () => {
+    expect(literal(12)).toEqual('12');
+  });
+
+  // Falsy, and the one a `value || ...` would turn into the empty string.
+  test('writes zero as zero', () => {
+    expect(literal(0)).toEqual('0');
+  });
+
+  test('quotes a number that arrived as text', () => {
+    expect(literal('12')).toEqual("'12'");
+  });
+});
+
+describe('dayOf', () => {
+  test('takes the date off an instant', () => {
+    expect(dayOf('2026-09-07T23:59:59Z')).toEqual('2026-09-07');
+  });
+});
+
+describe('nextDay', () => {
+  test('names the day after', () => {
+    expect(nextDay('2026-09-07')).toEqual('2026-09-08');
+  });
+
+  test('crosses the end of a month', () => {
+    expect(nextDay('2026-09-30')).toEqual('2026-10-01');
+  });
+
+  test('crosses the end of a year', () => {
+    expect(nextDay('2026-12-31')).toEqual('2027-01-01');
+  });
+
+  // February 2028 has 29 days, and a day-of-month arithmetic that did not
+  // know it would name the 29th twice or skip it.
+  test('crosses a leap day', () => {
+    expect(nextDay('2028-02-28')).toEqual('2028-02-29');
+  });
+});
+
+describe('previousDay', () => {
+  test('names the day before', () => {
+    expect(previousDay('2026-09-07')).toEqual('2026-09-06');
+  });
+
+  test('crosses the start of a month', () => {
+    expect(previousDay('2026-10-01')).toEqual('2026-09-30');
+  });
+
+  test('crosses the start of a year', () => {
+    expect(previousDay('2027-01-01')).toEqual('2026-12-31');
+  });
+
+  test('crosses a leap day', () => {
+    expect(previousDay('2028-03-01')).toEqual('2028-02-29');
   });
 });
 
