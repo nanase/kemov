@@ -20,7 +20,12 @@
 # the history of a streamer who stopped is still the history. A streamer who
 # stops gets an `activity_end_date`.
 #
-# Entries are ordered by `activity_start_date`, oldest first.
+# This list's order is what the site shows streamers in - the deploy writes
+# each entry's position here into `channel.display_order`
+# (scripts/channels.js). It happens to match `activity_start_date` order
+# today, but that is a coincidence, not the rule: do not sort this file
+# alphabetically, by id, or by date. Reorder it only to change the order the
+# site shows streamers in.
 
 - channel_id: UCEcMIuGR8WO2TwL9XIpjKtw
   name: ケープペンギン

@@ -152,7 +152,7 @@ describe('getPropertyDescription', () => {
   // The name does not say that 1,136 means one person wrote 1,136 times.
   test('says what a rate is divided by', () => {
     expect(getPropertyDescription('viewCountPerSecond')).toContain('1 秒あたり');
-    expect(getPropertyDescription('chatMessageCountPerUniqueUser')).toContain('1 人');
+    expect(getPropertyDescription('chatMessageCountPerUniqueUser')).toContain('平均');
   });
 });
 

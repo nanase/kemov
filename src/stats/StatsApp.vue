@@ -8,7 +8,7 @@ import UpdateCircle from '@/components/common/UpdateCircle.vue';
 import StatsAppBase from '@/components/common/StatsAppBase.vue';
 import useStatsStore from './store';
 
-const { fetchedAt, fetching, errorOccurred, freshness, excludedFreeChats } = useStatsStore();
+const { fetchedAt, fetching, errorOccurred, freshness } = useStatsStore();
 
 /**
  * Whether these numbers were served after the database could not be read.
@@ -108,11 +108,6 @@ onMounted(async () => {
         <ul>
           <li>およそ10分ごとに自動で更新されます。数値は減少することがあります</li>
           <li>総再生数と配信・動画数は配信終了後から反映されます</li>
-          <!-- A free chat is a real upcoming stream, and leaving it out is why
-               a channel that has one no longer reads as permanently "about to
-               go live". Saying how many were left out is what keeps that from
-               looking like a channel with nothing scheduled. -->
-          <li v-if="excludedFreeChats > 0">フリーチャット {{ excludedFreeChats }} 件は配信予定に含めていません</li>
           <li>このサイトは非公式のファンサイトです</li>
         </ul>
       </v-footer>

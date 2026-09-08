@@ -219,8 +219,7 @@ onMounted(async () => await fetching.channels.start());
     <template #footer>
       <v-footer class="bg-secondary text-left d-flex flex-column mt-10">
         <ul>
-          <li>すべてのチャンネルの動画をまたいで並べています</li>
-          <li>指標を計算できない動画は順位に入りません。0 として下位に並べることはしません</li>
+          <li>指標を計算可能な動画のみ表示しています</li>
           <li>このサイトは非公式のファンサイトです</li>
         </ul>
       </v-footer>

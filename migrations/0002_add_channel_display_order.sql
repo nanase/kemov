@@ -1,0 +1,14 @@
+-- Adds the column the site orders streamers by (#58).
+--
+-- `channel` had no column carrying the order channels.yml lists streamers
+-- in, so worker/src/api/channels.ts fell back to `ORDER BY channel_id` -
+-- YouTube's id, alphanumeric and meaningless as a streamer order.
+--
+-- SQLite refuses to add a NOT NULL column without a default to a table that
+-- already has rows, and `channel` has 11 in production. DEFAULT 0 is a
+-- placeholder for the moment between this migration and the deploy's seed
+-- step, which writes each row's real position in channels.yml
+-- (scripts/channels.js, channelsToSql). The worker deployed alongside this
+-- migration still orders by channel_id until that same deploy replaces it,
+-- so the placeholder is never read as a real order.
+ALTER TABLE channel ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0 CHECK (display_order >= 0);
