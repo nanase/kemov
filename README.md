@@ -293,6 +293,77 @@ yarn wrangler d1 execute kemov --local --file migrations/rollback/0001_create_in
 
 Read that file before running it against anything but a local database. For a migration that has been live, losing a table is worse than the schema being wrong, and time travel is the route back.
 
+### Backups
+
+Time travel above covers the last 30 days and only inside D1. The nightly backup covers what happens after that, and what happens to D1 itself: at 00:20 UTC the worker writes what the database holds to the `kemov-backup` R2 bucket, as SQL.
+
+```
+channel/2026-09-08.sql              every row, rewritten each night
+video/2026-09-08.sql                every row, rewritten each night
+channel_snapshot/2026-09-07.sql     one finished day, written once
+```
+
+`channel` and `video` are written whole each night because their current values are the whole story. `channel_snapshot` is not: it only ever gains rows, 1,584 of them a day, so a finished day is written once as its own file and never touched again. That keeps a night's work the size of a day rather than the size of the table, which by the end of a year is 578,000 rows.
+
+A run writes at most seven missing days, so a gap left by an outage closes over several nights rather than being attempted all at once. Which days are already written is read from the bucket, not remembered anywhere, so nothing can disagree about it.
+
+Inside a file, one `INSERT` names at most 200 rows and at most 80,000 bytes, whichever comes first. D1 refuses a statement over 100,000 bytes, and the row count alone does not bound the bytes: measured over the 6,433 rows of `video` in production on 2026-09-08, batches of 200 reach 73,687 bytes in the order the backup reads them and 86,890 over the same rows grouped another way. How close a batch gets is therefore a property of which rows land together, not of how many there are, and `video` only grows. A statement that D1 refuses would be found only by whoever was restoring from the file, which is the worst moment to find it.
+
+`collect_task` and `chat_author` are deliberately absent. They hold where collection has got to, they rebuild themselves within a tick or two, and restoring them would send the chat job back through replays it has already read.
+
+**Nothing reports a backup that stops.** `/api/health` covers the four collection jobs by reading their `collect_task` rows, and this job writes none, so a run that fails every night looks from outside like one that works — see [#115](https://github.com/nanase/kemov/issues/115). Until something watches it, the bucket is the record: `yarn wrangler r2 object list kemov-backup --remote` shows the newest key of each prefix, and a `channel_snapshot/` date that is not yesterday means the job has not been getting through.
+
+### Restoring from a Backup
+
+The steps below were run end to end on 2026-09-08, against a real remote D1 and the real bucket, and are written from the commands that were actually issued. What was not run is in [What This Has Not Been Tried On](#what-this-has-not-been-tried-on) after them; a restore is not the moment to find out which is which.
+
+The target was a database created for the test, empty and never migrated. Substitute its name for `kemov-restore` throughout.
+
+**1. Give it the schema.** The backup files hold `INSERT` statements and nothing else, so every one of them fails on a database with no tables. Apply `migrations/` in filename order:
+
+```sh
+yarn wrangler d1 execute kemov-restore --remote --file migrations/0001_create_initial_schema.sql
+```
+
+**2. Fetch a file and apply it, `channel` first.** `video` and `channel_snapshot` both carry a foreign key to `channel`, and the schema refuses a row whose channel is not there yet. Then `video`, then every `channel_snapshot` day. Each file repeats this in its own header, so a file found on its own is enough.
+
+```sh
+yarn wrangler r2 object get kemov-backup/channel/2026-09-08.sql --file channel.sql --remote
+yarn wrangler d1 execute kemov-restore --remote --file channel.sql
+```
+
+**3. Check.** The run this was written from put back 11 channels, 6,433 videos and 1,452 snapshots — 7,896 rows, and every column of every one of them equal to the source.
+
+Every statement is `ON CONFLICT DO NOTHING`, so applying a file twice does nothing the second time: the re-run reported `rows_written: 0` and left the counts alone. A restore is not a calm operation and it should not also be a careful one.
+
+### What This Has Not Been Tried On
+
+**The rest of this is reasoning, not a rehearsal.** It is the best answer available for each case, and none of it has been run.
+
+**Restoring into `kemov` itself.** `DO NOTHING` puts back a row that is missing and leaves a row that is present alone, whatever it now says. Against a database whose rows are wrong rather than gone — a bad migration, a job that wrote nonsense — it would change nothing and report success. Emptying it first is what would make a restore mean anything:
+
+```sh
+yarn wrangler d1 execute kemov --remote --command \
+  "DELETE FROM chat_author; DELETE FROM collect_task; DELETE FROM channel_snapshot; DELETE FROM video; DELETE FROM channel"
+```
+
+Children before parents, the same order [Rolling Back](#rolling-back) uses and for the same reason. `collect_task` and `chat_author` are not in the backup and would not come back; they rebuild themselves within a tick or two. Losing them is the cost of emptying, so check [time travel](#rolling-back) first: inside 30 days it returns the whole database to a moment, which is a better answer than a restore whenever it is available.
+
+**`migrations apply` against a database `wrangler.toml` does not name.** Step 1 above applies the files directly because that is what was run. `yarn wrangler d1 migrations apply kemov --remote` is the documented route for the database this repository declares, and whether it resolves some other name was not established either way.
+
+Applying the files directly, as step 1 does, leaves `d1_migrations` empty. That is right for a database read once and thrown away, and wrong for one meant to replace `kemov`, where the next `migrations apply` would retry `0001` against tables that already exist.
+
+### What May Expire and What May Not
+
+**No lifecycle rule is set on the bucket, and one covering all of it would be wrong.**
+
+| Prefix               | May expire | Why                                                                                                                     |
+| -------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `channel/`, `video/` | Yes        | Each file is a complete copy. The newest one is all that is needed; older ones are duplicates.                          |
+| `channel_snapshot/`  | **No**     | Each file is one day and no other file holds that day. Deleting one leaves a hole in the history that nothing can fill. |
+
+The snapshot history began on 2026-09-07 and exists nowhere else. A day of it is about 119 KiB of SQL, measured against production values on 2026-09-08, so keeping all of it costs some 44 MB a year.
+
 ## Deployment
 
 One `Deploy` workflow puts up the worker and the site together, on every push to `main` and on demand from the Actions tab. There is no second project and no GitHub Pages: `wrangler.toml` declares `dist/` as the worker's static assets, so `yarn wrangler deploy` uploads the built site alongside the code that answers `/api`.

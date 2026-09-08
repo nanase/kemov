@@ -43,7 +43,22 @@ crons = [
   "*/10 * * * *",
   # chat-replay
   "* * * * *",
+  # backup. Twenty past midnight UTC, so that the day it writes has been over
+  # long enough for the last ten-minute tick of it to have landed.
+  "20 0 * * *",
 ]
+
+# Where the backup writes (#111). D1 is the only copy of two things: the
+# snapshot history, which began on 2026-09-07, and the chat counts #65 worked
+# out for itself. Neither is anywhere else, and #72 takes away the old system
+# that has been standing in as a copy of the rest.
+#
+# No lifecycle rule is set on this bucket, and one that covers all of it would
+# be wrong: see "Restoring from a backup" in the README for which prefixes may
+# expire and which may not.
+[[r2_buckets]]
+binding = "BACKUP"
+bucket_name = "kemov-backup"
 
 # The site itself, built from src/ by vite.
 #
