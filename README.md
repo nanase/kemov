@@ -311,6 +311,8 @@ Inside a file, one `INSERT` names at most 200 rows and at most 80,000 bytes, whi
 
 `collect_task` and `chat_author` are deliberately absent. They hold where collection has got to, they rebuild themselves within a tick or two, and restoring them would send the chat job back through replays it has already read.
 
+**Nothing reports a backup that stops.** `/api/health` covers the four collection jobs by reading their `collect_task` rows, and this job writes none, so a run that fails every night looks from outside like one that works. Until something watches it, the bucket is the record: `yarn wrangler r2 object list kemov-backup --remote` shows the newest key of each prefix, and a `channel_snapshot/` date that is not yesterday means the job has not been getting through.
+
 ### Restoring from a Backup
 
 Fetch the files and apply them. Nothing else is needed and no script has to work.

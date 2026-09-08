@@ -167,7 +167,7 @@ export function toSql(table: TableShape, rows: readonly Record<string, unknown>[
     // file at all, and the file is worse: it looks like a backup, and a
     // restore that reaches that statement stops there with the rows after it
     // unapplied. Failing instead leaves yesterday's file, which is a day old
-    // and works, and puts the reason where #71 is watching.
+    // and works, and says which row it was rather than failing silently.
     if (alone > BYTES_PER_STATEMENT) {
       const key = table.conflict.map((column) => String(row[column])).join(', ');
 

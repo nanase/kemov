@@ -175,8 +175,15 @@ async function backUpWholeTable(env: Env, table: TableShape, today: string): Pro
  *
  * Each table is written independently and one failing does not stop the
  * others: a backup that carries two tables of three is worth more than no
- * backup, and the one that failed is written by the next run. What did not
- * happen is on the error, which is what #71 watches.
+ * backup, and the one that failed is written by the next run.
+ *
+ * A failure reaches the worker's log and nothing else. /api/health reports a
+ * job by reading its own `collect_task` rows (see the JOBS list in
+ * ../api/health.ts), and this job writes none, so a backup that fails every
+ * night looks the same from outside as one that works. Whoever gives this job
+ * a place there has to give it something to read: either rows of its own,
+ * which needs the kind CHECK in migrations/0001 widened, or the bucket's
+ * newest key per prefix, which is the record this job already keeps.
  */
 export async function runBackup(env: Env, now: Date = new Date()): Promise<void> {
   const today = dayOf(formatTimestamp(now));
