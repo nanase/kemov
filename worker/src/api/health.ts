@@ -139,13 +139,14 @@ const worstAttempts = (rows: TaskState[], kind: string) =>
  * is stopped only while `queued` is above zero - which is the reading #71 asks
  * for, and the reason that field is beside these two.
  *
- * That leaves one thing this endpoint cannot see: a chat-replay that is broken
- * while its queue is empty. It writes nothing either way, and no field here
- * separates the two. Nothing else can be read instead - a job with no work
- * leaves no evidence - so what a monitor gets is a delay rather than a blind
- * spot: the next stream to end queues a video, and from that moment the
- * reading above applies. It is worth knowing about because chat-replay's queue
- * runs down to nothing today, the backfill that would keep it full being #68.
+ * That leaves one thing this endpoint cannot see. A chat-replay that is broken
+ * while its queue is empty writes nothing, and so does one that is working
+ * with nothing to do; no field here separates them, and none could, because a
+ * job with no work leaves no evidence. What that costs a monitor is time
+ * rather than the reading itself, since the next stream to end queues a video
+ * and the rule above applies again from there. It is not a corner case today:
+ * chat-replay's queue runs down to nothing, because the backfill that would
+ * keep it full is #68 and is not written yet.
  *
  * How long is too long belongs to #110 rather than here, because a threshold
  * chosen against a notifier ends up fitting the notifier instead of the data.
