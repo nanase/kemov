@@ -199,7 +199,11 @@ onMounted(async () => await fetching.channels.start());
               </td>
               <VideoDetail :video />
             </tr>
-            <tr v-if="!loading && (ranking?.videos.length ?? 0) === 0">
+            <!-- Only when a ranking arrived and held nothing. Without the null
+                 check a failed request shows this beside the failure, which is
+                 the same page telling the reader both that it could not fetch
+                 and that there is nothing to fetch. -->
+            <tr v-if="!loading && ranking !== null && ranking.videos.length === 0">
               <td colspan="4" class="pa-4 text-center opacity-70">この種別で順位を付けられる動画がまだありません</td>
             </tr>
           </tbody>
