@@ -1,14 +1,18 @@
 import axios from '@/lib/axios';
 import { apiBase } from '@/config';
 import { ShapeError } from '@/lib/read';
+import type { VideoProperty } from '@/type/video';
 import {
   readChannelList,
   readLiveList,
   readVideoPage,
+  readVideoRanking,
   type ChannelList,
   type LiveList,
   type Video,
   type VideoPage,
+  type VideoRanking,
+  type VideoType,
 } from '@/type/api';
 
 /**
@@ -121,6 +125,27 @@ export function getChannels(): Promise<ApiResult<ChannelList>> {
 /** What is on air and what is announced. */
 export function getLive(): Promise<ApiResult<LiveList>> {
   return get('/live', readLiveList);
+}
+
+/**
+ * The top videos across every channel by one measure.
+ *
+ * `kind` is narrowed by the API rather than here. Asking for a hundred and
+ * keeping the streams would answer "there are no streams" and "none of them
+ * came back in the hundred" the same way - and for the per-second measures
+ * that is not a hypothetical: shorts divide by at most 60 seconds and streams
+ * by hours, so an unnarrowed ranking of those is a list of shorts.
+ */
+export function getRanking(
+  metric: VideoProperty,
+  kind: VideoType | null,
+  limit: number,
+): Promise<ApiResult<VideoRanking>> {
+  const query = new URLSearchParams({ metric, limit: String(limit) });
+
+  if (kind !== null) query.set('type', kind);
+
+  return get(`/videos/ranking?${query.toString()}`, readVideoRanking(metric, kind));
 }
 
 /**

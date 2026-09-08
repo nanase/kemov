@@ -89,6 +89,15 @@ describe('routing', () => {
     }
   });
 
+  test('narrows a ranking to one kind of video', async () => {
+    for (const kind of ['streaming', 'video', 'shorts']) {
+      const response = await get(`/api/videos/ranking?type=${kind}`);
+
+      expect(response.status).toEqual(200);
+      expect(await response.json()).toMatchObject({ kind });
+    }
+  });
+
   test('answers 404 for a channel that is not there', async () => {
     const response = await get('/api/channels/UCnope');
 
@@ -150,6 +159,13 @@ describe('bad requests', () => {
 
     expect(response.status).toEqual(400);
     expect(await response.json()).toEqual({ error: 'no ranking by charisma' });
+  });
+
+  test('refuses a video type it does not have', async () => {
+    const response = await get('/api/videos/ranking?type=podcast');
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ error: 'no videos of type podcast' });
   });
 
   test('refuses a history bucket it does not offer', async () => {

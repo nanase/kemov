@@ -51,6 +51,7 @@ export default defineConfig({
       input: {
         stats: resolve(srcDir, 'stats', 'index.html'),
         statsDetail: resolve(srcDir, 'stats', 'detail', 'index.html'),
+        statsRanking: resolve(srcDir, 'stats', 'ranking', 'index.html'),
         genetMusic: resolve(srcDir, 'genet', 'music', 'index.html'),
       },
       output: {

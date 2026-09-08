@@ -1,5 +1,5 @@
 import axios from '@/lib/axios';
-import { ApiError, ApiShapeError, getAllVideos, getChannels, getLive, MAX_VIDEO_PAGES } from '@/lib/api';
+import { ApiError, ApiShapeError, getAllVideos, getChannels, getLive, getRanking, MAX_VIDEO_PAGES } from '@/lib/api';
 
 vi.mock('@/lib/axios', () => ({ default: { get: vi.fn() } }));
 
@@ -116,6 +116,40 @@ describe('getLive', () => {
     get.mockResolvedValue(answer({ streams: [], excludedFreeChats: 2 }));
 
     expect((await getLive()).data.excludedFreeChats).toEqual(2);
+  });
+});
+
+describe('getRanking', () => {
+  const ranked = (kind: string | null) => ({
+    metric: 'chatMessageCountPerSecond',
+    kind,
+    videos: [{ ...video('a'), metricValue: 2.5 }],
+  });
+
+  test('asks the API to narrow the kind rather than narrowing what came back', async () => {
+    get.mockResolvedValue(answer(ranked('streaming')));
+
+    const result = await getRanking('chatMessageCountPerSecond', 'streaming', 30);
+
+    expect(get.mock.calls[0][0]).toContain('metric=chatMessageCountPerSecond');
+    expect(get.mock.calls[0][0]).toContain('type=streaming');
+    expect(get.mock.calls[0][0]).toContain('limit=30');
+    expect(result.data.videos[0].metricValue).toEqual(2.5);
+  });
+
+  // Absent means every kind, which is not the same as asking for one.
+  test('sends no type when every kind is wanted', async () => {
+    get.mockResolvedValue(answer(ranked(null)));
+
+    await getRanking('chatMessageCountPerSecond', null, 10);
+
+    expect(get.mock.calls[0][0]).not.toContain('type=');
+  });
+
+  test('refuses a ranking of something other than what was asked for', async () => {
+    get.mockResolvedValue(answer(ranked('shorts')));
+
+    await expect(getRanking('chatMessageCountPerSecond', 'streaming', 30)).rejects.toThrow(ApiShapeError);
   });
 });
 

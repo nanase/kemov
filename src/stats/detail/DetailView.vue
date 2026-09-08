@@ -211,10 +211,10 @@ watch(
           <v-tab value="chatUniqueUserCount">チャットユーザ数</v-tab>
           <v-tab value="chatMessageCountPerUniqueUser">ユーザあたりチャット数</v-tab>
           <v-tab value="duration">再生時間</v-tab>
-          <v-tab value="viewCountPerSecond">時間あたり再生数</v-tab>
-          <v-tab value="likeCountPerSecond">時間あたり高評価数</v-tab>
-          <v-tab value="commentCountPerSecond">時間あたりコメント数</v-tab>
-          <v-tab value="chatMessageCountPerSecond">時間あたりチャット数</v-tab>
+          <v-tab value="viewCountPerSecond">秒あたり再生数</v-tab>
+          <v-tab value="likeCountPerSecond">秒あたり高評価数</v-tab>
+          <v-tab value="commentCountPerSecond">秒あたりコメント数</v-tab>
+          <v-tab value="chatMessageCountPerSecond">秒あたりチャット数</v-tab>
         </v-tabs>
         <v-btn-toggle $="filterType" multiple divided color="secondary">
           <v-card-text>対象</v-card-text>

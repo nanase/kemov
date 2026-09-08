@@ -24,6 +24,29 @@ describe('the worker entry', () => {
     expect(response.headers.get('x-kemov-cache')).not.toBeNull();
   });
 
+  // The site's own directories have no built file, so they arrive here beside
+  // /api/*. Before this they were answered with the API's 404 JSON.
+  test('sends the site root to a page rather than to the API', async () => {
+    const ctx = createExecutionContext();
+    const response = await handler.fetch!(new Request('https://kemov.nanase.cc/'), env, ctx);
+
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toEqual(302);
+    expect(response.headers.get('location')).toEqual('https://kemov.nanase.cc/stats/');
+  });
+
+  // The redirect is asked first, so this is the test that it cannot swallow
+  // the API on its way past.
+  test('still reaches the API with the redirect in front of it', async () => {
+    const ctx = createExecutionContext();
+    const response = await handler.fetch!(new Request('https://kemov.nanase.cc/api/health'), env, ctx);
+
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toEqual(200);
+  });
+
   test('answers 404 for a path the API does not serve', async () => {
     const ctx = createExecutionContext();
     const response = await handler.fetch!(new Request('https://kemov.nanase.cc/api/nothing'), env, ctx);

@@ -28,6 +28,84 @@ export const VIDEO_PROPERTIES = [
 export type VideoProperty = (typeof VIDEO_PROPERTIES)[number];
 
 /**
+ * The two sorts of measure, and which is which.
+ *
+ * A count answers "how big", and across every channel the answer is mostly
+ * "the channel with the most subscribers". A rate answers "how dense", and
+ * that is a property of the video rather than of who made it. The cross-channel
+ * ranking is worth having for the second sort, which is why it opens on one.
+ *
+ * Written out rather than derived from the names, so that a measure added to
+ * VIDEO_PROPERTIES has to be put in one of them by hand. A rule reading the
+ * suffix would file the next one silently and could easily file it wrongly:
+ * chatMessageCountPerUniqueUser is a rate and does not end in PerSecond. The
+ * test that these two partition VIDEO_PROPERTIES is what makes the hand step
+ * unmissable.
+ */
+export const COUNT_PROPERTIES = [
+  'viewCount',
+  'likeCount',
+  'commentCount',
+  'chatMessageCount',
+  'chatUniqueUserCount',
+  'duration',
+] as const;
+
+export const RATE_PROPERTIES = [
+  'chatMessageCountPerUniqueUser',
+  'viewCountPerSecond',
+  'likeCountPerSecond',
+  'commentCountPerSecond',
+  'chatMessageCountPerSecond',
+] as const;
+
+/**
+ * A sentence saying what the measure counts.
+ *
+ * The names are short enough to fit a tab and too short to explain themselves:
+ * "ユーザあたりチャット数" does not say that a value of 1,136 means one person
+ * wrote 1,136 times. The cross-channel page shows one measure at a time, so
+ * there is room to say it, and a page that shows a number nobody can interpret
+ * has not shown anything.
+ */
+export function getPropertyDescription(property: VideoProperty): string {
+  switch (property) {
+    case 'viewCount':
+      return '再生された回数';
+
+    case 'likeCount':
+      return '高評価が付いた数';
+
+    case 'commentCount':
+      return 'コメント欄に書き込まれた数';
+
+    case 'chatMessageCount':
+      return '配信中のチャットに書き込まれた数';
+
+    case 'chatUniqueUserCount':
+      return 'チャットに 1 回以上書き込んだ人数';
+
+    case 'duration':
+      return '動画や配信の長さ';
+
+    case 'chatMessageCountPerUniqueUser':
+      return 'チャットを書いた 1 人が、平均で何回書いたか';
+
+    case 'viewCountPerSecond':
+      return '長さ 1 秒あたりの再生数。短いほど大きくなる';
+
+    case 'likeCountPerSecond':
+      return '長さ 1 秒あたりの高評価数。短いほど大きくなる';
+
+    case 'commentCountPerSecond':
+      return '長さ 1 秒あたりのコメント数。短いほど大きくなる';
+
+    case 'chatMessageCountPerSecond':
+      return '長さ 1 秒あたりのチャット数。盛り上がりの密度';
+  }
+}
+
+/**
  * The value a video has for one measure, or undefined when it has none.
  *
  * Eight of the eleven are derived from two columns, and the API computes the
@@ -89,6 +167,15 @@ export function readProperty(video: Video, property: VideoProperty): number | un
   }
 }
 
+/**
+ * What each measure is called on the page.
+ *
+ * The four rates read "秒あたり" rather than "時間あたり". Both are correct
+ * Japanese for what these divide by - a duration - but 時間 is also the word
+ * for an hour, and these are per second of the video's length. One reading is
+ * 3,600 times the other, which the cross-channel ranking makes plain: a value
+ * of 868 is believable per second and absurd per hour.
+ */
 export function getPropertyName(property: VideoProperty): string {
   switch (property) {
     case 'viewCount':
@@ -113,16 +200,16 @@ export function getPropertyName(property: VideoProperty): string {
       return '再生時間';
 
     case 'viewCountPerSecond':
-      return '時間あたり再生数';
+      return '秒あたり再生数';
 
     case 'likeCountPerSecond':
-      return '時間あたり高評価数';
+      return '秒あたり高評価数';
 
     case 'commentCountPerSecond':
-      return '時間あたりコメント数';
+      return '秒あたりコメント数';
 
     case 'chatMessageCountPerSecond':
-      return '時間あたりチャット数';
+      return '秒あたりチャット数';
   }
 }
 

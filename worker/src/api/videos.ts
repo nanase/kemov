@@ -1,5 +1,12 @@
 import type { Env } from '../lib/env';
-import { isRankingMetric, rankingExpression, rankingFilter, type RankingMetric } from '../lib/ranking';
+import {
+  isRankingMetric,
+  isVideoKind,
+  rankingExpression,
+  rankingFilter,
+  type RankingMetric,
+  type VideoKind,
+} from '../lib/ranking';
 import { BadRequest } from './cache';
 
 /**
@@ -154,23 +161,37 @@ export async function listVideos(env: Env, channelId: string, options: { limit: 
  * Rows that cannot supply the metric are left out rather than ordered as if
  * the missing part were zero - which for a per-second metric means the archive
  * is short until video-update has filled in its durations.
+ *
+ * `kind` narrows it to one sort of video, and a caller that wants a per-second
+ * metric to mean anything has to use it - see VIDEO_KINDS for the measurements.
+ * It is bound rather than interpolated: unlike the metric, this value could
+ * come from anywhere, and the pair of functions returning SQL above says why
+ * that difference matters.
+ *
+ * Narrowing here rather than in the caller is deliberate. Asking for a hundred
+ * and keeping the streams would answer "no streams" and "none arrived in the
+ * hundred" the same way, which is the defect #70 spent a pull request removing.
  */
-export async function rankVideos(env: Env, metric: RankingMetric, limit: number) {
+export async function rankVideos(env: Env, metric: RankingMetric, limit: number, kind: VideoKind | null = null) {
   const expression = rankingExpression(metric);
   const { results } = await env.DB.prepare(
     `SELECT ${VIDEO_COLUMNS}, ${expression} AS metric_value
        FROM video
       WHERE availability = 'public'
         AND type IS NOT NULL
+        AND (?2 IS NULL OR type = ?2)
         AND ${rankingFilter(metric)}
       ORDER BY metric_value DESC, video_id DESC
       LIMIT ?1`,
   )
-    .bind(limit)
+    .bind(limit, kind)
     .all<VideoRow & { metric_value: number }>();
 
   return {
     metric,
+    // Echoed so a caller can tell "this ranking is streams only" from "this
+    // ranking happens to hold only streams".
+    kind,
     videos: results.map((row) => ({ ...present(row), metricValue: row.metric_value })),
   };
 }
@@ -187,6 +208,31 @@ export function readMetric(value: string | null): RankingMetric | null {
   if (value === null) return 'viewCount';
 
   return isRankingMetric(value) ? value : null;
+}
+
+/** The kind a ranking was asked to cover, or why the request could not be read. */
+export type RequestedKind = { kind: VideoKind | null } | { error: string };
+
+/**
+ * The kind a query string asks for.
+ *
+ * Three outcomes rather than two: every kind, one kind, or a word this API
+ * does not have. That is one more than readMetric needs, because readMetric
+ * has a sensible default and this does not - so the shape follows
+ * readHistoryRange, which faces the same three and answers with an { error }
+ * beside the successful form.
+ *
+ * Encoding the refusal as null or undefined instead would collide with what
+ * those already mean here: null is the honest answer for "every kind", and
+ * src/lib/read.ts reads null and undefined as the same absence.
+ *
+ * Not asking means every kind. Asking for a kind that does not exist and being
+ * handed every kind would look like an answer.
+ */
+export function readKind(value: string | null): RequestedKind {
+  if (value === null) return { kind: null };
+
+  return isVideoKind(value) ? { kind: value } : { error: `no videos of type ${value}` };
 }
 
 /** A limit from a query string, clamped rather than refused. */

@@ -10,6 +10,7 @@ import {
   readOneOf,
   readOrNull,
   readString,
+  ShapeError,
 } from '@/lib/read';
 
 /**
@@ -231,6 +232,47 @@ export function readVideoPage(body: unknown): VideoPage {
     channelId: readString(field(body, 'channelId', 'body'), 'body.channelId'),
     videos: readEach(field(body, 'videos', 'body'), 'body.videos', readVideo),
     nextCursor: readOrNull(field(body, 'nextCursor', 'body'), 'body.nextCursor', readString),
+  };
+}
+
+/** One video in a ranking, with the value it was ordered by. */
+export interface RankedVideo extends Video {
+  metricValue: number;
+}
+
+export interface VideoRanking {
+  /** The measure this was ordered by, as the API echoed it back. */
+  metric: string;
+  /** The kind it was narrowed to, or null for every kind. */
+  kind: VideoType | null;
+  videos: RankedVideo[];
+}
+
+/**
+ * Reads a ranking, and checks it answers the question that was asked.
+ *
+ * The metric and the kind are compared against what was requested rather than
+ * merely validated. Every ranking is a different URL and the API caches by
+ * URL, so an answer carrying someone else's metric would be a caching fault -
+ * and it would look exactly like a correct ranking of the wrong thing, which
+ * is not a failure anybody would notice from the numbers.
+ */
+export function readVideoRanking(metric: string, kind: VideoType | null) {
+  return (body: unknown): VideoRanking => {
+    const answered = readString(field(body, 'metric', 'body'), 'body.metric');
+    const narrowed = readOrNull(field(body, 'kind', 'body'), 'body.kind', (v, p) => readOneOf(v, p, VIDEO_TYPES));
+
+    if (answered !== metric) throw new ShapeError('body.metric', `the requested ${metric}`, answered);
+    if (narrowed !== kind) throw new ShapeError('body.kind', `the requested ${kind ?? 'every kind'}`, narrowed);
+
+    return {
+      metric: answered,
+      kind: narrowed,
+      videos: readEach(field(body, 'videos', 'body'), 'body.videos', (value, path) => ({
+        ...readVideo(value, path),
+        metricValue: readNumber(field(value, 'metricValue', path), `${path}.metricValue`),
+      })),
+    };
   };
 }
 
