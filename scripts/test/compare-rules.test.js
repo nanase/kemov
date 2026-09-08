@@ -115,6 +115,19 @@ describe('explain', () => {
     ]);
   });
 
+  // The same two columns empty, but for good rather than for now. Videos.list
+  // does not return the video, so there is no response to read a kind or a
+  // length off, and the sweep coming back changes nothing. Measured: all 73
+  // rows in this state had been read within the last two days.
+  test('tells a video that is gone from one the sweep has not reached', () => {
+    const gone = current({ type: null, durationSeconds: null, availability: 'unavailable' });
+
+    expect(reasonsFor(legacy({ availability: 'unavailable' }), gone)).toEqual([
+      'type:video-is-gone-so-nothing-to-judge',
+      'durationSeconds:video-is-gone-so-nothing-to-judge',
+    ]);
+  });
+
   // Videos.list omits a deleted video and a private one alike, so the
   // collector can only say the video is gone. This is the one thing the old
   // system knew that the API cannot say, and #66 counts it as a difference in

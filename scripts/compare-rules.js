@@ -109,12 +109,23 @@ function isUnswept(record) {
 export function explain(difference, oldRecord, newRecord) {
   const { field, oldValue: was, newValue: now } = difference;
 
+  const judgedFromTheResponse = ['type', 'durationSeconds', 'liveBroadcastContent'].includes(field);
+
+  // A video Videos.list no longer returns. There is no response to judge
+  // from, so the kind and the length stay empty however many times the sweep
+  // comes back - and it does come back: all 73 of these were read within the
+  // last two days. Calling that "not yet swept" would say the answer is
+  // coming when it is not.
+  if (judgedFromTheResponse && isUnswept(newRecord) && newRecord.availability === 'unavailable') {
+    return 'video-is-gone-so-nothing-to-judge';
+  }
+
   // The sweep has not reached this video. Both columns the sweep fills are
   // still empty, which is what the migration wrote and nothing else produces:
   // the collector never writes one without the other. It accounts for the
   // live state as well, because the migration wrote 'none' there for every
   // row rather than carrying across a value #63 had shown to be stale.
-  if (isUnswept(newRecord) && ['type', 'durationSeconds', 'liveBroadcastContent'].includes(field)) {
+  if (judgedFromTheResponse && isUnswept(newRecord)) {
     return 'not-yet-swept';
   }
 
