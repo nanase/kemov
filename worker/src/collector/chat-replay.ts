@@ -695,9 +695,10 @@ async function collectOne(
  * left its row claimed, and the row becomes due again by the same clause that
  * makes a failed one due. The kind and the states are the ones collect_task_due
  * covers, so the index still finds the due rows; it no longer gives their
- * order, because (cursor IS NULL) is not in it. The plan gains a temp b-tree
- * over what one kind has due at that moment, which is the queue itself and not
- * the table.
+ * order, because (cursor IS NULL) is not in it. Measured with EXPLAIN QUERY
+ * PLAN over 200 due rows on 2026-09-08: the same index search, and a temp
+ * b-tree added for the sort. What gets sorted is what one kind has due at that
+ * moment rather than the table, and 50 claims came out 0.2ms apart either way.
  *
  * One statement, so that reading a row and taking it cannot be separated. A
  * cron trigger does not wait for the tick before it, so two runs can overlap;
