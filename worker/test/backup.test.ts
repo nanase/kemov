@@ -374,9 +374,9 @@ describe('toSql', () => {
     expect(statementsOf(sql)).toHaveLength(2);
   });
 
-  // D1 refuses a statement over 100,000 bytes. Production is at 88% of that
-  // with 200 rows of video, so a batch of long titles is not a hypothetical
-  // and the byte cap is what keeps it from being written.
+  // D1 refuses a statement over 100,000 bytes. Production reaches 74% of that
+  // with 200 rows of video, and 87% over the same rows grouped another way,
+  // so how close a batch gets is not something the row cap controls.
   test('splits before the byte cap even when the row cap is not reached', () => {
     const rows = Array.from({ length: ROWS_PER_STATEMENT }, (_, index) => videoRow(index, 1_000));
     const statements = statementsOf(toSql(video, rows, 'note'));

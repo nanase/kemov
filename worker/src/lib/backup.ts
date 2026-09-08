@@ -49,10 +49,12 @@ export const ROWS_PER_STATEMENT = 200;
  * How many bytes one INSERT may reach, whichever cap it meets first.
  *
  * D1 refuses a statement over 100,000 bytes, and a row cap does not bound
- * bytes. Measured against production on 2026-09-08: 200 rows of `video` came
- * to 87,756 bytes, 88% of that budget, on titles averaging 127 bytes with the
- * longest at 289. A run of long titles inside one batch of 200 therefore
- * reaches the limit, and 200 titles at YouTube's own maximum would pass it.
+ * bytes. Measured over the 6,433 rows of `video` in production on 2026-09-08:
+ * batches of 200 reach 73,687 bytes in the primary-key order this reads them
+ * in, and 86,890 bytes over the same rows grouped another way. The margin is
+ * a property of how rows happen to fall into batches rather than of how many
+ * there are, titles run to 289 bytes against an average of 127, and `video`
+ * only grows.
  *
  * What makes that worth capping rather than watching is when it would be
  * found. The job writing the file would not notice; D1 would refuse the
