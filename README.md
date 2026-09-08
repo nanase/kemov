@@ -293,6 +293,46 @@ yarn wrangler d1 execute kemov --local --file migrations/rollback/0001_create_in
 
 Read that file before running it against anything but a local database. For a migration that has been live, losing a table is worse than the schema being wrong, and time travel is the route back.
 
+### Backups
+
+Time travel above covers the last 30 days and only inside D1. The nightly backup covers what happens after that, and what happens to D1 itself: at 00:20 UTC the worker writes what the database holds to the `kemov-backup` R2 bucket, as SQL.
+
+```
+channel/2026-09-08.sql              every row, rewritten each night
+video/2026-09-08.sql                every row, rewritten each night
+channel_snapshot/2026-09-07.sql     one finished day, written once
+```
+
+`channel` and `video` are written whole each night because their current values are the whole story. `channel_snapshot` is not: it only ever gains rows, 1,584 of them a day, so a finished day is written once as its own file and never touched again. That keeps a night's work the size of a day rather than the size of the table, which by the end of a year is 578,000 rows.
+
+A run writes at most seven missing days, so a gap left by an outage closes over several nights rather than being attempted all at once. Which days are already written is read from the bucket, not remembered anywhere, so nothing can disagree about it.
+
+`collect_task` and `chat_author` are deliberately absent. They hold where collection has got to, they rebuild themselves within a tick or two, and restoring them would send the chat job back through replays it has already read.
+
+### Restoring from a Backup
+
+Fetch the files and apply them. Nothing else is needed and no script has to work.
+
+```sh
+yarn wrangler r2 object get kemov-backup/channel/2026-09-08.sql --file channel.sql --remote
+yarn wrangler d1 execute kemov --remote --file channel.sql
+```
+
+**Apply `channel` first.** `video` and `channel_snapshot` both carry a foreign key to it, and the schema refuses a row whose channel is not there yet. Then `video`, then every `channel_snapshot` day. Each file says this in its own header, so the file is enough on its own.
+
+Every statement is `ON CONFLICT DO NOTHING`, so applying a file twice does nothing the second time and applying them out of curiosity costs nothing. A restore is not a calm operation and it should not also be a careful one.
+
+### What May Expire and What May Not
+
+**No lifecycle rule is set on the bucket, and one covering all of it would be wrong.**
+
+| Prefix               | May expire | Why                                                                                                                     |
+| -------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `channel/`, `video/` | Yes        | Each file is a complete copy. The newest one is all that is needed; older ones are duplicates.                          |
+| `channel_snapshot/`  | **No**     | Each file is one day and no other file holds that day. Deleting one leaves a hole in the history that nothing can fill. |
+
+The snapshot history began on 2026-09-07 and exists nowhere else. It costs about 53 MB a year to keep all of it.
+
 ## Deployment
 
 One `Deploy` workflow puts up the worker and the site together, on every push to `main` and on demand from the Actions tab. There is no second project and no GitHub Pages: `wrangler.toml` declares `dist/` as the worker's static assets, so `yarn wrangler deploy` uploads the built site alongside the code that answers `/api`.

@@ -1,4 +1,5 @@
 import type { Env } from '../lib/env';
+import { runBackup } from './backup';
 import { runChannelStats } from './channel-stats';
 import { runChatReplay } from './chat-replay';
 import { runVideoDiscover, runVideoUpdate } from './video';
@@ -14,6 +15,7 @@ import { runVideoDiscover, runVideoUpdate } from './video';
 const jobsByCron = new Map<string, readonly string[]>([
   ['*/10 * * * *', ['channel-stats', 'video-discover', 'video-update']],
   ['* * * * *', ['chat-replay']],
+  ['20 0 * * *', ['backup']],
 ]);
 
 /** The jobs a cron expression runs, or an empty list if it runs none. */
@@ -33,6 +35,7 @@ export type JobHandlers = Readonly<Record<string, JobHandler>>;
  * so #63 to #65 are free to land in any order.
  */
 const jobHandlers: JobHandlers = {
+  backup: runBackup,
   'channel-stats': runChannelStats,
   'chat-replay': runChatReplay,
   'video-discover': runVideoDiscover,
