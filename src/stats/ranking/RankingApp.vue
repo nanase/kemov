@@ -62,21 +62,22 @@ const metric = ref<VideoProperty>('viewCountPerSecond');
 const kind = ref<VideoType>('streaming');
 const limit = ref<number>(30);
 
-/**
- * The ranking, or the failure that stopped it.
- *
- * Three refs drive one request, so this is a computedAsync rather than the
- * store's two shapes: useIntervalAction polls on a timer and this does not,
- * and getAllVideos returns a structure because it can partly succeed while
- * this either has a ranking or has none.
- *
- * Only an ApiError is turned into something to display. Anything else is a
- * fault in this code rather than in the answer, and it is left to throw where
- * it can be seen instead of being relabelled as a failed request.
- */
+/** A ranking, or the failure that stopped one. Never both, and never neither. */
 type Answer = { ranking: VideoRanking } | { failure: ApiError };
 
 const loading = ref<boolean>(false);
+
+/**
+ * The current answer, refetched whenever the measure, kind or size changes.
+ *
+ * A computedAsync rather than either shape the store uses: useIntervalAction
+ * polls on a timer and this does not, and getAllVideos returns a structure
+ * because it can partly succeed, while this either has a ranking or has none.
+ *
+ * Only an ApiError becomes something to display. Anything else is a fault in
+ * this code rather than in the answer, and it is left to throw where it can be
+ * seen instead of being relabelled as a failed request.
+ */
 const answer = computedAsync<Answer | null>(
   async () => {
     try {
@@ -98,6 +99,13 @@ const failure = computed<ApiError | null>(() =>
   answer.value !== null && 'failure' in answer.value ? answer.value.failure : null,
 );
 
+/**
+ * The streamer a ranked video belongs to, when the channel list has arrived.
+ *
+ * Undefined until then, and the rows fall back to showing the raw id. The
+ * ranking and the channel list are two requests and either can be first, so a
+ * row can be drawn before its streamer has a name.
+ */
 const channelOf = (channelId: string): Channel | undefined =>
   channels.value.find((channel) => channel.channelId === channelId);
 
