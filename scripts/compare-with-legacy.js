@@ -2,12 +2,11 @@
  * Runs #66's comparison: what the collector says about each video, against
  * what the system it replaces says about the same video.
  *
- * Usage: node scripts/compare-with-legacy.js <api-base-url> [output-directory]
+ * Usage: node scripts/compare-with-legacy.js [api-base-url] [output-directory]
  *
- * The base URL is an argument rather than a constant because the API has no
- * settled address yet - #70 puts it behind kemov.nanase.cc - and because the
- * one it answers on today is derived from the account owner's mail address,
- * which does not belong in a public repository.
+ * The address defaults to the one #70 gave the API and can be overridden, so
+ * that the same comparison can be pointed at a deployment that is not the
+ * live one.
  *
  * Both sides are read over public HTTP. Nothing here needs Cloudflare
  * credentials: `GET /api/channels/:id/videos` returns every judgement column
@@ -32,6 +31,9 @@ import { compareAll, summarise } from './compare-rules.js';
  * removes both spellings at once.
  */
 const LEGACY_VIDEO_URI_BASE = 'https://d1zvseiqyto6c5.cloudfront.net/kemov/stats/video/';
+
+/** Where the API answers, unless the caller names somewhere else. */
+const API_BASE = 'https://kemov.nanase.cc';
 
 /** How long one request may take, headers and body together. */
 const FETCH_TIMEOUT_MS = 30_000;
@@ -58,12 +60,21 @@ async function fetchLegacy(channelId) {
 /**
  * One channel's videos from the API, following the cursor to the end.
  *
- * The loop stops on a page that names no next cursor. A page that comes back
- * empty also stops it, so a cursor the API keeps returning cannot spin here
- * for ever.
+ * The loop stops on a page that names no next cursor, and on one that comes
+ * back empty. Neither covers a cursor the API hands back a second time: the
+ * pages would keep arriving, full and identical, and the count would climb
+ * until the process ran out of memory. The per-request deadline does not
+ * catch it either, because every one of those requests answers promptly.
+ *
+ * A cursor encodes the last row's published_at and video_id and the next
+ * query asks for rows strictly before it, so repeating one would be a fault
+ * in the API rather than a shape it produces. That is the reason to stop
+ * loudly rather than to cope: a comparison that silently counted a page twice
+ * would report differences that are not there.
  */
 async function fetchCurrent(base, channelId) {
   const videos = [];
+  const seen = new Set();
   let cursor;
 
   for (;;) {
@@ -80,6 +91,9 @@ async function fetchCurrent(base, channelId) {
     cursor = page.nextCursor ?? undefined;
 
     if (cursor === undefined || items.length === 0) break;
+    if (seen.has(cursor)) throw new Error(`${channelId} paged back to a cursor it had already followed`);
+
+    seen.add(cursor);
   }
 
   return videos;
@@ -90,14 +104,7 @@ function report(lines) {
 }
 
 async function main() {
-  const [base, outputDirectory] = process.argv.slice(2);
-
-  if (base === undefined) {
-    console.error('Usage: node scripts/compare-with-legacy.js <api-base-url> [output-directory]');
-    process.exitCode = 1;
-
-    return;
-  }
+  const [base = API_BASE, outputDirectory] = process.argv.slice(2);
 
   const channels = loadChannels();
   const legacy = [];

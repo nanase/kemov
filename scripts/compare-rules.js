@@ -71,6 +71,24 @@ function streamEnded(record) {
 }
 
 /**
+ * Whether the collector read this video after the old system last did.
+ *
+ * Both sides record when they looked, and neither is reliably the fresher:
+ * measured over 6,433 videos, the old system had looked more recently for
+ * 4,046 of them and the collector for 2,384. So this settles something rather
+ * than always holding, which is what makes it usable as evidence.
+ *
+ * Milliseconds on one side and not the other, so the two are parsed rather
+ * than compared as text.
+ */
+function newSideLookedLater(oldRecord, newRecord) {
+  const was = Date.parse(oldRecord.fetchedAt ?? '');
+  const now = Date.parse(newRecord.fetchedAt ?? '');
+
+  return Number.isFinite(was) && Number.isFinite(now) && now > was;
+}
+
+/**
  * Whether video-update has yet to reach this row.
  *
  * The migration left both columns the sweep fills empty, and the collector
@@ -108,13 +126,20 @@ export function explain(difference, oldRecord, newRecord) {
     if (was === 'private' && now === 'unavailable') return 'private-indistinguishable-from-deleted';
     // The old system left the field empty for a video it had not judged yet.
     if (was === null) return 'old-system-had-not-judged-it';
-    // The video can be watched again. This is not an inference: the collector
-    // writes 'public' only for a video Videos.list actually returned, so the
-    // new side has seen it while the old side stopped looking - #58's second
-    // symptom, where a video drops out of the update set and keeps whatever
-    // it last said. Checked against youtube.com/oembed for the one row in the
-    // data: it answers 200, which it does not for a video that is gone.
-    if ((was === 'private' || was === 'unavailable') && now === 'public') return 'old-system-never-looked-again';
+    // The video can be watched again, and the reading that says so is the
+    // later of the two. The collector writes 'public' only for a video
+    // Videos.list returned, so that half is an observation; the timestamps
+    // are what make the old value the stale one rather than the new.
+    //
+    // The reason says only that, because only that is checked. Whether the
+    // old system stopped looking or the video was unlocked after it last
+    // looked, neither record can tell - and it does not have to, since the
+    // difference is accounted for either way. The one row in the data is
+    // #58's second symptom: last read 2025-03-26, one of the five it names as
+    // stranded, and youtube.com/oembed answers 200 for it today.
+    if ((was === 'private' || was === 'unavailable') && now === 'public' && newSideLookedLater(oldRecord, newRecord)) {
+      return 'old-value-predates-the-new-reading';
+    }
   }
 
   if (field === 'liveBroadcastContent') {

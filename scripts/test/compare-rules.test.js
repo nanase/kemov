@@ -126,10 +126,23 @@ describe('explain', () => {
   });
 
   // #58's second symptom, seen from the other side: the old system dropped
-  // the video from its update set and kept saying what it last saw.
+  // the video from its update set and kept saying what it last saw. The one
+  // row in the data was last read 2025-03-26 and is watchable today.
   test('knows a video that can be watched again', () => {
     expect(reasonsFor(legacy({ availability: 'private' }), current({ availability: 'public' }))).toEqual([
-      'availability:old-system-never-looked-again',
+      'availability:old-value-predates-the-new-reading',
+    ]);
+  });
+
+  // The reason claims the old reading is the older one, so it has to check
+  // that. Over 6,433 videos this is not a formality: the old system had
+  // looked more recently for 4,046 of them. Where it did, nothing here
+  // accounts for the difference and it stays on the unexplained list.
+  test('does not call the old value stale when the old side looked later', () => {
+    const readToday = legacy({ availability: 'private', fetchedAt: '2026-09-08T09:00:00Z' });
+
+    expect(reasonsFor(readToday, current({ availability: 'public', fetchedAt: '2026-09-07T02:10:15Z' }))).toEqual([
+      'availability:null',
     ]);
   });
 
