@@ -325,8 +325,16 @@ yarn wrangler d1 execute kemov --remote --file channel.sql
 **A database that has never been migrated needs the schema first.** These files hold `INSERT` statements and nothing else, so the first one fails on a database with no `channel` table. Restoring into a new D1 therefore starts with [Applying Migrations](#applying-migrations):
 
 ```sh
-yarn wrangler d1 migrations apply <database name> --remote
+yarn wrangler d1 migrations apply kemov --remote
 ```
+
+That names the database `wrangler.toml` declares. #111's restore was verified against a throwaway database created for it, where the migration files were applied directly instead, in filename order. `kemov-restore` below is that database's own name — use whatever you called yours:
+
+```sh
+yarn wrangler d1 execute kemov-restore --remote --file migrations/0001_create_initial_schema.sql
+```
+
+Applying a file that way leaves `d1_migrations` empty, which is right for a database that is being read once and thrown away and wrong for one that is going to replace `kemov`: the next `migrations apply` would try `0001` again and fail on tables that already exist. Use `migrations apply` for a database that has to keep working.
 
 **Apply `channel` first.** `video` and `channel_snapshot` both carry a foreign key to it, and the schema refuses a row whose channel is not there yet. Then `video`, then every `channel_snapshot` day. Each file says this in its own header, so the file is enough on its own.
 
