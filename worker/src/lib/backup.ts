@@ -160,20 +160,33 @@ export function toSql(table: TableShape, rows: readonly Record<string, unknown>[
 
   for (const row of rows) {
     const tuple = `  (${table.columns.map((column) => literal(row[column])).join(', ')})`;
-    // Plus the ",\n" that joins this tuple to the one before it.
-    const size = byteLength(tuple) + 2;
+    const alone = fixed + byteLength(tuple);
 
-    // Never on an empty batch: one row too large for the budget still has to
-    // be written, and writing it alone is the closest this can get. D1's own
-    // 2 MB row limit means a row that D1 accepted cannot be much larger.
+    // A row that does not fit even by itself. Nothing here can split it, so
+    // the choice is between a file carrying a statement D1 will refuse and no
+    // file at all, and the file is worse: it looks like a backup, and a
+    // restore that reaches that statement stops there with the rows after it
+    // unapplied. Failing instead leaves yesterday's file, which is a day old
+    // and works, and puts the reason where #71 is watching.
+    if (alone > BYTES_PER_STATEMENT) {
+      const key = table.conflict.map((column) => String(row[column])).join(', ');
+
+      throw new Error(`backup: one row of ${table.name} (${key}) is ${alone} bytes of SQL on its own`);
+    }
+
+    // The ",\n" joining this tuple to the one before it, which the first
+    // tuple of a batch does not have.
+    const size = byteLength(tuple) + (batch.length === 0 ? 0 : 2);
+
     if (batch.length > 0 && (batch.length >= ROWS_PER_STATEMENT || bytes + size > BYTES_PER_STATEMENT)) {
       statements.push(opening + batch.join(',\n') + closing);
       batch = [];
-      bytes = fixed;
+      bytes = fixed + byteLength(tuple);
+    } else {
+      bytes += size;
     }
 
     batch.push(tuple);
-    bytes += size;
   }
 
   if (batch.length > 0) statements.push(opening + batch.join(',\n') + closing);

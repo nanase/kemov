@@ -35,40 +35,58 @@ import { formatTimestamp } from '../lib/time';
  * How many rows are read from D1 at a time.
  *
  * A day of snapshots is 1,584 rows and `video` is over six thousand, so
- * neither is read in one query. Paging by the primary key rather than by
- * OFFSET, which SQLite answers by counting past the rows it skips.
+ * neither is read in one query.
  */
 const READ_PAGE = 1_000;
 
-/** Every row of a table, oldest key first, read a page at a time. */
+/**
+ * Every row of a table, primary key order, read a page at a time.
+ *
+ * Paged by the key rather than by OFFSET. Each page is its own query and D1
+ * offers no snapshot across them, so a row inserted while this is reading
+ * shifts every OFFSET after it by one and a row that was already there is
+ * skipped - silently, and only in the backup. A key cursor cannot skip a row
+ * it has not passed yet. Rows inserted behind the cursor are missed either
+ * way; those belong to a day this run is not writing, and tomorrow's run has
+ * them.
+ */
 async function readAll(
   db: D1Database,
   table: TableShape,
   where: { clause: string; bindings: unknown[] } = { clause: '', bindings: [] },
 ): Promise<Record<string, unknown>[]> {
-  const order = table.conflict.join(', ');
+  const key = table.conflict;
+  const order = key.join(', ');
   const rows: Record<string, unknown>[] = [];
-  let offsetOf = 0;
+  let after: unknown[] | null = null;
 
   for (;;) {
-    // OFFSET is what a keyset cursor would replace, and would be worth
-    // replacing on a table this is called on repeatedly. Here every call
-    // reads a table once, from the start, so the pages are walked in order
-    // and the work SQLite repeats is bounded by the table rather than by how
-    // often this runs.
+    const bindings = [...where.bindings];
+    const conditions = where.clause === '' ? [] : [where.clause];
+
+    if (after !== null) {
+      // A row value comparison, so that a composite key pages on the pair
+      // rather than on its first column alone.
+      conditions.push(`(${order}) > (${after.map((_, index) => `?${bindings.length + index + 1}`).join(', ')})`);
+      bindings.push(...after);
+    }
+
     const page = await db
       .prepare(
-        `SELECT ${table.columns.join(', ')} FROM ${table.name} ${where.clause}
-         ORDER BY ${order} LIMIT ?${where.bindings.length + 1} OFFSET ?${where.bindings.length + 2}`,
+        `SELECT ${table.columns.join(', ')} FROM ${table.name}
+         ${conditions.length === 0 ? '' : `WHERE ${conditions.join(' AND ')}`}
+         ORDER BY ${order} LIMIT ?${bindings.length + 1}`,
       )
-      .bind(...where.bindings, READ_PAGE, offsetOf)
+      .bind(...bindings, READ_PAGE)
       .all<Record<string, unknown>>();
 
     rows.push(...page.results);
 
     if (page.results.length < READ_PAGE) return rows;
 
-    offsetOf += READ_PAGE;
+    const last = page.results[page.results.length - 1];
+
+    after = key.map((column) => last[column]);
   }
 }
 
@@ -127,7 +145,7 @@ async function backUpSnapshots(env: Env, today: string): Promise<number> {
   for (const day of days) {
     const { from, to } = dayBounds(day);
     const rows = await readAll(env.DB, SNAPSHOT, {
-      clause: 'WHERE fetched_at >= ?1 AND fetched_at < ?2',
+      clause: 'fetched_at >= ?1 AND fetched_at < ?2',
       bindings: [from, to],
     });
 

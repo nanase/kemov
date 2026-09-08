@@ -257,6 +257,35 @@ describe('runBackup', () => {
     vi.restoreAllMocks();
   });
 
+  // D1 answers each page as its own query with no snapshot across them, so
+  // the reading has to page by the key. A day holds 1,584 rows in production,
+  // which is already more than one page.
+  test('reads a day that is longer than one page', async () => {
+    await insertChannel('UCaaa');
+
+    const total = 1_050;
+    const values = Array.from(
+      { length: total },
+      (_, index) =>
+        `('UCaaa', '2026-09-07T${String(Math.floor(index / 60)).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}:00Z', ${index}, 200, 3)`,
+    );
+
+    await env.DB.prepare(
+      `INSERT INTO channel_snapshot (channel_id, fetched_at, subscriber_count, view_count, video_count)
+       VALUES ${values.join(', ')}`,
+    ).run();
+
+    await runBackup(env, new Date('2026-09-08T00:20:00Z'));
+
+    const sql = await (await env.BACKUP.get(backupKey('channel_snapshot', '2026-09-07')))!.text();
+
+    expect(sql).toContain(`-- ${total} rows of channel_snapshot`);
+    // The first row, one either side of the page boundary, and the last.
+    for (const subscriberCount of [0, 999, 1_000, total - 1]) {
+      expect(sql).toContain(`, ${subscriberCount}, 200, 3)`);
+    }
+  });
+
   test('writes nothing for a database with no snapshots', async () => {
     await runBackup(env, new Date('2026-09-08T00:20:00Z'));
 
@@ -397,14 +426,25 @@ describe('toSql', () => {
     }
   });
 
-  // Alone rather than dropped: a row this large is one D1 accepted, since its
-  // own row limit is 2 MB, and losing it silently is the one outcome a backup
-  // may not have.
-  test('writes a row larger than the cap on its own', () => {
-    const statements = statementsOf(toSql(video, [videoRow(1, BYTES_PER_STATEMENT + 1_000)], 'note'));
+  // Nothing here can split one row, so the alternative is a file carrying a
+  // statement D1 will refuse - which looks like a backup, and stops a restore
+  // partway through. Failing leaves yesterday's file, which works.
+  test('refuses a row too large to fit in any statement', () => {
+    expect(() => toSql(video, [videoRow(1, BYTES_PER_STATEMENT + 1_000)], 'note')).toThrowError(/one row of video/);
+  });
 
-    expect(statements).toHaveLength(1);
-    expect(statements[0]).toContain("('v1',");
+  test('names the row it refused, so it can be found', () => {
+    expect(() => toSql(video, [videoRow(7, BYTES_PER_STATEMENT + 1_000)], 'note')).toThrowError(/\(v7\)/);
+  });
+
+  // The row after it is what a batch's first tuple actually costs: no
+  // separator, because there is nothing before it to separate it from.
+  test('does not charge the first tuple of a batch for a separator', () => {
+    const rows = Array.from({ length: ROWS_PER_STATEMENT }, (_, index) => videoRow(index, 1_000));
+
+    for (const statement of statementsOf(toSql(video, rows, 'note'))) {
+      expect(bytesOf(statement)).toBeLessThanOrEqual(BYTES_PER_STATEMENT);
+    }
   });
 
   test('writes no statement for a table with no rows', () => {
