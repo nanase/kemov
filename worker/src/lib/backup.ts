@@ -34,7 +34,7 @@ export function literal(value: unknown): string {
 }
 
 /**
- * How many rows one INSERT names.
+ * How many rows one INSERT names, at most.
  *
  * The same 200 that scripts/legacy-videos.js chose, and for the same reasons:
  * a statement per row is thousands of round trips, and a statement per file is
@@ -42,6 +42,28 @@ export function literal(value: unknown): string {
  * this database, so it is a measured number rather than a guessed one.
  */
 export const ROWS_PER_STATEMENT = 200;
+
+/**
+ * How many bytes one INSERT may reach, whichever cap it meets first.
+ *
+ * D1 refuses a statement over 100,000 bytes, and a row cap does not bound
+ * bytes. Measured against production on 2026-09-08: 200 rows of `video` came
+ * to 87,756 bytes, 88% of that budget, on titles averaging 127 bytes with the
+ * longest at 289. A run of long titles inside one batch of 200 therefore
+ * reaches the limit, and 200 titles at YouTube's own maximum would pass it.
+ *
+ * What makes that worth capping rather than watching is when it would be
+ * found. The job writing the file would not notice; D1 would refuse the
+ * statement at the moment somebody was restoring from it.
+ */
+export const BYTES_PER_STATEMENT = 80_000;
+
+const encoder = new TextEncoder();
+
+/** What D1 counts, which is bytes of UTF-8 rather than characters. */
+function byteLength(text: string): number {
+  return encoder.encode(text).length;
+}
 
 /** A table as the backup writes it: what to select, and what a repeat means. */
 export interface TableShape {
@@ -124,22 +146,33 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
  * it should not have to remember which files they have already run.
  */
 export function toSql(table: TableShape, rows: readonly Record<string, unknown>[], note: string): string {
+  const opening = `INSERT INTO ${table.name} (${table.columns.join(', ')})\nVALUES\n`;
+  const closing = `\nON CONFLICT (${table.conflict.join(', ')}) DO NOTHING;`;
+  const fixed = byteLength(opening) + byteLength(closing);
+
   const statements: string[] = [];
+  let batch: string[] = [];
+  let bytes = fixed;
 
-  for (let index = 0; index < rows.length; index += ROWS_PER_STATEMENT) {
-    const values = rows
-      .slice(index, index + ROWS_PER_STATEMENT)
-      .map((row) => `  (${table.columns.map((column) => literal(row[column])).join(', ')})`);
+  for (const row of rows) {
+    const tuple = `  (${table.columns.map((column) => literal(row[column])).join(', ')})`;
+    // Plus the ",\n" that joins this tuple to the one before it.
+    const size = byteLength(tuple) + 2;
 
-    statements.push(
-      [
-        `INSERT INTO ${table.name} (${table.columns.join(', ')})`,
-        'VALUES',
-        values.join(',\n'),
-        `ON CONFLICT (${table.conflict.join(', ')}) DO NOTHING;`,
-      ].join('\n'),
-    );
+    // Never on an empty batch: one row too large for the budget still has to
+    // be written, and writing it alone is the closest this can get. D1's own
+    // 2 MB row limit means a row that D1 accepted cannot be much larger.
+    if (batch.length > 0 && (batch.length >= ROWS_PER_STATEMENT || bytes + size > BYTES_PER_STATEMENT)) {
+      statements.push(opening + batch.join(',\n') + closing);
+      batch = [];
+      bytes = fixed;
+    }
+
+    batch.push(tuple);
+    bytes += size;
   }
+
+  if (batch.length > 0) statements.push(opening + batch.join(',\n') + closing);
 
   // The header is for whoever opens this while something is broken. It says
   // what the file is and the one command that puts it back, so that reading

@@ -1,6 +1,16 @@
 import { env } from 'cloudflare:test';
 import { runBackup } from '../src/collector/backup';
-import { BACKED_UP_TABLES, backupKey, dateFromKey, dayBounds, MAX_DAYS_PER_RUN, missingDays } from '../src/lib/backup';
+import {
+  BACKED_UP_TABLES,
+  backupKey,
+  BYTES_PER_STATEMENT,
+  dateFromKey,
+  dayBounds,
+  MAX_DAYS_PER_RUN,
+  missingDays,
+  ROWS_PER_STATEMENT,
+  toSql,
+} from '../src/lib/backup';
 
 // #111's condition is being able to restore, not being able to export, so the
 // test that matters is the round trip: write D1 out, empty it, put the files
@@ -203,10 +213,10 @@ describe('runBackup', () => {
     const put = env.BACKUP.put.bind(env.BACKUP);
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    vi.spyOn(env.BACKUP, 'put').mockImplementation(async (key: string, value: never) => {
-      if (key.startsWith('video/')) throw new Error('R2 said no');
+    vi.spyOn(env.BACKUP, 'put').mockImplementation(async (...args: Parameters<R2Bucket['put']>) => {
+      if (String(args[0]).startsWith('video/')) throw new Error('R2 said no');
 
-      return put(key, value);
+      return put(...args);
     });
 
     await runBackup(env, new Date('2026-09-08T00:20:00Z'));
@@ -226,6 +236,79 @@ describe('runBackup', () => {
     const keys = (await env.BACKUP.list({ prefix: 'channel_snapshot/' })).objects;
 
     expect(keys).toEqual([]);
+  });
+});
+
+describe('toSql', () => {
+  const video = BACKED_UP_TABLES.find((table) => table.name === 'video')!;
+
+  /** A row whose title is `titleBytes` bytes of ASCII, the rest kept small. */
+  function videoRow(index: number, titleBytes: number): Record<string, unknown> {
+    return Object.fromEntries(
+      video.columns.map((column) => [
+        column,
+        column === 'video_id' ? `v${index}` : column === 'title' ? 'x'.repeat(titleBytes) : null,
+      ]),
+    );
+  }
+
+  const bytesOf = (text: string) => new TextEncoder().encode(text).length;
+
+  /** Just the statements, without the header comments toSql writes above them. */
+  const statementsOf = (sql: string) =>
+    sql
+      .split('\n')
+      .filter((line) => !line.startsWith('--'))
+      .join('\n')
+      .split(';\n')
+      .map((statement) => statement.trim())
+      .filter((statement) => statement !== '');
+
+  test('names at most ROWS_PER_STATEMENT rows in one statement', () => {
+    const sql = toSql(
+      video,
+      Array.from({ length: ROWS_PER_STATEMENT + 1 }, (_, index) => videoRow(index, 10)),
+      'note',
+    );
+
+    expect(statementsOf(sql)).toHaveLength(2);
+  });
+
+  // D1 refuses a statement over 100,000 bytes. Production is at 88% of that
+  // with 200 rows of video, so a batch of long titles is not a hypothetical
+  // and the byte cap is what keeps it from being written.
+  test('splits before the byte cap even when the row cap is not reached', () => {
+    const rows = Array.from({ length: ROWS_PER_STATEMENT }, (_, index) => videoRow(index, 1_000));
+    const statements = statementsOf(toSql(video, rows, 'note'));
+
+    expect(statements.length).toBeGreaterThan(1);
+
+    for (const statement of statements) {
+      expect(bytesOf(statement)).toBeLessThanOrEqual(BYTES_PER_STATEMENT);
+    }
+  });
+
+  test('keeps every row when it splits', () => {
+    const rows = Array.from({ length: ROWS_PER_STATEMENT }, (_, index) => videoRow(index, 1_000));
+    const sql = toSql(video, rows, 'note');
+
+    for (const row of rows) {
+      expect(sql).toContain(`('${String(row.video_id)}',`);
+    }
+  });
+
+  // Alone rather than dropped: a row this large is one D1 accepted, since its
+  // own row limit is 2 MB, and losing it silently is the one outcome a backup
+  // may not have.
+  test('writes a row larger than the cap on its own', () => {
+    const statements = statementsOf(toSql(video, [videoRow(1, BYTES_PER_STATEMENT + 1_000)], 'note'));
+
+    expect(statements).toHaveLength(1);
+    expect(statements[0]).toContain("('v1',");
+  });
+
+  test('writes no statement for a table with no rows', () => {
+    expect(statementsOf(toSql(video, [], 'note'))).toEqual([]);
   });
 });
 

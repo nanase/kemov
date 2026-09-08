@@ -307,6 +307,8 @@ channel_snapshot/2026-09-07.sql     one finished day, written once
 
 A run writes at most seven missing days, so a gap left by an outage closes over several nights rather than being attempted all at once. Which days are already written is read from the bucket, not remembered anywhere, so nothing can disagree about it.
 
+Inside a file, one `INSERT` names at most 200 rows and at most 80,000 bytes, whichever comes first. D1 refuses a statement over 100,000 bytes, and the row count alone does not bound the bytes: measured against production on 2026-09-08, 200 rows of `video` came to 87,756 bytes, and titles vary enough that a batch of long ones would reach the limit. A statement that D1 refuses would be found only by whoever was restoring from the file, which is the worst moment to find it.
+
 `collect_task` and `chat_author` are deliberately absent. They hold where collection has got to, they rebuild themselves within a tick or two, and restoring them would send the chat job back through replays it has already read.
 
 ### Restoring from a Backup
@@ -331,7 +333,7 @@ Every statement is `ON CONFLICT DO NOTHING`, so applying a file twice does nothi
 | `channel/`, `video/` | Yes        | Each file is a complete copy. The newest one is all that is needed; older ones are duplicates.                          |
 | `channel_snapshot/`  | **No**     | Each file is one day and no other file holds that day. Deleting one leaves a hole in the history that nothing can fill. |
 
-The snapshot history began on 2026-09-07 and exists nowhere else. It costs about 53 MB a year to keep all of it.
+The snapshot history began on 2026-09-07 and exists nowhere else. A day of it is about 119 KiB of SQL, measured against production values on 2026-09-08, so keeping all of it costs some 44 MB a year.
 
 ## Deployment
 
