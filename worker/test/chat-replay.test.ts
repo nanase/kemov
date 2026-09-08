@@ -75,13 +75,23 @@ async function authorCount(videoId: string): Promise<number> {
   return row?.n ?? 0;
 }
 
-/** Queues one video directly, as a tick that had already scanned would have. */
-async function queue(videoId: string, cursor: string | null = null, attempts = 0): Promise<void> {
+/**
+ * Queues one video directly, as a tick that had already scanned would have.
+ *
+ * `dueAt` is what the claim orders on, so a test about which of two videos
+ * gets taken says it here rather than leaving both on one deadline.
+ */
+async function queue(
+  videoId: string,
+  values: { cursor?: string | null; attempts?: number; dueAt?: string } = {},
+): Promise<void> {
+  const { cursor = null, attempts = 0, dueAt = '2026-01-01T00:00:00Z' } = values;
+
   await env.DB.prepare(
     `INSERT INTO collect_task (kind, target_id, state, attempts, cursor, next_attempt_at, updated_at)
-     VALUES ('chat_replay', ?1, 'pending', ?2, ?3, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+     VALUES ('chat_replay', ?1, 'pending', ?2, ?3, ?4, '2026-01-01T00:00:00Z')`,
   )
-    .bind(videoId, attempts, cursor)
+    .bind(videoId, attempts, cursor, dueAt)
     .run();
 }
 
@@ -328,7 +338,7 @@ describe('runChatReplay', () => {
       const [task] = await allTasks();
       expect(task).toMatchObject({ state: 'pending', attempts: 0 });
       expect(JSON.parse(task.cursor!)).toMatchObject({ continuation: 'page-next', messages: 40 });
-      // Released the moment the run stopped, so the next tick carries on
+      // Released the moment the run stopped, so a following tick carries on
       // rather than waiting out a lease.
       expect(task.next_attempt_at).toEqual('2026-01-01T00:10:00Z');
     });
@@ -416,7 +426,7 @@ describe('runChatReplay', () => {
 
     test('carries on from the cursor rather than starting the video again', async () => {
       await insertVideo('vid-1');
-      await queue('vid-1', JSON.stringify({ continuation: 'page-7', messages: 300 }));
+      await queue('vid-1', { cursor: JSON.stringify({ continuation: 'page-7', messages: 300 }) });
 
       const fetchImpl = vi.fn<typeof fetch>(async () => replayPage(['author-1']));
 
@@ -466,6 +476,90 @@ describe('runChatReplay', () => {
       const states = (await allTasks()).map((task) => task.state);
       expect(states.filter((state) => state === 'done')).toHaveLength(1);
       expect(states.filter((state) => state !== 'done')).toHaveLength(1);
+    });
+
+    // Which one of the queue a tick takes (#101). A video is read
+    // PAGES_PER_VIDEO pages at a time, so a long chat needs several ticks; on
+    // the deadline alone, every release put it back behind the whole queue and
+    // production went two hours between one video's ticks. The deadlines here
+    // are the ones that would decide it under that order, so each test says
+    // which rule won.
+    test('takes a part-counted video before one nothing has read yet', async () => {
+      await insertVideo('vid-fresh');
+      await insertVideo('vid-part');
+      await queue('vid-fresh');
+      await queue('vid-part', {
+        cursor: JSON.stringify({ continuation: 'page-7', messages: 300 }),
+        dueAt: '2026-01-01T00:05:00Z',
+      });
+
+      await runChatReplay(env, serves([replayPage([])]));
+
+      expect(await allTasks()).toMatchObject([
+        { target_id: 'vid-fresh', state: 'pending' },
+        { target_id: 'vid-part', state: 'done' },
+      ]);
+    });
+
+    // A video that failed partway holds a cursor for the same reason a
+    // released one does: pages have landed and are not going to be read again.
+    // The backoff decides when it is due, and the cursor decides its place.
+    test('takes a video that failed partway ahead of one nothing has read yet', async () => {
+      await insertVideo('vid-failed');
+      await insertVideo('vid-fresh');
+      await queue('vid-fresh');
+      await env.DB.prepare(
+        `INSERT INTO collect_task (kind, target_id, state, attempts, cursor, next_attempt_at, updated_at)
+         VALUES ('chat_replay', 'vid-failed', 'failed', 1, ?1, '2026-01-01T00:05:00Z', '2026-01-01T00:05:00Z')`,
+      )
+        .bind(JSON.stringify({ continuation: 'page-7', messages: 300 }))
+        .run();
+
+      await runChatReplay(env, serves([replayPage([])]));
+
+      expect(await allTasks()).toMatchObject([
+        { target_id: 'vid-failed', state: 'done' },
+        { target_id: 'vid-fresh', state: 'pending' },
+      ]);
+    });
+
+    // Inside the group the deadline still decides, so the video released
+    // longest ago goes before one released a moment later.
+    test('takes the part-counted video that has waited longest', async () => {
+      await insertVideo('vid-new');
+      await insertVideo('vid-old');
+      await queue('vid-new', {
+        cursor: JSON.stringify({ continuation: 'page-9', messages: 100 }),
+        dueAt: '2026-01-01T00:05:00Z',
+      });
+      await queue('vid-old', {
+        cursor: JSON.stringify({ continuation: 'page-7', messages: 300 }),
+        dueAt: '2026-01-01T00:01:00Z',
+      });
+
+      await runChatReplay(env, serves([replayPage([])]));
+
+      expect(await allTasks()).toMatchObject([
+        { target_id: 'vid-new', state: 'pending' },
+        { target_id: 'vid-old', state: 'done' },
+      ]);
+    });
+
+    // With no cursor anywhere the deadline decides on its own, as it did
+    // before. This passes on the old order too: what it holds is that the term
+    // is still there to fall through to.
+    test('takes the video that has waited longest when nothing has been read yet', async () => {
+      await insertVideo('vid-new');
+      await insertVideo('vid-old');
+      await queue('vid-new', { dueAt: '2026-01-01T00:05:00Z' });
+      await queue('vid-old', { dueAt: '2026-01-01T00:01:00Z' });
+
+      await runChatReplay(env, serves([replayPage([])]));
+
+      expect(await allTasks()).toMatchObject([
+        { target_id: 'vid-new', state: 'pending' },
+        { target_id: 'vid-old', state: 'done' },
+      ]);
     });
 
     // The deadline end to end: the reply never comes, so nothing but the
@@ -558,7 +652,7 @@ describe('runChatReplay', () => {
     // row exists, has been asked for many times, and carries a cursor.
     test('settles a video that went away after it was queued, cursor and all', async () => {
       await insertVideo('vid-was-fine', '2026-01-01T00:00:00Z', 'unavailable');
-      await queue('vid-was-fine', JSON.stringify({ continuation: 'page-7', messages: 300 }), 5);
+      await queue('vid-was-fine', { cursor: JSON.stringify({ continuation: 'page-7', messages: 300 }), attempts: 5 });
 
       const fetchImpl = vi.fn<typeof fetch>();
 
@@ -674,9 +768,9 @@ describe('runChatReplay', () => {
     });
 
     // Four tries and no more, and the page before it stays counted: the video
-    // goes into its backoff and the next tick carries on from the cursor
-    // rather than reading the replay again. Real timers again, for the reason
-    // the retrying test in 'counting' gives: this run really does wait.
+    // goes into its backoff and carries on from the cursor once that has run
+    // out, rather than reading the replay again. Real timers again, for the
+    // reason the retrying test in 'counting' gives: this run really does wait.
     test('gives up on a page refused every time it asks', async () => {
       vi.useRealTimers();
       await insertVideo('vid-1');
@@ -747,7 +841,7 @@ describe('runChatReplay', () => {
 
     test('backs off further the more times in a row a video fails', async () => {
       await insertVideo('vid-1');
-      await queue('vid-1', null, 3);
+      await queue('vid-1', { attempts: 3 });
 
       await runChatReplay(
         env,
@@ -762,7 +856,7 @@ describe('runChatReplay', () => {
 
     test('starts counting again from zero attempts once a page lands', async () => {
       await insertVideo('vid-1');
-      await queue('vid-1', null, 3);
+      await queue('vid-1', { attempts: 3 });
 
       await runChatReplay(env, serves([replayPage(['author-1'], 'page-2'), replayPage([])]));
 
@@ -774,7 +868,7 @@ describe('runChatReplay', () => {
     // is what the delay is built on, and a page that landed ends the row.
     test('counts a failure after a landed page as the first, not the next', async () => {
       await insertVideo('vid-1');
-      await queue('vid-1', null, 3);
+      await queue('vid-1', { attempts: 3 });
 
       await runChatReplay(env, serves([replayPage(['author-1'], 'page-2'), new Response('nope', { status: 500 })]));
 
@@ -807,7 +901,7 @@ describe('runChatReplay', () => {
 
     test('starts a video over when its cursor is not readable', async () => {
       await insertVideo('vid-1');
-      await queue('vid-1', 'not json');
+      await queue('vid-1', { cursor: 'not json' });
 
       await runChatReplay(env, serves([replayPage(['author-1'])]));
 
@@ -863,7 +957,7 @@ describe('runChatReplay', () => {
     // are not negative, so a cursor carrying anything else starts over.
     test('starts a video over rather than carrying on from a count no column would take', async () => {
       await insertVideo('vid-1');
-      await queue('vid-1', JSON.stringify({ continuation: 'page-7', messages: -5 }));
+      await queue('vid-1', { cursor: JSON.stringify({ continuation: 'page-7', messages: -5 }) });
 
       const fetchImpl = serves([replayPage(['author-1'])]);
 
