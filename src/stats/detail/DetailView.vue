@@ -56,8 +56,8 @@ watch(
       type="warning"
       variant="tonal"
       density="compact"
-      title="動画の一部を読み込めませんでした"
-      :text="`下の合計は ${withCommas(videos.length)} 本ぶんです。すべての動画は含まれていません`"
+      title="一部の動画を読み込めませんでした"
+      :text="`${withCommas(videos.length)} 本の合計が表示されています。一部の動画は含まれていません`"
     />
 
     <v-row class="ma-0">
@@ -235,7 +235,7 @@ watch(
     <template #footer>
       <v-footer class="bg-secondary text-center d-flex flex-column mt-10">
         <ul>
-          <li v-if="videosError">動画の読み込みでエラーが発生しました: {{ videosError.message }}</li>
+          <li v-if="videosError">動画情報の読み込みができません: {{ videosError.message }}</li>
           <li>数値の反映に数日かかることがあります</li>
           <li>このサイトは非公式のファンサイトです</li>
         </ul>

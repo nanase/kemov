@@ -30,7 +30,7 @@ export function isFault(reason: DeltaMissing): boolean {
  * Rewording either one alone takes that away.
  */
 export const MISSING_TEXT: Readonly<Record<DeltaMissing, string>> = {
-  'nothing collected': '統計を取得できていません',
+  'nothing collected': '計測値を取得できていません',
   'gap too wide': 'この期間の記録がありません',
   'history too short': 'この期間の記録がまだありません',
   'count not collected': 'この値は公開されていません',

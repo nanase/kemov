@@ -33,7 +33,7 @@ function JST(date: Parameters<typeof dayjs>[0]): Dayjs {
               {{ formatDuration(video.durationSeconds) }} -
               {{ JST(video.publishedAt).format('YYYY/MM/DD HH:mm:ss') }} 公開
             </div>
-            <div>ID: {{ video.videoId }} - {{ video.type ?? '種別は未取得' }}</div>
+            <div>ID: {{ video.videoId }} - {{ video.type ?? '種別未取得' }}</div>
             <div>{{ JST(video.fetchedAt).format('YYYY/MM/DD HH:mm:ss') }} 情報取得</div>
           </v-col>
           <v-col cols="12" sm="6">
