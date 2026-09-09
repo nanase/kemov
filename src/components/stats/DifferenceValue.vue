@@ -56,7 +56,7 @@ const text = computed<string>(() => {
  */
 const title = computed<string | undefined>(() => {
   if (difference.value === null) return MISSING_TEXT[difference.reason];
-  if (difference.missing > 0) return `${difference.missing} チャンネルぶんを含んでいません`;
+  if (difference.missing > 0) return `${difference.missing} チャンネルの情報が含まれていません`;
 
   return undefined;
 });

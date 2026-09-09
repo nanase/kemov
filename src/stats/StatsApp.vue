@@ -60,7 +60,7 @@ onMounted(async () => {
           variant="tonal"
           density="compact"
           title="最新の数値を取得できていません"
-          :text="`表示しているのは ${staleFor}前の数値です。統計データベースが読めない状態が続いています`"
+          :text="`表示は ${staleFor}前の数値です。最新の数値を取得できていません`"
         />
 
         <StatTable :type="tab" :active-only />

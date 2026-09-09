@@ -41,9 +41,9 @@ const { channels, fetching } = useStatsStore();
  * opens it, and the chosen measure carries a sentence saying what it counts.
  */
 const items = [
-  { type: 'subheader' as const, title: '量' },
+  { type: 'subheader' as const, title: '計測値' },
   ...COUNT_PROPERTIES.map((value) => ({ value, title: getPropertyName(value) })),
-  { type: 'subheader' as const, title: '濃さ' },
+  { type: 'subheader' as const, title: '密度' },
   ...RATE_PROPERTIES.map((value) => ({ value, title: getPropertyName(value) })),
 ];
 
@@ -190,7 +190,7 @@ onMounted(async () => await fetching.channels.start());
                  the same page telling the reader both that it could not fetch
                  and that there is nothing to fetch. -->
             <tr v-if="!loading && ranking !== null && ranking.videos.length === 0">
-              <td colspan="4" class="pa-4 text-center opacity-70">動画がまだありません</td>
+              <td colspan="4" class="pa-4 text-center opacity-70">該当する動画がありません</td>
             </tr>
           </tbody>
         </v-table>
