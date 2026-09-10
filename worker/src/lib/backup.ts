@@ -225,6 +225,60 @@ export function dateFromKey(tableName: string, key: string): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
 }
 
+/**
+ * The days one table already has a file for in R2.
+ *
+ * Read from the bucket rather than remembered anywhere, so nothing has to
+ * agree with anything (#115's decision on the bucket over `collect_task`: an
+ * R2 listing cannot go stale the way `collect_task` rows can, because it is
+ * the write itself rather than a record of having written).
+ *
+ * Shared by the backup job, which uses it to find what is missing, and by
+ * `/api/health`, which uses it to find what is newest.
+ */
+export async function daysPresent(bucket: R2Bucket, tableName: string): Promise<Set<string>> {
+  const present = new Set<string>();
+  let cursor: string | undefined;
+
+  for (;;) {
+    const listed = await bucket.list({ prefix: `${tableName}/`, cursor });
+
+    for (const object of listed.objects) {
+      const date = dateFromKey(tableName, object.key);
+
+      if (date !== null) present.add(date);
+    }
+
+    if (!listed.truncated) return present;
+
+    cursor = listed.cursor;
+  }
+}
+
+/** The newest day one table has a file for in R2, or null if it has none. */
+export async function latestDay(bucket: R2Bucket, tableName: string): Promise<string | null> {
+  let latest: string | null = null;
+
+  for (const day of await daysPresent(bucket, tableName)) {
+    if (latest === null || day > latest) latest = day;
+  }
+
+  return latest;
+}
+
+/**
+ * How many days after `date` the given `today` is, both UTC calendar days.
+ *
+ * Raw, not adjusted for what a table's newest file is expected to be:
+ * `channel_snapshot` writes yesterday's day even when nothing is wrong (see
+ * `BACKED_UP_TABLES`), so a healthy value here is 0 for `channel`/`video` and
+ * 1 for `channel_snapshot`. Reading that difference belongs to whoever
+ * decides a threshold (#110), not to this function.
+ */
+export function daysBetween(date: string, today: string): number {
+  return Math.round((midnight(today).getTime() - midnight(date).getTime()) / 86_400_000);
+}
+
 /** The UTC day an instant falls in. */
 export function dayOf(instant: string): string {
   return instant.slice(0, 10);

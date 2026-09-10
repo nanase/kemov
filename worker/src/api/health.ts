@@ -1,15 +1,20 @@
+import { BACKED_UP_TABLES, dayOf, daysBetween, latestDay } from '../lib/backup';
 import type { Env } from '../lib/env';
 import { formatTimestamp } from '../lib/time';
 
 /**
  * GET /api/health
  *
- * When each collection job last succeeded, which is what #71 watches.
+ * When each collection job last succeeded, which is what #71 watches, and
+ * since #115 what R2 holds of the nightly backup, which `collect_task` cannot
+ * answer because that job writes none of its rows.
  *
  * Reported per job rather than as one number for the worker. The jobs fail
  * independently - runScheduled catches each one's errors so that one failing
  * never stops the others - so a single figure would only go stale once every
  * job had stopped, which is the one case nobody needs a monitor to notice.
+ * `backup` is kept apart from `jobs` for the same reason it needs its own
+ * read: it answers a different question from a different source.
  */
 
 /** The jobs this reports on, paired with the `collect_task.kind` each uses. */
@@ -87,6 +92,25 @@ interface JobHealth {
   unavailable: number;
 }
 
+/**
+ * What R2 says about one backed-up table, per #115.
+ *
+ * `collect_task` cannot answer this - the backup job writes none of its
+ * rows - so this is read from the bucket instead: the newest day it holds a
+ * file for, and how many days ago that is. Nothing here judges whether that
+ * is too old. `channel` and `video` write today's date and `channel_snapshot`
+ * writes yesterday's even when nothing is wrong (see `BACKED_UP_TABLES` in
+ * ../lib/backup.ts), so a threshold would need to know which table it is
+ * reading; that decision belongs to #110, not here.
+ */
+interface BackupHealth {
+  table: string;
+  /** The newest day R2 has a file for. Null means it has none. */
+  latestDate: string | null;
+  /** How many days ago that day was. Null when latestDate is null. */
+  daysAgo: number | null;
+}
+
 interface TaskState {
   kind: string;
   state: string;
@@ -162,7 +186,19 @@ const worstAttempts = (rows: TaskState[], kind: string) =>
  * here needs them apart - the newest 'done' row of the kind is the job's
  * heartbeat whichever sort of target it belongs to.
  */
-export async function health(env: Env): Promise<{ jobs: JobHealth[]; databaseReadAt: string }> {
+export async function health(
+  env: Env,
+  now: Date = new Date(),
+): Promise<{ jobs: JobHealth[]; backup: BackupHealth[]; databaseReadAt: string }> {
+  const today = dayOf(formatTimestamp(now));
+  const backup = Promise.all(
+    BACKED_UP_TABLES.map(async (table): Promise<BackupHealth> => {
+      const latestDate = await latestDay(env.BACKUP, table.name);
+
+      return { table: table.name, latestDate, daysAgo: latestDate === null ? null : daysBetween(latestDate, today) };
+    }),
+  );
+
   const { results } = await env.DB.prepare(
     `SELECT kind, state, count(*) AS n, max(updated_at) AS at, max(attempts) AS attempts
        FROM collect_task
@@ -197,9 +233,10 @@ export async function health(env: Env): Promise<{ jobs: JobHealth[]; databaseRea
       maxAttempts: worstAttempts(results, kind),
       unavailable: countOf(results, kind, 'unavailable'),
     })),
+    backup: await backup,
     // When these figures were read. A cached answer keeps the reading's time
     // rather than taking the reader's, which is what makes a stale answer
     // recognisable as one.
-    databaseReadAt: formatTimestamp(new Date()),
+    databaseReadAt: formatTimestamp(now),
   };
 }
