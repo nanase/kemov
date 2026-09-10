@@ -1,4 +1,4 @@
-import { BadRequest, cachedJson, CACHE_SECONDS, NotFound, STALE_SECONDS } from '../src/api/cache';
+import { BadRequest, cachedJson, CACHE_SECONDS, NotFound, StatusedJson, STALE_SECONDS } from '../src/api/cache';
 
 /**
  * The path that decides whether the site shows old numbers or nothing at all.
@@ -207,5 +207,40 @@ describe('cachedJson', () => {
     );
 
     expect(await other.json()).toEqual({ metric: 'likeCount' });
+  });
+
+  // #110: /api/health answers 503 on a successful build, not on a thrown
+  // error, so it must not go through errorWithCacheHeaders's no-store path -
+  // it has to be cached and re-served like any other answer, status included.
+  describe('StatusedJson', () => {
+    test('serves the status a builder chose instead of 200', async () => {
+      const response = await cachedJson(request(), testCache(), async () => new StatusedJson({ jobs: [] }, 503));
+
+      expect(response.status).toEqual(503);
+      expect(await response.json()).toEqual({ jobs: [] });
+      // Still a normal answer, not an error: 'miss', not 'none', and cached
+      // like any other build rather than refused with no-store.
+      expect(response.headers.get('x-kemov-cache')).toEqual('miss');
+      expect(response.headers.get('cache-control')).toEqual(`public, max-age=${CACHE_SECONDS}`);
+    });
+
+    test('a status other than 200 is served fresh from the cache with the body it was stored with', async () => {
+      const cache = testCache();
+      const build = vi.fn(async () => new StatusedJson({ jobs: [] }, 503));
+
+      await cachedJson(request(), cache, build, at('2026-09-07T12:00:00Z'));
+      const second = await cachedJson(request(), cache, build, at('2026-09-07T12:00:30Z'));
+
+      expect(build).toHaveBeenCalledTimes(1);
+      expect(second.status).toEqual(503);
+      expect(await second.json()).toEqual({ jobs: [] });
+      expect(second.headers.get('x-kemov-cache')).toEqual('fresh');
+    });
+
+    test('a builder that returns its body plainly still answers 200', async () => {
+      const response = await cachedJson(request(), testCache(), async () => ({ jobs: [] }));
+
+      expect(response.status).toEqual(200);
+    });
   });
 });

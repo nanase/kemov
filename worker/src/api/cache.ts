@@ -20,6 +20,23 @@ export class NotFound extends Error {}
 export class BadRequest extends Error {}
 
 /**
+ * Wraps a builder's JSON answer with the HTTP status it should be served as.
+ *
+ * Every endpoint but /api/health answers 200 on a successful build, and
+ * `build` below is shared by all of them. #110 needed one whose success can
+ * still be 503 - one or more of its own fields say the data itself is stale
+ * - so the status has to travel from the builder to the Response without the
+ * others ever having to think about it. `instanceof` keeps that opt-in: a
+ * builder that returns its body plainly still gets 200, exactly as before.
+ */
+export class StatusedJson<T> {
+  constructor(
+    public readonly body: T,
+    public readonly status: number,
+  ) {}
+}
+
+/**
  * Answering from the edge cache, and answering from it again when D1 will not
  * answer at all.
  *
@@ -138,8 +155,9 @@ export async function cachedJson(
   }
 
   try {
-    const body = await build();
-    const built = jsonResponse(body);
+    const result = await build();
+    const { body, status } = result instanceof StatusedJson ? result : { body: result, status: 200 };
+    const built = jsonResponse(body, { status });
 
     built.headers.set(STORED_AT, now.toISOString());
 

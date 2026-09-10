@@ -1,7 +1,7 @@
 import type { Env } from '../lib/env';
-import { cachedJson, errorWithCacheHeaders, NotFound } from './cache';
+import { cachedJson, errorWithCacheHeaders, NotFound, StatusedJson } from './cache';
 import { getChannel, getHistory, listChannels, readHistoryRange } from './channels';
-import { health } from './health';
+import { health, isUnhealthy } from './health';
 import { listLive } from './live';
 import {
   DEFAULT_PAGE_SIZE,
@@ -49,7 +49,16 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
 
   const cached = (build: () => Promise<unknown>) => cachedJson(request, cacheImpl, build);
 
-  if (segments.length === 2 && resource === 'health') return await cached(() => health(env));
+  if (segments.length === 2 && resource === 'health') {
+    return await cached(async () => {
+      const result = await health(env);
+
+      // #110: the body always reports every job and table, and the status
+      // alone says whether any of them is stale, so that any monitor can
+      // watch this one code rather than parsing the jobs and backup arrays.
+      return isUnhealthy(result) ? new StatusedJson(result, 503) : result;
+    });
+  }
   if (segments.length === 2 && resource === 'live') return await cached(() => listLive(env));
   if (segments.length === 2 && resource === 'channels') return await cached(() => listChannels(env));
 
