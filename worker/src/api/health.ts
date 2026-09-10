@@ -277,9 +277,22 @@ export async function health(
  * A boolean rather than a count, because the caller's only use for this is
  * choosing a status code - counting how many things are wrong is what `jobs`
  * and `backup` are already for.
+ *
+ * `!== false` rather than `=== true`, because of where this is actually read
+ * from: `statusOf` on `cachedJson` calls it on a body pulled back out of the
+ * edge cache, which can outlive a deploy. For up to CACHE_SECONDS after this
+ * PR ships, that entry can still be one the previous version of `health`
+ * wrote - a shape with no `stale` field at all, which TypeScript's own type
+ * for `result` cannot see past `statusFor`'s cast. `=== true` would read that
+ * missing field as `undefined`, and `undefined === true` is false: an
+ * inherited healthy-looking cache entry would answer 200 regardless of
+ * whether the state it describes actually is. `!== false` fails the other
+ * way instead - anything that is not affirmatively "not stale" counts as
+ * stale - so the one deploy-transition window this endpoint cannot avoid errs
+ * toward paging on an old answer rather than staying quiet on one.
  */
 export function isUnhealthy(result: { jobs: JobHealth[]; backup: BackupHealth[] }): boolean {
-  return result.jobs.some((job) => job.stale) || result.backup.some((table) => table.stale);
+  return result.jobs.some((job) => job.stale !== false) || result.backup.some((table) => table.stale !== false);
 }
 
 /**

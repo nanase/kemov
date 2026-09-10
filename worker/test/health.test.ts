@@ -342,6 +342,16 @@ describe('stale jobs', () => {
     expect((await health(env, NOW)).jobs.find((job) => job.job === 'video-update')).toMatchObject({ stale: true });
   });
 
+  // isTimestampStale grades on >=, so the threshold itself is the stale side,
+  // not the boundary's last healthy tick. health-thresholds.test.ts covers
+  // this for the helper directly; this is the same boundary wired through a
+  // real job.
+  test('a success exactly at the threshold fires the ten-minute jobs', async () => {
+    await insertTask('channel_stats', 'UCaaa', 'done', minutesAgo(JOB_SUCCESS_STALE_MINUTES));
+
+    expect((await health(env, NOW)).jobs.find((job) => job.job === 'channel-stats')).toMatchObject({ stale: true });
+  });
+
   // chat-replay's queue emptying is what working looks like once it has
   // caught up (see the comment on health() itself), so a stale lastSuccessAt
   // with nothing queued must not fire the same as it would for the other
@@ -367,6 +377,17 @@ describe('stale jobs', () => {
   // The state #89 was: work waiting and nobody working it.
   test('chat-replay with work queued is stale past its own activity threshold', async () => {
     await insertTask('chat_replay', 'v1', 'pending', minutesAgo(CHAT_REPLAY_ACTIVITY_STALE_MINUTES + 1));
+
+    expect((await health(env, NOW)).jobs.find((job) => job.job === 'chat-replay')).toMatchObject({
+      queued: 1,
+      stale: true,
+    });
+  });
+
+  // The same >= boundary as the ten-minute jobs above, wired through
+  // chat-replay's own threshold rather than JOB_SUCCESS_STALE_MINUTES.
+  test('chat-replay with work queued is stale exactly at its own activity threshold', async () => {
+    await insertTask('chat_replay', 'v1', 'pending', minutesAgo(CHAT_REPLAY_ACTIVITY_STALE_MINUTES));
 
     expect((await health(env, NOW)).jobs.find((job) => job.job === 'chat-replay')).toMatchObject({
       queued: 1,
@@ -413,6 +434,19 @@ describe('isUnhealthy', () => {
 
     expect(isUnhealthy(await health(env, NOW))).toBe(true);
   });
+
+  // The edge cache can outlive a deploy: for up to CACHE_SECONDS after this
+  // shape shipped, a fresh cache hit can still be a body the previous version
+  // of health() wrote, with no `stale` field on its jobs or tables at all.
+  // Read that as unhealthy rather than as `undefined === true` reading
+  // healthy, so an inherited cache entry cannot mask a real problem.
+  test('is true when a job carries no stale field at all', () => {
+    expect(isUnhealthy({ jobs: [{}] as never, backup: [{ stale: false }] as never })).toBe(true);
+  });
+
+  test('is true when a backed-up table carries no stale field at all', () => {
+    expect(isUnhealthy({ jobs: [{ stale: false }] as never, backup: [{}] as never })).toBe(true);
+  });
 });
 
 // statusFor is cachedJson's statusOf, called on health's answer after it has
@@ -429,6 +463,21 @@ describe('statusFor', () => {
 
   test('is 503 for an unhealthy body that has been through JSON', () => {
     const body = JSON.parse(JSON.stringify({ jobs: [{ stale: true }], backup: [{ stale: false }] }));
+
+    expect(statusFor(body)).toEqual(503);
+  });
+
+  // The cache-outlives-a-deploy case, at the level cachedJson actually reads
+  // it: a body from before this PR, JSON round-tripped like any cache hit,
+  // whose jobs and tables have no `stale` key for statusFor's cast to find.
+  test('is 503 for a body shaped like health answered before #110, with no stale field', () => {
+    const body = JSON.parse(
+      JSON.stringify({
+        jobs: [{ job: 'channel-stats', lastSuccessAt: '2026-09-10T12:00:00Z', queued: 0 }],
+        backup: [{ table: 'video', latestDate: '2026-09-10', daysAgo: 0 }],
+        databaseReadAt: '2026-09-10T12:00:00Z',
+      }),
+    );
 
     expect(statusFor(body)).toEqual(503);
   });
