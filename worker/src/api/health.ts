@@ -302,9 +302,27 @@ export function isUnhealthy(result: { jobs: JobHealth[]; backup: BackupHealth[] 
  * `cachedJson`'s `statusOf`, called on a body that has been round-tripped
  * through the Cache API's storage as JSON - the object `health` built is long
  * gone by then, and all that is left is whatever `JSON.parse` gives back. The
- * shape survives that trip (booleans, strings, numbers and arrays all do), so
- * the cast here is safe for any body this endpoint itself ever stored.
+ * shape mostly survives that trip (booleans, strings, numbers and arrays all
+ * do), but `jobs` and `backup` themselves are not guaranteed to be there: an
+ * inherited cache entry can be old enough to predate `backup` entirely (#115
+ * added it after #71 shipped `jobs` alone).
+ *
+ * Never throws. Two of `cachedJson`'s three call sites are outside anywhere
+ * that catches - the fresh hit is above its own try, and the stale fallback
+ * is itself inside a catch, where a second throw is not caught by the first.
+ * A `TypeError` from `.some()` on a body shaped unlike this would surface as
+ * an unrelated 500, on exactly the paths meant to answer instead of failing.
+ * Whatever does not look like `{ jobs: [...], backup: [...] }` is graded
+ * unhealthy rather than risked - the same direction `isUnhealthy` already
+ * takes for a job or a table missing `stale` alone, extended to the body
+ * missing the arrays themselves.
  */
 export function statusFor(body: unknown): number {
-  return isUnhealthy(body as { jobs: JobHealth[]; backup: BackupHealth[] }) ? 503 : 200;
+  if (typeof body !== 'object' || body === null) return 503;
+
+  const { jobs, backup } = body as { jobs?: unknown; backup?: unknown };
+
+  if (!Array.isArray(jobs) || !Array.isArray(backup)) return 503;
+
+  return isUnhealthy({ jobs, backup } as { jobs: JobHealth[]; backup: BackupHealth[] }) ? 503 : 200;
 }

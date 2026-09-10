@@ -299,6 +299,47 @@ describe('cachedJson', () => {
 
       expect(response.status).toEqual(200);
     });
+
+    // A fresh hit is the most-taken path cachedJson has, and the six
+    // endpoints that never pass statusOf must not pay to parse a body they
+    // are about to answer 200 for regardless. A stored body that is not even
+    // valid JSON proves the parse was skipped: awaiting it would reject.
+    test('does not parse the stored body on a fresh hit when the caller does not pass statusOf', async () => {
+      const cache = testCache();
+      const key = new Request(new URL(request().url).toString(), { method: 'GET' });
+      const now = at('2026-09-07T12:00:00Z');
+
+      await cache.put(key, new Response('not valid json', { headers: { 'x-kemov-stored-at': now.toISOString() } }));
+
+      const response = await cachedJson(request(), cache, async () => ({ channels: [] }), now);
+
+      expect(response.status).toEqual(200);
+      expect(response.headers.get('x-kemov-cache')).toEqual('fresh');
+    });
+
+    // The same, on the stale-after-D1-failure fallback.
+    test('does not parse the stored body on the stale fallback when the caller does not pass statusOf', async () => {
+      const cache = testCache();
+      const key = new Request(new URL(request().url).toString(), { method: 'GET' });
+      const stored = at('2026-09-07T12:00:00Z');
+
+      await cache.put(key, new Response('not valid json', { headers: { 'x-kemov-stored-at': stored.toISOString() } }));
+
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const response = await cachedJson(
+        request(),
+        cache,
+        async () => {
+          throw new Error('D1 is not answering');
+        },
+        new Date(stored.getTime() + (CACHE_SECONDS + 1) * 1000),
+      );
+
+      expect(response.status).toEqual(200);
+      expect(response.headers.get('x-kemov-cache')).toEqual('stale');
+
+      error.mockRestore();
+    });
   });
 
   // Pins workerd's own Cache API, which this file's in-memory testCache

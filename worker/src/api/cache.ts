@@ -145,8 +145,15 @@ const ALWAYS_200: StatusOf = () => 200;
  * for it (see `withCacheHeaders`), so the status a caller sees is worked out
  * from the stored body itself, on every path that can serve one - the fresh
  * hit and the stale-after-failure fallback included, not only a fresh build.
- * A builder that has no such body, like the ones this defaults for, is
- * unaffected: `ALWAYS_200` reads nothing from it.
+ *
+ * A fresh hit and a stale fallback both hold a `Response`, not the object a
+ * builder returned, so reading their body back out means parsing it - and
+ * both are compared against `ALWAYS_200` first so that the six endpoints not
+ * asking this question never pay for it. A fresh cache hit is the most-taken
+ * path this function has, on a body /api/videos/ranking can hand back a
+ * hundred rows of, and Workers are billed on CPU time; parsing a body only to
+ * throw the result away on every one of those hits would be a cost with
+ * nothing behind it.
  */
 export async function cachedJson(
   request: Request,
@@ -160,9 +167,9 @@ export async function cachedJson(
   const storedAge = stored === undefined ? null : storedAgeSeconds(stored, now);
 
   if (stored !== undefined && storedAge !== null && storedAge <= CACHE_SECONDS) {
-    const body = await stored.clone().json();
+    const status = statusOf === ALWAYS_200 ? 200 : statusOf(await stored.clone().json());
 
-    return withCacheHeaders(stored, { state: 'fresh', staleSeconds: storedAge }, now, statusOf(body));
+    return withCacheHeaders(stored, { state: 'fresh', staleSeconds: storedAge }, now, status);
   }
 
   try {
@@ -199,9 +206,9 @@ export async function cachedJson(
     console.error(`api: building ${new URL(request.url).pathname} failed`, error);
 
     if (stored !== undefined && storedAge !== null && storedAge <= STALE_SECONDS) {
-      const body = await stored.clone().json();
+      const status = statusOf === ALWAYS_200 ? 200 : statusOf(await stored.clone().json());
 
-      return withCacheHeaders(stored, { state: 'stale', staleSeconds: storedAge }, now, statusOf(body));
+      return withCacheHeaders(stored, { state: 'stale', staleSeconds: storedAge }, now, status);
     }
 
     // Nothing to fall back to. Saying so is more useful than an empty 200: the

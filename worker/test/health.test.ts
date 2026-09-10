@@ -481,4 +481,25 @@ describe('statusFor', () => {
 
     expect(statusFor(body)).toEqual(503);
   });
+
+  // statusFor is called from cachedJson's fresh-hit path, which is outside
+  // any try, and from its stale-fallback path, which is itself inside a
+  // catch that would not catch a second throw - neither can afford a
+  // TypeError from a body shaped unlike { jobs: [...], backup: [...] }. Each
+  // of these would throw on result.jobs.some(...) if statusFor still cast
+  // blindly; asserting 503 rather than a thrown error is the point.
+  test('is 503, not a throw, for a body with no jobs at all', () => {
+    expect(() => statusFor({ backup: [] })).not.toThrow();
+    expect(statusFor({ backup: [] })).toEqual(503);
+  });
+
+  test('is 503, not a throw, for a body with no backup at all', () => {
+    expect(() => statusFor({ jobs: [] })).not.toThrow();
+    expect(statusFor({ jobs: [] })).toEqual(503);
+  });
+
+  test('is 503, not a throw, for a body whose jobs and backup are not arrays', () => {
+    expect(() => statusFor({ jobs: 'not an array', backup: null })).not.toThrow();
+    expect(statusFor({ jobs: 'not an array', backup: null })).toEqual(503);
+  });
 });
