@@ -191,7 +191,7 @@ export async function health(
   now: Date = new Date(),
 ): Promise<{ jobs: JobHealth[]; backup: BackupHealth[]; databaseReadAt: string }> {
   const today = dayOf(formatTimestamp(now));
-  const backup = Promise.all(
+  const backup = await Promise.all(
     BACKED_UP_TABLES.map(async (table): Promise<BackupHealth> => {
       const latestDate = await latestDay(env.BACKUP, table.name);
 
@@ -233,7 +233,7 @@ export async function health(
       maxAttempts: worstAttempts(results, kind),
       unavailable: countOf(results, kind, 'unavailable'),
     })),
-    backup: await backup,
+    backup,
     // When these figures were read. A cached answer keeps the reading's time
     // rather than taking the reader's, which is what makes a stale answer
     // recognisable as one.

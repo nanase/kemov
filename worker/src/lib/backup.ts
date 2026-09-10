@@ -1,9 +1,13 @@
 /**
  * Turning what D1 holds into something that can be put back.
  *
- * Every function here is pure: no D1, no R2, no clock of its own. The job that
- * reads and writes is ../collector/backup.ts, the same split the collectors
- * use, and it is what lets the round trip be tested without either service.
+ * Almost every function here is pure: no D1, no R2, no clock of its own. The
+ * job that reads and writes is ../collector/backup.ts, the same split the
+ * collectors use, and it is what lets the round trip be tested without either
+ * service. `daysPresent` and `latestDay` are the exception - they read R2 -
+ * and live here anyway because #115 has both ../collector/backup.ts and
+ * ../api/health.ts calling them, and neither is a place the other may import
+ * from.
  *
  * The output is SQL rather than a data format, because the completion
  * condition for #111 is being able to restore rather than being able to
