@@ -301,15 +301,24 @@ describe('cachedJson', () => {
     });
   });
 
-  // #110's actual bug, reproduced against workerd's own Cache API rather than
-  // this file's in-memory double, which cannot reproduce it: a double that
-  // always stores whatever it is given cannot tell the difference between the
-  // fix and the design it replaced.
+  // Pins workerd's own Cache API, which this file's in-memory testCache
+  // cannot: that double stores whatever it is given, so it cannot tell the
+  // fix below apart from the design it replaced.
+  //
+  // Not a claim about production. Production has been measured (#110) to
+  // store a 200 with no cache-control header under its own default, where
+  // workerd stores nothing - this describe is about workerd's own behaviour,
+  // which the code still has to run correctly under in tests, not about what
+  // production does. Whether a non-2xx Response is stored in production is
+  // not something these tests answer either; there is no safe way to hold a
+  // real outage open long enough to check, which is the whole reason
+  // `cachedJson` no longer relies on it (see `statusOf`, and the comment on
+  // `withCacheHeaders` in cache.ts).
   describe('the real Cache API', () => {
-    // What the fix above is for: put() neither throws nor stores anything for
-    // a Response with no cache-control header, regardless of status. Measured
-    // directly against the API rather than inferred, because this file's
-    // in-memory testCache stores whatever it is handed and cannot show it.
+    // cache-control is set explicitly by cachedJson (see the comment in
+    // cache.ts) so that CACHE_SECONDS, not workerd's or production's default,
+    // is what governs an entry's edge lifetime either way - this is why that
+    // matters on workerd specifically.
     test('put() silently stores nothing for a Response with no cache-control', async () => {
       const cache = caches.default;
       const key = new Request(`https://kemov.nanase.cc/api/__test-cache-real-no-control-${crypto.randomUUID()}`);
@@ -319,10 +328,9 @@ describe('cachedJson', () => {
       expect(await cache.match(key)).toBeUndefined();
     });
 
-    // The same, for a non-2xx response even with cache-control set: this is
-    // #110's own bug, distinct from the one above, and the reason the status
-    // a caller is answered with can no longer be read off the stored Response
-    // itself - see statusOf on cachedJson.
+    // The reason statusOf exists: even with cache-control set, put() for a
+    // non-2xx Response stores nothing on workerd, and the status a caller is
+    // answered with can no longer be read off the stored Response itself.
     test('put() silently stores nothing for a non-2xx Response', async () => {
       const cache = caches.default;
       const key = new Request(`https://kemov.nanase.cc/api/__test-cache-real-503-${crypto.randomUUID()}`);

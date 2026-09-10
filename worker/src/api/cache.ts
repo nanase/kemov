@@ -76,11 +76,13 @@ function storedAgeSeconds(response: Response, now: Date): number | null {
 /**
  * `status` is a separate parameter, not read from `response.status`, because
  * of what stores it: every entry this puts into `cacheImpl` is put at 200 (see
- * `cachedJson`), since the Cache API was measured on workerd to accept a 503
- * `put()` without throwing and then silently not store it - `match()` for the
- * same key came back undefined every time. A stored 200 is what makes the
- * fresh and stale paths below reach this function at all; the status a caller
- * should actually see is decided from the body, separately, by `statusOf`.
+ * `cachedJson`). 200 is the only status this has ever confirmed the edge
+ * actually keeps; on workerd, `put()` for a 503 neither threw nor stored
+ * anything, and there is no safe way to check whether production's own Cache
+ * API behaves the same - that would mean holding a real outage open long
+ * enough to test it. Storing at 200 always sidesteps the question rather than
+ * answering it. The status a caller should actually see is decided from the
+ * body, separately, by `statusOf`.
  */
 function withCacheHeaders(response: Response, outcome: CacheOutcome, now: Date, status: number): Response {
   const headers = new Headers(response.headers);
@@ -171,12 +173,15 @@ export async function cachedJson(
     const built = jsonResponse(body);
 
     built.headers.set(STORED_AT, now.toISOString());
-    // Measured against the real Cache API on workerd: put() silently stores
-    // nothing for a Response with no cache-control header, no matter its
-    // status - not an error, just an empty entry the next match() cannot
-    // find. withCacheHeaders sets this on the clone every caller sees, which
-    // is too late for the copy this puts: the header has to be on `built`
-    // itself before the put() below, not only on the answer returned.
+    // On workerd, put() for a 200 Response with no cache-control also stores
+    // nothing - production has been measured to store one anyway, under
+    // whatever default the edge falls back to when this header is absent, so
+    // this is not a fix for a body production was dropping. Setting it here
+    // makes that default explicit instead: CACHE_SECONDS, not whatever the
+    // edge would otherwise have chosen, is what governs how long an entry may
+    // be served without this code being asked again. withCacheHeaders sets
+    // the same header on the clone every caller sees, which is a different
+    // copy from the one put() below stores - each needs it set on its own.
     built.headers.set('cache-control', `public, max-age=${CACHE_SECONDS}`);
 
     const answered = withCacheHeaders(built.clone(), { state: 'miss', staleSeconds: 0 }, now, statusOf(body));
