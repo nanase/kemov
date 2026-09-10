@@ -1,7 +1,7 @@
 import type { Env } from '../lib/env';
-import { cachedJson, errorWithCacheHeaders, NotFound, StatusedJson } from './cache';
+import { cachedJson, errorWithCacheHeaders, NotFound } from './cache';
 import { getChannel, getHistory, listChannels, readHistoryRange } from './channels';
-import { health, isUnhealthy } from './health';
+import { health, statusFor } from './health';
 import { listLive } from './live';
 import {
   DEFAULT_PAGE_SIZE,
@@ -47,18 +47,13 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
 
   if (prefix !== 'api') return errorWithCacheHeaders(404, `no endpoint at ${pathname}`);
 
-  const cached = (build: () => Promise<unknown>) => cachedJson(request, cacheImpl, build);
+  const cached = (build: () => Promise<unknown>, statusOf?: (body: unknown) => number) =>
+    cachedJson(request, cacheImpl, build, undefined, statusOf);
 
-  if (segments.length === 2 && resource === 'health') {
-    return await cached(async () => {
-      const result = await health(env);
-
-      // #110: the body always reports every job and table, and the status
-      // alone says whether any of them is stale, so that any monitor can
-      // watch this one code rather than parsing the jobs and backup arrays.
-      return isUnhealthy(result) ? new StatusedJson(result, 503) : result;
-    });
-  }
+  // #110: the body always reports every job and table; the status is derived
+  // from it by statusFor, so that a monitor of this endpoint's status code -
+  // not yet chosen, see #115 - would not need to parse jobs and backup itself.
+  if (segments.length === 2 && resource === 'health') return await cached(() => health(env), statusFor);
   if (segments.length === 2 && resource === 'live') return await cached(() => listLive(env));
   if (segments.length === 2 && resource === 'channels') return await cached(() => listChannels(env));
 

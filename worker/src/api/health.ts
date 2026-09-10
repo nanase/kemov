@@ -281,3 +281,17 @@ export async function health(
 export function isUnhealthy(result: { jobs: JobHealth[]; backup: BackupHealth[] }): boolean {
   return result.jobs.some((job) => job.stale) || result.backup.some((table) => table.stale);
 }
+
+/**
+ * The HTTP status /api/health should answer with, read from its own JSON body.
+ *
+ * `body` is `unknown` rather than `health`'s own return type because this is
+ * `cachedJson`'s `statusOf`, called on a body that has been round-tripped
+ * through the Cache API's storage as JSON - the object `health` built is long
+ * gone by then, and all that is left is whatever `JSON.parse` gives back. The
+ * shape survives that trip (booleans, strings, numbers and arrays all do), so
+ * the cast here is safe for any body this endpoint itself ever stored.
+ */
+export function statusFor(body: unknown): number {
+  return isUnhealthy(body as { jobs: JobHealth[]; backup: BackupHealth[] }) ? 503 : 200;
+}

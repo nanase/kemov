@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 
-import { health, isUnhealthy } from '../src/api/health';
+import { health, isUnhealthy, statusFor } from '../src/api/health';
 import { BACKED_UP_TABLES, backupKey } from '../src/lib/backup';
 import { CHAT_REPLAY_ACTIVITY_STALE_MINUTES, JOB_SUCCESS_STALE_MINUTES } from '../src/lib/health-thresholds';
 import { formatTimestamp } from '../src/lib/time';
@@ -412,5 +412,24 @@ describe('isUnhealthy', () => {
     await env.BACKUP.delete(backupKey('channel_snapshot', '2026-09-09'));
 
     expect(isUnhealthy(await health(env, NOW))).toBe(true);
+  });
+});
+
+// statusFor is cachedJson's statusOf, called on health's answer after it has
+// been round-tripped through the Cache API's storage as JSON (see cache.ts) -
+// this checks the cast in statusFor survives that round trip, not just a
+// direct call on health's own return value, which isUnhealthy's tests above
+// already cover.
+describe('statusFor', () => {
+  test('is 200 for a healthy body that has been through JSON', () => {
+    const body = JSON.parse(JSON.stringify({ jobs: [{ stale: false }], backup: [{ stale: false }] }));
+
+    expect(statusFor(body)).toEqual(200);
+  });
+
+  test('is 503 for an unhealthy body that has been through JSON', () => {
+    const body = JSON.parse(JSON.stringify({ jobs: [{ stale: true }], backup: [{ stale: false }] }));
+
+    expect(statusFor(body)).toEqual(503);
   });
 });

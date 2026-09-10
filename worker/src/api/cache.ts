@@ -20,23 +20,6 @@ export class NotFound extends Error {}
 export class BadRequest extends Error {}
 
 /**
- * Wraps a builder's JSON answer with the HTTP status it should be served as.
- *
- * Every endpoint but /api/health answers 200 on a successful build, and
- * `build` below is shared by all of them. #110 needed one whose success can
- * still be 503 - one or more of its own fields say the data itself is stale
- * - so the status has to travel from the builder to the Response without the
- * others ever having to think about it. `instanceof` keeps that opt-in: a
- * builder that returns its body plainly still gets 200, exactly as before.
- */
-export class StatusedJson<T> {
-  constructor(
-    public readonly body: T,
-    public readonly status: number,
-  ) {}
-}
-
-/**
  * Answering from the edge cache, and answering from it again when D1 will not
  * answer at all.
  *
@@ -90,7 +73,16 @@ function storedAgeSeconds(response: Response, now: Date): number | null {
   return Number.isFinite(age) ? Math.max(0, Math.round(age)) : null;
 }
 
-function withCacheHeaders(response: Response, outcome: CacheOutcome, now: Date): Response {
+/**
+ * `status` is a separate parameter, not read from `response.status`, because
+ * of what stores it: every entry this puts into `cacheImpl` is put at 200 (see
+ * `cachedJson`), since the Cache API was measured on workerd to accept a 503
+ * `put()` without throwing and then silently not store it - `match()` for the
+ * same key came back undefined every time. A stored 200 is what makes the
+ * fresh and stale paths below reach this function at all; the status a caller
+ * should actually see is decided from the body, separately, by `statusOf`.
+ */
+function withCacheHeaders(response: Response, outcome: CacheOutcome, now: Date, status: number): Response {
   const headers = new Headers(response.headers);
 
   headers.set('x-kemov-cache', outcome.state);
@@ -101,7 +93,7 @@ function withCacheHeaders(response: Response, outcome: CacheOutcome, now: Date):
   headers.set('cache-control', `public, max-age=${CACHE_SECONDS}`);
   headers.set(STORED_AT, response.headers.get(STORED_AT) ?? now.toISOString());
 
-  return new Response(response.body, { status: response.status, headers });
+  return new Response(response.body, { status, headers });
 }
 
 /**
@@ -126,6 +118,11 @@ export function errorWithCacheHeaders(status: number, message: string): Response
   return response;
 }
 
+/** The HTTP status a JSON body should be answered with. See `statusOf` on `cachedJson`. */
+type StatusOf = (body: unknown) => number;
+
+const ALWAYS_200: StatusOf = () => 200;
+
 /**
  * Builds a response, or serves the last good one.
  *
@@ -139,29 +136,50 @@ export function errorWithCacheHeaders(status: number, message: string): Response
  * is available on workerd, but an isolate keeps no entries between tests and a
  * cache that never hits would let every one of these paths pass without being
  * exercised.
+ *
+ * `statusOf` is what every endpoint but /api/health leaves at its default of
+ * "always 200": #110 needed a successful build whose answer is sometimes 503,
+ * and every entry `cacheImpl` holds is put at 200 regardless of what is served
+ * for it (see `withCacheHeaders`), so the status a caller sees is worked out
+ * from the stored body itself, on every path that can serve one - the fresh
+ * hit and the stale-after-failure fallback included, not only a fresh build.
+ * A builder that has no such body, like the ones this defaults for, is
+ * unaffected: `ALWAYS_200` reads nothing from it.
  */
 export async function cachedJson(
   request: Request,
   cacheImpl: Cache,
   build: () => Promise<unknown>,
   now: Date = new Date(),
+  statusOf: StatusOf = ALWAYS_200,
 ): Promise<Response> {
   const key = new Request(new URL(request.url).toString(), { method: 'GET' });
   const stored = await cacheImpl.match(key);
   const storedAge = stored === undefined ? null : storedAgeSeconds(stored, now);
 
   if (stored !== undefined && storedAge !== null && storedAge <= CACHE_SECONDS) {
-    return withCacheHeaders(stored, { state: 'fresh', staleSeconds: storedAge }, now);
+    const body = await stored.clone().json();
+
+    return withCacheHeaders(stored, { state: 'fresh', staleSeconds: storedAge }, now, statusOf(body));
   }
 
   try {
-    const result = await build();
-    const { body, status } = result instanceof StatusedJson ? result : { body: result, status: 200 };
-    const built = jsonResponse(body, { status });
+    const body = await build();
+    // Always 200 here - see the comment on withCacheHeaders for why the
+    // status this is put at and the status a caller is answered with are
+    // no longer the same thing.
+    const built = jsonResponse(body);
 
     built.headers.set(STORED_AT, now.toISOString());
+    // Measured against the real Cache API on workerd: put() silently stores
+    // nothing for a Response with no cache-control header, no matter its
+    // status - not an error, just an empty entry the next match() cannot
+    // find. withCacheHeaders sets this on the clone every caller sees, which
+    // is too late for the copy this puts: the header has to be on `built`
+    // itself before the put() below, not only on the answer returned.
+    built.headers.set('cache-control', `public, max-age=${CACHE_SECONDS}`);
 
-    const answered = withCacheHeaders(built.clone(), { state: 'miss', staleSeconds: 0 }, now);
+    const answered = withCacheHeaders(built.clone(), { state: 'miss', staleSeconds: 0 }, now, statusOf(body));
 
     await cacheImpl.put(key, built);
 
@@ -176,7 +194,9 @@ export async function cachedJson(
     console.error(`api: building ${new URL(request.url).pathname} failed`, error);
 
     if (stored !== undefined && storedAge !== null && storedAge <= STALE_SECONDS) {
-      return withCacheHeaders(stored, { state: 'stale', staleSeconds: storedAge }, now);
+      const body = await stored.clone().json();
+
+      return withCacheHeaders(stored, { state: 'stale', staleSeconds: storedAge }, now, statusOf(body));
     }
 
     // Nothing to fall back to. Saying so is more useful than an empty 200: the
