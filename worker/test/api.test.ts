@@ -1,6 +1,8 @@
 import { env } from 'cloudflare:test';
 
 import { handleApiRequest } from '../src/api';
+import { backupKey, dayOf } from '../src/lib/backup';
+import { formatTimestamp } from '../src/lib/time';
 
 /**
  * The routing and the shape of what comes back. What each endpoint computes is
@@ -234,9 +236,9 @@ describe('bad requests', () => {
 // #110: the one endpoint whose success is not always 200. What each field is
 // graded on is health.test.ts's job; this checks the wiring from health() to
 // the HTTP status, and that the 60-second cache keeps the two together.
-describe('/api/health', () => {
+describe('health status', () => {
   async function seedHealthy(): Promise<void> {
-    const recent = new Date().toISOString().slice(0, 19) + 'Z';
+    const recent = formatTimestamp(new Date());
 
     for (const kind of ['channel_stats', 'video_discover', 'video_update']) {
       await env.DB.prepare(
@@ -247,11 +249,11 @@ describe('/api/health', () => {
         .run();
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = dayOf(recent);
 
-    await env.BACKUP.put(`video/${today}.sql`, '');
-    await env.BACKUP.put(`channel/${today}.sql`, '');
-    await env.BACKUP.put(`channel_snapshot/${today}.sql`, '');
+    await env.BACKUP.put(backupKey('video', today), '');
+    await env.BACKUP.put(backupKey('channel', today), '');
+    await env.BACKUP.put(backupKey('channel_snapshot', today), '');
   }
 
   test('answers 200 when every job and table is within its threshold', async () => {

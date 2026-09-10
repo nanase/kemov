@@ -3,6 +3,7 @@ import { env } from 'cloudflare:test';
 import { health, isUnhealthy } from '../src/api/health';
 import { BACKED_UP_TABLES, backupKey } from '../src/lib/backup';
 import { CHAT_REPLAY_ACTIVITY_STALE_MINUTES, JOB_SUCCESS_STALE_MINUTES } from '../src/lib/health-thresholds';
+import { formatTimestamp } from '../src/lib/time';
 
 /**
  * GET /api/health, against the real D1.
@@ -53,8 +54,7 @@ async function insertTask(
 const jobNamed = async (name: string) => (await health(env)).jobs.find((job) => job.job === name);
 
 /** An ISO instant `minutes` before `now`, in collect_task's updated_at shape. */
-const isoMinutesAgo = (now: Date, minutes: number) =>
-  `${new Date(now.getTime() - minutes * 60_000).toISOString().slice(0, 19)}Z`;
+const isoMinutesAgo = (now: Date, minutes: number) => formatTimestamp(new Date(now.getTime() - minutes * 60_000));
 
 async function clearBucket(): Promise<void> {
   const listed = await env.BACKUP.list();

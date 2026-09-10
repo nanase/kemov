@@ -23,10 +23,10 @@ export const JOB_SUCCESS_STALE_MINUTES = 35;
  * How stale chat-replay's `lastActivityAt` may be, in minutes, while work is
  * queued, before it counts as stopped.
  *
- * Only checked while `queued > 0` - see `isChatReplayStale`. Its cron runs
- * every minute, so 10 minutes is ten missed ticks, not three; chat-replay's
- * queue is a resume position rather than a page a monitor should treat like
- * the ten-minute jobs above.
+ * Only checked while `queued > 0` - see health.ts, where the two are read
+ * together. Its cron runs every minute, so 10 minutes is ten missed ticks,
+ * not three; chat-replay's queue is a resume position rather than a page a
+ * monitor should treat like the ten-minute jobs above.
  */
 export const CHAT_REPLAY_ACTIVITY_STALE_MINUTES = 10;
 
@@ -39,7 +39,7 @@ export const CHAT_REPLAY_ACTIVITY_STALE_MINUTES = 10;
  * threshold applied to all three would fire on `channel_snapshot` every
  * night it is perfectly healthy.
  */
-export const BACKUP_FRESH_DAYS_AGO: Record<string, number> = {
+export const BACKUP_FRESH_DAYS_AGO: Readonly<Record<string, number>> = {
   channel: 0,
   video: 0,
   channel_snapshot: 1,
@@ -73,9 +73,10 @@ export function isTimestampStale(at: string | null, staleMinutes: number, now: D
  * Whether a backed-up table's newest file is stale, given how many days old
  * it is (null meaning R2 holds none) and which table it is.
  *
- * `daysAgo >= 基準値 + 2`, read from `BACKUP_FRESH_DAYS_AGO` by table name. A
- * table this map does not know is graded against 0, the stricter of the two
- * baselines in use, rather than silently passing as healthy.
+ * `daysAgo >= freshDaysAgo + BACKUP_STALE_GRACE_DAYS`, with freshDaysAgo read
+ * from `BACKUP_FRESH_DAYS_AGO` by table name. A table this map does not know
+ * is graded against 0, the stricter of the two baselines in use, rather than
+ * silently passing as healthy.
  */
 export function isBackupStale(tableName: string, daysAgo: number | null): boolean {
   if (daysAgo === null) return true;
