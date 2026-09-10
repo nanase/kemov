@@ -362,7 +362,9 @@ Applying the files directly, as step 1 does, leaves `d1_migrations` empty. That 
 | `channel/`, `video/` | 30 days      | Each file is a complete copy. The newest one is all that is needed; older ones are duplicates.                          |
 | `channel_snapshot/`  | **365 days** | Each file is one day and no other file holds that day. Deleting one leaves a hole in the history that nothing can fill. |
 
-The snapshot history began on 2026-09-07 and exists nowhere else. A day of it is about 119 KiB of SQL, measured against production values on 2026-09-08, so a year of it costs some 44 MB; `channel` and `video` add roughly 70 MB more at 30 days. Both fit well inside R2's free 10 GB tier.
+That hole is a hole in R2, not in the history itself: `channel_snapshot` only ever gains rows in D1 (see [Backups](#backups) above), so D1 already holds every day of it forever. R2's copy exists to restore D1 if D1 is what breaks, and that need shows up right after an incident, not a year later — 365 days bounds how long the copy waits around for that, not how long the history survives.
+
+The snapshot history began on 2026-09-07 and exists nowhere else in R2. A day of it is about 119 KiB of SQL, measured against production values on 2026-09-08, so a year of it costs some 44 MB; `channel` and `video` add roughly 70 MB more at 30 days. Both fit well inside R2's free 10 GB tier.
 
 Set with three `lifecycle add` calls, run from `worker/`:
 
