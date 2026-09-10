@@ -218,7 +218,16 @@ export function backupKey(tableName: string, date: string): string {
   return `${tableName}/${date}.sql`;
 }
 
-/** The date part of a key backupKey produced, or null if it made no key. */
+/**
+ * The date part of a key backupKey produced, or null if it made no key.
+ *
+ * The bucket is not only written by backupKey: a stray object under the same
+ * prefix - a typo left over from checking the bucket by hand, say - must not
+ * be read back as a date. The regex alone would accept '2026-02-31', which
+ * Date rolls over into 2026-03-03 rather than refusing, so the round trip
+ * through midnight and back is what actually proves the calendar day is
+ * real.
+ */
 export function dateFromKey(tableName: string, key: string): string | null {
   const prefix = `${tableName}/`;
 
@@ -226,7 +235,9 @@ export function dateFromKey(tableName: string, key: string): string | null {
 
   const date = key.slice(prefix.length, -'.sql'.length);
 
-  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+
+  return dayOf(formatTimestamp(midnight(date))) === date ? date : null;
 }
 
 /**

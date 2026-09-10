@@ -502,6 +502,13 @@ describe('dateFromKey', () => {
       expect(dateFromKey('channel_snapshot', key)).toBeNull();
     },
   );
+
+  // The regex alone would take this: Date rolls February 31 over into March
+  // rather than refusing it, and a stray object under the prefix - a typo
+  // from checking the bucket by hand - must not be read back as a date.
+  test('refuses a date the calendar has no such day on', () => {
+    expect(dateFromKey('channel_snapshot', 'channel_snapshot/2026-02-31.sql')).toBeNull();
+  });
 });
 
 describe('daysPresent', () => {
