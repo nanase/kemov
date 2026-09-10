@@ -311,7 +311,7 @@ Inside a file, one `INSERT` names at most 200 rows and at most 80,000 bytes, whi
 
 `collect_task` and `chat_author` are deliberately absent. They hold where collection has got to, they rebuild themselves within a tick or two, and restoring them would send the chat job back through replays it has already read.
 
-**Nothing reports a backup that stops.** `/api/health` covers the four collection jobs by reading their `collect_task` rows, and this job writes none, so a run that fails every night looks from outside like one that works — see [#115](https://github.com/nanase/kemov/issues/115). Until something watches it, the bucket is the record: `yarn wrangler r2 object list kemov-backup --remote` shows the newest key of each prefix, and a `channel_snapshot/` date that is not yesterday means the job has not been getting through.
+`/api/health` covers this job too, since [#115](https://github.com/nanase/kemov/issues/115). It cannot read `collect_task` for it — this job writes none of those rows — so its `backup` field reads the bucket instead: the newest day each table has a file for, and how many days old that is. `channel_snapshot` reads one day older than `channel` and `video` even when nothing is wrong, because it writes yesterday's finished day rather than today's (see above). The field does not say how old is too old; that threshold is [#110](https://github.com/nanase/kemov/issues/110)'s decision.
 
 ### Restoring from a Backup
 

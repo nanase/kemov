@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 
 import { health } from '../src/api/health';
+import { BACKED_UP_TABLES, backupKey } from '../src/lib/backup';
 
 /**
  * GET /api/health, against the real D1.
@@ -50,11 +51,18 @@ async function insertTask(
 
 const jobNamed = async (name: string) => (await health(env)).jobs.find((job) => job.job === name);
 
+async function clearBucket(): Promise<void> {
+  const listed = await env.BACKUP.list();
+
+  await Promise.all(listed.objects.map((object) => env.BACKUP.delete(object.key)));
+}
+
 beforeEach(async () => {
   await env.DB.prepare('DELETE FROM collect_task').run();
   await env.DB.prepare('DELETE FROM channel_snapshot').run();
   await env.DB.prepare('DELETE FROM video').run();
   await env.DB.prepare('DELETE FROM channel').run();
+  await clearBucket();
 });
 
 describe('health', () => {
@@ -248,5 +256,54 @@ describe('health', () => {
 
   test('says when it read the database', async () => {
     expect((await health(env)).databaseReadAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+  });
+});
+
+// The backup job writes none of its own collect_task rows, which is #115:
+// this is what /api/health reads instead, since the job's own tests
+// (backup.test.ts) already cover what daysPresent and latestDay do with the
+// bucket.
+describe('backup', () => {
+  const NOW = new Date('2026-09-10T00:20:00Z');
+
+  test('reports every backed-up table, even one with no files', async () => {
+    const { backup } = await health(env, NOW);
+
+    expect(backup).toEqual(BACKED_UP_TABLES.map((table) => ({ table: table.name, latestDate: null, daysAgo: null })));
+  });
+
+  // The offset this endpoint does not adjust for: channel_snapshot's newest
+  // file names yesterday even when the job is working, so its daysAgo reads
+  // as 1 here beside the others' 0. Sorting that out belongs to #110.
+  test('reads the newest file of each table, and how many days old it is', async () => {
+    await env.BACKUP.put(backupKey('video', '2026-09-10'), '');
+    await env.BACKUP.put(backupKey('channel', '2026-09-10'), '');
+    await env.BACKUP.put(backupKey('channel_snapshot', '2026-09-09'), '');
+
+    const { backup } = await health(env, NOW);
+
+    expect(Object.fromEntries(backup.map((table) => [table.table, table]))).toEqual({
+      video: { table: 'video', latestDate: '2026-09-10', daysAgo: 0 },
+      channel: { table: 'channel', latestDate: '2026-09-10', daysAgo: 0 },
+      channel_snapshot: { table: 'channel_snapshot', latestDate: '2026-09-09', daysAgo: 1 },
+    });
+  });
+
+  test('takes the newest of several files rather than the first listed', async () => {
+    await env.BACKUP.put(backupKey('video', '2026-09-08'), '');
+    await env.BACKUP.put(backupKey('video', '2026-09-10'), '');
+    await env.BACKUP.put(backupKey('video', '2026-09-09'), '');
+
+    const { backup } = await health(env, NOW);
+
+    expect(backup.find((table) => table.table === 'video')).toMatchObject({ latestDate: '2026-09-10', daysAgo: 0 });
+  });
+
+  test('keeps one table file out of another', async () => {
+    await env.BACKUP.put(backupKey('video', '2026-09-10'), '');
+
+    const { backup } = await health(env, NOW);
+
+    expect(backup.find((table) => table.table === 'channel')).toMatchObject({ latestDate: null, daysAgo: null });
   });
 });

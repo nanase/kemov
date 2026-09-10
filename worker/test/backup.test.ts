@@ -7,6 +7,9 @@ import {
   dateFromKey,
   dayBounds,
   dayOf,
+  daysBetween,
+  daysPresent,
+  latestDay,
   literal,
   MAX_DAYS_PER_RUN,
   missingDays,
@@ -499,4 +502,53 @@ describe('dateFromKey', () => {
       expect(dateFromKey('channel_snapshot', key)).toBeNull();
     },
   );
+
+  // The regex alone would take this: Date rolls February 31 over into March
+  // rather than refusing it, and a stray object under the prefix - a typo
+  // from checking the bucket by hand - must not be read back as a date.
+  test('refuses a date the calendar has no such day on', () => {
+    expect(dateFromKey('channel_snapshot', 'channel_snapshot/2026-02-31.sql')).toBeNull();
+  });
+});
+
+describe('daysPresent', () => {
+  test('reads back the days one table has files for, apart from another table', async () => {
+    await env.BACKUP.put(backupKey('video', '2026-09-08'), '');
+    await env.BACKUP.put(backupKey('video', '2026-09-09'), '');
+    await env.BACKUP.put(backupKey('channel', '2026-09-08'), '');
+
+    expect(await daysPresent(env.BACKUP, 'video')).toEqual(new Set(['2026-09-08', '2026-09-09']));
+  });
+
+  test('has nothing to say about a table with no files', async () => {
+    expect(await daysPresent(env.BACKUP, 'video')).toEqual(new Set());
+  });
+});
+
+describe('latestDay', () => {
+  test('names the newest of several days', async () => {
+    await env.BACKUP.put(backupKey('video', '2026-09-08'), '');
+    await env.BACKUP.put(backupKey('video', '2026-09-10'), '');
+    await env.BACKUP.put(backupKey('video', '2026-09-09'), '');
+
+    expect(await latestDay(env.BACKUP, 'video')).toEqual('2026-09-10');
+  });
+
+  test('is null for a table with no files', async () => {
+    expect(await latestDay(env.BACKUP, 'video')).toBeNull();
+  });
+});
+
+describe('daysBetween', () => {
+  test('is zero for the same day', () => {
+    expect(daysBetween('2026-09-10', '2026-09-10')).toEqual(0);
+  });
+
+  test('counts a day written yesterday as one day ago', () => {
+    expect(daysBetween('2026-09-09', '2026-09-10')).toEqual(1);
+  });
+
+  test('crosses the end of a month', () => {
+    expect(daysBetween('2026-08-31', '2026-09-02')).toEqual(2);
+  });
 });

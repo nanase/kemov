@@ -2,8 +2,8 @@ import type { Env } from '../lib/env';
 import {
   BACKED_UP_TABLES,
   backupKey,
-  dateFromKey,
   dayBounds,
+  daysPresent,
   dayOf,
   MAX_DAYS_PER_RUN,
   missingDays,
@@ -90,26 +90,6 @@ async function readAll(
   }
 }
 
-/** The days already in R2 for one table. */
-async function daysPresent(bucket: R2Bucket, tableName: string): Promise<Set<string>> {
-  const present = new Set<string>();
-  let cursor: string | undefined;
-
-  for (;;) {
-    const listed = await bucket.list({ prefix: `${tableName}/`, cursor });
-
-    for (const object of listed.objects) {
-      const date = dateFromKey(tableName, object.key);
-
-      if (date !== null) present.add(date);
-    }
-
-    if (!listed.truncated) return present;
-
-    cursor = listed.cursor;
-  }
-}
-
 /** The table the day-at-a-time rule applies to. */
 const SNAPSHOT = BACKED_UP_TABLES.find((table) => table.name === 'channel_snapshot');
 
@@ -177,14 +157,13 @@ async function backUpWholeTable(env: Env, table: TableShape, today: string): Pro
  * others: a backup that carries two tables of three is worth more than no
  * backup, and the one that failed is written by the next run.
  *
- * A failure reaches the worker's log and nothing else. /api/health reports a
- * job by reading its own `collect_task` rows (see the JOBS list in
- * ../api/health.ts), and this job writes none, so a backup that fails every
- * night looks the same from outside as one that works. #115 has that, and is
- * where whatever closes it will be. Two routes were on the table when it was
- * written: rows of this job's own, which needs the kind CHECK in
- * migrations/0001 widened, or the bucket's newest key per prefix, which is
- * the record this job already keeps.
+ * A failure reaches the worker's log, and, since #115, `/api/health` as well:
+ * that endpoint's `backup` field reads the bucket's newest key per prefix
+ * through `latestDay` in ../lib/backup.ts, built on the same `daysPresent`
+ * this job uses to find what is missing. A `collect_task` row of this job's
+ * own was the other option; it was not taken, because #115's completion
+ * condition is noticing by result rather than by whether a write succeeded,
+ * and a `collect_task` row records the latter.
  */
 export async function runBackup(env: Env, now: Date = new Date()): Promise<void> {
   const today = dayOf(formatTimestamp(now));

@@ -1,9 +1,13 @@
 /**
  * Turning what D1 holds into something that can be put back.
  *
- * Every function here is pure: no D1, no R2, no clock of its own. The job that
- * reads and writes is ../collector/backup.ts, the same split the collectors
- * use, and it is what lets the round trip be tested without either service.
+ * Almost every function here is pure: no D1, no R2, no clock of its own. The
+ * job that reads and writes is ../collector/backup.ts, the same split the
+ * collectors use, and it is what lets the round trip be tested without either
+ * service. `daysPresent` and `latestDay` are the exception - they read R2 -
+ * and live here anyway because #115 has both ../collector/backup.ts and
+ * ../api/health.ts calling them, and neither is a place the other may import
+ * from.
  *
  * The output is SQL rather than a data format, because the completion
  * condition for #111 is being able to restore rather than being able to
@@ -214,7 +218,16 @@ export function backupKey(tableName: string, date: string): string {
   return `${tableName}/${date}.sql`;
 }
 
-/** The date part of a key backupKey produced, or null if it made no key. */
+/**
+ * The date part of a key backupKey produced, or null if it made no key.
+ *
+ * The bucket is not only written by backupKey: a stray object under the same
+ * prefix - a typo left over from checking the bucket by hand, say - must not
+ * be read back as a date. The regex alone would accept '2026-02-31', which
+ * Date rolls over into 2026-03-03 rather than refusing, so the round trip
+ * through midnight and back is what actually proves the calendar day is
+ * real.
+ */
 export function dateFromKey(tableName: string, key: string): string | null {
   const prefix = `${tableName}/`;
 
@@ -222,7 +235,63 @@ export function dateFromKey(tableName: string, key: string): string | null {
 
   const date = key.slice(prefix.length, -'.sql'.length);
 
-  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+
+  return dayOf(formatTimestamp(midnight(date))) === date ? date : null;
+}
+
+/**
+ * The days one table already has a file for in R2.
+ *
+ * Read from the bucket rather than remembered anywhere, so nothing has to
+ * agree with anything (#115's decision on the bucket over `collect_task`: an
+ * R2 listing cannot go stale the way `collect_task` rows can, because it is
+ * the write itself rather than a record of having written).
+ *
+ * Shared by the backup job, which uses it to find what is missing, and by
+ * `/api/health`, which uses it to find what is newest.
+ */
+export async function daysPresent(bucket: R2Bucket, tableName: string): Promise<Set<string>> {
+  const present = new Set<string>();
+  let cursor: string | undefined;
+
+  for (;;) {
+    const listed = await bucket.list({ prefix: `${tableName}/`, cursor });
+
+    for (const object of listed.objects) {
+      const date = dateFromKey(tableName, object.key);
+
+      if (date !== null) present.add(date);
+    }
+
+    if (!listed.truncated) return present;
+
+    cursor = listed.cursor;
+  }
+}
+
+/** The newest day one table has a file for in R2, or null if it has none. */
+export async function latestDay(bucket: R2Bucket, tableName: string): Promise<string | null> {
+  let latest: string | null = null;
+
+  for (const day of await daysPresent(bucket, tableName)) {
+    if (latest === null || day > latest) latest = day;
+  }
+
+  return latest;
+}
+
+/**
+ * How many days after `date` the given `today` is, both UTC calendar days.
+ *
+ * Raw, not adjusted for what a table's newest file is expected to be:
+ * `channel_snapshot` writes yesterday's day even when nothing is wrong (see
+ * `BACKED_UP_TABLES`), so a healthy value here is 0 for `channel`/`video` and
+ * 1 for `channel_snapshot`. Reading that difference belongs to whoever
+ * decides a threshold (#110), not to this function.
+ */
+export function daysBetween(date: string, today: string): number {
+  return Math.round((midnight(today).getTime() - midnight(date).getTime()) / 86_400_000);
 }
 
 /** The UTC day an instant falls in. */
