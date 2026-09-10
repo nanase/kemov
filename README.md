@@ -358,7 +358,7 @@ Applying the files directly, as step 1 does, leaves `d1_migrations` empty. That 
 **Three lifecycle rules are set on `kemov-backup`, one per prefix, because one rule covering the whole bucket would be wrong.**
 
 | Prefix               | Retention    | Why                                                                                                                     |
-| --------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| -------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | `channel/`, `video/` | 30 days      | Each file is a complete copy. The newest one is all that is needed; older ones are duplicates.                          |
 | `channel_snapshot/`  | **365 days** | Each file is one day and no other file holds that day. Deleting one leaves a hole in the history that nothing can fill. |
 
