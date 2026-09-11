@@ -271,10 +271,18 @@ async function recordFailure(
 }
 
 /**
- * One request for a page, all the way through the body.
+ * What the endpoint answered, once a request got that far.
  *
- * `cut` and `stalled` are null unless that is what happened; `answered`
- * carries the status and, once it is 200, the body already parsed as JSON.
+ * `body` only exists on the branch where there is one to look at: a status
+ * outside 2xx is decided by readReplayPage on the status alone, and giving it
+ * an unread `body` field would say there was something there to read.
+ */
+type PageAnswer = { ok: true; status: number; body: unknown } | { ok: false; status: number };
+
+/**
+ * One request for a page, all the way through the body: the answer, or which
+ * of the two deadlines cut the request short.
+ *
  * The two deadlines share one AbortController: the first timer covers the
  * wait for headers, and only once they are in is it replaced by a second one
  * covering the read of the body behind them. Aborting the same controller a
@@ -285,10 +293,7 @@ async function recordFailure(
  * by readReplayPage without it, and reading one here would spend the second
  * deadline on a block page nothing downstream looks at.
  */
-async function askForPage(
-  continuation: string,
-  fetchImpl: typeof fetch,
-): Promise<{ kind: 'cut' } | { kind: 'stalled' } | { kind: 'answered'; ok: boolean; status: number; body: unknown }> {
+async function askForPage(continuation: string, fetchImpl: typeof fetch): Promise<PageAnswer | 'cut' | 'stalled'> {
   const controller = new AbortController();
   let deadline = setTimeout(() => controller.abort(), PAGE_DEADLINE_MS);
 
@@ -298,7 +303,7 @@ async function askForPage(
     response = await fetchImpl(replayRequest(continuation, controller.signal));
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      return { kind: 'cut' };
+      return 'cut';
     }
 
     // Everything else leaves unchanged, which is the one place this file does
@@ -312,16 +317,16 @@ async function askForPage(
   }
 
   if (!response.ok) {
-    return { kind: 'answered', ok: false, status: response.status, body: undefined };
+    return { ok: false, status: response.status };
   }
 
   deadline = setTimeout(() => controller.abort(), BODY_DEADLINE_MS);
 
   try {
-    return { kind: 'answered', ok: true, status: response.status, body: await response.json() };
+    return { ok: true, status: response.status, body: await response.json() };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      return { kind: 'stalled' };
+      return 'stalled';
     }
 
     throw error;
@@ -355,9 +360,9 @@ async function readReplayPage(continuation: string, fetchImpl: typeof fetch): Pr
   for (let retries = 0; ; retries++) {
     const outcome = await askForPage(continuation, fetchImpl);
 
-    if (outcome.kind === 'cut') {
+    if (outcome === 'cut') {
       cut++;
-    } else if (outcome.kind === 'stalled') {
+    } else if (outcome === 'stalled') {
       stalled++;
     } else if (outcome.ok) {
       return { replay: parseReplayPage(outcome.body), retries, cut, stalled };

@@ -625,6 +625,7 @@ describe('runChatReplay', () => {
 
       await runChatReplay(env, fetchImpl);
 
+      expect((fetchImpl.mock.calls[0][0] as Request).signal).toBeInstanceOf(AbortSignal);
       expect(fetchImpl).toHaveBeenCalledTimes(2);
       expect((await allTasks())[0]).toMatchObject({ state: 'done' });
     });
