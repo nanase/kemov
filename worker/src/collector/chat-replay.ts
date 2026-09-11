@@ -296,9 +296,11 @@ type PageAnswer = { ok: true; status: number; body: unknown } | { ok: false; sta
  * second time reaches the body's reader the same way it reached the request,
  * because both are the one fetch this call made.
  *
- * A body is only read when the status is 200. Every other status is decided
- * by readReplayPage without it, and reading one here would spend the second
- * deadline on a block page nothing downstream looks at.
+ * A body is only read when the status is exactly 200, not merely 2xx: this
+ * endpoint has one shape for an answer, and a 204 would have no body for
+ * response.json() to parse. Every other status is decided by readReplayPage
+ * without a body, and reading one here would spend the second deadline on a
+ * block page nothing downstream looks at.
  */
 async function askForPage(continuation: string, fetchImpl: typeof fetch): Promise<PageAnswer | 'cut' | 'stalled'> {
   const controller = new AbortController();
@@ -323,7 +325,7 @@ async function askForPage(continuation: string, fetchImpl: typeof fetch): Promis
     clearTimeout(deadline);
   }
 
-  if (!response.ok) {
+  if (response.status !== 200) {
     return { ok: false, status: response.status };
   }
 

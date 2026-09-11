@@ -942,6 +942,28 @@ describe('runChatReplay', () => {
       expect((await allTasks())[0]).toMatchObject({ state: 'failed', attempts: 1 });
     });
 
+    // A 2xx that is not exactly 200 still has no body worth reading: this
+    // endpoint has one shape for an answer, and a 204 in particular carries
+    // none at all. Reading it as `response.ok` would hand response.json() an
+    // empty body and fail on a SyntaxError instead of the message below.
+    test('does not try to read a body out of a 204', async () => {
+      await insertVideo('vid-1');
+      await queue('vid-1');
+
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const fetchImpl = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+
+      await runChatReplay(env, fetchImpl);
+
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect((await allTasks())[0]).toMatchObject({ state: 'failed', attempts: 1 });
+
+      const call = error.mock.calls.find(([line]) => typeof line === 'string' && line.includes('vid-1 failed'));
+      expect((call?.[1] as Error).message).toEqual('the replay endpoint responded 204');
+
+      error.mockRestore();
+    });
+
     test('backs off further the more times in a row a video fails', async () => {
       await insertVideo('vid-1');
       await queue('vid-1', { attempts: 3 });
