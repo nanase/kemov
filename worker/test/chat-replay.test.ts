@@ -595,6 +595,40 @@ describe('runChatReplay', () => {
       expect((await allTasks())[0]).toMatchObject({ state: 'done' });
     });
 
+    // The other half of #104: a body that stalls after its headers have
+    // already arrived. The deadline that covers it is the same
+    // AbortController reused for a second wait, so this rigs the body's
+    // stream to error on that controller's signal the same way the test above
+    // rigs the request itself.
+    test('cuts a body that stalls partway through and asks again', async () => {
+      vi.useRealTimers();
+      await insertVideo('vid-1');
+      await queue('vid-1');
+
+      let asked = 0;
+      const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+        asked += 1;
+
+        if (asked === 1) {
+          const { signal } = input as Request;
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              signal.addEventListener('abort', () => controller.error(signal.reason));
+            },
+          });
+
+          return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+
+        return replayPage(['author-1']);
+      });
+
+      await runChatReplay(env, fetchImpl);
+
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect((await allTasks())[0]).toMatchObject({ state: 'done' });
+    });
+
     // Real timers, because this run really does wait: the gap between tries is
     // a setTimeout inside it, and a fake clock would have to be pushed along
     // from out here, between D1 writes this test cannot see the end of. A
@@ -805,6 +839,74 @@ describe('runChatReplay', () => {
 
       expect(fetchImpl).toHaveBeenCalledTimes(4);
       expect((await allTasks())[0]).toMatchObject({ state: 'failed', attempts: 1 });
+    });
+
+    // The body's version of the test above: the stream errors the moment it
+    // is read rather than waiting out BODY_DEADLINE_MS, because what this one
+    // is about is the giving up and not the deadline.
+    test('gives up when every try stalls reading the body', async () => {
+      vi.useRealTimers();
+      await insertVideo('vid-1');
+      await queue('vid-1');
+
+      const fetchImpl = vi.fn<typeof fetch>(async () => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.error(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }));
+          },
+        });
+
+        return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } });
+      });
+
+      await runChatReplay(env, fetchImpl);
+
+      expect(fetchImpl).toHaveBeenCalledTimes(4);
+      expect((await allTasks())[0]).toMatchObject({ state: 'failed', attempts: 1 });
+    });
+
+    // The three counts stay apart all the way to the message a reader sees:
+    // mixing a refusal, a header cut and a body stall and reading the exact
+    // wording back out, so a change that folded two of them together would
+    // fail here even though the state ended up 'failed' either way.
+    test('names refusals, header cuts and body stalls apart when it gives up', async () => {
+      vi.useRealTimers();
+      await insertVideo('vid-1');
+      await queue('vid-1');
+
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      let asked = 0;
+
+      const fetchImpl = vi.fn<typeof fetch>(async () => {
+        asked += 1;
+
+        if (asked === 2) {
+          throw Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
+        }
+
+        if (asked === 3) {
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.error(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }));
+            },
+          });
+
+          return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+
+        return refused();
+      });
+
+      await runChatReplay(env, fetchImpl);
+
+      expect(fetchImpl).toHaveBeenCalledTimes(4);
+
+      const call = error.mock.calls.find(([line]) => typeof line === 'string' && line.includes('vid-1 failed'));
+      expect((call?.[1] as Error).message).toEqual(
+        'the replay endpoint gave no page in 4 tries: 2 refused, 1 held past 1000ms, 1 stalled past 1000ms',
+      );
+
+      error.mockRestore();
     });
 
     // A request that fails for some other reason is not a refusal, so it is
