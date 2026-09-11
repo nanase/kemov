@@ -353,16 +353,32 @@ Children before parents, the same order [Rolling Back](#rolling-back) uses and f
 
 Applying the files directly, as step 1 does, leaves `d1_migrations` empty. That is right for a database read once and thrown away, and wrong for one meant to replace `kemov`, where the next `migrations apply` would retry `0001` against tables that already exist.
 
-### What May Expire and What May Not
+### What Expires and What Does Not
 
-**No lifecycle rule is set on the bucket, and one covering all of it would be wrong.**
+**Three prefix-specific lifecycle rules are set on `kemov-backup`, in addition to its existing Default Multipart Abort Rule, because one rule covering the whole bucket would be wrong.**
 
-| Prefix               | May expire | Why                                                                                                                     |
-| -------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `channel/`, `video/` | Yes        | Each file is a complete copy. The newest one is all that is needed; older ones are duplicates.                          |
-| `channel_snapshot/`  | **No**     | Each file is one day and no other file holds that day. Deleting one leaves a hole in the history that nothing can fill. |
+| Prefix               | Retention    | Why                                                                                                                     |
+| -------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `channel/`, `video/` | 30 days      | Each file is a complete copy. The newest one is all that is needed; older ones are duplicates.                          |
+| `channel_snapshot/`  | **365 days** | Each file is one day and no other file holds that day. Deleting one leaves a hole in the history that nothing can fill. |
 
-The snapshot history began on 2026-09-07 and exists nowhere else. A day of it is about 119 KiB of SQL, measured against production values on 2026-09-08, so keeping all of it costs some 44 MB a year.
+That hole is a hole in R2, not in the history itself: `channel_snapshot` only ever gains rows in D1 (see [Backups](#backups) above), so D1 already holds every day of it forever. R2's copy exists to restore D1 if D1 is what breaks, and that need shows up right after an incident, not a year later — 365 days bounds how long the copy waits around for that, not how long the history survives.
+
+The snapshot history began on 2026-09-07 and exists nowhere else in R2. A day of it is about 119 KiB of SQL, measured against production values on 2026-09-08, so a year of it costs some 44 MB; `channel` and `video` add roughly 70 MB more at 30 days. Both fit well inside R2's free 10 GB tier.
+
+Set with three `lifecycle add` calls, run from `worker/`:
+
+```sh
+npx wrangler r2 bucket lifecycle add kemov-backup expire-video-30d video/ --expire-days 30
+npx wrangler r2 bucket lifecycle add kemov-backup expire-channel-30d channel/ --expire-days 30
+npx wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-365d channel_snapshot/ --expire-days 365
+```
+
+Not `lifecycle set --file <json>`: `set` replaces the bucket's whole ruleset, and the existing "Default Multipart Abort Rule" (7 days, all prefixes) would be lost if it were left out of that file. `add` only adds a rule, so the three calls above cannot touch it.
+
+**The trailing slash matters.** `channel` as a prefix also matches `channel_snapshot/`, which would expire a year of irreplaceable history in 30 days instead of 365. All three prefixes above end in `/` for this reason.
+
+Check with `npx wrangler r2 bucket lifecycle list kemov-backup`; it should list four rules — the three above plus the Default Multipart Abort Rule that was already there.
 
 ## Deployment
 
