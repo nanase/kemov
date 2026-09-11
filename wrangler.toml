@@ -53,9 +53,10 @@ crons = [
 # out for itself. Neither is anywhere else, and #72 takes away the old system
 # that has been standing in as a copy of the rest.
 #
-# Three lifecycle rules are set on this bucket, one per prefix, because one
-# that covered all of it would be wrong: see "What Expires and What Does Not"
-# in the README for the rules and why.
+# Three prefix-specific lifecycle rules are set on this bucket, in addition to
+# its existing Default Multipart Abort Rule, because one rule covering the
+# whole bucket would be wrong: see "What Expires and What Does Not" in the
+# README for the rules and why.
 [[r2_buckets]]
 binding = "BACKUP"
 bucket_name = "kemov-backup"

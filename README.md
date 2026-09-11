@@ -355,7 +355,7 @@ Applying the files directly, as step 1 does, leaves `d1_migrations` empty. That 
 
 ### What Expires and What Does Not
 
-**Three lifecycle rules are set on `kemov-backup`, one per prefix, because one rule covering the whole bucket would be wrong.**
+**Three prefix-specific lifecycle rules are set on `kemov-backup`, in addition to its existing Default Multipart Abort Rule, because one rule covering the whole bucket would be wrong.**
 
 | Prefix               | Retention    | Why                                                                                                                     |
 | -------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------- |
