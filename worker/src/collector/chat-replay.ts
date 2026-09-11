@@ -89,9 +89,16 @@ const PAGE_DEADLINE_MS = 1000;
  * So the value is chosen from the largest body seen rather than from a
  * duration. 1,000 ms reads 258,739 bytes at a floor of roughly 260 KB/s or
  * better, and this endpoint has not been seen to fall under that except by
- * being stuck. It also caps one page at PAGE_DEADLINE_MS plus this, 2 seconds,
- * which fits inside the roughly 1.5 seconds a page gets when PAGES_PER_VIDEO
- * of them run one after another in a tick.
+ * being stuck.
+ *
+ * A page that does stall still costs more than the roughly 1.5 seconds a page
+ * gets when PAGES_PER_VIDEO of them run one after another in a tick:
+ * PAGE_DEADLINE_MS plus this is a 2-second ceiling on that one page, and a
+ * normal page spends nowhere near it - the header alone was 68 to 263 ms in
+ * the same measurement, with no wait on the body behind it. A tick that hits
+ * this ceiling can run past 60 seconds without breaking anything: Cloudflare
+ * runs overlapping scheduled invocations rather than queuing them, which 28
+ * ticks in 28 minutes on 2026-09-07 confirmed.
  */
 const BODY_DEADLINE_MS = 1000;
 
