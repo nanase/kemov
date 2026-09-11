@@ -73,7 +73,18 @@ function storedAgeSeconds(response: Response, now: Date): number | null {
   return Number.isFinite(age) ? Math.max(0, Math.round(age)) : null;
 }
 
-function withCacheHeaders(response: Response, outcome: CacheOutcome, now: Date): Response {
+/**
+ * `status` is a separate parameter, not read from `response.status`, because
+ * of what stores it: every entry this puts into `cacheImpl` is put at 200 (see
+ * `cachedJson`). 200 is the only status this has ever confirmed the edge
+ * actually keeps; on workerd, `put()` for a 503 neither threw nor stored
+ * anything, and there is no safe way to check whether production's own Cache
+ * API behaves the same - that would mean holding a real outage open long
+ * enough to test it. Storing at 200 always sidesteps the question rather than
+ * answering it. The status a caller should actually see is decided from the
+ * body, separately, by `statusOf`.
+ */
+function withCacheHeaders(response: Response, outcome: CacheOutcome, now: Date, status: number): Response {
   const headers = new Headers(response.headers);
 
   headers.set('x-kemov-cache', outcome.state);
@@ -84,7 +95,7 @@ function withCacheHeaders(response: Response, outcome: CacheOutcome, now: Date):
   headers.set('cache-control', `public, max-age=${CACHE_SECONDS}`);
   headers.set(STORED_AT, response.headers.get(STORED_AT) ?? now.toISOString());
 
-  return new Response(response.body, { status: response.status, headers });
+  return new Response(response.body, { status, headers });
 }
 
 /**
@@ -109,6 +120,11 @@ export function errorWithCacheHeaders(status: number, message: string): Response
   return response;
 }
 
+/** The HTTP status a JSON body should be answered with. See `statusOf` on `cachedJson`. */
+type StatusOf = (body: unknown) => number;
+
+const ALWAYS_200: StatusOf = () => 200;
+
 /**
  * Builds a response, or serves the last good one.
  *
@@ -122,28 +138,60 @@ export function errorWithCacheHeaders(status: number, message: string): Response
  * is available on workerd, but an isolate keeps no entries between tests and a
  * cache that never hits would let every one of these paths pass without being
  * exercised.
+ *
+ * `statusOf` is what every endpoint but /api/health leaves at its default of
+ * "always 200": #110 needed a successful build whose answer is sometimes 503,
+ * and every entry `cacheImpl` holds is put at 200 regardless of what is served
+ * for it (see `withCacheHeaders`), so the status a caller sees is worked out
+ * from the stored body itself, on every path that can serve one - the fresh
+ * hit and the stale-after-failure fallback included, not only a fresh build.
+ *
+ * A fresh hit and a stale fallback both hold a `Response`, not the object a
+ * builder returned, so reading their body back out means parsing it - and
+ * both are compared against `ALWAYS_200` first so that the six endpoints not
+ * asking this question never pay for it. A fresh cache hit is the most-taken
+ * path this function has, on a body /api/videos/ranking can hand back a
+ * hundred rows of, and Workers are billed on CPU time; parsing a body only to
+ * throw the result away on every one of those hits would be a cost with
+ * nothing behind it.
  */
 export async function cachedJson(
   request: Request,
   cacheImpl: Cache,
   build: () => Promise<unknown>,
   now: Date = new Date(),
+  statusOf: StatusOf = ALWAYS_200,
 ): Promise<Response> {
   const key = new Request(new URL(request.url).toString(), { method: 'GET' });
   const stored = await cacheImpl.match(key);
   const storedAge = stored === undefined ? null : storedAgeSeconds(stored, now);
 
   if (stored !== undefined && storedAge !== null && storedAge <= CACHE_SECONDS) {
-    return withCacheHeaders(stored, { state: 'fresh', staleSeconds: storedAge }, now);
+    const status = statusOf === ALWAYS_200 ? 200 : statusOf(await stored.clone().json());
+
+    return withCacheHeaders(stored, { state: 'fresh', staleSeconds: storedAge }, now, status);
   }
 
   try {
     const body = await build();
+    // Always 200 here - see the comment on withCacheHeaders for why the
+    // status this is put at and the status a caller is answered with are
+    // no longer the same thing.
     const built = jsonResponse(body);
 
     built.headers.set(STORED_AT, now.toISOString());
+    // On workerd, put() for a 200 Response with no cache-control also stores
+    // nothing - production has been measured to store one anyway, under
+    // whatever default the edge falls back to when this header is absent, so
+    // this is not a fix for a body production was dropping. Setting it here
+    // makes that default explicit instead: CACHE_SECONDS, not whatever the
+    // edge would otherwise have chosen, is what governs how long an entry may
+    // be served without this code being asked again. withCacheHeaders sets
+    // the same header on the clone every caller sees, which is a different
+    // copy from the one put() below stores - each needs it set on its own.
+    built.headers.set('cache-control', `public, max-age=${CACHE_SECONDS}`);
 
-    const answered = withCacheHeaders(built.clone(), { state: 'miss', staleSeconds: 0 }, now);
+    const answered = withCacheHeaders(built.clone(), { state: 'miss', staleSeconds: 0 }, now, statusOf(body));
 
     await cacheImpl.put(key, built);
 
@@ -158,7 +206,9 @@ export async function cachedJson(
     console.error(`api: building ${new URL(request.url).pathname} failed`, error);
 
     if (stored !== undefined && storedAge !== null && storedAge <= STALE_SECONDS) {
-      return withCacheHeaders(stored, { state: 'stale', staleSeconds: storedAge }, now);
+      const status = statusOf === ALWAYS_200 ? 200 : statusOf(await stored.clone().json());
+
+      return withCacheHeaders(stored, { state: 'stale', staleSeconds: storedAge }, now, status);
     }
 
     // Nothing to fall back to. Saying so is more useful than an empty 200: the

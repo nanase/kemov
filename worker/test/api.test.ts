@@ -1,6 +1,8 @@
 import { env } from 'cloudflare:test';
 
 import { handleApiRequest } from '../src/api';
+import { backupKey, dayOf } from '../src/lib/backup';
+import { formatTimestamp } from '../src/lib/time';
 
 /**
  * The routing and the shape of what comes back. What each endpoint computes is
@@ -48,10 +50,21 @@ async function insertChannel(channelId: string): Promise<void> {
     .run();
 }
 
+async function clearBucket(): Promise<void> {
+  const listed = await env.BACKUP.list();
+
+  await Promise.all(listed.objects.map((object) => env.BACKUP.delete(object.key)));
+}
+
 beforeEach(async () => {
   await env.DB.prepare('DELETE FROM channel_snapshot').run();
   await env.DB.prepare('DELETE FROM video').run();
   await env.DB.prepare('DELETE FROM channel').run();
+  // #110's /api/health tests below read collect_task and BACKUP; the D1 and
+  // R2 a test file gets are not rolled back between its own tests (see
+  // setup.ts), so this file needs the same cleanup health.test.ts does.
+  await env.DB.prepare('DELETE FROM collect_task').run();
+  await clearBucket();
 });
 
 describe('routing', () => {
@@ -84,9 +97,16 @@ describe('routing', () => {
   });
 
   test('reaches each endpoint that needs no parameters', async () => {
-    for (const path of ['/api/health', '/api/live', '/api/channels', '/api/videos/ranking']) {
+    for (const path of ['/api/live', '/api/channels', '/api/videos/ranking']) {
       expect((await get(path)).status).toEqual(200);
     }
+  });
+
+  // Not among the above: with no jobs run and no backup written, /api/health
+  // answers 503 by #110's own rule, which health.test.ts covers. This only
+  // checks the router reaches it at all.
+  test('reaches /api/health', async () => {
+    expect((await get('/api/health')).status).not.toEqual(404);
   });
 
   test('narrows a ranking to one kind of video', async () => {
@@ -210,5 +230,65 @@ describe('bad requests', () => {
     expect((await get('/api/channels/UCaaa/videos?limit=99999')).status).toEqual(200);
     expect((await get('/api/channels/UCaaa/videos?limit=0')).status).toEqual(200);
     expect((await get('/api/channels/UCaaa/videos?limit=nonsense')).status).toEqual(200);
+  });
+});
+
+// #110: the one endpoint whose success is not always 200. What each field is
+// graded on is health.test.ts's job; this checks the wiring from health() to
+// the HTTP status, and that the 60-second cache keeps the two together.
+describe('health status', () => {
+  async function seedHealthy(): Promise<void> {
+    const recent = formatTimestamp(new Date());
+
+    for (const kind of ['channel_stats', 'video_discover', 'video_update']) {
+      await env.DB.prepare(
+        `INSERT INTO collect_task (kind, target_id, state, attempts, next_attempt_at, updated_at)
+         VALUES (?1, 'UCaaa', 'done', 1, NULL, ?2)`,
+      )
+        .bind(kind, recent)
+        .run();
+    }
+
+    const today = dayOf(recent);
+
+    await env.BACKUP.put(backupKey('video', today), '');
+    await env.BACKUP.put(backupKey('channel', today), '');
+    await env.BACKUP.put(backupKey('channel_snapshot', today), '');
+  }
+
+  test('answers 200 when every job and table is within its threshold', async () => {
+    await seedHealthy();
+
+    const response = await get('/api/health');
+
+    expect(response.status).toEqual(200);
+    expect(await response.json()).toMatchObject({
+      jobs: expect.arrayContaining([expect.objectContaining({ stale: false })]),
+    });
+  });
+
+  test('answers 503 when nothing has ever run', async () => {
+    const response = await get('/api/health');
+
+    expect(response.status).toEqual(503);
+    expect(await response.json()).toMatchObject({
+      jobs: expect.arrayContaining([expect.objectContaining({ stale: true })]),
+    });
+  });
+
+  // The 60-second cache must never serve one request's body with another
+  // request's status - a 503 body read as 200, or the reverse.
+  test('serves the same status and body on a cache hit as it built', async () => {
+    const cache = testCache();
+
+    const first = await get('/api/health', cache);
+    const firstBody = await first.json();
+
+    const second = await get('/api/health', cache);
+
+    expect(first.status).toEqual(503);
+    expect(second.status).toEqual(first.status);
+    expect(second.headers.get('x-kemov-cache')).toEqual('fresh');
+    expect(await second.json()).toEqual(firstBody);
   });
 });

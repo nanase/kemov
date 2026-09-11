@@ -287,8 +287,8 @@ export async function latestDay(bucket: R2Bucket, tableName: string): Promise<st
  * Raw, not adjusted for what a table's newest file is expected to be:
  * `channel_snapshot` writes yesterday's day even when nothing is wrong (see
  * `BACKED_UP_TABLES`), so a healthy value here is 0 for `channel`/`video` and
- * 1 for `channel_snapshot`. Reading that difference belongs to whoever
- * decides a threshold (#110), not to this function.
+ * 1 for `channel_snapshot`. Reading that difference against a threshold is
+ * `isBackupStale` in ./health-thresholds.ts (#110), not this function.
  */
 export function daysBetween(date: string, today: string): number {
   return Math.round((midnight(today).getTime() - midnight(date).getTime()) / 86_400_000);

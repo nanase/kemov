@@ -1,5 +1,11 @@
 import { BACKED_UP_TABLES, dayOf, daysBetween, latestDay } from '../lib/backup';
 import type { Env } from '../lib/env';
+import {
+  CHAT_REPLAY_ACTIVITY_STALE_MINUTES,
+  isBackupStale,
+  isTimestampStale,
+  JOB_SUCCESS_STALE_MINUTES,
+} from '../lib/health-thresholds';
 import { formatTimestamp } from '../lib/time';
 
 /**
@@ -90,6 +96,8 @@ interface JobHealth {
    * first show.
    */
   unavailable: number;
+  /** Whether this job has crossed #110's threshold and should be treated as down. */
+  stale: boolean;
 }
 
 /**
@@ -97,11 +105,11 @@ interface JobHealth {
  *
  * `collect_task` cannot answer this - the backup job writes none of its
  * rows - so this is read from the bucket instead: the newest day it holds a
- * file for, and how many days ago that is. Nothing here judges whether that
- * is too old. `channel` and `video` write today's date and `channel_snapshot`
- * writes yesterday's even when nothing is wrong (see `BACKED_UP_TABLES` in
- * ../lib/backup.ts), so a threshold would need to know which table it is
- * reading; that decision belongs to #110, not here.
+ * file for, and how many days ago that is. `channel` and `video` write
+ * today's date and `channel_snapshot` writes yesterday's even when nothing is
+ * wrong (see `BACKED_UP_TABLES` in ../lib/backup.ts), which is why `stale` is
+ * read against a per-table baseline (#110's `isBackupStale`) rather than the
+ * same `daysAgo` figure for all three.
  */
 interface BackupHealth {
   table: string;
@@ -109,6 +117,8 @@ interface BackupHealth {
   latestDate: string | null;
   /** How many days ago that day was. Null when latestDate is null. */
   daysAgo: number | null;
+  /** Whether this table has crossed #110's threshold and should be treated as behind. */
+  stale: boolean;
 }
 
 interface TaskState {
@@ -174,8 +184,10 @@ const worstAttempts = (rows: TaskState[], kind: string) =>
  * there is nothing left to count, which is what this job having caught up
  * looks like.
  *
- * How long is too long belongs to #110 rather than here, because a threshold
- * chosen against a notifier ends up fitting the notifier instead of the data.
+ * How long is too long is #110's `CHAT_REPLAY_ACTIVITY_STALE_MINUTES`, read
+ * only while `queued` is above zero for the reason above: a queue that is
+ * empty because there is nothing left to count must not fire the same
+ * threshold that a queue stuck behind a broken job would.
  *
  * The rows are grouped by kind and never by what a target id looks like.
  * video_discover holds two sorts of target in one kind, a channel whose
@@ -194,8 +206,9 @@ export async function health(
   const backup = await Promise.all(
     BACKED_UP_TABLES.map(async (table): Promise<BackupHealth> => {
       const latestDate = await latestDay(env.BACKUP, table.name);
+      const daysAgo = latestDate === null ? null : daysBetween(latestDate, today);
 
-      return { table: table.name, latestDate, daysAgo: latestDate === null ? null : daysBetween(latestDate, today) };
+      return { table: table.name, latestDate, daysAgo, stale: isBackupStale(table.name, daysAgo) };
     }),
   );
 
@@ -218,25 +231,98 @@ export async function health(
       );
 
   return {
-    jobs: JOBS.map(({ job, kind }) => ({
-      job,
+    jobs: JOBS.map(({ job, kind }) => {
       // Null says "never", which a monitor has to tell apart from "a while
       // ago". chat-replay answers null today: it has been failing in
       // production and has never finished one.
-      lastSuccessAt: newest(kind, 'done'),
+      const lastSuccessAt = newest(kind, 'done');
       // No state named: a tick that failed wrote a row too, and that is the
       // point of reading this one.
-      lastActivityAt: newest(kind),
-      queued: countOf(results, kind, 'pending', 'running'),
-      failing: countOf(results, kind, 'failed'),
-      lastFailureAt: newest(kind, 'failed'),
-      maxAttempts: worstAttempts(results, kind),
-      unavailable: countOf(results, kind, 'unavailable'),
-    })),
+      const lastActivityAt = newest(kind);
+      const queued = countOf(results, kind, 'pending', 'running');
+
+      // chat-replay's queue empties on a normal day once it has caught up
+      // (see the comment above), so lastSuccessAt going stale is not on its
+      // own trouble for it the way it is for the other three - only a queue
+      // that is not being worked on is.
+      const stale =
+        job === 'chat-replay'
+          ? queued > 0 && isTimestampStale(lastActivityAt, CHAT_REPLAY_ACTIVITY_STALE_MINUTES, now)
+          : isTimestampStale(lastSuccessAt, JOB_SUCCESS_STALE_MINUTES, now);
+
+      return {
+        job,
+        lastSuccessAt,
+        lastActivityAt,
+        queued,
+        failing: countOf(results, kind, 'failed'),
+        lastFailureAt: newest(kind, 'failed'),
+        maxAttempts: worstAttempts(results, kind),
+        unavailable: countOf(results, kind, 'unavailable'),
+        stale,
+      };
+    }),
     backup,
     // When these figures were read. A cached answer keeps the reading's time
     // rather than taking the reader's, which is what makes a stale answer
     // recognisable as one.
     databaseReadAt: formatTimestamp(now),
   };
+}
+
+/**
+ * Whether `health`'s answer should be served as HTTP 503, per #110: true as
+ * soon as one job or one backed-up table is `stale`.
+ *
+ * A boolean rather than a count, because the caller's only use for this is
+ * choosing a status code - counting how many things are wrong is what `jobs`
+ * and `backup` are already for.
+ *
+ * `!== false` rather than `=== true`, because of where this is actually read
+ * from: `statusOf` on `cachedJson` calls it on a body pulled back out of the
+ * edge cache, which can outlive a deploy. For up to CACHE_SECONDS after this
+ * PR ships, that entry can still be one the previous version of `health`
+ * wrote - a shape with no `stale` field at all, which TypeScript's own type
+ * for `result` cannot see past `statusFor`'s cast. `=== true` would read that
+ * missing field as `undefined`, and `undefined === true` is false: an
+ * inherited healthy-looking cache entry would answer 200 regardless of
+ * whether the state it describes actually is. `!== false` fails the other
+ * way instead - anything that is not affirmatively "not stale" counts as
+ * stale - so the one deploy-transition window this endpoint cannot avoid errs
+ * toward paging on an old answer rather than staying quiet on one.
+ */
+export function isUnhealthy(result: { jobs: JobHealth[]; backup: BackupHealth[] }): boolean {
+  return result.jobs.some((job) => job.stale !== false) || result.backup.some((table) => table.stale !== false);
+}
+
+/**
+ * The HTTP status /api/health should answer with, read from its own JSON body.
+ *
+ * `body` is `unknown` rather than `health`'s own return type because this is
+ * `cachedJson`'s `statusOf`, called on a body that has been round-tripped
+ * through the Cache API's storage as JSON - the object `health` built is long
+ * gone by then, and all that is left is whatever `JSON.parse` gives back. The
+ * shape mostly survives that trip (booleans, strings, numbers and arrays all
+ * do), but `jobs` and `backup` themselves are not guaranteed to be there: an
+ * inherited cache entry can be old enough to predate `backup` entirely (#115
+ * added it after #71 shipped `jobs` alone).
+ *
+ * Never throws. Two of `cachedJson`'s three call sites are outside anywhere
+ * that catches - the fresh hit is above its own try, and the stale fallback
+ * is itself inside a catch, where a second throw is not caught by the first.
+ * A `TypeError` from `.some()` on a body shaped unlike this would surface as
+ * an unrelated 500, on exactly the paths meant to answer instead of failing.
+ * Whatever does not look like `{ jobs: [...], backup: [...] }` is graded
+ * unhealthy rather than risked - the same direction `isUnhealthy` already
+ * takes for a job or a table missing `stale` alone, extended to the body
+ * missing the arrays themselves.
+ */
+export function statusFor(body: unknown): number {
+  if (typeof body !== 'object' || body === null) return 503;
+
+  const { jobs, backup } = body as { jobs?: unknown; backup?: unknown };
+
+  if (!Array.isArray(jobs) || !Array.isArray(backup)) return 503;
+
+  return isUnhealthy({ jobs, backup } as { jobs: JobHealth[]; backup: BackupHealth[] }) ? 503 : 200;
 }
