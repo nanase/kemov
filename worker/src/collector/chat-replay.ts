@@ -63,9 +63,44 @@ const PAGE_RETRY_MS = 500;
  * an answer and not the reading of the page behind it: a page cannot be cut
  * for being large. It is a starting value to narrow against production, not a
  * measured optimum - three runs of one replay say nothing about where the knee
- * is.
+ * is. What covers the body once the headers are in is BODY_DEADLINE_MS.
  */
 const PAGE_DEADLINE_MS = 1000;
+
+/**
+ * How long to wait for a response body once its headers have arrived, before
+ * cutting the request and asking again.
+ *
+ * fetch resolves as soon as the headers are in, so PAGE_DEADLINE_MS covers the
+ * wait for an answer and nothing after it: a body that stalls partway through
+ * had no deadline of its own (#104).
+ *
+ * Measured from the edge on 2026-09-11 against the largest chat replay in
+ * production - 46,051 messages - reading all 40 pages one page's body took no
+ * measured time, up to the largest page seen, 258,739 bytes. That is not the
+ * same as the transfer taking no time: this runtime's Date.now() and
+ * performance.now() only advance after I/O
+ * (https://developers.cloudflare.com/workers/runtime-apis/performance/), as a
+ * Spectre mitigation, and reading a body that arrived already crosses no I/O
+ * boundary of its own. What the measurement shows is that no page made this
+ * job wait on a read; it says nothing about how long that read would have
+ * taken if one had been needed.
+ *
+ * So the value is chosen from the largest body seen rather than from a
+ * duration. 1,000 ms reads 258,739 bytes at a floor of roughly 260 KB/s or
+ * better, and this endpoint has not been seen to fall under that except by
+ * being stuck.
+ *
+ * A page that does stall still costs more than the roughly 1.5 seconds a page
+ * gets when PAGES_PER_VIDEO of them run one after another in a tick:
+ * PAGE_DEADLINE_MS plus this is a 2-second ceiling on that one page, and a
+ * normal page spends nowhere near it - the header alone was 68 to 263 ms in
+ * the same measurement, with no wait on the body behind it. A tick that hits
+ * this ceiling can run past 60 seconds without breaking anything: Cloudflare
+ * runs overlapping scheduled invocations rather than queuing them, which 28
+ * ticks in 28 minutes on 2026-09-07 confirmed.
+ */
+const BODY_DEADLINE_MS = 1000;
 
 /**
  * How many videos one scan of `video` may enqueue.
@@ -144,13 +179,19 @@ interface PageRead {
   /** How many tries this page took beyond the first. */
   retries: number;
   /**
-   * How many of those tries were cut rather than refused in so many words.
+   * How many of those tries were cut waiting on the headers, rather than
+   * refused in so many words.
    *
-   * Kept apart from the count above because the two move for different
-   * reasons: refusals rising is the endpoint treating us differently, cuts
-   * rising on their own is PAGE_DEADLINE_MS being too tight.
+   * Kept apart from the count below as well as the one above, because all
+   * three move for different reasons: refusals rising is the endpoint
+   * treating us differently, this rising on its own is PAGE_DEADLINE_MS being
+   * too tight, and the one below is BODY_DEADLINE_MS being too tight. Mixing
+   * any two would leave a reader unable to tell which deadline, if either,
+   * needs to move.
    */
   cut: number;
+  /** How many of those tries were cut waiting on the body, once the headers had already arrived. */
+  stalled: number;
 }
 
 function plusMinutes(from: Date, minutes: number): string {
@@ -237,22 +278,41 @@ async function recordFailure(
 }
 
 /**
- * One request for a page, or null when it was cut for taking too long.
+ * What the endpoint answered, once a request got that far.
  *
- * The deadline is cleared as soon as the headers are in, so what it covers is
- * the wait for an answer and not the reading of the page behind it. A body
- * that stalls halfway through is a different failure with no cover here; #104
- * has that one.
+ * `body` only exists on the branch where there is one to look at: a status
+ * outside 2xx is decided by readReplayPage on the status alone, and giving it
+ * an unread `body` field would say there was something there to read.
  */
-async function askForPage(continuation: string, fetchImpl: typeof fetch): Promise<Response | null> {
+type PageAnswer = { ok: true; status: number; body: unknown } | { ok: false; status: number };
+
+/**
+ * One request for a page, all the way through the body: the answer, or which
+ * of the two deadlines cut the request short.
+ *
+ * The two deadlines share one AbortController: the first timer covers the
+ * wait for headers, and only once they are in is it replaced by a second one
+ * covering the read of the body behind them. Aborting the same controller a
+ * second time reaches the body's reader the same way it reached the request,
+ * because both are the one fetch this call made.
+ *
+ * A body is only read when the status is exactly 200, not merely 2xx: this
+ * endpoint has one shape for an answer, and a 204 would have no body for
+ * response.json() to parse. Every other status is decided by readReplayPage
+ * without a body, and reading one here would spend the second deadline on a
+ * block page nothing downstream looks at.
+ */
+async function askForPage(continuation: string, fetchImpl: typeof fetch): Promise<PageAnswer | 'cut' | 'stalled'> {
   const controller = new AbortController();
-  const deadline = setTimeout(() => controller.abort(), PAGE_DEADLINE_MS);
+  let deadline = setTimeout(() => controller.abort(), PAGE_DEADLINE_MS);
+
+  let response: Response;
 
   try {
-    return await fetchImpl(replayRequest(continuation, controller.signal));
+    response = await fetchImpl(replayRequest(continuation, controller.signal));
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      return null;
+      return 'cut';
     }
 
     // Everything else leaves unchanged, which is the one place this file does
@@ -260,6 +320,24 @@ async function askForPage(continuation: string, fetchImpl: typeof fetch): Promis
     // there is nothing here to say about it, and collectOne logs what it
     // catches - so the error itself carries more than a sentence written here
     // could.
+    throw error;
+  } finally {
+    clearTimeout(deadline);
+  }
+
+  if (response.status !== 200) {
+    return { ok: false, status: response.status };
+  }
+
+  deadline = setTimeout(() => controller.abort(), BODY_DEADLINE_MS);
+
+  try {
+    return { ok: true, status: response.status, body: await response.json() };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      return 'stalled';
+    }
+
     throw error;
   } finally {
     clearTimeout(deadline);
@@ -276,39 +354,44 @@ async function askForPage(continuation: string, fetchImpl: typeof fetch): Promis
  * depends on where in a video it arrives, so the decision is the caller's.
  *
  * A 403 is asked again rather than given up on, up to PAGE_RETRIES times, and
- * so is a request that never answers at all. Those are the same event seen
- * from two distances - PAGE_DEADLINE_MS says why - so they spend the same
- * tries.
+ * so are a request that never answers and a body that never finishes. All
+ * three are the same shape of failure seen at a different point - the two
+ * deadline constants say why - so they spend the same tries, even though they
+ * are counted apart.
  */
 async function readReplayPage(continuation: string, fetchImpl: typeof fetch): Promise<PageRead> {
   let cut = 0;
+  let stalled = 0;
 
   // No condition on the loop, unlike the paging one in collectOne: every way
   // out of this is a return or a throw, and which of them it is depends on the
   // answer rather than on the count.
   for (let retries = 0; ; retries++) {
-    const response = await askForPage(continuation, fetchImpl);
+    const outcome = await askForPage(continuation, fetchImpl);
 
-    if (!response) {
+    if (outcome === 'cut') {
       cut++;
-    } else if (response.ok) {
-      return { replay: parseReplayPage(await response.json()), retries, cut };
-    } else if (response.status !== 403) {
+    } else if (outcome === 'stalled') {
+      stalled++;
+    } else if (outcome.ok) {
+      return { replay: parseReplayPage(outcome.body), retries, cut, stalled };
+    } else if (outcome.status !== 403) {
       // Neither of the other two statuses this endpoint uses gets better for
       // being asked again. A 400 is about the request; a 404 is about the
       // video, or about the pinned version, and readReplayError says how to
       // tell those apart (#100). Sending the same thing a second time changes
       // none of them, so the video is better off in its backoff.
-      throw new Error(readReplayError(response.status));
+      throw new Error(readReplayError(outcome.status));
     }
 
     if (retries === PAGE_RETRIES) {
       const tries = retries + 1;
 
-      // Both numbers, because which of the two this was is the first question
-      // anyone reading the line will have.
+      // All three numbers, because which of them this was is the first
+      // question anyone reading the line will have.
       throw new Error(
-        `the replay endpoint gave no page in ${tries} tries: ${tries - cut} refused, ${cut} held past ${PAGE_DEADLINE_MS}ms`,
+        `the replay endpoint gave no page in ${tries} tries: ${tries - cut - stalled} refused, ${cut} held past ` +
+          `${PAGE_DEADLINE_MS}ms, ${stalled} stalled past ${BODY_DEADLINE_MS}ms`,
       );
     }
 
@@ -562,15 +645,19 @@ async function collectOne(
   let landed: Progress | null = opened && { continuation: opened.continuation, messages: opened.messages };
 
   // How many times a page had to be asked for twice, summed over the run, and
-  // how many of those were cuts. The 403 rate (#96) in the only form a log can
-  // carry: one line as a video ends says whether the rate is moving, where a
-  // line per retry would bury every other line this job writes.
+  // how many of those were cut waiting on headers versus stalled waiting on a
+  // body. The 403 rate (#96) in the only form a log can carry: one line as a
+  // video ends says whether the rate is moving, where a line per retry would
+  // bury every other line this job writes.
   //
-  // The two are reported side by side because they answer different questions.
-  // Refusals rising while cuts do not is the endpoint treating us differently;
-  // cuts rising on their own is PAGE_DEADLINE_MS being too tight.
+  // The three are reported side by side because they answer different
+  // questions. Refusals rising while the other two do not is the endpoint
+  // treating us differently; cuts rising on their own is PAGE_DEADLINE_MS
+  // being too tight; stalls rising on their own is BODY_DEADLINE_MS being too
+  // tight.
   let retries = 0;
   let cut = 0;
+  let stalled = 0;
 
   // Attempts in a row that got nowhere. It starts at what the row was
   // claimed with and drops to zero the moment a page lands, because a video
@@ -608,6 +695,7 @@ async function collectOne(
 
       retries += read.retries;
       cut += read.cut;
+      stalled += read.stalled;
 
       if (!replay) {
         // No envelope at all. On the first page of a video nothing has read
@@ -640,7 +728,8 @@ async function collectOne(
         }
 
         console.log(
-          `chat-replay: ${task.target_id} counted ${total} messages over ${page + 1} pages and ${retries} retries (${cut} cut)`,
+          `chat-replay: ${task.target_id} counted ${total} messages over ${page + 1} pages and ${retries} retries ` +
+            `(${cut} cut, ${stalled} stalled)`,
         );
         return;
       }
@@ -669,8 +758,8 @@ async function collectOne(
 
     await releaseForNextTick(db, task.target_id, lease, now);
     console.log(
-      `chat-replay: ${task.target_id} used its ${PAGES_PER_VIDEO} pages and ${retries} retries (${cut} cut), ` +
-        `so it queues ahead of the videos nothing has read yet`,
+      `chat-replay: ${task.target_id} used its ${PAGES_PER_VIDEO} pages and ${retries} retries ` +
+        `(${cut} cut, ${stalled} stalled), so it queues ahead of the videos nothing has read yet`,
     );
   } catch (error) {
     console.error(`chat-replay: ${task.target_id} failed`, error);
