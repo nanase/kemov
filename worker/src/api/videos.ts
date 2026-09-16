@@ -10,8 +10,9 @@ import {
 import { BadRequest } from './cache';
 
 /**
- * The endpoints that read `video`: one channel's list, and the ranking that
- * crosses channels.
+ * The endpoints that read `video`: one channel's list, the ranking that
+ * crosses channels, and the columnar table the ranking's row set is also
+ * served as.
  *
  * Neither uses an index beyond the ones the schema already has, and that is a
  * measured decision rather than an omission. Ordering 6,426 rows by a count
@@ -193,6 +194,75 @@ export async function rankVideos(env: Env, metric: RankingMetric, limit: number,
     // ranking happens to hold only streams".
     kind,
     videos: results.map((row) => ({ ...present(row), metricValue: row.metric_value })),
+  };
+}
+
+const TABLE_COLUMNS = `video_id, channel_id, title, type, published_at, duration_seconds,
+                       view_count, like_count, comment_count, chat_message_count, chat_unique_user_count,
+                       actual_start_time, actual_end_time, fetched_at`;
+
+interface TableRow {
+  video_id: string;
+  channel_id: string;
+  title: string;
+  type: string | null;
+  published_at: string;
+  duration_seconds: number | null;
+  view_count: number | null;
+  like_count: number | null;
+  comment_count: number | null;
+  chat_message_count: number | null;
+  chat_unique_user_count: number | null;
+  actual_start_time: string | null;
+  actual_end_time: string | null;
+  fetched_at: string;
+}
+
+/**
+ * GET /api/videos/table
+ *
+ * Every video that counts toward a ranking, in column form rather than one
+ * object per row. #144's design chose this shape so that #135 and #136 can
+ * sort, search and window the whole archive in the browser instead of asking
+ * this worker for every combination of period and kind: at 6,450 rows the
+ * columnar body is smaller compressed than the equivalent list, and rebuilding
+ * it from a 60-second cache costs one table scan, not one per page view.
+ *
+ * The row set is the same one rankVideos narrows to: `availability = 'public'
+ * AND type IS NOT NULL`. A row the collector has not yet classified would rank
+ * as if a null duration or count were zero, which is the defect #70 removed
+ * from the ranking endpoint.
+ */
+export async function videosTable(env: Env) {
+  const { results } = await env.DB.prepare(
+    `SELECT ${TABLE_COLUMNS} FROM video
+      WHERE availability = 'public' AND type IS NOT NULL
+      ORDER BY published_at DESC, video_id DESC`,
+  ).all<TableRow>();
+
+  return {
+    // The newest fetch among the rows returned, so a caller can judge the age
+    // of the set without a second request - the same rule listChannels uses
+    // for its own fetchedAt.
+    fetchedAt: results.reduce<string | null>(
+      (newest, row) => (newest === null || row.fetched_at > newest ? row.fetched_at : newest),
+      null,
+    ),
+    columns: {
+      videoId: results.map((row) => row.video_id),
+      channelId: results.map((row) => row.channel_id),
+      title: results.map((row) => row.title),
+      type: results.map((row) => row.type),
+      publishedAt: results.map((row) => row.published_at),
+      durationSeconds: results.map((row) => row.duration_seconds),
+      viewCount: results.map((row) => row.view_count),
+      likeCount: results.map((row) => row.like_count),
+      commentCount: results.map((row) => row.comment_count),
+      chatMessageCount: results.map((row) => row.chat_message_count),
+      chatUniqueUserCount: results.map((row) => row.chat_unique_user_count),
+      actualStartTime: results.map((row) => row.actual_start_time),
+      actualEndTime: results.map((row) => row.actual_end_time),
+    },
   };
 }
 
