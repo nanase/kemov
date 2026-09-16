@@ -13,10 +13,6 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # corepack otherwise asks before downloading the pinned yarn.
-  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
-
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -29,55 +25,55 @@ jobs:
           # behind in the local git config.
           persist-credentials: false
 
-      - name: Install the Node pinned in mise.toml
+      - name: Install the Node and bun pinned in mise.toml
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
 
-      - name: Enable corepack
-        run: corepack enable
+      - name: Report tool versions
+        run: node --version && bun --version
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: bun install --frozen-lockfile
 
       # channels.yml masters the columns the deploy upserts into D1. Checking it
       # here is what makes the file reviewable: a bad id, a colour that is not a
       # colour or a date that does not exist stops at the pull request instead of
       # reaching the database.
       - name: Check channels.yml
-        run: yarn check-channels
+        run: bun run check-channels
 
       # Everything prettier is willing to parse, not just what a lint rule
       # covers: .prettierrc.json applies to the whole repository, so checking
       # a subset would leave the rest declared and unenforced. --check rather
       # than the format script, which writes.
       - name: Check the formatting
-        run: yarn prettier --check .
+        run: bun run prettier --check .
 
       # The lint script passes --fix, which would rewrite files. Check only.
       - name: Lint
-        run: yarn eslint .
+        run: bun run eslint .
 
       - name: Lint styles
-        run: yarn lint:style
+        run: bun run lint:style
 
       - name: Type check
-        run: yarn type-check
+        run: bun run type-check
 
       # The worker has its own tsconfig: it runs on workerd and shares no lib
       # or global with the frontend, so vue-tsc above does not see it.
       - name: Type check the worker
-        run: yarn type-check:worker
+        run: bun run type-check:worker
 
       # vitest.config.ts declares a project per runtime. Naming each one here
       # rather than running them together means a project that stops matching
       # any test file fails the build instead of passing quietly.
       - name: Test
-        run: yarn vitest run --project frontend
+        run: bun run vitest run --project frontend
 
       - name: Test the worker
-        run: yarn vitest run --project worker
+        run: bun run vitest run --project worker
 
       - name: Test the scripts
-        run: yarn vitest run --project scripts
+        run: bun run vitest run --project scripts
 
       # The same command deploy-worker.yml runs against the real database,
       # with --local in place of --remote, so that a migration wrangler itself
@@ -88,9 +84,9 @@ jobs:
       # --local needs no account: the database is a file under RUNNER_TEMP,
       # thrown away with the runner.
       - name: Apply the migrations to a local D1
-        run: yarn wrangler d1 migrations apply kemov --local --persist-to "$RUNNER_TEMP/d1"
+        run: bun wrangler d1 migrations apply kemov --local --persist-to "$RUNNER_TEMP/d1"
 
       # Nothing here is published: Deploy builds and uploads its own
       # artifact. This only proves the build still succeeds.
       - name: Build
-        run: yarn build-only --outDir "$RUNNER_TEMP/build" --emptyOutDir
+        run: bun run build-only --outDir "$RUNNER_TEMP/build" --emptyOutDir

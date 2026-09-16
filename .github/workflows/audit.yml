@@ -9,9 +9,6 @@ on:
 permissions:
   contents: read
 
-env:
-  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
-
 jobs:
   audit:
     runs-on: ubuntu-latest
@@ -24,29 +21,29 @@ jobs:
           # behind in the local git config.
           persist-credentials: false
 
-      - name: Install the Node pinned in mise.toml
+      - name: Install the Node and bun pinned in mise.toml
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
 
-      - name: Enable corepack
-        run: corepack enable
+      - name: Report tool versions
+        run: node --version && bun --version
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: bun install --frozen-lockfile
 
       # Dependabot already raises alerts; this is a second, independent look
       # that also runs when nobody is watching the security tab.
       - name: Audit
-        run: yarn npm audit --severity high
+        run: bun audit --audit-level=high
 
-      # yarn reports deprecated packages at moderate alongside real
-      # advisories. Those are worth seeing but not worth failing on.
+      # bun reports moderate findings alongside real advisories at the
+      # default level. Those are worth seeing but not worth failing on.
       - name: Report moderate findings
         if: always()
         run: |
           {
-            echo '### `yarn npm audit --severity moderate`'
+            echo '### `bun audit --audit-level=moderate`'
             echo
             echo '```'
-            yarn npm audit --severity moderate || true
+            bun audit --audit-level=moderate || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
