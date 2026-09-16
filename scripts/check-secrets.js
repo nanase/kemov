@@ -29,7 +29,7 @@ try {
 
   if (missing.length > 0) {
     console.error(`not registered: ${missing.join(', ')}`);
-    console.error('set each one with `yarn wrangler secret put <name>`; see "Worker Secrets" in the README.');
+    console.error('set each one with `bun wrangler secret put <name>`; see "Worker Secrets" in the README.');
     process.exitCode = 1;
   } else {
     console.log(`${expected.length} declared secrets, all registered`);

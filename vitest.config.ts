@@ -11,12 +11,13 @@ export default mergeConfig(
   defineConfig({
     test: {
       root,
-      // The frontend and the scripts, which is why `yarn coverage` names those
-      // two projects. The worker is left out because nothing can measure it
-      // now that it runs on workerd: v8 coverage reads node:inspector, which
-      // workerd does not implement and the pool rejects outright, and istanbul
-      // was measured to report no worker file at all. scripts/ runs under bare
-      // node and is unaffected. `yarn test` still runs all three projects.
+      // The frontend and the scripts, which is why `bun run coverage` names
+      // those two projects. The worker is left out because nothing can
+      // measure it now that it runs on workerd: v8 coverage reads
+      // node:inspector, which workerd does not implement and the pool
+      // rejects outright, and istanbul was measured to report no worker file
+      // at all. scripts/ runs under bare node and is unaffected. `bun run
+      // test` still runs all three projects.
       coverage: {
         reporter: ['text', 'json'],
         include: ['src/**/*.{ts,vue}', 'scripts/*.js'],
@@ -25,8 +26,8 @@ export default mergeConfig(
       },
       // The frontend, the worker and the scripts share no runtime: a browser
       // bundle built by the vite config above, workerd, and a bare node
-      // process. Keeping them as projects of one run means `yarn test` still
-      // covers all three.
+      // process. Keeping them as projects of one run means `bun run test`
+      // still covers all three.
       projects: [
         {
           extends: true,

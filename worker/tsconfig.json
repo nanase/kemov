@@ -4,7 +4,7 @@
   // of extending the one at the repository root.
   //
   // The root tsconfig includes only env.d.ts, src/ and test/, so nothing here
-  // reaches vue-tsc and `yarn type-check` is unaffected.
+  // reaches vue-tsc and `bun run type-check` is unaffected.
   "include": ["src/**/*", "test/**/*"],
   "compilerOptions": {
     "target": "ES2022",
