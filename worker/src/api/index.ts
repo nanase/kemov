@@ -14,6 +14,7 @@ import {
   readKind,
   readLimit,
   readMetric,
+  videosTable,
 } from './videos';
 
 /**
@@ -58,6 +59,8 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
   if (segments.length === 2 && resource === 'live') return await cached(() => listLive(env));
   if (segments.length === 2 && resource === 'channels') return await cached(() => listChannels(env));
   if (segments.length === 2 && resource === 'months') return await cached(() => monthsSeries(env));
+
+  if (segments.length === 3 && resource === 'videos' && name === 'table') return await cached(() => videosTable(env));
 
   if (segments.length === 3 && resource === 'videos' && name === 'ranking') {
     const metric = readMetric(searchParams.get('metric'));
