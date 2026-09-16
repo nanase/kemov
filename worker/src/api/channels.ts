@@ -143,7 +143,12 @@ async function changesFor(
   ) as Record<CountName, Delta>;
 }
 
-function present(row: ChannelRow, perHour: Record<CountName, Delta>, perDay: Record<CountName, Delta>) {
+function present(
+  row: ChannelRow,
+  perHour: Record<CountName, Delta>,
+  perDay: Record<CountName, Delta>,
+  per30Days: Record<CountName, Delta>,
+) {
   return {
     channelId: row.channel_id,
     name: row.name,
@@ -177,6 +182,7 @@ function present(row: ChannelRow, perHour: Record<CountName, Delta>, perDay: Rec
     },
     perHour,
     perDay,
+    per30Days,
   };
 }
 
@@ -186,7 +192,12 @@ export async function listChannels(env: Env) {
 
   const channels = await Promise.all(
     rows.map(async (row) =>
-      present(row, await changesFor(env.DB, row, HOUR_SECONDS), await changesFor(env.DB, row, DAY_SECONDS)),
+      present(
+        row,
+        await changesFor(env.DB, row, HOUR_SECONDS),
+        await changesFor(env.DB, row, DAY_SECONDS),
+        await changesFor(env.DB, row, 30 * DAY_SECONDS),
+      ),
     ),
   );
 
@@ -209,7 +220,12 @@ export async function getChannel(env: Env, channelId: string) {
 
   if (row === undefined) return null;
 
-  return present(row, await changesFor(env.DB, row, HOUR_SECONDS), await changesFor(env.DB, row, DAY_SECONDS));
+  return present(
+    row,
+    await changesFor(env.DB, row, HOUR_SECONDS),
+    await changesFor(env.DB, row, DAY_SECONDS),
+    await changesFor(env.DB, row, 30 * DAY_SECONDS),
+  );
 }
 
 /**
