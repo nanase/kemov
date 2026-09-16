@@ -97,7 +97,7 @@ describe('routing', () => {
   });
 
   test('reaches each endpoint that needs no parameters', async () => {
-    for (const path of ['/api/live', '/api/channels', '/api/videos/ranking']) {
+    for (const path of ['/api/live', '/api/channels', '/api/months', '/api/videos/ranking']) {
       expect((await get(path)).status).toEqual(200);
     }
   });
