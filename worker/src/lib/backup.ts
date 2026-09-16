@@ -203,7 +203,7 @@ export function toSql(table: TableShape, rows: readonly Record<string, unknown>[
     '-- Written by the backup job in worker/src/collector/backup.ts (#111).',
     '--',
     '-- Restore with:',
-    `--   yarn wrangler d1 execute kemov --remote --file <this file>`,
+    `--   bun wrangler d1 execute kemov --remote --file <this file>`,
     '--',
     '-- Apply channel before video and channel_snapshot: both carry a foreign',
     '-- key to it. Applying a file more than once changes nothing.',
