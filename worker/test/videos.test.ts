@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 
-import { listVideos, rankVideos, readKind } from '../src/api/videos';
+import { listVideos, rankVideos, readKind, videosTable } from '../src/api/videos';
 
 /**
  * What the video endpoints compute, against the real D1. The metric
@@ -26,13 +26,22 @@ async function insertVideo(
     type?: string | null;
     durationSeconds?: number | null;
     viewCount?: number | null;
+    likeCount?: number | null;
+    commentCount?: number | null;
+    chatMessageCount?: number | null;
+    chatUniqueUserCount?: number | null;
     scheduledStartTime?: string | null;
+    actualStartTime?: string | null;
+    actualEndTime?: string | null;
+    fetchedAt?: string;
   } = {},
 ): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO video (video_id, channel_id, title, published_at, availability, live_broadcast_content,
-                        type, duration_seconds, view_count, scheduled_start_time, fetched_at)
-     VALUES (?1, ?2, ?1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, '2026-09-07T00:00:00Z')`,
+                        type, duration_seconds, view_count, like_count, comment_count,
+                        chat_message_count, chat_unique_user_count,
+                        scheduled_start_time, actual_start_time, actual_end_time, fetched_at)
+     VALUES (?1, ?2, ?1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)`,
   )
     .bind(
       videoId,
@@ -43,7 +52,14 @@ async function insertVideo(
       overrides.type ?? null,
       overrides.durationSeconds ?? null,
       overrides.viewCount ?? null,
+      overrides.likeCount ?? null,
+      overrides.commentCount ?? null,
+      overrides.chatMessageCount ?? null,
+      overrides.chatUniqueUserCount ?? null,
       overrides.scheduledStartTime ?? null,
+      overrides.actualStartTime ?? null,
+      overrides.actualEndTime ?? null,
+      overrides.fetchedAt ?? '2026-09-07T00:00:00Z',
     )
     .run();
 }
@@ -244,6 +260,95 @@ describe('rankVideos by kind', () => {
     await insertVideo('stream', 'UCaaa', { type: 'streaming', viewCount: 10 });
 
     expect((await rankVideos(env, 'viewCount', 10, 'shorts')).videos).toEqual([]);
+  });
+});
+
+describe('videosTable', () => {
+  test('answers with one column per field, in the same order for every video', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('a', 'UCaaa', {
+      type: 'video',
+      durationSeconds: 100,
+      viewCount: 10,
+      likeCount: 1,
+      commentCount: 2,
+      chatMessageCount: 3,
+      chatUniqueUserCount: 4,
+      actualStartTime: '2026-01-01T00:00:00Z',
+      actualEndTime: '2026-01-01T01:00:00Z',
+    });
+
+    const table = await videosTable(env);
+
+    expect(table.columns).toEqual({
+      videoId: ['a'],
+      channelId: ['UCaaa'],
+      title: ['a'],
+      type: ['video'],
+      publishedAt: ['2026-01-01T00:00:00Z'],
+      durationSeconds: [100],
+      viewCount: [10],
+      likeCount: [1],
+      commentCount: [2],
+      chatMessageCount: [3],
+      chatUniqueUserCount: [4],
+      actualStartTime: ['2026-01-01T00:00:00Z'],
+      actualEndTime: ['2026-01-01T01:00:00Z'],
+    });
+  });
+
+  // The condition every one of #144's new endpoints shares: not yet
+  // classified, or hidden, is not counted.
+  test('leaves out a video that is not public or not yet classified', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('shown', 'UCaaa', { type: 'video' });
+    await insertVideo('private', 'UCaaa', { type: 'video', availability: 'private' });
+    await insertVideo('unclassified', 'UCaaa', { type: null });
+
+    const table = await videosTable(env);
+
+    expect(table.columns.videoId).toEqual(['shown']);
+  });
+
+  test('orders by published date, newest first, tying on video id', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('older', 'UCaaa', { type: 'video', publishedAt: '2024-01-01T00:00:00Z' });
+    await insertVideo('newer', 'UCaaa', { type: 'video', publishedAt: '2026-01-01T00:00:00Z' });
+    await insertVideo('tie-b', 'UCaaa', { type: 'video', publishedAt: '2025-01-01T00:00:00Z' });
+    await insertVideo('tie-a', 'UCaaa', { type: 'video', publishedAt: '2025-01-01T00:00:00Z' });
+
+    const table = await videosTable(env);
+
+    expect(table.columns.videoId).toEqual(['newer', 'tie-b', 'tie-a', 'older']);
+  });
+
+  test('leaves a null where the collector has not filled a value in', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('bare', 'UCaaa', { type: 'video' });
+
+    const table = await videosTable(env);
+
+    expect(table.columns.durationSeconds).toEqual([null]);
+    expect(table.columns.actualStartTime).toEqual([null]);
+    expect(table.columns.actualEndTime).toEqual([null]);
+  });
+
+  test('reports the newest fetch among the videos it counted, not a wider one', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('counted', 'UCaaa', { type: 'video', fetchedAt: '2026-09-10T00:00:00Z' });
+    // Fetched more recently, but not counted - its fetch must not surface as
+    // if it belonged to the answered set.
+    await insertVideo('excluded', 'UCaaa', { type: null, fetchedAt: '2026-09-15T00:00:00Z' });
+
+    expect((await videosTable(env)).fetchedAt).toEqual('2026-09-10T00:00:00Z');
+  });
+
+  test('answers with empty columns and a null fetchedAt when no video counts', async () => {
+    const table = await videosTable(env);
+
+    expect(table.fetchedAt).toBeNull();
+    expect(table.columns.videoId).toEqual([]);
+    expect(Object.values(table.columns).every((column) => column.length === 0)).toEqual(true);
   });
 });
 
