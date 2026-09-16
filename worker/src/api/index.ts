@@ -14,12 +14,13 @@ import {
   readKind,
   readLimit,
   readMetric,
+  videosTable,
 } from './videos';
 
 /**
  * The HTTP API.
  *
- * Routing is a handful of comparisons rather than a library. There are eight
+ * Routing is a handful of comparisons rather than a library. There are nine
  * paths, two of them with one parameter, and a router would be a dependency
  * carried into workerd to save a switch statement.
  *
@@ -58,6 +59,8 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
   if (segments.length === 2 && resource === 'live') return await cached(() => listLive(env));
   if (segments.length === 2 && resource === 'channels') return await cached(() => listChannels(env));
   if (segments.length === 2 && resource === 'streams') return await cached(() => listStreams(env));
+
+  if (segments.length === 3 && resource === 'videos' && name === 'table') return await cached(() => videosTable(env));
 
   if (segments.length === 3 && resource === 'videos' && name === 'ranking') {
     const metric = readMetric(searchParams.get('metric'));
