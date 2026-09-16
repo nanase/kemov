@@ -1,0 +1,11 @@
+# Claude Code's own files.
+#
+# `.claude/NG.md` is appended to by `/readable:ng`, which writes one table row
+# per word and does not pad the columns. `yarn prettier --check .` covers the
+# whole repository, so every recorded word would fail CI until someone ran
+# prettier over the file by hand - and the next recorded word would break it
+# again. The handoff notes that live beside it are written the same way.
+#
+# Nothing under here is served, built or imported. It is read by people and by
+# Claude Code, neither of which cares whether the columns line up.
+.claude/
