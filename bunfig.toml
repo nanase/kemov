@@ -1,0 +1,4 @@
+# Bun loads .env automatically on `bun run`. yarn never did that, and the
+# scripts here (vite build among them) already read .env themselves, so
+# leave the previous behaviour in place instead of adding a second loader.
+env = false

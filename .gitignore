@@ -35,15 +35,6 @@ coverage/
 # Stylelint
 .stylelintcache
 
-# yarn
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/sdks
-!.yarn/versions
-
 # tsc
 tsconfig.node.tsbuildinfo
 
