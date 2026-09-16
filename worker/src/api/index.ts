@@ -20,9 +20,8 @@ import {
 /**
  * The HTTP API.
  *
- * Routing is a handful of comparisons rather than a library. There are nine
- * paths, two of them with one parameter, and a router would be a dependency
- * carried into workerd to save a switch statement.
+ * Routing is a handful of comparisons rather than a library. The paths are
+ * few, and a router would be a dependency carried into workerd to save a switch statement.
  *
  * Every reading endpoint goes through cachedJson, which is what makes "the
  * database is down" survivable: the last good answer is served, marked as
