@@ -172,6 +172,29 @@ describe('listChannels', () => {
     expect(channels[0]?.perHour.subscriberCount).toEqual({ value: null, reason: 'gap too wide' });
   });
 
+  test('reports history too short for the 30-day change before enough history exists', async () => {
+    await insertChannel('UCaaa');
+    await insertSnapshot('UCaaa', '2026-09-07T11:00:00Z', { subscribers: 1000 });
+    await insertSnapshot('UCaaa', '2026-09-07T12:00:00Z', { subscribers: 1050 });
+
+    const { channels } = await listChannels(env);
+
+    expect(channels[0]?.per30Days.subscriberCount).toEqual({ value: null, reason: 'history too short' });
+  });
+
+  test('reports the change over 30 days once the history reaches back that far', async () => {
+    await insertChannel('UCaaa');
+    await insertSnapshot('UCaaa', '2026-08-08T12:00:00Z', { subscribers: 1000 });
+    await insertSnapshot('UCaaa', '2026-09-07T12:00:00Z', { subscribers: 1200 });
+
+    const { channels } = await listChannels(env);
+
+    expect(channels[0]?.per30Days.subscriberCount).toEqual({
+      value: 200,
+      over: { from: '2026-08-08T12:00:00Z', to: '2026-09-07T12:00:00Z', seconds: 30 * 24 * 60 * 60 },
+    });
+  });
+
   test('reports a hidden subscriber count as absent rather than as zero', async () => {
     await insertChannel('UCaaa');
     await insertSnapshot('UCaaa', '2026-09-07T11:00:00Z', { subscribers: null });
