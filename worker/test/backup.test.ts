@@ -104,7 +104,100 @@ async function insertSnapshot(channelId: string, fetchedAt: string): Promise<voi
     .run();
 }
 
-/** Two snapshot days, so that a run has a finished day and an unfinished one. */
+/**
+ * One row of every table #144 added to `BACKED_UP_TABLES`, wired together so
+ * every foreign key among them is satisfied. Depends on `seed`'s `channel`
+ * ('UCaaa') and `video` ('vid1') rows.
+ *
+ * `revision` gets three rows on the same days as `insertSnapshot`'s, so the
+ * round trip below exercises its day-at-a-time write the same way it already
+ * does for `channel_snapshot`.
+ */
+async function seedAdminTables(): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO channel_snapshot_exclusion (channel_id, fetched_at, reason) VALUES ('UCaaa', '2026-09-06T00:00:00Z', 'test')`,
+  ).run();
+  await env.DB.prepare(`INSERT INTO video_override (video_id, title) VALUES ('vid1', 'overridden title')`).run();
+
+  await env.DB.prepare(
+    `INSERT INTO footprints_event (date_precision, start_date, kind, title)
+     VALUES ('day', '2026-01-01', 'other', 'イベント')`,
+  ).run();
+  const event = await env.DB.prepare('SELECT event_id FROM footprints_event').first<{ event_id: number }>();
+  const eventId = event!.event_id;
+
+  await env.DB.prepare('INSERT INTO footprints_event_member (event_id, channel_id) VALUES (?1, ?2)')
+    .bind(eventId, 'UCaaa')
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO footprints_event_source (event_id, position, url, title) VALUES (?1, 1, 'https://example.invalid', NULL)",
+  )
+    .bind(eventId)
+    .run();
+
+  await env.DB.prepare("INSERT INTO genet_person (name) VALUES ('作曲家')").run();
+  const person = await env.DB.prepare('SELECT person_id FROM genet_person').first<{ person_id: number }>();
+  const personId = person!.person_id;
+
+  await env.DB.prepare("INSERT INTO genet_tune (title) VALUES ('曲名')").run();
+  const tune = await env.DB.prepare('SELECT tune_id FROM genet_tune').first<{ tune_id: number }>();
+  const tuneId = tune!.tune_id;
+
+  await env.DB.prepare("INSERT INTO genet_tune_attribute (tune_id, position, name) VALUES (?1, 1, '作曲')")
+    .bind(tuneId)
+    .run();
+  await env.DB.prepare(
+    'INSERT INTO genet_tune_attribute_person (tune_id, attribute_position, position, person_id) VALUES (?1, 1, 1, ?2)',
+  )
+    .bind(tuneId, personId)
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO genet_tune_video (tune_id, position, video_id, title) VALUES (?1, 1, 'tvid1', '関連動画')",
+  )
+    .bind(tuneId)
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO genet_tune_score (tune_id, position, url, title) VALUES (?1, 1, 'https://example.invalid/score', '楽譜')",
+  )
+    .bind(tuneId)
+    .run();
+
+  await env.DB.prepare(
+    `INSERT INTO genet_stream (video_id, video_type, title, published_at)
+     VALUES ('gvid1', 'video', '配信', '2026-09-01T00:00:00Z')`,
+  ).run();
+  await env.DB.prepare('INSERT INTO genet_performance (video_id, position, tune_id) VALUES (?1, 1, ?2)')
+    .bind('gvid1', tuneId)
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO genet_scene (video_id, position, scene_position, style, scene_video_id) VALUES (?1, 1, 1, 'play', ?1)",
+  )
+    .bind('gvid1')
+    .run();
+
+  let revisionId = 0;
+
+  for (const createdAt of ['2026-09-06T00:00:00Z', '2026-09-06T00:10:00Z', '2026-09-07T00:00:00Z']) {
+    const revision = await env.DB.prepare(
+      "INSERT INTO revision (entity, entity_key, action, body, created_at) VALUES ('channel', 'UCaaa', 'save', '{}', ?1) RETURNING revision_id",
+    )
+      .bind(createdAt)
+      .first<{ revision_id: number }>();
+
+    revisionId = revision!.revision_id;
+  }
+
+  await env.DB.prepare(
+    "INSERT INTO publication (target, last_revision_id, object_key, byte_length) VALUES ('footprints', ?1, 'footprints/events.json', 10)",
+  )
+    .bind(revisionId)
+    .run();
+}
+
+/**
+ * Two snapshot days, so that a run has a finished day and an unfinished one,
+ * plus one row of every table #144 added to `BACKED_UP_TABLES`.
+ */
 async function seed(): Promise<void> {
   await insertChannel('UCaaa');
   await insertVideo('vid1', 'UCaaa');
@@ -112,12 +205,55 @@ async function seed(): Promise<void> {
   for (const fetchedAt of ['2026-09-06T00:00:00Z', '2026-09-06T00:10:00Z', '2026-09-07T00:00:00Z']) {
     await insertSnapshot('UCaaa', fetchedAt);
   }
+
+  await seedAdminTables();
 }
 
 async function clearEverything(): Promise<void> {
+  // `publication` and `revision` each carry a trigger refusing a DELETE
+  // (append-only, see migrations/0005_add_revision_and_publication.sql), so
+  // the DELETE loop below would be refused for them. Dropped here and put
+  // back from its own sqlite_master text afterward - not retyped - so this
+  // cannot drift from whatever the migration defines. What it protects in
+  // production, a row surviving until this file's tests are done, is not
+  // weakened: the trigger is gone only for the moment this function runs.
+  const triggers = await env.DB.prepare(
+    `SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name IN ('publication', 'revision')`,
+  ).all<{ name: string; sql: string }>();
+
+  for (const trigger of triggers.results) {
+    await env.DB.prepare(`DROP TRIGGER ${trigger.name}`).run();
+  }
+
   // Children before parents: the foreign keys refuse it in any other order.
-  for (const table of ['chat_author', 'collect_task', 'channel_snapshot', 'video', 'channel']) {
+  for (const table of [
+    'chat_author',
+    'collect_task',
+    'genet_scene',
+    'genet_performance',
+    'genet_tune_video',
+    'genet_tune_score',
+    'genet_tune_attribute_person',
+    'genet_tune_attribute',
+    'genet_stream',
+    'genet_tune',
+    'genet_person',
+    'footprints_event_source',
+    'footprints_event_member',
+    'footprints_event',
+    'channel_snapshot_exclusion',
+    'video_override',
+    'publication',
+    'revision',
+    'channel_snapshot',
+    'video',
+    'channel',
+  ]) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
+  }
+
+  for (const trigger of triggers.results) {
+    await env.DB.prepare(trigger.sql).run();
   }
 }
 
@@ -144,19 +280,41 @@ describe('runBackup', () => {
       backupKey('channel', '2026-09-08'),
       backupKey('channel_snapshot', '2026-09-06'),
       backupKey('channel_snapshot', '2026-09-07'),
+      backupKey('channel_snapshot_exclusion', '2026-09-08'),
+      backupKey('footprints_event', '2026-09-08'),
+      backupKey('footprints_event_member', '2026-09-08'),
+      backupKey('footprints_event_source', '2026-09-08'),
+      backupKey('genet_performance', '2026-09-08'),
+      backupKey('genet_person', '2026-09-08'),
+      backupKey('genet_scene', '2026-09-08'),
+      backupKey('genet_stream', '2026-09-08'),
+      backupKey('genet_tune', '2026-09-08'),
+      backupKey('genet_tune_attribute', '2026-09-08'),
+      backupKey('genet_tune_attribute_person', '2026-09-08'),
+      backupKey('genet_tune_score', '2026-09-08'),
+      backupKey('genet_tune_video', '2026-09-08'),
+      backupKey('publication', '2026-09-08'),
+      backupKey('revision', '2026-09-06'),
+      backupKey('revision', '2026-09-07'),
       backupKey('video', '2026-09-08'),
+      backupKey('video_override', '2026-09-08'),
     ]);
   });
 
   // The whole point of the issue. Everything else here is a detail of it.
+  // Covers every table in BACKED_UP_TABLES, #144's additions included, rather
+  // than naming a few by hand: a table left out of this loop by mistake would
+  // be a table this test could not have caught missing a column.
   test('restores a database that has been emptied', async () => {
     await seed();
 
-    const before = {
-      channel: await rowsOf('channel', 'channel_id'),
-      video: await rowsOf('video', 'video_id'),
-      channel_snapshot: await rowsOf('channel_snapshot', 'channel_id, fetched_at'),
-    };
+    const before = new Map(
+      await Promise.all(
+        BACKED_UP_TABLES.map(
+          async (table) => [table.name, await rowsOf(table.name, table.conflict.join(', '))] as const,
+        ),
+      ),
+    );
 
     await runBackup(env, new Date('2026-09-08T00:20:00Z'));
 
@@ -171,17 +329,17 @@ describe('runBackup', () => {
     expect(await rowsOf('channel', 'channel_id')).toEqual([]);
 
     // The order BACKED_UP_TABLES is written in, which is the order the
-    // foreign keys require. A restore that applied video first would be
-    // refused, so the order is part of what is being tested.
+    // foreign keys require. A restore that applied a child before its parent
+    // would be refused, so the order is part of what is being tested.
     for (const table of BACKED_UP_TABLES) {
       for (const file of files.filter((candidate) => candidate.key.startsWith(`${table.name}/`))) {
         await applyFile(file.sql);
       }
     }
 
-    expect(await rowsOf('channel', 'channel_id')).toEqual(before.channel);
-    expect(await rowsOf('video', 'video_id')).toEqual(before.video);
-    expect(await rowsOf('channel_snapshot', 'channel_id, fetched_at')).toEqual(before.channel_snapshot);
+    for (const table of BACKED_UP_TABLES) {
+      expect(await rowsOf(table.name, table.conflict.join(', '))).toEqual(before.get(table.name));
+    }
   });
 
   // A restore is not a calm operation, and whoever runs it should not have to

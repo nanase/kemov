@@ -15,6 +15,9 @@ export interface Env {
   /** R2. Where the nightly backup writes what D1 holds, so that it can be put back (#111). */
   BACKUP: R2Bucket;
 
+  /** R2. Where the admin site's published JSON lives, for the site to read (#144). Not backed up. */
+  PUBLIC_DATA: R2Bucket;
+
   /** YouTube Data API v3 key, set with `wrangler secret put YOUTUBE_API_KEY`. */
   YOUTUBE_API_KEY: string;
 

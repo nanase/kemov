@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test';
 
 import { handleApiRequest } from '../src/api';
-import { backupKey, dayOf } from '../src/lib/backup';
+import { BACKED_UP_TABLES, backupKey, dayOf } from '../src/lib/backup';
 import { formatTimestamp } from '../src/lib/time';
 
 /**
@@ -258,9 +258,12 @@ describe('health status', () => {
 
     const today = dayOf(recent);
 
-    await env.BACKUP.put(backupKey('video', today), '');
-    await env.BACKUP.put(backupKey('channel', today), '');
-    await env.BACKUP.put(backupKey('channel_snapshot', today), '');
+    // Every table BACKED_UP_TABLES lists, not just the three this file used
+    // to name: a table left out here reads as no file at all, which is
+    // unhealthy on its own regardless of what the jobs above say.
+    for (const table of BACKED_UP_TABLES) {
+      await env.BACKUP.put(backupKey(table.name, today), '');
+    }
   }
 
   test('answers 200 when every job and table is within its threshold', async () => {
