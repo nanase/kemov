@@ -3,9 +3,7 @@ import { env } from 'cloudflare:test';
 import { monthsSeries } from '../src/api/months';
 
 /**
- * What /api/months computes, against the real D1. `subscribers` is left out
- * of this endpoint until task 4 (#144), so nothing here inserts
- * channel_snapshot rows or checks for that series.
+ * What /api/months computes, against the real D1.
  */
 
 async function insertChannel(channelId: string, activityStartDate: string, activityEndDate: string | null = null) {
@@ -15,6 +13,15 @@ async function insertChannel(channelId: string, activityStartDate: string, activ
      VALUES (?1, ?1, ?1, '#000000', '#000000', '#000000', '#000000', ?2, ?3, 0)`,
   )
     .bind(channelId, activityStartDate, activityEndDate)
+    .run();
+}
+
+async function insertSnapshot(channelId: string, fetchedAt: string, subscriberCount: number | null): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO channel_snapshot (channel_id, fetched_at, subscriber_count, view_count, video_count)
+     VALUES (?1, ?2, ?3, 0, 0)`,
+  )
+    .bind(channelId, fetchedAt, subscriberCount)
     .run();
 }
 
@@ -69,13 +76,107 @@ describe('monthsSeries', () => {
     expect(result.months).toEqual(['2026-07', '2026-08', '2026-09']);
   });
 
-  test('does not include subscribers, in either a channel or the total', async () => {
+  test('is null for a month with no channel_snapshot at all', async () => {
     await insertChannel('UCaaa', '2026-07-15');
 
     const result = await monthsSeries(env, now);
+    const channel = result.channels[0] as { subscribers: (number | null)[] };
 
-    expect(result.channels[0]).not.toHaveProperty('subscribers');
-    expect(result.total).not.toHaveProperty('subscribers');
+    expect(channel.subscribers).toEqual([null, null, null]);
+    expect(result.total.subscribers).toEqual([null, null, null]);
+  });
+
+  test("reports a member's own month from the last channel_snapshot taken during it", async () => {
+    await insertChannel('UCaaa', '2026-07-01');
+    await insertSnapshot('UCaaa', '2026-07-10T00:00:00Z', 1000);
+    await insertSnapshot('UCaaa', '2026-07-20T00:00:00Z', 1050);
+
+    const result = await monthsSeries(env, now);
+    const channel = result.channels[0] as { subscribers: (number | null)[] };
+    const july = result.months.indexOf('2026-07');
+
+    expect(channel.subscribers[july]).toEqual(1050);
+  });
+
+  // The month boundary is JST midnight, which is 15:00 UTC the day before -
+  // the same rule the video-based series follow.
+  test('puts a channel_snapshot either side of the JST month boundary in the right month', async () => {
+    await insertChannel('UCaaa', '2026-08-01');
+    await insertSnapshot('UCaaa', '2026-08-31T14:59:59Z', 100);
+    await insertSnapshot('UCaaa', '2026-08-31T15:00:00Z', 200);
+
+    const result = await monthsSeries(env, now);
+    const channel = result.channels[0] as { subscribers: (number | null)[] };
+    const august = result.months.indexOf('2026-08');
+    const september = result.months.indexOf('2026-09');
+
+    expect(channel.subscribers[august]).toEqual(100);
+    expect(channel.subscribers[september]).toEqual(200);
+  });
+
+  // A member's own series shows null for a month nothing was taken in, even
+  // though an earlier reading exists - that reading is what carries into
+  // `total.subscribers` instead, not into this member's own display.
+  test('is null in a member series for a month with no snapshot, even with an earlier one', async () => {
+    await insertChannel('UCaaa', '2026-07-01');
+    await insertSnapshot('UCaaa', '2026-07-10T00:00:00Z', 1000);
+
+    const result = await monthsSeries(env, now);
+    const channel = result.channels[0] as { subscribers: (number | null)[] };
+
+    expect(result.months).toEqual(['2026-07', '2026-08', '2026-09']);
+    expect(channel.subscribers).toEqual([1000, null, null]);
+  });
+
+  test('carries the last known count into total.subscribers for a month with no new snapshot', async () => {
+    await insertChannel('UCaaa', '2026-07-01');
+    await insertSnapshot('UCaaa', '2026-07-10T00:00:00Z', 1000);
+
+    const result = await monthsSeries(env, now);
+
+    expect(result.total.subscribers).toEqual([1000, 1000, 1000]);
+  });
+
+  // #134: an ended member's subscriber count must keep counting in the
+  // total, not drop to zero because collection stopped.
+  test('keeps an ended member counting in the total rather than dropping to zero', async () => {
+    await insertChannel('UCaaa', '2026-07-01', '2026-08-01');
+    await insertSnapshot('UCaaa', '2026-07-10T00:00:00Z', 1000);
+
+    const result = await monthsSeries(env, now);
+    const channel = result.channels[0] as { subscribers: (number | null)[] };
+
+    expect(result.months).toEqual(['2026-07', '2026-08', '2026-09']);
+    // The member's own series is honest about not being read again...
+    expect(channel.subscribers).toEqual([1000, null, null]);
+    // ...but the total still carries their last count forward.
+    expect(result.total.subscribers).toEqual([1000, 1000, 1000]);
+  });
+
+  test('total.subscribers is null only while no member has any snapshot yet', async () => {
+    await insertChannel('UCaaa', '2026-07-01');
+    await insertChannel('UCbbb', '2026-07-01');
+    await insertSnapshot('UCbbb', '2026-09-01T00:00:00Z', 500);
+
+    const result = await monthsSeries(env, now);
+
+    expect(result.months).toEqual(['2026-07', '2026-08', '2026-09']);
+    expect(result.total.subscribers).toEqual([null, null, 500]);
+  });
+
+  // A hidden subscriber count is NULL in the schema, not zero, and the same
+  // distinction holds here: this member's own series and the total both
+  // treat it as nothing collected rather than as a real zero.
+  test('leaves out a hidden subscriber count rather than reading it as zero', async () => {
+    await insertChannel('UCaaa', '2026-09-01');
+    await insertSnapshot('UCaaa', '2026-09-10T00:00:00Z', null);
+
+    const result = await monthsSeries(env, now);
+    const channel = result.channels[0] as { subscribers: (number | null)[] };
+    const month = result.months.indexOf('2026-09');
+
+    expect(channel.subscribers[month]).toBeNull();
+    expect(result.total.subscribers[month]).toBeNull();
   });
 
   // The month boundary is JST midnight, which is 15:00 UTC the day before.
@@ -241,6 +342,7 @@ describe('monthsSeries', () => {
         chatMessages: [],
         chatUniqueUsers: [],
         views: [],
+        subscribers: [],
       },
     });
   });
