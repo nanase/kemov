@@ -7,12 +7,13 @@ const MaxScore = 5;
 const finishScore = ref<number>(0);
 
 function getImageUrl(index: number) {
-  // return new URL(`/genet/music/score${index}.svg`, import.meta.url).href;
-
-  // This code is intended to avoid incorrect replacement.
-  // see: https://github.com/vitejs/vite/issues/11157
-  const directory = new URL(`/genet/music/`, import.meta.url).href;
-  return `${directory}/score${index}.svg`;
+  // A plain root-absolute path rather than `new URL(..., import.meta.url)`:
+  // that pattern asks vite to resolve the asset at build time, and vite 8
+  // resolves `/genet/music/` (already root-absolute) against the built
+  // file's own URL in a way that leaves a doubled slash in the result.
+  // `base` is `/`, so the site's root is also the server's root, and this
+  // string needs no resolving.
+  return `/genet/music/score${index}.svg`;
 }
 
 function updateScore() {

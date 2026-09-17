@@ -41,6 +41,9 @@ tsconfig.node.tsbuildinfo
 #vite
 vite.config.ts.timestamp-*
 
+# scripts/screenshot.js output
+/screenshots/
+
 # wrangler
 # .dev.vars holds the local values of what production gets from `wrangler secret`.
 .wrangler/
