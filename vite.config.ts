@@ -5,7 +5,7 @@ import Vue from '@vitejs/plugin-vue';
 import webfontDownload from 'vite-plugin-webfont-dl';
 import injectHTML from 'vite-plugin-html-inject';
 
-const root = resolve(__dirname);
+const root = resolve(import.meta.dirname);
 const srcDir = resolve(root, 'src');
 
 // https://vitejs.dev/config/
@@ -35,6 +35,12 @@ export default defineConfig({
     injectHTML(),
   ],
   resolve: {
+    // v3-infinite-loading's `browser` field points at a UMD build that
+    // expects a global `Vue`. Vite 8's bundler picks that field over `module`
+    // by default and the page it drives renders empty as a result, with
+    // nothing thrown: `module` ahead of `browser` restores the ES build vite
+    // 6 always used.
+    mainFields: ['module', 'browser', 'main'],
     alias: [{ find: '@', replacement: srcDir }],
   },
   css: {
