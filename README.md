@@ -87,7 +87,7 @@ Playwright takes the screenshots that a review of a visual change asks for. It k
 bunx playwright install chromium
 ```
 
-Then, with the pages served by `bun run dev` or `bun run preview`:
+Then, with the pages served by `bun run preview` (port 4173) or `bun run dev` (port 5173):
 
 ```sh
 bun run screenshot screenshots stats=http://localhost:4173/stats/ ranking=http://localhost:4173/stats/ranking/

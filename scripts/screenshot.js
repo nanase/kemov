@@ -13,18 +13,11 @@
 
 import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright';
+import { parseTargets } from './screenshot-targets.js';
 
 const WIDTHS = [390, 768, 1280];
 const COLOR_SCHEMES = ['light', 'dark'];
 const VIEWPORT_HEIGHT = 1024;
-
-function parseTarget(arg) {
-  const separator = arg.indexOf('=');
-  if (separator < 1) {
-    throw new Error(`expected <name>=<url>, got "${arg}"`);
-  }
-  return { name: arg.slice(0, separator), url: arg.slice(separator + 1) };
-}
 
 const [outputDir, ...targetArgs] = process.argv.slice(2);
 
@@ -34,7 +27,7 @@ if (outputDir === undefined || targetArgs.length === 0) {
 }
 
 try {
-  const targets = targetArgs.map(parseTarget);
+  const targets = parseTargets(targetArgs);
 
   mkdirSync(outputDir, { recursive: true });
 
