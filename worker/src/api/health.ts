@@ -105,11 +105,11 @@ interface JobHealth {
  *
  * `collect_task` cannot answer this - the backup job writes none of its
  * rows - so this is read from the bucket instead: the newest day it holds a
- * file for, and how many days ago that is. `channel` and `video` write
- * today's date and `channel_snapshot` writes yesterday's even when nothing is
- * wrong (see `BACKED_UP_TABLES` in ../lib/backup.ts), which is why `stale` is
- * read against a per-table baseline (#110's `isBackupStale`) rather than the
- * same `daysAgo` figure for all three.
+ * file for, and how many days ago that is. Most tables write today's date,
+ * but `channel_snapshot` and `revision` write yesterday's even when nothing
+ * is wrong (see `BACKED_UP_TABLES` in ../lib/backup.ts), which is why `stale`
+ * is read against a per-table baseline (#110's `isBackupStale`) rather than
+ * the same `daysAgo` figure for every table.
  */
 interface BackupHealth {
   table: string;

@@ -284,20 +284,26 @@ describe('backup', () => {
 
   // The offset #110's isBackupStale reads around: channel_snapshot's newest
   // file names yesterday even when the job is working, so its daysAgo reads
-  // as 1 here beside the others' 0, and neither is stale.
+  // as 1 here beside the others' 0, and neither is stale. Checked one table
+  // at a time rather than against the whole `backup` array, which also
+  // carries every other table BACKED_UP_TABLES lists with no file put for it.
   test('reads the newest file of each table, and how many days old it is', async () => {
     await env.BACKUP.put(backupKey('video', '2026-09-10'), '');
     await env.BACKUP.put(backupKey('channel', '2026-09-10'), '');
     await env.BACKUP.put(backupKey('channel_snapshot', '2026-09-09'), '');
 
     const { backup } = await health(env, NOW);
+    const byTable = Object.fromEntries(backup.map((table) => [table.table, table]));
 
-    expect(Object.fromEntries(backup.map((table) => [table.table, table]))).toEqual({
-      video: { table: 'video', latestDate: '2026-09-10', daysAgo: 0, stale: false },
-      channel: { table: 'channel', latestDate: '2026-09-10', daysAgo: 0, stale: false },
-      // daysAgo 1 is channel_snapshot's own normal reading (see #110's
-      // isBackupStale), not the 2 that would fire for the other two tables.
-      channel_snapshot: { table: 'channel_snapshot', latestDate: '2026-09-09', daysAgo: 1, stale: false },
+    expect(byTable.video).toEqual({ table: 'video', latestDate: '2026-09-10', daysAgo: 0, stale: false });
+    expect(byTable.channel).toEqual({ table: 'channel', latestDate: '2026-09-10', daysAgo: 0, stale: false });
+    // daysAgo 1 is channel_snapshot's own normal reading (see #110's
+    // isBackupStale), not the 2 that would fire for a table replaced whole.
+    expect(byTable.channel_snapshot).toEqual({
+      table: 'channel_snapshot',
+      latestDate: '2026-09-09',
+      daysAgo: 1,
+      stale: false,
     });
   });
 
@@ -404,9 +410,13 @@ describe('isUnhealthy', () => {
       await insertTask(kind, 'UCaaa', 'done', isoMinutesAgo(NOW, 1));
     }
 
-    await env.BACKUP.put(backupKey('video', '2026-09-10'), '');
-    await env.BACKUP.put(backupKey('channel', '2026-09-10'), '');
-    await env.BACKUP.put(backupKey('channel_snapshot', '2026-09-09'), '');
+    // Every table BACKED_UP_TABLES lists, not just the three this file used
+    // to name: a table left out here reads as no file at all and fails this
+    // "fully healthy" seed on its own. A dayColumn table's healthy file names
+    // yesterday (see #110's isBackupStale); every other table's names today.
+    for (const table of BACKED_UP_TABLES) {
+      await env.BACKUP.put(backupKey(table.name, table.dayColumn !== undefined ? '2026-09-09' : '2026-09-10'), '');
+    }
   }
 
   test('is false when every job and every table is within its threshold', async () => {

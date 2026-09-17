@@ -81,21 +81,30 @@ export interface TableShape {
   readonly columns: readonly string[];
   /** The primary key, for ON CONFLICT. */
   readonly conflict: readonly string[];
+  /**
+   * The column that marks which day a row belongs to, for a table backed up
+   * one finished day at a time rather than replaced whole every night (see
+   * `backUpDayAtATime` in ../collector/backup.ts). Undefined for a table
+   * replaced whole, which is every table below but `channel_snapshot` and
+   * `revision`.
+   */
+  readonly dayColumn?: string;
 }
 
 /**
- * The three tables the backup carries, and why the other two are absent.
+ * The tables the backup carries, and why `collect_task` and `chat_author` are
+ * absent.
  *
- * `collect_task` and `chat_author` hold where collection has got to, not what
- * it found. Both rebuild themselves from `channel` and `video` within a tick
- * or two, and restoring them would be worse than losing them: a day-old
- * cursor sends the chat job back through a replay it has already read, and a
- * next_attempt_at from yesterday holds back work that is due now.
+ * Those two hold where collection has got to, not what it found. Both
+ * rebuild themselves from `channel` and `video` within a tick or two, and
+ * restoring them would be worse than losing them: a day-old cursor sends the
+ * chat job back through a replay it has already read, and a next_attempt_at
+ * from yesterday holds back work that is due now.
  */
 export const BACKED_UP_TABLES: readonly TableShape[] = [
-  // Ordered as a restore has to apply them. video and channel_snapshot both
-  // carry a foreign key to channel, and the schema refuses a row whose
-  // channel is not there yet.
+  // Ordered as a restore has to apply them: a table with a foreign key to
+  // another comes after it, so the schema never refuses a row for a parent
+  // that is not there yet.
   {
     name: 'channel',
     columns: [
@@ -143,6 +152,124 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
     name: 'channel_snapshot',
     columns: ['channel_id', 'fetched_at', 'subscriber_count', 'view_count', 'video_count'],
     conflict: ['channel_id', 'fetched_at'],
+    dayColumn: 'fetched_at',
+  },
+  {
+    name: 'channel_snapshot_exclusion',
+    columns: ['channel_id', 'fetched_at', 'reason', 'created_at'],
+    conflict: ['channel_id', 'fetched_at'],
+  },
+  {
+    name: 'video_override',
+    columns: ['video_id', 'title', 'type', 'availability', 'memo', 'updated_at'],
+    conflict: ['video_id'],
+  },
+  {
+    name: 'footprints_event',
+    columns: [
+      'event_id',
+      'date_precision',
+      'start_date',
+      'starts_at',
+      'end_date',
+      'kind',
+      'emphasized',
+      'title',
+      'place',
+      'supplement',
+      'video_id',
+      'source_pending',
+      'status',
+      'memo',
+      'created_via',
+      'created_at',
+      'updated_at',
+    ],
+    conflict: ['event_id'],
+  },
+  {
+    name: 'footprints_event_member',
+    columns: ['event_id', 'channel_id'],
+    conflict: ['event_id', 'channel_id'],
+  },
+  {
+    name: 'footprints_event_source',
+    columns: ['event_id', 'position', 'url', 'title'],
+    conflict: ['event_id', 'position'],
+  },
+  {
+    name: 'genet_person',
+    columns: ['person_id', 'name', 'link', 'memo'],
+    conflict: ['person_id'],
+  },
+  {
+    name: 'genet_tune',
+    columns: ['tune_id', 'title', 'original_title', 'subtunes', 'memo'],
+    conflict: ['tune_id'],
+  },
+  {
+    name: 'genet_tune_attribute',
+    columns: ['tune_id', 'position', 'name', 'text'],
+    conflict: ['tune_id', 'position'],
+  },
+  {
+    name: 'genet_tune_attribute_person',
+    columns: ['tune_id', 'attribute_position', 'position', 'person_id', 'credited_as', 'note'],
+    conflict: ['tune_id', 'attribute_position', 'position'],
+  },
+  {
+    name: 'genet_tune_video',
+    columns: ['tune_id', 'position', 'video_id', 'title', 'start_seconds', 'description'],
+    conflict: ['tune_id', 'position'],
+  },
+  {
+    name: 'genet_tune_score',
+    columns: ['tune_id', 'position', 'url', 'title'],
+    conflict: ['tune_id', 'position'],
+  },
+  {
+    name: 'genet_stream',
+    columns: [
+      'video_id',
+      'platform',
+      'url',
+      'video_type',
+      'title',
+      'short_title',
+      'published_at',
+      'categories',
+      'keywords',
+      'status',
+      'memo',
+      'created_via',
+      'created_at',
+      'updated_at',
+    ],
+    conflict: ['video_id'],
+  },
+  {
+    name: 'genet_performance',
+    columns: ['video_id', 'position', 'tune_id', 'description'],
+    conflict: ['video_id', 'position'],
+  },
+  {
+    name: 'genet_scene',
+    columns: ['video_id', 'position', 'scene_position', 'style', 'scene_video_id', 'start_seconds'],
+    conflict: ['video_id', 'position', 'scene_position'],
+  },
+  // Before publication, which references it by revision_id: applying
+  // publication's file first would refuse a row whose revision is not there
+  // yet.
+  {
+    name: 'revision',
+    columns: ['revision_id', 'entity', 'entity_key', 'action', 'body', 'created_via', 'created_at'],
+    conflict: ['revision_id'],
+    dayColumn: 'created_at',
+  },
+  {
+    name: 'publication',
+    columns: ['publication_id', 'target', 'last_revision_id', 'object_key', 'byte_length', 'published_at'],
+    conflict: ['publication_id'],
   },
 ];
 
@@ -205,8 +332,9 @@ export function toSql(table: TableShape, rows: readonly Record<string, unknown>[
     '-- Restore with:',
     `--   bun wrangler d1 execute kemov --remote --file <this file>`,
     '--',
-    '-- Apply channel before video and channel_snapshot: both carry a foreign',
-    '-- key to it. Applying a file more than once changes nothing.',
+    '-- Apply tables in the order BACKED_UP_TABLES lists them: a table with a',
+    '-- foreign key to another must be applied after it. Applying a file more',
+    '-- than once changes nothing.',
     '',
     ...statements,
     '',
@@ -284,11 +412,12 @@ export async function latestDay(bucket: R2Bucket, tableName: string): Promise<st
 /**
  * How many days after `date` the given `today` is, both UTC calendar days.
  *
- * Raw, not adjusted for what a table's newest file is expected to be:
- * `channel_snapshot` writes yesterday's day even when nothing is wrong (see
- * `BACKED_UP_TABLES`), so a healthy value here is 0 for `channel`/`video` and
- * 1 for `channel_snapshot`. Reading that difference against a threshold is
- * `isBackupStale` in ./health-thresholds.ts (#110), not this function.
+ * Raw, not adjusted for what a table's newest file is expected to be: a table
+ * with a `dayColumn` (see `BACKED_UP_TABLES`) writes yesterday's day even when
+ * nothing is wrong, so a healthy value here is 0 for a table replaced whole
+ * and 1 for `channel_snapshot` or `revision`. Reading that difference against
+ * a threshold is `isBackupStale` in ./health-thresholds.ts (#110), not this
+ * function.
  */
 export function daysBetween(date: string, today: string): number {
   return Math.round((midnight(today).getTime() - midnight(date).getTime()) / 86_400_000);
