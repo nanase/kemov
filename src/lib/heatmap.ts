@@ -53,14 +53,20 @@ export function spanOf(actualStartTime: string, actualEndTime: string): StreamSp
  * Every finished stream's span, oldest first.
  *
  * The same row set `GET /api/streams` draws `spans` from: a `streaming` video
- * with both instants recorded. A row without one - an upcoming or a live
- * stream, or anything that is not a stream at all - has no span to report.
+ * with both instants recorded, and its end after its start. A row without one
+ * - an upcoming or a live stream, or anything that is not a stream at all -
+ * has no span to report, and one whose end is not after its start is the same
+ * anomaly `worker/src/api/streams.ts` leaves out rather than clamp to a
+ * one-minute span.
  */
 export function streamSpans(rows: readonly VideoTableRow[]): StreamSpan[] {
   return rows
     .filter(
       (row): row is VideoTableRow & { actualStartTime: string; actualEndTime: string } =>
-        row.type === 'streaming' && row.actualStartTime !== null && row.actualEndTime !== null,
+        row.type === 'streaming' &&
+        row.actualStartTime !== null &&
+        row.actualEndTime !== null &&
+        row.actualEndTime > row.actualStartTime,
     )
     .sort((a, b) => (a.actualStartTime < b.actualStartTime ? -1 : a.actualStartTime > b.actualStartTime ? 1 : 0))
     .map((row) => spanOf(row.actualStartTime, row.actualEndTime));

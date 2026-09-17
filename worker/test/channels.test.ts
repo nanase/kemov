@@ -35,8 +35,17 @@ async function insertSnapshot(
     .run();
 }
 
+async function insertExclusion(channelId: string, fetchedAt: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO channel_snapshot_exclusion (channel_id, fetched_at, reason) VALUES (?1, ?2, 'test')`,
+  )
+    .bind(channelId, fetchedAt)
+    .run();
+}
+
 beforeEach(async () => {
   await env.DB.prepare('DELETE FROM collect_task').run();
+  await env.DB.prepare('DELETE FROM channel_snapshot_exclusion').run();
   await env.DB.prepare('DELETE FROM channel_snapshot').run();
   await env.DB.prepare('DELETE FROM video').run();
   await env.DB.prepare('DELETE FROM channel').run();
@@ -195,6 +204,21 @@ describe('listChannels', () => {
     });
   });
 
+  // The excluded tick's own value must not surface anywhere this endpoint
+  // reads channel_snapshot from - not the current value, and not the change
+  // computed against it.
+  test('excludes a tick from the current value and from the change computed against it', async () => {
+    await insertChannel('UCaaa');
+    await insertSnapshot('UCaaa', '2026-09-07T11:00:00Z', { subscribers: 1000 });
+    await insertSnapshot('UCaaa', '2026-09-07T12:00:00Z', { subscribers: 1050 });
+    await insertExclusion('UCaaa', '2026-09-07T12:00:00Z');
+
+    const { channels } = await listChannels(env);
+
+    expect(channels[0]?.fetchedAt).toEqual('2026-09-07T11:00:00Z');
+    expect(channels[0]?.latest.subscriberCount).toEqual(1000);
+  });
+
   test('reports a hidden subscriber count as absent rather than as zero', async () => {
     await insertChannel('UCaaa');
     await insertSnapshot('UCaaa', '2026-09-07T11:00:00Z', { subscribers: null });
@@ -253,6 +277,17 @@ describe('getHistory', () => {
     const history = await getHistory(env, 'UCaaa', '2026-09-05T00:00:00Z', '2026-09-08T00:00:00Z', 3600);
 
     expect(history.samples).toHaveLength(1);
+  });
+
+  test('leaves out an excluded tick', async () => {
+    await insertChannel('UCaaa');
+    await insertSnapshot('UCaaa', '2026-09-07T12:00:00Z', { views: 100 });
+    await insertSnapshot('UCaaa', '2026-09-07T13:00:00Z', { views: 200 });
+    await insertExclusion('UCaaa', '2026-09-07T13:00:00Z');
+
+    const history = await getHistory(env, 'UCaaa', '2026-09-07T00:00:00Z', '2026-09-08T00:00:00Z', 60);
+
+    expect(history.samples.map((sample) => sample.viewCount)).toEqual([100]);
   });
 });
 

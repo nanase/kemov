@@ -48,8 +48,18 @@ async function insertVideo(
     .run();
 }
 
+async function insertOverride(
+  videoId: string,
+  overrides: { title?: string | null; type?: string | null; availability?: string | null } = {},
+): Promise<void> {
+  await env.DB.prepare(`INSERT INTO video_override (video_id, title, type, availability) VALUES (?1, ?2, ?3, ?4)`)
+    .bind(videoId, overrides.title ?? null, overrides.type ?? null, overrides.availability ?? null)
+    .run();
+}
+
 beforeEach(async () => {
   await env.DB.prepare('DELETE FROM collect_task').run();
+  await env.DB.prepare('DELETE FROM video_override').run();
   await env.DB.prepare('DELETE FROM channel_snapshot').run();
   await env.DB.prepare('DELETE FROM video').run();
   await env.DB.prepare('DELETE FROM channel').run();
@@ -110,6 +120,24 @@ describe('listLive', () => {
       scheduledStartTime: '2026-09-07T20:00:00Z',
       actualStartTime: null,
     });
+  });
+
+  test('reflects an overridden title', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('onair', 'UCaaa', { live: 'live' });
+    await insertOverride('onair', { title: 'renamed' });
+
+    expect((await listLive(env, now)).streams[0]?.title).toEqual('renamed');
+  });
+
+  // An override is the one way a live or upcoming row can stop being public,
+  // since the collector itself only ever writes one while it is.
+  test('leaves out a stream overridden to a non-public availability', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('onair', 'UCaaa', { live: 'live' });
+    await insertOverride('onair', { availability: 'private' });
+
+    expect((await listLive(env, now)).streams).toEqual([]);
   });
 
   test('carries no channel name or colour', async () => {

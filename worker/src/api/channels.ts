@@ -1,5 +1,6 @@
 import { changeOver, DAY_SECONDS, HOUR_SECONDS, type Delta, type Sample } from '../lib/delta';
 import type { Env } from '../lib/env';
+import { CHANNEL_SNAPSHOT_EFFECTIVE } from '../lib/overrides';
 import { formatTimestamp } from '../lib/time';
 
 /**
@@ -82,17 +83,18 @@ const COLUMN: Readonly<Record<CountName, keyof SnapshotRow>> = {
 async function latestPerChannel(db: D1Database): Promise<ChannelRow[]> {
   const { results } = await db
     .prepare(
-      `SELECT c.channel_id, c.name, c.fullname, c.globalname, c.twitter,
+      `WITH ${CHANNEL_SNAPSHOT_EFFECTIVE}
+       SELECT c.channel_id, c.name, c.fullname, c.globalname, c.twitter,
               c.color_key, c.color_sub, c.color_light, c.color_back,
               c.activity_start_date, c.activity_end_date,
               c.custom_url, c.thumbnail_url,
-              (SELECT s.fetched_at FROM channel_snapshot s
+              (SELECT s.fetched_at FROM channel_snapshot_effective s
                 WHERE s.channel_id = c.channel_id ORDER BY s.fetched_at DESC LIMIT 1) AS fetched_at,
-              (SELECT s.subscriber_count FROM channel_snapshot s
+              (SELECT s.subscriber_count FROM channel_snapshot_effective s
                 WHERE s.channel_id = c.channel_id ORDER BY s.fetched_at DESC LIMIT 1) AS subscriber_count,
-              (SELECT s.view_count FROM channel_snapshot s
+              (SELECT s.view_count FROM channel_snapshot_effective s
                 WHERE s.channel_id = c.channel_id ORDER BY s.fetched_at DESC LIMIT 1) AS view_count,
-              (SELECT s.video_count FROM channel_snapshot s
+              (SELECT s.video_count FROM channel_snapshot_effective s
                 WHERE s.channel_id = c.channel_id ORDER BY s.fetched_at DESC LIMIT 1) AS video_count
          FROM channel c
         ORDER BY c.display_order, c.channel_id`,
@@ -106,8 +108,9 @@ async function latestPerChannel(db: D1Database): Promise<ChannelRow[]> {
 async function snapshotAt(db: D1Database, channelId: string, at: string): Promise<SnapshotRow | null> {
   return await db
     .prepare(
-      `SELECT fetched_at, subscriber_count, view_count, video_count
-         FROM channel_snapshot
+      `WITH ${CHANNEL_SNAPSHOT_EFFECTIVE}
+       SELECT fetched_at, subscriber_count, view_count, video_count
+         FROM channel_snapshot_effective
         WHERE channel_id = ?1 AND fetched_at <= ?2
         ORDER BY fetched_at DESC
         LIMIT 1`,
@@ -347,8 +350,9 @@ export function readHistoryRange(params: URLSearchParams, now: Date): HistoryRan
  */
 export async function getHistory(env: Env, channelId: string, from: string, to: string, bucketSeconds: number) {
   const { results } = await env.DB.prepare(
-    `SELECT fetched_at, subscriber_count, view_count, video_count
-       FROM channel_snapshot
+    `WITH ${CHANNEL_SNAPSHOT_EFFECTIVE}
+     SELECT fetched_at, subscriber_count, view_count, video_count
+       FROM channel_snapshot_effective
       WHERE channel_id = ?1 AND fetched_at >= ?2 AND fetched_at <= ?3
       ORDER BY fetched_at ASC`,
   )
