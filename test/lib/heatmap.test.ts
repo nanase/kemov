@@ -104,9 +104,24 @@ describe('heatmapBins', () => {
 
   // If wrapping ever revisited a bin it had already counted, this would show
   // a 2 somewhere instead of a 1 in every bin.
-  test('a stream lasting a full week counts once in every bin, not twice', () => {
-    const bins = heatmapBins([[0, WEEK_MINUTES]], 60);
+  test.each(HEATMAP_STEP_MINUTES)(
+    'a stream lasting a full week counts once in every bin, not twice (%d-minute cells)',
+    (step) => {
+      const bins = heatmapBins([[0, WEEK_MINUTES]], step);
 
-    expect(bins).toEqual(new Array(bins.length).fill(1));
-  });
+      expect(bins).toEqual(new Array(bins.length).fill(1));
+    },
+  );
+
+  // Starting mid-cell rounds the unwrapped range up to one more cell than the
+  // week actually has (169 hour-cells for a week of 168), and that extra cell
+  // wraps onto cell 0. Uncapped, cell 0 would show 2 instead of 1.
+  test.each(HEATMAP_STEP_MINUTES)(
+    'a full-week stream starting mid-cell still counts once in every bin (%d-minute cells)',
+    (step) => {
+      const bins = heatmapBins([[5, WEEK_MINUTES]], step);
+
+      expect(bins).toEqual(new Array(bins.length).fill(1));
+    },
+  );
 });

@@ -80,8 +80,15 @@ export type HeatmapStepMinutes = (typeof HEATMAP_STEP_MINUTES)[number];
  * question, "how much airtime", not "how often is this member live here". A
  * span that reaches past Sunday 23:59 wraps to the start of the grid: a
  * stream beginning Saturday night and running past midnight is exactly as
- * live at Sunday 00:30 as one that started then, and `spanOf` already clamps
- * `minutes` to at most a week, so a span can wrap at most once.
+ * live at Sunday 00:30 as one that started then.
+ *
+ * The number of cells touched is capped at `binCount` rather than left as
+ * `endBin - startBin`: a span starting mid-cell and lasting close to a full
+ * week reaches past its own start once wrapped - `weekMinute` 5 and `minutes`
+ * `WEEK_MINUTES` spans every cell exactly once, but rounds to 169 cells of an
+ * hour each before the cap, one more than the 168 a week actually has. Left
+ * uncapped, that extra cell wraps onto cell 0 and counts the stream there
+ * twice.
  */
 export function heatmapBins(spans: readonly StreamSpan[], stepMinutes: HeatmapStepMinutes): number[] {
   const binCount = WEEK_MINUTES / stepMinutes;
@@ -90,9 +97,10 @@ export function heatmapBins(spans: readonly StreamSpan[], stepMinutes: HeatmapSt
   for (const [weekMinute, minutes] of spans) {
     const startBin = Math.floor(weekMinute / stepMinutes);
     const endBin = Math.ceil((weekMinute + minutes) / stepMinutes);
+    const cellsTouched = Math.min(endBin - startBin, binCount);
 
-    for (let bin = startBin; bin < endBin; bin += 1) {
-      bins[bin % binCount] += 1;
+    for (let offset = 0; offset < cellsTouched; offset += 1) {
+      bins[(startBin + offset) % binCount] += 1;
     }
   }
 
