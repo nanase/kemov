@@ -77,6 +77,24 @@ Default URL: http://localhost:4173/stats/
 bun run preview
 ```
 
+### Screenshots
+
+Playwright takes the screenshots that a review of a visual change asks for. It keeps its own Chromium, separate from any browser already open on the machine, so clean-up is `browser.close()` and nothing more — see #120 for why that distinction matters.
+
+`bun install` does not fetch the browser; do that once per machine:
+
+```sh
+bunx playwright install chromium
+```
+
+Then, with the pages served by `bun run dev` or `bun run preview`:
+
+```sh
+bun run screenshot screenshots stats=http://localhost:4173/stats/ ranking=http://localhost:4173/stats/ranking/
+```
+
+Each `<name>=<url>` pair becomes `screenshots/<name>-<light|dark>-<390|768|1280>.png`, one file per width and colour scheme. `screenshots/` is gitignored: nothing this script writes is committed.
+
 ### Lint with [ESLint](https://eslint.org/)
 
 ```sh
