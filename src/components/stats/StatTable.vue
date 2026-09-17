@@ -279,7 +279,7 @@ function startsWithin(channelId: string, hours: number): boolean {
       width: 100%;
       height: 100%;
       /* stylelint-disable-next-line color-function-notation */
-      background: rgba(var(--v-border-color), var(--v-hover-opacity));
+      background: rgb(var(--v-border-color), var(--v-hover-opacity));
       pointer-events: none;
     }
   }
