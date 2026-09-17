@@ -389,6 +389,20 @@ Not `lifecycle set --file <json>`: `set` replaces the bucket's whole ruleset, an
 
 Check with `bun wrangler r2 bucket lifecycle list kemov-backup`; it should list 20 rules — the 19 above plus the Default Multipart Abort Rule that was already there.
 
+### Public Data
+
+The admin site publishes JSON to its own bucket, `kemov-public`, bound as `PUBLIC_DATA` (#144). No lifecycle rule is set on it: a publish overwrites the same key every time, so there is never an old object for a rule to expire.
+
+It is not backed up. Every published object is built from `revision`, which is backed up, so losing `kemov-public` costs a republish rather than the data itself — the same reasoning that keeps `collect_task` and `chat_author` out of `kemov-backup` (see [Backups](#backups) above), applied to a bucket instead of a table.
+
+Nothing writes to it yet. Which keys it holds and what serves them from `/api` are later work; this only reserves the binding and the bucket.
+
+The bucket does not exist until created once, before deploying the code that binds it:
+
+```sh
+bun wrangler r2 bucket create kemov-public
+```
+
 ## Deployment
 
 One `Deploy` workflow puts up the worker and the site together, on every push to `main` and on demand from the Actions tab. There is no second project and no GitHub Pages: `wrangler.toml` declares `dist/` as the worker's static assets, so `bun wrangler deploy` uploads the built site alongside the code that answers `/api`.
