@@ -10,10 +10,10 @@ name = "kemov"
 main = "worker/src/index.ts"
 
 # The newest compatibility date the workerd bundled with
-# @cloudflare/vitest-pool-workers accepts, so the tests and production share
+# @cloudflare/vitest-plugin accepts, so the tests and production share
 # one set of semantics. Overriding it for the tests instead would leave them
 # verifying a behaviour production does not have. See #74.
-compatibility_date = "2026-08-22"
+compatibility_date = "2026-09-16"
 
 # The workers.dev subdomain, off. It is generated from the account's email
 # address and the local part appears in it verbatim, so every successful
