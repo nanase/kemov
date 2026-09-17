@@ -299,9 +299,11 @@ Time travel above covers the last 30 days and only inside D1. The nightly backup
 channel/2026-09-08.sql              every row, rewritten each night
 video/2026-09-08.sql                every row, rewritten each night
 channel_snapshot/2026-09-07.sql     one finished day, written once
+revision/2026-09-07.sql             one finished day, written once
+publication/2026-09-08.sql          every row, rewritten each night
 ```
 
-`channel` and `video` are written whole each night because their current values are the whole story. `channel_snapshot` is not: it only ever gains rows, 1,584 of them a day, so a finished day is written once as its own file and never touched again. That keeps a night's work the size of a day rather than the size of the table, which by the end of a year is 578,000 rows.
+Most tables are written whole each night because their current values are the whole story — every table the admin site added in [#144](https://github.com/nanase/kemov/issues/144) is one of these, alongside `channel` and `video`. `channel_snapshot` and `revision` are not: both only ever gain rows, so a finished day is written once as its own file and never touched again. That keeps a night's work the size of a day rather than the size of the table, which for `channel_snapshot` alone is 578,000 rows by the end of a year at 1,584 a day.
 
 A run writes at most seven missing days, so a gap left by an outage closes over several nights rather than being attempted all at once. Which days are already written is read from the bucket, not remembered anywhere, so nothing can disagree about it.
 
@@ -309,7 +311,7 @@ Inside a file, one `INSERT` names at most 200 rows and at most 80,000 bytes, whi
 
 `collect_task` and `chat_author` are deliberately absent. They hold where collection has got to, they rebuild themselves within a tick or two, and restoring them would send the chat job back through replays it has already read.
 
-`/api/health` covers this job too, since [#115](https://github.com/nanase/kemov/issues/115). It cannot read `collect_task` for it — this job writes none of those rows — so its `backup` field reads the bucket instead: the newest day each table has a file for, and how many days old that is. `channel_snapshot` reads one day older than `channel` and `video` even when nothing is wrong, because it writes yesterday's finished day rather than today's (see above). The field does not say how old is too old; that threshold is [#110](https://github.com/nanase/kemov/issues/110)'s decision.
+`/api/health` covers this job too, since [#115](https://github.com/nanase/kemov/issues/115). It cannot read `collect_task` for it — this job writes none of those rows — so its `backup` field reads the bucket instead: the newest day each table has a file for, and how many days old that is. `channel_snapshot` and `revision` read one day older than the rest even when nothing is wrong, because both write yesterday's finished day rather than today's (see above). The field does not say how old is too old; that threshold is [#110](https://github.com/nanase/kemov/issues/110)'s decision.
 
 ### Restoring from a Backup
 
@@ -353,30 +355,39 @@ Applying the files directly, as step 1 does, leaves `d1_migrations` empty. That 
 
 ### What Expires and What Does Not
 
-**Three prefix-specific lifecycle rules are set on `kemov-backup`, in addition to its existing Default Multipart Abort Rule, because one rule covering the whole bucket would be wrong.**
+**Prefix-specific lifecycle rules are set on `kemov-backup`, in addition to its existing Default Multipart Abort Rule, because one rule covering the whole bucket would be wrong.**
 
-| Prefix               | Retention    | Why                                                                                                                     |
-| -------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `channel/`, `video/` | 30 days      | Each file is a complete copy. The newest one is all that is needed; older ones are duplicates.                          |
-| `channel_snapshot/`  | **365 days** | Each file is one day and no other file holds that day. Deleting one leaves a hole in the history that nothing can fill. |
+| Prefix                                                                                                                                                                                                                                                                                                                                                                                | Retention    | Why                                                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `video/`                                                                                                                                                                                                                                                                                                                                                                              | 30 days      | Each file is a complete copy, collected fresh from the YouTube API. The newest one is all that is needed; older ones are duplicates. |
+| `channel/`, `channel_snapshot/`, `channel_snapshot_exclusion/`, `video_override/`, `footprints_event/`, `footprints_event_member/`, `footprints_event_source/`, `genet_person/`, `genet_tune/`, `genet_tune_attribute/`, `genet_tune_attribute_person/`, `genet_tune_video/`, `genet_tune_score/`, `genet_stream/`, `genet_performance/`, `genet_scene/`, `revision/`, `publication/` | **365 days** | See below.                                                                                                                           |
 
-That hole is a hole in R2, not in the history itself: `channel_snapshot` only ever gains rows in D1 (see [Backups](#backups) above), so D1 already holds every day of it forever. R2's copy exists to restore D1 if D1 is what breaks, and that need shows up right after an incident, not a year later — 365 days bounds how long the copy waits around for that, not how long the history survives.
+`channel_snapshot/` and `revision/` hold one file per day and no other file holds that day: deleting one leaves a hole in the history that nothing can fill. That hole is a hole in R2, not in the history itself — both tables only ever gain rows in D1 (see [Backups](#backups) above), so D1 already holds every day of either forever. R2's copy exists to restore D1 if D1 is what breaks, and that need shows up right after an incident, not a year later — 365 days bounds how long the copy waits around for that, not how long the history survives.
 
-The snapshot history began on 2026-09-07 and exists nowhere else in R2. A day of it is about 119 KiB of SQL, measured against production values on 2026-09-08, so a year of it costs some 44 MB; `channel` and `video` add roughly 70 MB more at 30 days. Both fit well inside R2's free 10 GB tier.
+Every other table in the 365-day row holds data a person typed once through the admin site rather than data the collector can fetch again — `channel` joined this group for the same reason, once `channel` itself became a table people edit rather than one only the collector wrote to. `video/` is the one table this reasoning does not reach: losing 30 days of it costs nothing beyond a slower rebuild, because it can be recollected from the YouTube API.
 
-Set with three `lifecycle add` calls, run from `worker/`:
+The snapshot history began on 2026-09-07 and exists nowhere else in R2. A day of it is about 119 KiB of SQL, measured against production values on 2026-09-08, so a year of it costs some 44 MB; `video` adds roughly 70 MB more at 30 days (`channel`'s own few dozen rows barely move that figure). Both fit well inside R2's free 10 GB tier; the tables #144 added hold at most a few hundred rows each and add little beside that.
+
+Set with `lifecycle add` calls, run from `worker/`. `channel/`'s existing 30-day rule is replaced rather than added beside, since a prefix can carry only one rule:
 
 ```sh
-npx wrangler r2 bucket lifecycle add kemov-backup expire-video-30d video/ --expire-days 30
-npx wrangler r2 bucket lifecycle add kemov-backup expire-channel-30d channel/ --expire-days 30
-npx wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-365d channel_snapshot/ --expire-days 365
+bun wrangler r2 bucket lifecycle add kemov-backup expire-video-30d video/ --expire-days 30
+bun wrangler r2 bucket lifecycle remove kemov-backup expire-channel-30d
+bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-365d channel/ --expire-days 365
+bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-365d channel_snapshot/ --expire-days 365
+
+for t in channel_snapshot_exclusion video_override footprints_event footprints_event_member footprints_event_source \
+         genet_person genet_tune genet_tune_attribute genet_tune_attribute_person genet_tune_video genet_tune_score \
+         genet_stream genet_performance genet_scene revision publication; do
+  bun wrangler r2 bucket lifecycle add kemov-backup "expire-${t//_/-}-365d" "$t/" --expire-days 365
+done
 ```
 
-Not `lifecycle set --file <json>`: `set` replaces the bucket's whole ruleset, and the existing "Default Multipart Abort Rule" (7 days, all prefixes) would be lost if it were left out of that file. `add` only adds a rule, so the three calls above cannot touch it.
+Not `lifecycle set --file <json>`: `set` replaces the bucket's whole ruleset, and the existing "Default Multipart Abort Rule" (7 days, all prefixes) would be lost if it were left out of that file. `add` and `remove` only touch the one rule named, so the calls above cannot touch it.
 
-**The trailing slash matters.** `channel` as a prefix also matches `channel_snapshot/`, which would expire a year of irreplaceable history in 30 days instead of 365. All three prefixes above end in `/` for this reason.
+**The trailing slash matters.** `genet_tune` as a prefix also matches `genet_tune_attribute/`, and `video` matches `video_override/`, which would expire either at the wrong retention. Every prefix above ends in `/` for this reason.
 
-Check with `npx wrangler r2 bucket lifecycle list kemov-backup`; it should list four rules — the three above plus the Default Multipart Abort Rule that was already there.
+Check with `bun wrangler r2 bucket lifecycle list kemov-backup`; it should list 20 rules — the 19 above plus the Default Multipart Abort Rule that was already there.
 
 ## Deployment
 

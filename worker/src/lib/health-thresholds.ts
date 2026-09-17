@@ -33,16 +33,19 @@ export const CHAT_REPLAY_ACTIVITY_STALE_MINUTES = 10;
 /**
  * `daysAgo` a backed-up table reads on a night nothing went wrong.
  *
- * `channel` and `video` write today's date; `channel_snapshot` writes
- * yesterday's even when it is working, because of when the nightly job runs
- * relative to midnight (see `BACKED_UP_TABLES` in ./backup.ts). A single
- * threshold applied to all three would fire on `channel_snapshot` every
- * night it is perfectly healthy.
+ * A table replaced whole each night writes today's date; a table with a
+ * `dayColumn` (see `BACKED_UP_TABLES` in ./backup.ts) writes yesterday's even
+ * when it is working, because it can only write a day once that day can no
+ * longer change. A single threshold applied to every table would fire on
+ * `channel_snapshot` and `revision` every night they are perfectly healthy,
+ * which is why a table not listed here is read against 0 rather than 1: that
+ * is the correct baseline for every table but those two.
  */
 export const BACKUP_FRESH_DAYS_AGO: Readonly<Record<string, number>> = {
   channel: 0,
   video: 0,
   channel_snapshot: 1,
+  revision: 1,
 };
 
 /**
