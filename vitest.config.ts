@@ -4,7 +4,7 @@ import { mergeConfig } from 'vite';
 import { defineConfig } from 'vitest/config';
 import viteConfig from './vite.config';
 
-const root = resolve(__dirname);
+const root = resolve(import.meta.dirname);
 
 export default mergeConfig(
   viteConfig,
