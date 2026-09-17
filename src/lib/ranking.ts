@@ -11,11 +11,21 @@ import type { VideoType } from '@/type/api';
  * which rows a ranking counts and what order they come out in.
  */
 
-/** One row of `GET /api/videos/table`, denormalized to one object per video. */
+/**
+ * One row of `GET /api/videos/table`, denormalized to one object per video.
+ *
+ * Every field the endpoint's `columns` object carries except `fetchedAt`,
+ * which describes the response rather than a video. @/lib/heatmap.ts reads
+ * `actualStartTime` and `actualEndTime` off the same type.
+ */
 export interface VideoTableRow extends RankableVideo {
   videoId: string;
+  channelId: string;
+  title: string;
   type: VideoType | null;
   publishedAt: string;
+  actualStartTime: string | null;
+  actualEndTime: string | null;
 }
 
 /**

@@ -24,6 +24,8 @@ const NOW = new Date('2026-09-17T00:00:00Z');
 function row(overrides: Partial<VideoTableRow> = {}): VideoTableRow {
   return {
     videoId: 'v1',
+    channelId: 'UCaaa',
+    title: 'ある配信',
     type: 'streaming',
     publishedAt: '2026-09-01T00:00:00Z',
     viewCount: 100,
@@ -32,6 +34,8 @@ function row(overrides: Partial<VideoTableRow> = {}): VideoTableRow {
     chatMessageCount: 50,
     chatUniqueUserCount: 5,
     durationSeconds: 100,
+    actualStartTime: null,
+    actualEndTime: null,
     ...overrides,
   };
 }
