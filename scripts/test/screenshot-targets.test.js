@@ -34,6 +34,14 @@ describe('parseTargets', () => {
     expect(() => parseTargets([`${name}=http://localhost/`])).toThrow('name must be a single filename');
   });
 
+  test('rejects an empty url', () => {
+    expect(() => parseTargets(['stats='])).toThrow('url must be an absolute URL');
+  });
+
+  test('rejects a relative url', () => {
+    expect(() => parseTargets(['stats=/stats/'])).toThrow('url must be an absolute URL');
+  });
+
   test('rejects a duplicate name before any target is returned', () => {
     expect(() => parseTargets(['stats=http://localhost/a', 'stats=http://localhost/b'])).toThrow(
       'duplicate name "stats"',

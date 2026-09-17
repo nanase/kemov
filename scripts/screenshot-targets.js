@@ -25,6 +25,12 @@ function parseTarget(arg) {
   const name = arg.slice(0, separator);
   const url = arg.slice(separator + 1);
 
+  try {
+    new URL(url);
+  } catch {
+    throw new Error(`url must be an absolute URL, got "${url}"`);
+  }
+
   if (name.includes('/') || name.includes('\\') || reservedNames.has(name)) {
     throw new Error(`name must be a single filename with no "/", "\\", "." or "..", got "${name}"`);
   }
