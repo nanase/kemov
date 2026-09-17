@@ -232,8 +232,8 @@ describe('channelsToSql', () => {
     expect(sql).toContain('INSERT INTO channel (');
   });
 
-  test('updates rather than replaces, so a rerun changes nothing', () => {
-    expect(sql).toContain('ON CONFLICT (channel_id) DO UPDATE SET');
+  test('adds a row without overwriting one that is already there', () => {
+    expect(sql).toContain('ON CONFLICT (channel_id) DO NOTHING');
   });
 
   test('never mentions a column the collector owns', () => {
@@ -242,9 +242,9 @@ describe('channelsToSql', () => {
     }
   });
 
-  test('does not carry twitch, which no column holds', () => {
-    expect(sql).not.toContain('twitch');
-    expect(sql).not.toContain('cape_kemov');
+  test('carries twitch, now that channel has a column for it', () => {
+    expect(sql).toContain('twitch');
+    expect(sql).toContain("'cape_kemov'");
   });
 
   test('never deletes, because the snapshots and videos are the history', () => {
@@ -252,28 +252,9 @@ describe('channelsToSql', () => {
     expect(sql).not.toContain('REPLACE');
   });
 
-  test('leaves the primary key out of the update', () => {
-    expect(sql).not.toContain('channel_id = excluded.channel_id');
-  });
-
-  test('updates every column the deploy owns', () => {
-    const columns = [
-      'name',
-      'fullname',
-      'globalname',
-      'twitter',
-      'color_key',
-      'color_sub',
-      'color_light',
-      'color_back',
-      'activity_start_date',
-      'activity_end_date',
-      'display_order',
-    ];
-
-    for (const column of columns) {
-      expect(sql).toContain(`${column} = excluded.${column}`);
-    }
+  test('never updates, so an edit made through the admin site is not overwritten', () => {
+    expect(sql).not.toContain('DO UPDATE');
+    expect(sql).not.toContain('excluded.');
   });
 
   test("writes each entry's position in the file as display_order", () => {

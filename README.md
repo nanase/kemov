@@ -168,16 +168,16 @@ A region is chosen when the database is created and never again, so moving it me
 
 `channel` has two writers, and one that ignores the split erases the other's work.
 
-| Columns                                                                                             | Written by                          |
-| --------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| `channel_id`, `name`, `fullname`, `globalname`, `twitter`, `color_*`, `activity_*`, `display_order` | The deploy, from `channels.yml`     |
-| `custom_url`, `thumbnail_url`, `fetched_at`                                                         | The collector, from `Channels.list` |
+| Columns                                                                                                       | Written by                                     |
+| ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `channel_id`, `name`, `fullname`, `globalname`, `twitter`, `twitch`, `color_*`, `activity_*`, `display_order` | The deploy's initial seed, from `channels.yml` |
+| `custom_url`, `thumbnail_url`, `fetched_at`                                                                   | The collector, from `Channels.list`            |
 
-Seeding from the YAML therefore upserts those columns by name. Replacing the whole row would blank what the collector has fetched. Every other table is the collector's alone.
+Seeding from the YAML therefore names only those columns, and only for a row that does not exist yet - see "The Channel Master" below. Every other table is the collector's alone.
 
 ### The Channel Master
 
-`channels.yml` at the repository root holds the deploy's half of that table, one entry per streamer. The file's own order is the order the site shows streamers in, written into `display_order`; see the comment at the top of the file before reordering it.
+`channels.yml` at the repository root is the initial seed for that table, one entry per streamer. It only ever adds a row: a streamer already in `channel` is edited there from that point on, not by editing this file. The file's own order decides a new streamer's initial `display_order` - the order the site shows streamers in until it is changed through the admin site; see the comment at the top of the file before reordering it.
 
 ```yaml
 - channel_id: UCEcMIuGR8WO2TwL9XIpjKtw
@@ -195,8 +195,6 @@ Seeding from the YAML therefore upserts those columns by name. Replacing the who
 ```
 
 Field names are the column names they land in, with two exceptions. `color` groups the four values because a person edits them together, and the seed spreads them across `color_key`, `color_sub`, `color_light` and `color_back`.
-
-`twitch` lands nowhere. Three entries carry one, no column holds it and nothing reads it. The file keeps it so that handles a person wrote by hand outlive the JSON described below: showing them later takes a migration, and a migration can add a column but not data that was thrown away.
 
 `globalname`, `twitter` and `twitch` may be left out. `activity_end_date` is always written, and `null` is how the file says a streamer is still active — leaving the key out would say the same thing without anybody having decided it.
 
@@ -224,7 +222,7 @@ Give the entry an `activity_end_date`. Never delete one.
 
 ### Seeding the Channel Table
 
-The deploy turns the file into one `INSERT ... ON CONFLICT DO UPDATE` and applies it. The same two commands fill a local database:
+The deploy turns the file into one `INSERT ... ON CONFLICT DO NOTHING` and applies it. The same two commands fill a local database:
 
 ```sh
 bun run build-channels-sql .wrangler/channels.sql
@@ -233,7 +231,7 @@ bun wrangler d1 execute kemov --local --file .wrangler/channels.sql
 
 The generated SQL is not committed. It is whatever the file says at the moment it runs, and a copy in the repository would be one more thing that can disagree with the file. `.wrangler/` is gitignored, which is why the example writes there.
 
-The statement names the deploy's columns and nothing else, so `custom_url`, `thumbnail_url` and `fetched_at` keep whatever the last collection put there. It inserts and updates only: a channel the file no longer lists keeps its row.
+The statement names the deploy's columns and nothing else, so `custom_url`, `thumbnail_url` and `fetched_at` keep whatever the last collection put there. It only inserts: a channel already in the table keeps every column it has, whatever this file now says, and a channel the file no longer lists keeps its row too.
 
 ### Applying Migrations
 
