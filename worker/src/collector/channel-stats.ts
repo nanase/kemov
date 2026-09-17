@@ -75,6 +75,11 @@ async function recordMissing(db: D1Database, channelId: string, fetchedAt: strin
  * Writing the row on success rather than only on failure also leaves a
  * heartbeat. `updated_at` on a 'done' row is when this channel last came
  * back, which is the question a monitor asks anyway.
+ *
+ * Also clears `checked_at`: a row a person acknowledged from the admin site
+ * is done being watched for once collection has actually recovered, and a
+ * fresh failure afterwards should reappear on the admin site's list rather
+ * than stay hidden behind an old acknowledgement.
  */
 function collectedStatement(db: D1Database, channelId: string, at: string): D1PreparedStatement {
   return db
@@ -85,6 +90,7 @@ function collectedStatement(db: D1Database, channelId: string, at: string): D1Pr
          state = 'done',
          attempts = 0,
          next_attempt_at = NULL,
+         checked_at = NULL,
          updated_at = excluded.updated_at`,
     )
     .bind(channelId, at);

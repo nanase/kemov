@@ -25,6 +25,7 @@ interface CollectTaskRow {
   state: string;
   attempts: number;
   next_attempt_at: string | null;
+  checked_at: string | null;
 }
 
 // Every column channels.yml owns is required by the schema, so a test that
@@ -91,7 +92,7 @@ async function allSnapshots(): Promise<ChannelSnapshotRow[]> {
 async function allCollectTasks(): Promise<CollectTaskRow[]> {
   return (
     await env.DB.prepare(
-      "SELECT kind, target_id, state, attempts, next_attempt_at FROM collect_task WHERE kind = 'channel_stats' ORDER BY target_id",
+      "SELECT kind, target_id, state, attempts, next_attempt_at, checked_at FROM collect_task WHERE kind = 'channel_stats' ORDER BY target_id",
     ).all<CollectTaskRow>()
   ).results;
 }
@@ -246,6 +247,28 @@ describe('runChannelStats', () => {
     expect(await allCollectTasks()).toMatchObject([
       { target_id: 'UCaaa', state: 'done', attempts: 0, next_attempt_at: null },
     ]);
+  });
+
+  // checked_at is the admin site's mark that a person has already seen this
+  // failure; a later success has to clear it, or a channel that recovered
+  // and failed again would stay hidden behind the old acknowledgement.
+  test('clears checked_at once a channel a person acknowledged succeeds again', async () => {
+    await insertChannel('UCaaa');
+
+    await runChannelStats(
+      env,
+      vi.fn(async () => new Response('forbidden', { status: 403 })),
+    );
+    await env.DB.prepare(
+      "UPDATE collect_task SET checked_at = '2026-01-01T00:00:00Z' WHERE kind = 'channel_stats' AND target_id = 'UCaaa'",
+    ).run();
+
+    await runChannelStats(
+      env,
+      vi.fn(async () => channelsListResponse([{ id: 'UCaaa', viewCount: 1, subscriberCount: 1, videoCount: 1 }])),
+    );
+
+    expect(await allCollectTasks()).toMatchObject([{ target_id: 'UCaaa', state: 'done', checked_at: null }]);
   });
 
   test('records a channel that has never failed, so a monitor can see it is current', async () => {
