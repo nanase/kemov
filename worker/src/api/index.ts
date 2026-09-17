@@ -3,6 +3,8 @@ import { cachedJson, errorWithCacheHeaders, NotFound } from './cache';
 import { getChannel, getHistory, listChannels, readHistoryRange } from './channels';
 import { health, statusFor } from './health';
 import { listLive } from './live';
+import { monthsSeries } from './months';
+import { listStreams } from './streams';
 import {
   DEFAULT_PAGE_SIZE,
   DEFAULT_RANKING_SIZE,
@@ -19,9 +21,8 @@ import {
 /**
  * The HTTP API.
  *
- * Routing is a handful of comparisons rather than a library. There are seven
- * paths, two of them with one parameter, and a router would be a dependency
- * carried into workerd to save a switch statement.
+ * Routing is a handful of comparisons rather than a library. The paths are
+ * few, and a router would be a dependency carried into workerd to save a switch statement.
  *
  * Every reading endpoint goes through cachedJson, which is what makes "the
  * database is down" survivable: the last good answer is served, marked as
@@ -57,6 +58,8 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
   if (segments.length === 2 && resource === 'health') return await cached(() => health(env), statusFor);
   if (segments.length === 2 && resource === 'live') return await cached(() => listLive(env));
   if (segments.length === 2 && resource === 'channels') return await cached(() => listChannels(env));
+  if (segments.length === 2 && resource === 'months') return await cached(() => monthsSeries(env));
+  if (segments.length === 2 && resource === 'streams') return await cached(() => listStreams(env));
 
   if (segments.length === 3 && resource === 'videos' && name === 'table') return await cached(() => videosTable(env));
 
