@@ -71,6 +71,13 @@ bucket_name = "kemov-backup"
 binding = "PUBLIC_DATA"
 bucket_name = "kemov-public"
 
+# Public on purpose: this is the same domain a browser is sent to for the
+# Access login page, so committing it protects nothing a secret would.
+# `verifyAccess` (worker/src/lib/access.ts) fetches this team's public keys
+# from it and reads a token's `iss` claim against it.
+[vars]
+ACCESS_TEAM_DOMAIN = "nanase.cloudflareaccess.com"
+
 # The site itself, built from src/ by vite.
 #
 # Cloudflare serves a request that matches a built file directly and never

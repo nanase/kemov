@@ -164,9 +164,10 @@ Secrets belong to a Worker that already exists, so the first `bun wrangler deplo
 
 The dashboard is the other way in, if you would rather the value never passed through a terminal: Workers & Pages → `kemov` → Settings → Variables and Secrets → Add → type Secret.
 
-| Secret            | Read by                          |
-| ----------------- | -------------------------------- |
-| `YOUTUBE_API_KEY` | the collection jobs (#62 to #65) |
+| Secret            | Read by                                   |
+| ----------------- | ----------------------------------------- |
+| `YOUTUBE_API_KEY` | the collection jobs (#62 to #65)          |
+| `ACCESS_AUD`      | the check in front of `/admin/api` (#144) |
 
 `Deploy Worker` checks that every secret the worker reads is registered, and fails if one is not. What counts as a secret is decided by absence: a member of `Env` in `worker/src/lib/env.ts` that `wrangler.toml` does not supply as a binding or a `[vars]` entry. Adding a member to `Env` is therefore enough to put it under the check.
 
@@ -175,6 +176,14 @@ It runs after the deploy rather than before, and only names are involved on eith
 For local runs, put the same names in `.dev.vars` at the repository root as `NAME=value` lines. `.dev.vars` and `.dev.vars.*` are gitignored.
 
 `.env` is a different thing and is committed on purpose: Vite inlines it into the published bundle, so what it holds is already public. `wrangler dev` also reads it and hands the worker what it finds, which is another reason nothing secret may go there.
+
+### `/admin` and Cloudflare Access
+
+`/admin/*` is the write side of the site (#141): the worker answers it directly, with no built file behind it, so a request that finds nothing there gets a 404 rather than the public site's pages. Cloudflare Access sits in front of it and is what actually keeps everyone but its allowed identities out — no request lacking Access's approval reaches the worker at all.
+
+Every `/admin/api/*` request is also checked by the worker itself, in `worker/src/lib/access.ts`: it fetches Access's own public keys from `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs` and verifies the `Cf-Access-Jwt-Assertion` header's signature, `iss`, `aud` and `exp`/`nbf` against them, the same way Access's own edge does, and refuses the request otherwise. This is not a substitute for Access — the policy in front of `/admin` is what actually authorizes a caller — it exists so that a request is still refused here, rather than reaching a route that writes to D1 or to the public bucket unchecked, if that policy is ever removed or misconfigured. An earlier version compared only the `aud` claim without checking the signature; #144's review found that too little for a route meant to write, so this checks the signature instead (2026-09-18).
+
+`ACCESS_AUD` is the `aud` tag of the Access application in front of `/admin`, and `ACCESS_TEAM_DOMAIN` is that Access team's domain (e.g. `nanase.cloudflareaccess.com`) — a `[vars]` entry in `wrangler.toml`, not a secret, because it is the same domain a browser is already sent to for the Access login page. With either `ACCESS_AUD` or `ACCESS_TEAM_DOMAIN` unset, or with a key set that cannot be fetched, every `/admin/api/*` request is refused, Access policy notwithstanding.
 
 ## Database
 
@@ -426,18 +435,18 @@ Every other table in the 365-day row holds data a person typed once through the 
 
 The snapshot history began on 2026-09-07 and exists nowhere else in R2. A day of it is about 119 KiB of SQL, measured against production values on 2026-09-08, so a year of it costs some 44 MB; `video` adds roughly 70 MB more at 30 days (`channel`'s own few dozen rows barely move that figure). Both fit well inside R2's free 10 GB tier; the tables #144 added hold at most a few hundred rows each and add little beside that.
 
-Set with `lifecycle add` calls, run from `worker/`. `channel/`'s existing 30-day rule is replaced rather than added beside, since a prefix can carry only one rule:
+Set with `lifecycle add` calls, run from the repository root. `channel/`'s existing 30-day rule is replaced rather than added beside, since a prefix can carry only one rule. `-y` skips the confirmation `add` otherwise asks for, which would stop the loop partway through:
 
 ```sh
-bun wrangler r2 bucket lifecycle add kemov-backup expire-video-30d video/ --expire-days 30
-bun wrangler r2 bucket lifecycle remove kemov-backup expire-channel-30d
-bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-365d channel/ --expire-days 365
-bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-365d channel_snapshot/ --expire-days 365
+bun wrangler r2 bucket lifecycle add kemov-backup expire-video-30d video/ --expire-days 30 -y
+bun wrangler r2 bucket lifecycle remove kemov-backup --name expire-channel-30d
+bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-365d channel/ --expire-days 365 -y
+bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-365d channel_snapshot/ --expire-days 365 -y
 
 for t in channel_snapshot_exclusion video_override footprints_event footprints_event_member footprints_event_source \
          genet_person genet_tune genet_tune_attribute genet_tune_attribute_person genet_tune_video genet_tune_score \
          genet_stream genet_performance genet_scene revision publication; do
-  bun wrangler r2 bucket lifecycle add kemov-backup "expire-${t//_/-}-365d" "$t/" --expire-days 365
+  bun wrangler r2 bucket lifecycle add kemov-backup "expire-${t//_/-}-365d" "$t/" --expire-days 365 -y
 done
 ```
 
