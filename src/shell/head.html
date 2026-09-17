@@ -4,6 +4,39 @@
 <meta property="og:title" content="{=$title}" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://kemov.nanase.cc/{=$page-path}" />
+<meta name="color-scheme" content="light dark" />
+<style>
+  /*
+   * The background before the stylesheets arrive, so switching pages does not
+   * flash white. The values repeat --k-bg from tokens.css and
+   * palette-genet.css; test/shell/head.test.ts keeps them the same.
+   */
+  html {
+    background-color: #e9eeec;
+  }
+
+  html[data-palette='genet'] {
+    background-color: #ebe4dc;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme='light']) {
+      background-color: #0e0f10;
+    }
+
+    html[data-palette='genet']:not([data-theme='light']) {
+      background-color: #120e0b;
+    }
+  }
+
+  html[data-theme='dark'] {
+    background-color: #0e0f10;
+  }
+
+  html[data-palette='genet'][data-theme='dark'] {
+    background-color: #120e0b;
+  }
+</style>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Murecho:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -19,6 +52,8 @@
       const theme = localStorage.getItem('kemov-theme');
       if (theme === 'light' || theme === 'dark') {
         document.documentElement.dataset.theme = theme;
+        // The meta tag above allows both schemes until tokens.css narrows it.
+        document.documentElement.style.colorScheme = theme;
       }
     } catch {
       // Storage can be unavailable; following the OS is the fallback.

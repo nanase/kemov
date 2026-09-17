@@ -7,9 +7,9 @@ import { THEME_STORAGE_KEY, nextThemeSetting, parseThemeSetting, type ThemeSetti
 const setting = ref<ThemeSetting>(parseThemeSetting(document.documentElement.dataset.theme));
 
 const LABELS: Record<ThemeSetting, string> = {
-  system: '色のテーマ：OS に合わせる',
-  light: '色のテーマ：ライト',
-  dark: '色のテーマ：ダーク',
+  system: 'テーマ：デバイスに合わせる',
+  light: 'テーマ：ライト',
+  dark: 'テーマ：ダーク',
 };
 
 const label = computed(() => LABELS[setting.value]);
@@ -19,8 +19,15 @@ function cycle() {
   setting.value = next;
 
   const root = document.documentElement;
-  if (next === 'system') delete root.dataset.theme;
-  else root.dataset.theme = next;
+  // head.html sets the inline color-scheme alongside the attribute, and an
+  // inline value would outlast the attribute, so the two change together.
+  if (next === 'system') {
+    delete root.dataset.theme;
+    root.style.colorScheme = '';
+  } else {
+    root.dataset.theme = next;
+    root.style.colorScheme = next;
+  }
 
   try {
     if (next === 'system') localStorage.removeItem(THEME_STORAGE_KEY);
