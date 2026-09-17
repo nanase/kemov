@@ -34,7 +34,7 @@
     "vue": "^3.5.42"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@cloudflare/vitest-plugin": "^1.1.11",
     "@cloudflare/workers-types": "^5.20260910.1",
     "@eslint/js": "^10.0.1",
     "@mdi/font": "^7.4.47",
