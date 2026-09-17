@@ -106,13 +106,26 @@ export function getPropertyDescription(property: VideoProperty): string {
 }
 
 /**
+ * The fields readProperty needs, and nothing it does not.
+ *
+ * `@/lib/ranking` ranks the columnar rows `GET /api/videos/table` returns,
+ * which are not a `Video` - there is no `availability` or
+ * `scheduledStartTime` in a table row. The pick is what lets both a full
+ * `Video` and a table row call the same function.
+ */
+export type RankableVideo = Pick<
+  Video,
+  'viewCount' | 'likeCount' | 'commentCount' | 'chatMessageCount' | 'chatUniqueUserCount' | 'durationSeconds'
+>;
+
+/**
  * The value a video has for one measure, or undefined when it has none.
  *
  * Eight of the eleven are derived from two columns, and the API computes the
- * same eight in SQL for `GET /api/videos/ranking` - `EXPRESSIONS` in
- * worker/src/lib/ranking.ts. **The two have to agree, and nothing checks that
- * they do.** Correcting one without the other would make a ranking of one
- * channel disagree with a ranking across all of them.
+ * same eight in SQL for `GET /api/videos/ranking` and `GET /api/videos/table`
+ * - `EXPRESSIONS` in worker/src/lib/ranking.ts. test/lib/ranking.test.ts
+ * checks the two agree; correcting one without the other would make a ranking
+ * of one channel disagree with a ranking across all of them.
  *
  * They are both here on purpose. The ranking on the detail page orders one
  * channel's archive, ascending or descending, filtered by video type, and it
@@ -127,7 +140,7 @@ export function getPropertyDescription(property: VideoProperty): string {
  * though it had been measured and found to be nothing. Every video #67
  * migrated has a null duration until video-update reaches it.
  */
-export function readProperty(video: Video, property: VideoProperty): number | undefined {
+export function readProperty(video: RankableVideo, property: VideoProperty): number | undefined {
   const per = (count: number | null, divisor: number | null): number | undefined =>
     count === null || divisor === null || divisor <= 0 ? undefined : count / divisor;
 

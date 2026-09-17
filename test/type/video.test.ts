@@ -20,9 +20,9 @@ import {
  * rebuilt from a string with a JSON.parse reviver.
  *
  * Eight of these eleven measures are also computed in SQL by the API, in
- * worker/src/lib/ranking.ts, and nothing checks that the two agree. The rule
- * they have to share is the one below: a video missing a part of a measure is
- * left out, never counted as zero.
+ * worker/src/lib/ranking.ts - test/lib/ranking.test.ts checks the two agree.
+ * The rule they have to share is the one below: a video missing a part of a
+ * measure is left out, never counted as zero.
  */
 
 const VIDEO: Video = {
