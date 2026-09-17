@@ -7,13 +7,10 @@ import { env } from 'cloudflare:test';
  * SQL rather than through application code.
  */
 
-// revision is append-only (that is what this file tests), so nothing here
-// clears it between tests. Rows from earlier tests are harmless: nothing
-// below depends on the table starting empty, only on the row a given test
-// inserts for itself.
-beforeEach(async () => {
-  await env.DB.prepare('DELETE FROM publication').run();
-});
+// Both tables are append-only (that is what this file tests), so nothing
+// here clears them between tests. Rows from earlier tests are harmless:
+// nothing below depends on either table starting empty, only on the rows a
+// given test inserts for itself.
 
 describe('revision', () => {
   test('accepts a save with a body', async () => {
@@ -107,6 +104,38 @@ describe('publication', () => {
       )
         .bind(meta.last_row_id)
         .run(),
+    ).rejects.toThrow();
+  });
+
+  test('is append only: refuses an UPDATE', async () => {
+    const { meta } = await env.DB.prepare(
+      "INSERT INTO revision (entity, entity_key, action, body) VALUES ('footprints_event', '1', 'publish', '{}')",
+    ).run();
+
+    await env.DB.prepare(
+      "INSERT INTO publication (target, last_revision_id, object_key, byte_length) VALUES ('footprints', ?1, 'footprints/events.json', 100)",
+    )
+      .bind(meta.last_row_id)
+      .run();
+
+    await expect(
+      env.DB.prepare('UPDATE publication SET byte_length = 0 WHERE last_revision_id = ?1').bind(meta.last_row_id).run(),
+    ).rejects.toThrow();
+  });
+
+  test('is append only: refuses a DELETE', async () => {
+    const { meta } = await env.DB.prepare(
+      "INSERT INTO revision (entity, entity_key, action, body) VALUES ('footprints_event', '1', 'publish', '{}')",
+    ).run();
+
+    await env.DB.prepare(
+      "INSERT INTO publication (target, last_revision_id, object_key, byte_length) VALUES ('footprints', ?1, 'footprints/events.json', 100)",
+    )
+      .bind(meta.last_row_id)
+      .run();
+
+    await expect(
+      env.DB.prepare('DELETE FROM publication WHERE last_revision_id = ?1').bind(meta.last_row_id).run(),
     ).rejects.toThrow();
   });
 });

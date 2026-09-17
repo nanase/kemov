@@ -2,6 +2,8 @@
 --
 -- Read "Rolling back" in README.md first.
 
+DROP TRIGGER publication_no_delete;
+DROP TRIGGER publication_no_update;
 DROP TABLE publication;
 DROP TRIGGER revision_no_delete;
 DROP TRIGGER revision_no_update;

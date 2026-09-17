@@ -33,7 +33,9 @@ END;
 -- One row per time the admin site wrote a published JSON to R2. `revision`
 -- is not trimmed, so this is what answers "what is live right now" without
 -- scanning it: the newest row for a target names the revision the current
--- object in R2 was built from.
+-- object in R2 was built from. Append-only for the same reason as
+-- `revision`: rewriting or losing a row here would rewrite or lose the
+-- record of what was live and when.
 CREATE TABLE publication (
   publication_id   INTEGER PRIMARY KEY AUTOINCREMENT,
   target           TEXT NOT NULL CHECK (target IN ('footprints', 'genet_music')),
@@ -43,3 +45,13 @@ CREATE TABLE publication (
   published_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
     CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', published_at) IS published_at AND substr(published_at, 12, 2) <> '24')
 ) STRICT;
+
+CREATE TRIGGER publication_no_update BEFORE UPDATE ON publication
+BEGIN
+  SELECT RAISE(ABORT, 'publication is append only');
+END;
+
+CREATE TRIGGER publication_no_delete BEFORE DELETE ON publication
+BEGIN
+  SELECT RAISE(ABORT, 'publication is append only');
+END;
