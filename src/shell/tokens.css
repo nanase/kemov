@@ -1,0 +1,86 @@
+/*
+ * The site's colours, shared by every page built on the shell.
+ *
+ * `<html data-theme>` holds the reader's choice from ThemeToggle: absent
+ * follows the OS, `light` and `dark` override it. The dark values are
+ * therefore written twice, once for an OS in dark mode that the reader has
+ * not overridden and once for an explicit `dark`, and the two blocks must
+ * stay identical.
+ *
+ * palette-genet.css overrides the same names for the one page with its own
+ * colours.
+ */
+
+:root {
+  color-scheme: light;
+
+  --k-bg: #e9eeec;
+  --k-surface: #fff;
+  --k-surface-2: #f4f8f6;
+  --k-sunken: #eef3f1;
+  --k-track: #dfe8e5;
+  --k-line: #d7e1de;
+  --k-line-2: #b4c3bf;
+  --k-text: #0e1f1c;
+  --k-text-2: #37514c;
+  --k-text-3: #5f7772;
+  --k-accent: #0c6a5d;
+  --k-on-accent: #fff;
+  --k-accent-soft: #d6ebe6;
+  --k-ok: #136b3b;
+  --k-warn: #9d2f22;
+  --k-live: #c02b33;
+  --k-glass: rgb(233 238 236 / 70%);
+  --k-shadow: 0 1px 1px rgb(14 31 28 / 4%), 0 16px 34px -28px rgb(14 31 28 / 50%);
+  --k-scrim: rgb(8 14 13 / 50%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --k-bg: #0e0f10;
+    --k-surface: #16181a;
+    --k-surface-2: #1c1f21;
+    --k-sunken: #121415;
+    --k-track: #24282a;
+    --k-line: #282c2e;
+    --k-line-2: #434749;
+    --k-text: #e9ecec;
+    --k-text-2: #c4c9ca;
+    --k-text-3: #949a9b;
+    --k-accent: #4ecfb8;
+    --k-on-accent: #04201c;
+    --k-accent-soft: #14302c;
+    --k-ok: #4cd08a;
+    --k-warn: #ff8b78;
+    --k-live: #ff7b7e;
+    --k-glass: rgb(14 15 16 / 70%);
+    --k-shadow: 0 0 0 1px rgb(255 255 255 / 2%), 0 18px 40px -30px #000;
+    --k-scrim: rgb(0 0 0 / 60%);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --k-bg: #0e0f10;
+  --k-surface: #16181a;
+  --k-surface-2: #1c1f21;
+  --k-sunken: #121415;
+  --k-track: #24282a;
+  --k-line: #282c2e;
+  --k-line-2: #434749;
+  --k-text: #e9ecec;
+  --k-text-2: #c4c9ca;
+  --k-text-3: #949a9b;
+  --k-accent: #4ecfb8;
+  --k-on-accent: #04201c;
+  --k-accent-soft: #14302c;
+  --k-ok: #4cd08a;
+  --k-warn: #ff8b78;
+  --k-live: #ff7b7e;
+  --k-glass: rgb(14 15 16 / 70%);
+  --k-shadow: 0 0 0 1px rgb(255 255 255 / 2%), 0 18px 40px -30px #000;
+  --k-scrim: rgb(0 0 0 / 60%);
+}
