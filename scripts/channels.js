@@ -21,11 +21,7 @@ export const channelsPath = 'channels.yml';
  */
 const requiredFields = ['channel_id', 'name', 'fullname', 'color', 'activity_start_date', 'activity_end_date'];
 
-/**
- * Fields an entry may leave out. `globalname` and `twitter` are nullable
- * columns; `twitch` is not a column at all, and `channelsToSql` says why it is
- * carried anyway.
- */
+/** Fields an entry may leave out. All three are nullable columns. */
 const optionalFields = ['globalname', 'twitter', 'twitch'];
 
 /** The four colours, in the order the site uses them. */
@@ -213,22 +209,25 @@ export function loadChannels(path = channelsPath) {
 }
 
 /**
- * The statement that brings the `channel` table up to date with `channels`.
+ * The statement that seeds the `channel` table from `channels`.
  *
- * The columns listed are the ones channels.yml masters, and the update names
- * them one by one. `custom_url`, `thumbnail_url` and `fetched_at` belong to
- * the collector and are therefore absent: a `REPLACE`, or an update that
- * mentioned them, would blank what the last collection fetched. Nothing here
- * deletes either. A row dropped from the YAML stays in the table, because the
- * snapshots and videos pointing at it are the history.
+ * `ON CONFLICT DO NOTHING`: this only ever adds a row, it never changes one
+ * that is already there. `channel` is the source of truth for every column
+ * this file used to master, so a deploy that kept upserting them would blank
+ * out whatever a person had since edited through the admin site. That makes
+ * this file the initial seed for a channel rather than its master - see "The
+ * Channel Master" in README.md.
  *
- * `twitch` is absent for a different reason, which channels.yml gives: no
- * column holds it, and the file carries it anyway.
+ * `custom_url`, `thumbnail_url` and `fetched_at` are absent because they
+ * belong to the collector, which writes its own first values once collection
+ * runs. Nothing here deletes either: a row this file no longer lists, or one
+ * it never listed, keeps whatever is already in the table.
  *
  * `display_order` has no field of its own in an entry. The file's own
  * ordering is the order the site shows streamers in - see the comment at the
- * top of channels.yml - so this writes each entry's position in the array
- * rather than reading a column back out of it.
+ * top of channels.yml - so a new row's initial position is its position in
+ * the array; reordering the file after that has no effect on a row already
+ * seeded.
  */
 export function channelsToSql(channels) {
   const columns = [
@@ -237,6 +236,7 @@ export function channelsToSql(channels) {
     'fullname',
     'globalname',
     'twitter',
+    'twitch',
     'color_key',
     'color_sub',
     'color_light',
@@ -253,6 +253,7 @@ export function channelsToSql(channels) {
       quote(channel.fullname),
       quote(channel.globalname),
       quote(channel.twitter),
+      quote(channel.twitch),
       quote(channel.color.key),
       quote(channel.color.sub),
       quote(channel.color.light),
@@ -263,18 +264,12 @@ export function channelsToSql(channels) {
     ].join(', '),
   );
 
-  // Everything but the primary key, which is what the conflict is on.
-  const updates = columns
-    .filter((column) => column !== 'channel_id')
-    .map((column) => `  ${column} = excluded.${column}`);
-
   return [
     `-- Generated from ${channelsPath} by scripts/build-channels-sql.js. Do not edit.`,
     `INSERT INTO channel (${columns.join(', ')})`,
     'VALUES',
     `${rows.map((row) => `  (${row})`).join(',\n')}`,
-    'ON CONFLICT (channel_id) DO UPDATE SET',
-    `${updates.join(',\n')};`,
+    'ON CONFLICT (channel_id) DO NOTHING;',
     '',
   ].join('\n');
 }

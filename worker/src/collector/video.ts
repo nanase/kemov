@@ -173,6 +173,11 @@ async function recordTask(
  * there" and starts meaning "was not there once". #90 found the same is true
  * of 'failed' and gave #62 one of these too, so the argument now covers every
  * row this table holds.
+ *
+ * Also clears `checked_at`: a row a person acknowledged from the admin site
+ * is done being watched for once collection has actually recovered, and a
+ * fresh failure afterwards should reappear on the admin site's list rather
+ * than stay hidden behind an old acknowledgement.
  */
 function collectedStatement(db: D1Database, kind: TaskKind, targetId: string, at: string): D1PreparedStatement {
   return db
@@ -183,6 +188,7 @@ function collectedStatement(db: D1Database, kind: TaskKind, targetId: string, at
          state = 'done',
          attempts = 0,
          next_attempt_at = NULL,
+         checked_at = NULL,
          updated_at = excluded.updated_at`,
     )
     .bind(kind, targetId, at);

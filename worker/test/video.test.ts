@@ -24,6 +24,7 @@ interface CollectTaskRow {
   state: string;
   attempts: number;
   next_attempt_at: string | null;
+  checked_at: string | null;
 }
 
 async function insertChannel(channelId: string): Promise<void> {
@@ -170,7 +171,7 @@ async function allVideos(): Promise<VideoRow[]> {
 async function tasks(kind: string): Promise<CollectTaskRow[]> {
   return (
     await env.DB.prepare(
-      `SELECT kind, target_id, state, attempts, next_attempt_at FROM collect_task
+      `SELECT kind, target_id, state, attempts, next_attempt_at, checked_at FROM collect_task
         WHERE kind = ?1 ORDER BY target_id`,
     )
       .bind(kind)
@@ -817,6 +818,30 @@ describe('runVideoUpdate', () => {
     expect(await tasks('video_update')).toMatchObject([
       { target_id: 'vid1', state: 'done', attempts: 0, next_attempt_at: null },
     ]);
+
+    error.mockRestore();
+  });
+
+  // checked_at is the admin site's mark that a person has already seen this
+  // failure; a later success has to clear it, or a video that recovered and
+  // failed again would stay hidden behind the old acknowledgement.
+  test('clears checked_at once a video a person acknowledged is collected again', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('vid1', 'UCaaa');
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await runVideoUpdate(env, apiStub({ videos: () => new Response('boom', { status: 503 }) }));
+    await env.DB.prepare(
+      "UPDATE collect_task SET checked_at = '2026-01-01T00:00:00Z' WHERE kind = 'video_update' AND target_id = 'vid1'",
+    ).run();
+
+    await runVideoUpdate(
+      env,
+      apiStub({ videos: () => videosListResponse([{ id: 'vid1', channelId: 'UCaaa', duration: 'PT9M' }]) }),
+    );
+
+    expect(await tasks('video_update')).toMatchObject([{ target_id: 'vid1', state: 'done', checked_at: null }]);
 
     error.mockRestore();
   });
