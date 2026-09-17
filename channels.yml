@@ -1,31 +1,26 @@
 # The streamers this site follows.
 #
-# This file is the master copy of the columns the deploy writes into the
-# `channel` table of D1. `scripts/check-channels.js` validates it on every CI
-# run, and `scripts/build-channels-sql.js` turns it into the upsert the deploy
-# applies. See "The Channel Master" in README.md.
+# This file is the initial seed for a row of the `channel` table of D1, not
+# its ongoing master: the deploy only ever adds a row here, it never changes
+# one that is already there, so `channel` is where a streamer's details are
+# edited from this point on. `scripts/check-channels.js` validates the file on
+# every CI run, and `scripts/build-channels-sql.js` turns it into the seed the
+# deploy applies. See "The Channel Master" in README.md.
 #
 # Field names are the column names they land in, with two exceptions. `color`
 # groups the four values because a person edits them together, and the seed
 # spreads them across `color_key`, `color_sub`, `color_light` and `color_back`.
-#
-# `twitch` lands nowhere. The `channel` table has no column for it and nothing
-# in the site reads it, so the seed does not carry it. It is kept because a
-# person wrote these three handles by hand into the JSON this file replaces,
-# and #72 retires that JSON: dropping them here would lose them for good.
-# Showing them later costs one migration, and only if the data survived.
 #
 # Never delete an entry. `channel_snapshot` and `video` reference `channel`,
 # and D1 refuses a delete that would orphan them - which is the point, because
 # the history of a streamer who stopped is still the history. A streamer who
 # stops gets an `activity_end_date`.
 #
-# This list's order is what the site shows streamers in - the deploy writes
-# each entry's position here into `channel.display_order`
-# (scripts/channels.js). It happens to match `activity_start_date` order
-# today, but that is a coincidence, not the rule: do not sort this file
-# alphabetically, by id, or by date. Reorder it only to change the order the
-# site shows streamers in.
+# This list's order decides a new streamer's initial `display_order`
+# (scripts/channels.js) - the order the site shows streamers in, until it is
+# changed through the admin site. It happens to match `activity_start_date`
+# order today, but that is a coincidence, not the rule: reordering this file
+# has no effect on a streamer already seeded.
 
 - channel_id: UCEcMIuGR8WO2TwL9XIpjKtw
   name: ケープペンギン
