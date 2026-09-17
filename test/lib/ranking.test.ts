@@ -122,6 +122,26 @@ describe('rankByMetric', () => {
 
       expect(rankByMetric(rows, 'viewCount', null, 'all', NOW).map((r) => r.videoId)).toEqual(['ancient']);
     });
+
+    // The collector stores published_at as YouTube reports it, uncapped
+    // against the request time - a premiere can carry a schedule ahead of
+    // NOW. A bounded period must not count that as part of "up to today".
+    test('a bounded period admits a video published at NOW and excludes one published after it', () => {
+      const rows = [
+        row({ videoId: 'at-now', publishedAt: NOW.toISOString() }),
+        row({ videoId: 'after-now', publishedAt: new Date(NOW.getTime() + 1).toISOString() }),
+      ];
+      const ids = rankByMetric(rows, 'viewCount', null, 'p30', NOW).map((r) => r.videoId);
+
+      expect(ids).toContain('at-now');
+      expect(ids).not.toContain('after-now');
+    });
+
+    test("'all' still admits a video published after NOW", () => {
+      const rows = [row({ videoId: 'after-now', publishedAt: new Date(NOW.getTime() + 1).toISOString() })];
+
+      expect(rankByMetric(rows, 'viewCount', null, 'all', NOW).map((r) => r.videoId)).toEqual(['after-now']);
+    });
   });
 });
 

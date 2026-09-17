@@ -71,14 +71,26 @@ function periodStart(period: RankingPeriod, now: Date): Date | null {
   }
 }
 
-/** The rows a ranking counts, before a metric decides which of them have a value. */
+/**
+ * The rows a ranking counts, before a metric decides which of them have a
+ * value.
+ *
+ * A bounded period also excludes a `publishedAt` after `now`: the collector
+ * stores whatever YouTube reports with no upper check against the request
+ * time, and a premiere's `publishedAt` can be a schedule read ahead of the
+ * clock a ranking is asked for. `all` stays unbounded on both ends - it is
+ * answering "everything", not "everything up to today".
+ */
 function narrow(rows: readonly VideoTableRow[], kind: VideoType | null, period: RankingPeriod, now: Date) {
   const start = periodStart(period, now);
 
   return rows.filter((row) => {
     if (kind !== null && row.type !== kind) return false;
+    if (start === null) return true;
 
-    return start === null || new Date(row.publishedAt).getTime() >= start.getTime();
+    const publishedAt = new Date(row.publishedAt).getTime();
+
+    return publishedAt >= start.getTime() && publishedAt <= now.getTime();
   });
 }
 
