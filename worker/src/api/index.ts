@@ -4,6 +4,7 @@ import { getChannel, getHistory, listChannels, readHistoryRange } from './channe
 import { health, statusFor } from './health';
 import { listLive } from './live';
 import { monthsSeries } from './months';
+import { listStreams } from './streams';
 import {
   DEFAULT_PAGE_SIZE,
   DEFAULT_RANKING_SIZE,
@@ -58,6 +59,7 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
   if (segments.length === 2 && resource === 'live') return await cached(() => listLive(env));
   if (segments.length === 2 && resource === 'channels') return await cached(() => listChannels(env));
   if (segments.length === 2 && resource === 'months') return await cached(() => monthsSeries(env));
+  if (segments.length === 2 && resource === 'streams') return await cached(() => listStreams(env));
 
   if (segments.length === 3 && resource === 'videos' && name === 'table') return await cached(() => videosTable(env));
 
