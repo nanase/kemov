@@ -109,7 +109,7 @@ describe('missingSecrets', () => {
 describe('loadSecretNames', () => {
   // The files themselves, so that a change to either shape is caught here
   // rather than by a deploy that quietly checks nothing.
-  test('reads the repository down to the one secret it has', () => {
-    expect(loadSecretNames()).toEqual(['YOUTUBE_API_KEY']);
+  test('reads the repository down to the secrets it has', () => {
+    expect(loadSecretNames()).toEqual(['YOUTUBE_API_KEY', 'ACCESS_AUD']);
   });
 });

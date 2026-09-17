@@ -1,6 +1,7 @@
 import { createExecutionContext, createScheduledController, env, waitOnExecutionContext } from 'cloudflare:test';
 
 import handler from '../src/index';
+import { accessToken } from './access-token';
 
 // The handler is wired by hand, so these check that each trigger reaches the
 // side it belongs to rather than what either side then does. Every argument is
@@ -56,6 +57,36 @@ describe('the worker entry', () => {
     await waitOnExecutionContext(ctx);
 
     expect(await response.json()).toEqual({ error: 'no endpoint at /api/nothing' });
+  });
+
+  // /admin/* is asked before /api/*, on its own branch - the API's 405 for
+  // anything but GET/HEAD must never apply to it. A token this test controls
+  // proves the request reached the admin side and was answered by it, the
+  // same way the /api/channels test above proves the API side got its
+  // bindings.
+  test('sends admin requests to the admin side, behind Cloudflare Access', async () => {
+    const aud = 'test-access-aud';
+    const token = accessToken({ aud, email: 'admin@example.com' });
+    const ctx = createExecutionContext();
+    const response = await handler.fetch!(
+      new Request('https://kemov.nanase.cc/admin/api/me', { headers: { 'Cf-Access-Jwt-Assertion': token } }),
+      { ...env, ACCESS_AUD: aud },
+      ctx,
+    );
+
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toEqual(200);
+    expect(await response.json()).toEqual({ email: 'admin@example.com' });
+  });
+
+  test('answers 404 for /admin paths outside /admin/api, unauthorized or not', async () => {
+    const ctx = createExecutionContext();
+    const response = await handler.fetch!(new Request('https://kemov.nanase.cc/admin/foo'), env, ctx);
+
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toEqual(404);
   });
 
   test('sends scheduled triggers to the collector', async () => {

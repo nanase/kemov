@@ -146,9 +146,10 @@ Secrets belong to a Worker that already exists, so the first `bun wrangler deplo
 
 The dashboard is the other way in, if you would rather the value never passed through a terminal: Workers & Pages → `kemov` → Settings → Variables and Secrets → Add → type Secret.
 
-| Secret            | Read by                          |
-| ----------------- | -------------------------------- |
-| `YOUTUBE_API_KEY` | the collection jobs (#62 to #65) |
+| Secret            | Read by                                   |
+| ----------------- | ----------------------------------------- |
+| `YOUTUBE_API_KEY` | the collection jobs (#62 to #65)          |
+| `ACCESS_AUD`      | the check in front of `/admin/api` (#144) |
 
 `Deploy Worker` checks that every secret the worker reads is registered, and fails if one is not. What counts as a secret is decided by absence: a member of `Env` in `worker/src/lib/env.ts` that `wrangler.toml` does not supply as a binding or a `[vars]` entry. Adding a member to `Env` is therefore enough to put it under the check.
 
@@ -157,6 +158,12 @@ It runs after the deploy rather than before, and only names are involved on eith
 For local runs, put the same names in `.dev.vars` at the repository root as `NAME=value` lines. `.dev.vars` and `.dev.vars.*` are gitignored.
 
 `.env` is a different thing and is committed on purpose: Vite inlines it into the published bundle, so what it holds is already public. `wrangler dev` also reads it and hands the worker what it finds, which is another reason nothing secret may go there.
+
+### `/admin` and Cloudflare Access
+
+`/admin/*` is the write side of the site (#141): the worker answers it directly, with no built file behind it, so a request that finds nothing there gets a 404 rather than the public site's pages. Cloudflare Access sits in front of it and is what actually keeps everyone but its allowed identities out — no request lacking Access's approval reaches the worker at all.
+
+`ACCESS_AUD` backs a check in the worker itself, on every `/admin/api/*` request: it compares the `aud` claim of the `Cf-Access-Jwt-Assertion` header Access attaches against this secret, and refuses the request otherwise. It never verifies the header's signature, so it is not a second copy of Access's authentication — it exists so that a request is still refused here, rather than reaching an admin endpoint unchecked, if the Access application in front of `/admin` is ever removed or misconfigured. With `ACCESS_AUD` unregistered, every `/admin/api/*` request is refused, Access policy notwithstanding.
 
 ## Database
 

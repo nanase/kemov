@@ -17,4 +17,11 @@ export interface Env {
 
   /** YouTube Data API v3 key, set with `wrangler secret put YOUTUBE_API_KEY`. */
   YOUTUBE_API_KEY: string;
+
+  /**
+   * The `aud` tag of the Cloudflare Access application in front of `/admin`,
+   * set with `wrangler secret put ACCESS_AUD`. See `verifyAccess` in
+   * `worker/src/lib/access.ts` for what it is checked against.
+   */
+  ACCESS_AUD: string;
 }
