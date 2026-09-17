@@ -132,3 +132,35 @@ describe('channel.twitch', () => {
     });
   });
 });
+
+// The exact UPDATEs 0004_add_admin_overrides_and_twitch.sql runs once, to
+// carry the three handles channels.yml already had into rows that predate
+// the migration.
+const backfillStatements = [
+  "UPDATE channel SET twitch = 'coyote_kemov' WHERE channel_id = 'UCabMjG8p6G5xLkPJgEoTnDg'",
+  "UPDATE channel SET twitch = 'direwolf__kemov' WHERE channel_id = 'UCdNBhcAohYjXlUVYsz8X2KQ'",
+  "UPDATE channel SET twitch = 'junglecat__kemov' WHERE channel_id = 'UCtJSUW-5FnwfaivXpluABWA'",
+];
+
+describe('the 0004 twitch backfill', () => {
+  test('leaves an empty table alone', async () => {
+    for (const statement of backfillStatements) {
+      await expect(env.DB.prepare(statement).run()).resolves.toMatchObject({
+        success: true,
+        meta: { changes: 0 },
+      });
+    }
+  });
+
+  test('sets twitch on a row that already existed under one of the three channel ids', async () => {
+    await insertChannel('UCabMjG8p6G5xLkPJgEoTnDg');
+
+    for (const statement of backfillStatements) {
+      await env.DB.prepare(statement).run();
+    }
+
+    expect(
+      await env.DB.prepare("SELECT twitch FROM channel WHERE channel_id = 'UCabMjG8p6G5xLkPJgEoTnDg'").first(),
+    ).toEqual({ twitch: 'coyote_kemov' });
+  });
+});

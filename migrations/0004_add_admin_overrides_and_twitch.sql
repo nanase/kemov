@@ -1,6 +1,12 @@
 -- Foundations for the admin site's overrides on top of collected data, and
 -- for making `channel` the source of truth for one more field (#144).
 --
+-- Also backfills `channel.twitch` for the three channels channels.yml
+-- already carried a handle for, once and only here: the seed stops
+-- overwriting an existing row from this point on (see the accompanying
+-- change to scripts/channels.js), so this migration is the last chance for
+-- that data to reach a row that already exists.
+--
 -- `video_override` lets a person correct one video's title, type or
 -- availability without touching the collector's own row. A NULL column
 -- falls back to whatever the collector last wrote; the trailing CHECK
@@ -44,3 +50,15 @@ ALTER TABLE collect_task ADD COLUMN checked_at TEXT
 -- becomes its master. See the accompanying seed change, which stops writing
 -- over an existing row on every deploy.
 ALTER TABLE channel ADD COLUMN twitch TEXT;
+
+-- The seed no longer overwrites an existing row (see the accompanying
+-- change to scripts/channels.js), so the three handles channels.yml already
+-- carried would otherwise never reach a channel row that predates this
+-- migration. This is a one-time move of that data, not an ongoing sync: a
+-- channel added after this migration gets its twitch from the seed instead,
+-- and an edit made through the admin site is never touched here. A database
+-- with none of these channels - an empty one, or one seeded fresh after this
+-- migration - matches no row and changes nothing.
+UPDATE channel SET twitch = 'coyote_kemov' WHERE channel_id = 'UCabMjG8p6G5xLkPJgEoTnDg';
+UPDATE channel SET twitch = 'direwolf__kemov' WHERE channel_id = 'UCdNBhcAohYjXlUVYsz8X2KQ';
+UPDATE channel SET twitch = 'junglecat__kemov' WHERE channel_id = 'UCtJSUW-5FnwfaivXpluABWA';
