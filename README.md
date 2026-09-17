@@ -433,18 +433,18 @@ Every other table in the 365-day row holds data a person typed once through the 
 
 The snapshot history began on 2026-09-07 and exists nowhere else in R2. A day of it is about 119 KiB of SQL, measured against production values on 2026-09-08, so a year of it costs some 44 MB; `video` adds roughly 70 MB more at 30 days (`channel`'s own few dozen rows barely move that figure). Both fit well inside R2's free 10 GB tier; the tables #144 added hold at most a few hundred rows each and add little beside that.
 
-Set with `lifecycle add` calls, run from `worker/`. `channel/`'s existing 30-day rule is replaced rather than added beside, since a prefix can carry only one rule:
+Set with `lifecycle add` calls, run from the repository root. `channel/`'s existing 30-day rule is replaced rather than added beside, since a prefix can carry only one rule. `-y` skips the confirmation `add` otherwise asks for, which would stop the loop partway through:
 
 ```sh
-bun wrangler r2 bucket lifecycle add kemov-backup expire-video-30d video/ --expire-days 30
-bun wrangler r2 bucket lifecycle remove kemov-backup expire-channel-30d
-bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-365d channel/ --expire-days 365
-bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-365d channel_snapshot/ --expire-days 365
+bun wrangler r2 bucket lifecycle add kemov-backup expire-video-30d video/ --expire-days 30 -y
+bun wrangler r2 bucket lifecycle remove kemov-backup --name expire-channel-30d
+bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-365d channel/ --expire-days 365 -y
+bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-365d channel_snapshot/ --expire-days 365 -y
 
 for t in channel_snapshot_exclusion video_override footprints_event footprints_event_member footprints_event_source \
          genet_person genet_tune genet_tune_attribute genet_tune_attribute_person genet_tune_video genet_tune_score \
          genet_stream genet_performance genet_scene revision publication; do
-  bun wrangler r2 bucket lifecycle add kemov-backup "expire-${t//_/-}-365d" "$t/" --expire-days 365
+  bun wrangler r2 bucket lifecycle add kemov-backup "expire-${t//_/-}-365d" "$t/" --expire-days 365 -y
 done
 ```
 
