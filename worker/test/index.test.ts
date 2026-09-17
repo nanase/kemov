@@ -1,7 +1,6 @@
 import { createExecutionContext, createScheduledController, env, waitOnExecutionContext } from 'cloudflare:test';
 
 import handler from '../src/index';
-import { accessToken } from './access-token';
 
 // The handler is wired by hand, so these check that each trigger reaches the
 // side it belongs to rather than what either side then does. Every argument is
@@ -59,25 +58,21 @@ describe('the worker entry', () => {
     expect(await response.json()).toEqual({ error: 'no endpoint at /api/nothing' });
   });
 
-  // /admin/* is asked before /api/*, on its own branch - the API's 405 for
-  // anything but GET/HEAD must never apply to it. A token this test controls
-  // proves the request reached the admin side and was answered by it, the
-  // same way the /api/channels test above proves the API side got its
-  // bindings.
+  // /admin/* is asked before /api/*, on its own branch - the API's own 404
+  // for an unknown path must never answer this one. Cloudflare Access, not a
+  // test double, is what would carry a real token here, so this only checks
+  // that the request reached the admin side's own Access check rather than
+  // the API's routing: handleAdminRequest's own tests (admin.test.ts) cover
+  // what an authorized caller sees, with a key fetch this test cannot inject
+  // through ExportedHandler's fixed fetch(request, env, ctx) signature.
   test('sends admin requests to the admin side, behind Cloudflare Access', async () => {
-    const aud = 'test-access-aud';
-    const token = accessToken({ aud, email: 'admin@example.com' });
     const ctx = createExecutionContext();
-    const response = await handler.fetch!(
-      new Request('https://kemov.nanase.cc/admin/api/me', { headers: { 'Cf-Access-Jwt-Assertion': token } }),
-      { ...env, ACCESS_AUD: aud },
-      ctx,
-    );
+    const response = await handler.fetch!(new Request('https://kemov.nanase.cc/admin/api/me'), env, ctx);
 
     await waitOnExecutionContext(ctx);
 
-    expect(response.status).toEqual(200);
-    expect(await response.json()).toEqual({ email: 'admin@example.com' });
+    expect(response.status).toEqual(401);
+    expect(await response.json()).toEqual({ error: 'not authorized by Cloudflare Access' });
   });
 
   test('answers 404 for /admin paths outside /admin/api, unauthorized or not', async () => {

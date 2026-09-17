@@ -1,3 +1,4 @@
+import type { CertsCache } from '../lib/access';
 import { verifyAccess } from '../lib/access';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
@@ -14,8 +15,18 @@ import { errorResponse, jsonResponse } from '../lib/json';
  * falls through to the same 404 the API gives an unknown path. Cloudflare
  * Access is not asked for those: the path does not exist regardless of who is
  * asking.
+ *
+ * `now`, `fetchImpl` and `certsCache` exist only so a test can hand
+ * `verifyAccess` a key fetch and a clock of its own; every real caller leaves
+ * all three out and gets `verifyAccess`'s own defaults.
  */
-export async function handleAdminRequest(request: Request, env: Env): Promise<Response> {
+export async function handleAdminRequest(
+  request: Request,
+  env: Env,
+  now?: Date,
+  fetchImpl?: typeof fetch,
+  certsCache?: CertsCache,
+): Promise<Response> {
   const { pathname } = new URL(request.url);
   const segments = pathname.replace(/^\/+|\/+$/g, '').split('/');
   // The first segment is always 'admin' - the caller only reaches this
@@ -28,7 +39,7 @@ export async function handleAdminRequest(request: Request, env: Env): Promise<Re
   // Checked before any route match, so a route that does not exist yet still
   // answers the same way an unauthorized one does: nothing under /admin/api
   // is easier to reach by asking for the wrong path.
-  const identity = verifyAccess(request, env.ACCESS_AUD);
+  const identity = await verifyAccess(request, env.ACCESS_AUD, env.ACCESS_TEAM_DOMAIN, now, fetchImpl, certsCache);
 
   if (identity === null) return errorResponse(401, 'not authorized by Cloudflare Access');
 
@@ -36,7 +47,16 @@ export async function handleAdminRequest(request: Request, env: Env): Promise<Re
   // a stale answer when D1 cannot be reached (see cache.ts), which nothing
   // under /admin/api does, and to cache is to publish, which a writer's own
   // answers about to change must not be.
-  if (segments.length === 3 && name === 'me') return jsonResponse({ email: identity.email });
+  if (segments.length === 3 && name === 'me') {
+    if (request.method !== 'GET') {
+      return jsonResponse(
+        { error: `${request.method} is not allowed here` },
+        { status: 405, headers: { Allow: 'GET' } },
+      );
+    }
+
+    return jsonResponse({ email: identity.email });
+  }
 
   return errorResponse(404, `no endpoint at ${pathname}`);
 }

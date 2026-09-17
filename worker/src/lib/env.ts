@@ -27,4 +27,14 @@ export interface Env {
    * `worker/src/lib/access.ts` for what it is checked against.
    */
   ACCESS_AUD: string;
+
+  /**
+   * The Cloudflare Access team domain, e.g. `nanase.cloudflareaccess.com` -
+   * a `[vars]` entry in `wrangler.toml`, not a secret: it is the same domain
+   * a browser is already sent to for the Access login page, so it carries
+   * nothing `wrangler secret` would be protecting. `verifyAccess` fetches
+   * this team's public keys from it to check a token's signature, and reads
+   * its own `iss` claim against it.
+   */
+  ACCESS_TEAM_DOMAIN: string;
 }
