@@ -148,48 +148,63 @@ export async function readEvent(env: Env, eventId: number): Promise<FootprintsEv
   return { event, channelIds: members.results.map((row) => row.channel_id), sources: sources.results };
 }
 
+// D1 refuses a query bound with more than 100 parameters
+// (developers.cloudflare.com/d1/platform/limits/). 50 leaves headroom for a
+// query that binds something alongside the id list, and is shared by every
+// `... IN (...)` query in this file so they all fail the same request the
+// same way rather than each picking its own number.
+const ID_CHUNK_SIZE = 50;
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const chunks: T[][] = [];
+
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+
+  return chunks;
+}
+
 /**
  * `readEvent` for several event ids at once, keyed by event_id - three
- * queries in total rather than three per id. Used wherever a caller already
- * has a list of ids and would otherwise call `readEvent` in a loop
- * (listEvents, pendingFootprints's "changed" check).
+ * queries per `ID_CHUNK_SIZE`-sized chunk of ids rather than three per id.
+ * Used wherever a caller already has a list of ids and would otherwise call
+ * `readEvent` in a loop (listEvents, pendingFootprints's "changed" check).
  */
 export async function readEvents(env: Env, eventIds: readonly number[]): Promise<Map<number, FootprintsEvent>> {
-  if (eventIds.length === 0) return new Map();
+  const result = new Map<number, FootprintsEvent>();
 
-  const placeholders = eventIds.map((_, index) => `?${index + 1}`).join(', ');
+  for (const ids of chunk(eventIds, ID_CHUNK_SIZE)) {
+    const placeholders = ids.map((_, index) => `?${index + 1}`).join(', ');
 
-  const [events, members, sources] = await Promise.all([
-    env.DB.prepare(
-      `SELECT event_id, date_precision, start_date, starts_at, end_date, kind, emphasized, title, place,
-                supplement, video_id, source_pending, status, memo, created_at, updated_at
-           FROM footprints_event
-          WHERE event_id IN (${placeholders})`,
-    )
-      .bind(...eventIds)
-      .all<EventRow>(),
-    env.DB.prepare(
-      `SELECT event_id, channel_id FROM footprints_event_member WHERE event_id IN (${placeholders}) ORDER BY event_id, channel_id`,
-    )
-      .bind(...eventIds)
-      .all<{ event_id: number; channel_id: string }>(),
-    env.DB.prepare(
-      `SELECT event_id, url, title FROM footprints_event_source WHERE event_id IN (${placeholders}) ORDER BY event_id, position`,
-    )
-      .bind(...eventIds)
-      .all<{ event_id: number } & SourceRow>(),
-  ]);
+    const [events, members, sources] = await Promise.all([
+      env.DB.prepare(
+        `SELECT event_id, date_precision, start_date, starts_at, end_date, kind, emphasized, title, place,
+                  supplement, video_id, source_pending, status, memo, created_at, updated_at
+             FROM footprints_event
+            WHERE event_id IN (${placeholders})`,
+      )
+        .bind(...ids)
+        .all<EventRow>(),
+      env.DB.prepare(
+        `SELECT event_id, channel_id FROM footprints_event_member WHERE event_id IN (${placeholders}) ORDER BY event_id, channel_id`,
+      )
+        .bind(...ids)
+        .all<{ event_id: number; channel_id: string }>(),
+      env.DB.prepare(
+        `SELECT event_id, url, title FROM footprints_event_source WHERE event_id IN (${placeholders}) ORDER BY event_id, position`,
+      )
+        .bind(...ids)
+        .all<{ event_id: number } & SourceRow>(),
+    ]);
 
-  const result = new Map<number, FootprintsEvent>(
-    events.results.map((event) => [event.event_id, { event, channelIds: [], sources: [] }]),
-  );
+    for (const event of events.results) result.set(event.event_id, { event, channelIds: [], sources: [] });
 
-  for (const { event_id: eventId, channel_id: channelId } of members.results) {
-    result.get(eventId)?.channelIds.push(channelId);
-  }
+    for (const { event_id: eventId, channel_id: channelId } of members.results) {
+      result.get(eventId)?.channelIds.push(channelId);
+    }
 
-  for (const { event_id: eventId, ...source } of sources.results) {
-    result.get(eventId)?.sources.push(source);
+    for (const { event_id: eventId, ...source } of sources.results) {
+      result.get(eventId)?.sources.push(source);
+    }
   }
 
   return result;
@@ -410,17 +425,20 @@ function readEventFields(body: Record<string, unknown>): EventFields | { error: 
 
 /** Every channelId in `channelIds` that `channel` has no row for. */
 async function unknownChannelIds(env: Env, channelIds: readonly string[]): Promise<string[]> {
-  if (channelIds.length === 0) return [];
+  const ids = [...new Set(channelIds)];
+  const known = new Set<string>();
 
-  const { results } = await env.DB.prepare(
-    `SELECT channel_id FROM channel WHERE channel_id IN (${channelIds.map((_, index) => `?${index + 1}`).join(', ')})`,
-  )
-    .bind(...channelIds)
-    .all<{ channel_id: string }>();
+  for (const idsChunk of chunk(ids, ID_CHUNK_SIZE)) {
+    const { results } = await env.DB.prepare(
+      `SELECT channel_id FROM channel WHERE channel_id IN (${idsChunk.map((_, index) => `?${index + 1}`).join(', ')})`,
+    )
+      .bind(...idsChunk)
+      .all<{ channel_id: string }>();
 
-  const known = new Set(results.map((row) => row.channel_id));
+    for (const row of results) known.add(row.channel_id);
+  }
 
-  return [...new Set(channelIds)].filter((id) => !known.has(id));
+  return ids.filter((id) => !known.has(id));
 }
 
 /**

@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 
-import { createEvent, deleteEvent, getEvent, listEvents, updateEvent } from '../src/admin/footprints';
+import { createEvent, deleteEvent, getEvent, listEvents, readEvents, updateEvent } from '../src/admin/footprints';
 import { clearEverything } from './reset-db';
 
 beforeEach(clearEverything);
@@ -150,6 +150,16 @@ describe('createEvent', () => {
     expect(await response.json()).toEqual({ error: 'unknown channelIds: UCnope' });
   });
 
+  // channel's own D1 IN (...) query would otherwise be bound with more than
+  // D1's 100-parameter limit and fail with a raw constraint error instead of
+  // this 400.
+  test('refuses more than 100 unknown channelIds with 400 rather than a raw D1 error', async () => {
+    const channelIds = Array.from({ length: 101 }, (_, i) => `UC${i}`);
+    const response = await createEvent(env, validBody({ channelIds }));
+
+    expect(response.status).toEqual(400);
+  });
+
   // footprints_event_member's primary key is (event_id, channel_id) - a
   // repeated id inserted twice would otherwise fail the whole batch with a
   // constraint error, not the 400 every other bad input gets.
@@ -293,5 +303,17 @@ describe('listEvents', () => {
 
     expect(body.events.map((event) => event.startDate)).toEqual(['2025-01-01', '2025-01-01', '2025-03-01']);
     expect(body.events[0].eventId).toBeLessThan(body.events[1].eventId);
+  });
+});
+
+describe('readEvents', () => {
+  // Without chunking, a single SELECT ... IN (...) bound with all 101 ids
+  // would exceed D1's 100-parameter limit and fail outright, not just answer
+  // with fewer rows than asked for.
+  test('does not fail when asked for more than 100 ids at once', async () => {
+    const ids = Array.from({ length: 101 }, (_, i) => i + 1);
+    const result = await readEvents(env, ids);
+
+    expect(result.size).toEqual(0);
   });
 });
