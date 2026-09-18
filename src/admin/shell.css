@@ -808,6 +808,278 @@ table.grid tbody tr[aria-selected='true'] td:first-child {
   max-width: calc(100% - 32px);
 }
 
+/* ---- ジェネット楽曲一覧: 配信を左に、全幅の編集を右に -------------------- *
+ * The one screen that does not use .pane/.inspector - #141's design says so
+ * explicitly, because a stream's own data (its tunes, each with credits,
+ * reference videos and sheet music) does not fit the narrow inspector every
+ * other screen uses. .setlist replaces .pane, .editor replaces .inspector. */
+
+.main.sets {
+  grid-template-columns: 302px minmax(0, 1fr);
+}
+
+.setlist {
+  border-right: 1px solid var(--k-line);
+  overflow: auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.setlist-item {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--k-line);
+  background: none;
+  cursor: pointer;
+}
+
+.setlist-item[aria-current='true'] {
+  background: var(--k-accent-soft);
+  box-shadow: inset 3px 0 0 var(--k-accent);
+}
+
+.setlist-item .t {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setlist-item .meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.editor {
+  overflow: auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.editor-section {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--k-line);
+  display: grid;
+  gap: 12px;
+}
+
+.editor-section > h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.tune {
+  border: 1px solid var(--k-line);
+  border-radius: 9px;
+  background: var(--k-surface);
+  overflow: hidden;
+}
+
+.tune + .tune {
+  margin-top: 10px;
+}
+
+.tune-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  background: var(--k-surface-2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.tune-head .no {
+  font-family: var(--a-mono);
+  font-size: 11.5px;
+  color: var(--k-text-3);
+}
+
+.tune-head .t {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.tune-body {
+  padding: 12px;
+  display: grid;
+  gap: 13px;
+  border-top: 1px solid var(--k-line);
+}
+
+/* ---- Markdown の欄: 書く欄とすぐ下のプレビュー ---------------------------- */
+
+.md {
+  display: grid;
+  gap: 4px;
+}
+
+.md-bar {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.md-bar .lab {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--k-text-3);
+  margin-right: auto;
+}
+
+.md-ins {
+  font-size: 11px;
+  padding: 1px 7px;
+  border: 1px solid var(--k-line-2);
+  border-radius: 5px;
+  background: var(--k-surface);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.md-ins:hover {
+  background: var(--k-surface-2);
+}
+
+.md textarea,
+.md input[type='text'] {
+  width: 100%;
+  background: var(--k-surface);
+  border: 1px solid var(--k-line-2);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-family: var(--a-mono);
+  font-size: 12.5px;
+}
+
+.md textarea {
+  resize: vertical;
+  min-height: 44px;
+  line-height: 1.6;
+}
+
+.md-prev {
+  font-size: 12.5px;
+  padding: 4px 9px;
+  background: var(--k-surface-2);
+  border: 1px dashed var(--k-line-2);
+  border-radius: 6px;
+  min-height: 27px;
+  line-height: 1.7;
+}
+
+.md-prev:empty::after {
+  content: '（空）';
+  color: var(--k-text-3);
+}
+
+a.mdl.wiki {
+  color: #3f55a0;
+}
+
+a.mdl.wikien {
+  color: #6e4f9e;
+}
+
+a.mdl.yt {
+  color: var(--a-danger);
+  font-family: var(--a-mono);
+}
+
+a.mdl.ext {
+  color: var(--k-accent);
+}
+
+/* ---- 行の並び: 小曲・作曲/作詞など・参考の動画・外部の資料 --------------- */
+
+.rows {
+  display: grid;
+  gap: 6px;
+}
+
+.row-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.row-item.two {
+  grid-template-columns: 1fr 1fr auto;
+}
+
+.row-item select,
+.row-item input[type='text'] {
+  width: 100%;
+  background: var(--k-surface);
+  border: 1px solid var(--k-line-2);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12.5px;
+}
+
+.row-del {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--k-line-2);
+  background: var(--k-surface);
+  color: var(--a-danger);
+  cursor: pointer;
+  flex: none;
+}
+
+.row-del:hover {
+  background: var(--a-danger-soft);
+}
+
+/* ---- カテゴリ・キーワードの chip 列 -------------------------------------- */
+
+.chipset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.chip-x {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  padding: 2px 4px 2px 9px;
+  border-radius: 999px;
+  background: var(--k-sunken);
+  color: var(--k-text-2);
+}
+
+.chip-x button {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--k-line-2);
+  color: var(--k-surface);
+  cursor: pointer;
+  line-height: 1;
+  font-size: 11px;
+}
+
 /* ---- narrow ---------------------------------------------------------- *
  * By the shell's own inline size (@container), not the viewport - #144's
  * handoff asks for this explicitly, since the shell fills whatever page
@@ -832,6 +1104,25 @@ table.grid tbody tr[aria-selected='true'] td:first-child {
 
   .btn.back {
     display: inline-block;
+  }
+
+  /* .main.sets's own base rule outweighs the plain .main rule above on
+   * specificity alone (two classes beat one), so it needs its own override
+   * here rather than inheriting that one. */
+  .main.sets {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .main.sets .editor {
+    display: none;
+  }
+
+  .main.sets.detail .setlist {
+    display: none;
+  }
+
+  .main.sets.detail .editor {
+    display: grid;
   }
 }
 

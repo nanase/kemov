@@ -7,9 +7,10 @@ import { createRouter, createWebHistory } from 'vue-router';
  * link lands back on the same screen instead of the shell's default.
  *
  * `FootprintsPage`, `PublishPage`, `MembersPage`, `VideosPage`, `SnapsPage`,
- * `CollectPage` and `HistoryPage` are this project's own screens so far.
- * Every other sidebar destination still routes to `PlaceholderPage.vue`
- * until a later task builds a real screen for it.
+ * `CollectPage`, `HistoryPage` and `SetsPage` are this project's own screens
+ * so far. Every other sidebar destination (the やること group's own inbox
+ * views) still routes to `PlaceholderPage.vue` until a later task builds a
+ * real screen for it.
  */
 const router = createRouter({
   history: createWebHistory('/admin/'),
@@ -22,6 +23,7 @@ const router = createRouter({
     { path: '/snaps', component: () => import('./pages/SnapsPage.vue') },
     { path: '/inbox-collect', component: () => import('./pages/CollectPage.vue') },
     { path: '/history', component: () => import('./pages/HistoryPage.vue') },
+    { path: '/sets', component: () => import('./pages/SetsPage.vue') },
     {
       path: '/:page',
       component: () => import('./pages/PlaceholderPage.vue'),
