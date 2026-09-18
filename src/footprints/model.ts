@@ -498,10 +498,11 @@ function origins(
 /**
  * The days that are coming, nearest first.
  *
- * Four things land here: the anniversaries of a start, the round numbers of
- * days since one, the events already recorded with a date still ahead, and the
- * streams that have been scheduled. The first two are worked out rather than
- * recorded, so they open the day they count from.
+ * Five things land here: the anniversaries of a start, the round numbers of
+ * days since one, the days a member keeps every year, the events already
+ * recorded with a date still ahead, and the streams that have been scheduled.
+ * The first three are worked out rather than recorded, so they open the day
+ * they are counted from.
  */
 export function upcoming(
   events: readonly EventItem[],
@@ -555,6 +556,33 @@ export function upcoming(
         planned: false,
         channelIds,
         title: `${name}の${what}から ${days.toLocaleString('ja-JP')} 日`,
+        row: null,
+      });
+    }
+  }
+
+  // A day a member keeps every year. There is no separate field saying so:
+  // the kind `anniversary` is what says it, and holding the same fact in two
+  // places would let the two disagree. A date known only to the month is left
+  // out, because there is no day to keep.
+  for (const item of events) {
+    if (item.event.kind !== 'anniversary' || item.event.datePrecision !== 'day') continue;
+
+    const [year, month, day] = item.event.startDate.split('-').map(Number) as [number, number, number];
+
+    for (let round = year + 1; dayNumber(dayAt(round, month, day)) <= end; round += 1) {
+      const at = dayAt(round, month, day);
+
+      if (dayNumber(at) < today || new Date(at + JST_OFFSET_MS).getUTCMonth() + 1 !== month) continue;
+
+      out.push({
+        key: item.key,
+        at,
+        timed: false,
+        label: '記念日',
+        planned: false,
+        channelIds: item.event.channelIds,
+        title: item.event.title,
         row: null,
       });
     }

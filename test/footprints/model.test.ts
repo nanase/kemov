@@ -291,6 +291,34 @@ describe('upcoming', () => {
     expect(list.map((entry) => entry.title)).toEqual(['けもVの発表 6 周年']);
   });
 
+  // No field says "this comes round every year": the kind says it. Holding
+  // the same fact twice would let the two disagree.
+  test('brings a recorded anniversary round again each year', () => {
+    const day = event({
+      eventId: 14,
+      kind: 'anniversary',
+      startDate: '2022-10-15',
+      title: 'ジェネットの日',
+      channelIds: ['UCa'],
+    });
+    const list = upcoming(items([day]), [], [], filters(), NOW).filter((entry) => entry.label === '記念日');
+
+    expect(list.map((entry) => [entry.title, jstDay(entry.at)])).toEqual([['ジェネットの日', '2026-10-15']]);
+    expect(list[0]?.key).toEqual('e:14');
+  });
+
+  test('leaves out a day that is only known to the month, which has no day to keep', () => {
+    const vague = event({
+      eventId: 15,
+      kind: 'anniversary',
+      datePrecision: 'month',
+      startDate: '2022-10',
+      title: '月までの記念日',
+    });
+
+    expect(upcoming(items([vague]), [], [], filters(), NOW)).toEqual([]);
+  });
+
   test('carries a recorded event that is still to come, as a plan', () => {
     const soon = event({ eventId: 2, startDate: '2026-10-01', kind: 'live-event', title: '会場イベント' });
     const list = upcoming(items([soon]), [], [], filters(), NOW);
