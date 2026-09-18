@@ -18,6 +18,9 @@ const { page, title, navItems } = defineProps<{
     <div class="shell-frame">
       <SiteNav :current="page" :items="navItems" />
       <PageTitle :title>
+        <template #icon>
+          <slot name="title-icon"></slot>
+        </template>
         <template #aside>
           <slot name="title-aside"></slot>
         </template>
