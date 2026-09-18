@@ -13,6 +13,7 @@ import {
   periodLabel,
   rowsFrom,
   scopeName,
+  titleSegments,
   searchTokens,
   shelfFilterCount,
   shownCountOf,
@@ -292,6 +293,34 @@ describe('matchRanges', () => {
 
   test('no match is no ranges', () => {
     expect(matchRanges('雑談', searchTokens('マイクラ'))).toEqual([]);
+  });
+});
+
+describe('titleSegments', () => {
+  test('no tokens is the whole title as one unmarked segment', () => {
+    expect(titleSegments('マイクラ実況', [])).toEqual([{ text: 'マイクラ実況', marked: false }]);
+  });
+
+  test('a match in the middle splits the title into three segments', () => {
+    expect(titleSegments('雑談・マイクラ・企画', searchTokens('マイクラ'))).toEqual([
+      { text: '雑談・', marked: false },
+      { text: 'マイクラ', marked: true },
+      { text: '・企画', marked: false },
+    ]);
+  });
+
+  test('a match at the very start has no leading unmarked segment', () => {
+    expect(titleSegments('マイクラ実況', searchTokens('マイクラ'))).toEqual([
+      { text: 'マイクラ', marked: true },
+      { text: '実況', marked: false },
+    ]);
+  });
+
+  test('joining every segment back together reproduces the title', () => {
+    const title = '雑談・マイクラ・企画会議';
+    const segments = titleSegments(title, searchTokens('マイクラ'));
+
+    expect(segments.map((s) => s.text).join('')).toEqual(title);
   });
 });
 

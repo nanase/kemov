@@ -17,9 +17,20 @@ import { getThumbnailURL, type ThumbnailSize } from '@/lib/youtube';
  *   down to `hqdefault` immediately and without a retry of its own - the one
  *   size #135 says to fall back to.
  */
-const { videoId, size } = defineProps<{
+const {
+  videoId,
+  size,
+  fit = 'cover',
+} = defineProps<{
   videoId: string;
   size: ThumbnailSize;
+  /**
+   * 'cover' fills its box and crops, for the list and the record panel's own
+   * hero image. 'contain' never stretches or crops - the lightbox's own rule
+   * (#135): a fallback that is not 16:9 is shown whole rather than cropped
+   * into looking like one.
+   */
+  fit?: 'cover' | 'contain';
 }>();
 
 /** How long to wait before the one 429 retry. Long enough for a rate limit to pass. */
@@ -73,24 +84,38 @@ function onError() {
     v-if="shown"
     :key="token"
     class="thumbnail"
+    :class="fit"
     :src="shown"
     alt=""
     loading="lazy"
     decoding="async"
     @error="onError"
   />
-  <div v-else class="thumbnail none" aria-hidden="true">—</div>
+  <div v-else class="thumbnail none" :class="fit" aria-hidden="true">—</div>
 </template>
 
 <style scoped>
 .thumbnail {
   display: block;
-  width: 100%;
-  height: 100%;
   border-radius: 4px;
   border: 1px solid var(--k-line);
   background: var(--k-sunken);
+}
+
+.thumbnail.cover {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
+}
+
+/* Never stretched or cropped: a fallback size that is not 16:9 is shown
+   whole, at up to its own box, rather than cropped into looking like one. */
+.thumbnail.contain {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  margin: auto;
 }
 
 .thumbnail.none {
@@ -100,5 +125,12 @@ function onError() {
   border-style: dotted;
   color: var(--k-text-3);
   font-size: 10px;
+}
+
+/* The fallback div has no intrinsic size of its own to contain within, so
+   'contain' here means a reasonable 16:9 box rather than a collapsed one. */
+.thumbnail.none.contain {
+  width: 100%;
+  aspect-ratio: 16 / 9;
 }
 </style>

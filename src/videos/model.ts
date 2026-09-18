@@ -138,7 +138,7 @@ export function periodLabel(period: RankingPeriod): string {
 }
 
 /** The four period chips #135 places beside "年で選ぶ", in the order shown. */
-export const PERIOD_CHIPS: readonly RankingPeriod[] = RANKING_PERIODS;
+export const PERIOD_CHIPS = RANKING_PERIODS;
 
 export function scopeName(kind: VideoType, period: RankingPeriod): string {
   return `${kindName(kind)}・${periodLabel(period)}`;
@@ -284,6 +284,31 @@ export function matchRanges(title: string, tokens: readonly string[]): MatchRang
   }
 
   return merged.map(([start, end]) => ({ start, end }));
+}
+
+/** One run of a title, marked or not - what a template loops over to draw the highlight. */
+export interface TitleSegment {
+  text: string;
+  marked: boolean;
+}
+
+/** `title` cut at `matchRanges`' boundaries, alternating marked and unmarked runs. */
+export function titleSegments(title: string, tokens: readonly string[]): TitleSegment[] {
+  const ranges = matchRanges(title, tokens);
+
+  if (ranges.length === 0) return [{ text: title, marked: false }];
+
+  const segments: TitleSegment[] = [];
+  let at = 0;
+
+  for (const range of ranges) {
+    if (range.start > at) segments.push({ text: title.slice(at, range.start), marked: false });
+    segments.push({ text: title.slice(range.start, range.end), marked: true });
+    at = range.end;
+  }
+  if (at < title.length) segments.push({ text: title.slice(at), marked: false });
+
+  return segments;
 }
 
 /** The three filters that narrow a ranking's rows without ever re-ranking it. */
