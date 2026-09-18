@@ -85,6 +85,15 @@ describe('plotOf', () => {
     expect(plot.area).not.toEqual('');
   });
 
+  // A month nobody read is a hole, so the line stops at it and starts again
+  // after it rather than crossing the gap as if the count had been read.
+  test('breaks the line at a month with no reading', () => {
+    const plot = plotOf([100, 120, null, 150, 160], 'level');
+
+    expect(plot.line.match(/M/g)).toHaveLength(2);
+    expect(plot.area.match(/Z/g)).toHaveLength(2);
+  });
+
   test('draws nothing at all for a series with no readings', () => {
     const plot = plotOf([null, null], 'level');
 

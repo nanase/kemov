@@ -116,18 +116,36 @@ export function plotOf(values: readonly (number | null)[], kind: 'flow' | 'level
   const baseline = scale(0);
 
   if (kind === 'level') {
-    const points = values
-      .map((value, index) => ({ value, index }))
-      .filter((point): point is { value: number; index: number } => point.value !== null)
-      .map(({ value, index }) => `${(index + 0.5).toFixed(3)},${scale(value).toFixed(2)}`);
+    // Months that were read, in unbroken runs. A month with no reading breaks
+    // the run rather than being skipped over: a line drawn straight across the
+    // gap would put a reading where there is none.
+    const runs: { x: string; y: string }[][] = [];
+    let run: { x: string; y: string }[] = [];
+
+    values.forEach((value, index) => {
+      if (value === null) {
+        if (run.length > 0) runs.push(run);
+        run = [];
+
+        return;
+      }
+
+      run.push({ x: (index + 0.5).toFixed(3), y: scale(value).toFixed(2) });
+    });
+
+    if (run.length > 0) runs.push(run);
+
+    const path = (points: readonly { x: string; y: string }[]) => points.map((p) => `${p.x},${p.y}`).join(' L');
 
     // One reading cannot be a line. Its area still draws, as a single column,
     // so the panel does not look broken while the history fills up (#125).
-    const line = points.length > 1 ? `M${points.join(' L')}` : '';
-    const area =
-      points.length > 0
-        ? `M${points[0]!.split(',')[0]},${HEIGHT} L${points.join(' L')} L${points.at(-1)!.split(',')[0]},${HEIGHT} Z`
-        : '';
+    const line = runs
+      .filter((points) => points.length > 1)
+      .map((points) => `M${path(points)}`)
+      .join(' ');
+    const area = runs
+      .map((points) => `M${points[0]!.x},${HEIGHT} L${path(points)} L${points.at(-1)!.x},${HEIGHT} Z`)
+      .join(' ');
 
     return { width, height: HEIGHT, bars: [], line, area, baseline: HEIGHT, top, bottom };
   }
