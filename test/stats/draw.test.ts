@@ -1,4 +1,4 @@
-import { DASH, formatCount } from '@/lib/numberFormat';
+import { DASH } from '@/lib/numberFormat';
 import {
   axisMarks,
   changeSign,

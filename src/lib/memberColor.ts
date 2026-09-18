@@ -60,6 +60,31 @@ export function memberColor(hex: string, dark: boolean, alpha = 1): string {
 }
 
 /**
+ * The same colour, moved far enough to carry marks and text on its own.
+ *
+ * `memberColor` above is tuned for a colour used beside the page's own accent,
+ * where it only has to be recognisable. A page that puts the member's colour
+ * *in place of* the accent asks more of it: a ring, a chart's marks, a filled
+ * button with words on it. Four of the eleven do not reach 3:1 against the
+ * page's ground at that band - the palest sits at 2.56:1 - so this one is
+ * pulled to a narrower, darker band.
+ *
+ * Measured against the grounds the pages use, over all eleven members, the
+ * worst case is 4.15:1 on the light ground, 4.87:1 for white text on the
+ * colour, 5.46:1 on the dark ground and 4.86:1 for the dark theme's ink on
+ * the colour. The hue is still untouched: it is what tells eleven people
+ * apart, and darkening is a change of lightness only.
+ */
+export function memberInk(hex: string, dark: boolean, alpha = 1): string {
+  const { hue, saturation, lightness } = toHsl(hex);
+  const s = clamp(Math.max(saturation, dark ? 0.42 : 0.46), 0, 0.92);
+  const l = dark ? clamp(lightness, 0.64, 0.8) : clamp(lightness, 0.26, 0.32);
+  const percent = (v: number) => `${Math.round(v * 100)}%`;
+
+  return `hsl(${hue} ${percent(s)} ${percent(l)}${alpha < 1 ? ` / ${alpha}` : ''})`;
+}
+
+/**
  * The same colour, darker or lighter, for the month being pointed at.
  *
  * The page's accent green is not used for this: against a member's own colour

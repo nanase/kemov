@@ -19,9 +19,13 @@ import { busiestCell, heatCounts, heatLevel, HEAT_LEVELS, type MemberStream } fr
  * cell: that page answers how much of an hour is usually filled, and this one
  * answers how many streams are usually on.
  *
- * The shades are the page's own accent, never the member's colour: a shade
- * stands for an amount, and #136 keeps a member's colour for telling people
- * apart. Drawn on a canvas because the finest resolution is 10,080 cells.
+ * The four shades are the member's own colour, which is not the thing #136
+ * rules out. That rule is about reading one member's colour against another's
+ * - a shade may not say "more than that person" - and this heatmap never
+ * holds two members: every cell on it belongs to the one person named at the
+ * top, and the shade is how many of *their own* streams fell in that cell.
+ * That is the same use #134 settled for the member's own chart. Drawn on a
+ * canvas because the finest resolution is 10,080 cells.
  */
 const { streams, step } = defineProps<{
   streams: readonly MemberStream[];
@@ -93,14 +97,20 @@ const spoken = computed(() =>
 const ramp = computed(() =>
   Array.from({ length: HEAT_LEVELS }, (_, index) => ({
     level: index + 1,
-    background: `color-mix(in srgb, var(--k-accent) ${Math.round((ALPHA[index + 1] ?? 1) * 100)}%, var(--k-sunken))`,
+    background: `color-mix(in srgb, var(--mv-key) ${Math.round((ALPHA[index + 1] ?? 1) * 100)}%, var(--k-sunken))`,
   })),
 );
 
 const axis = [0, 3, 6, 9, 12, 15, 18, 21, 24];
 
-function cssVar(name: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+/**
+ * A custom property as it stands where the canvas is.
+ *
+ * Read off the canvas rather than off the document: `--mv-key` is the member
+ * being read and is set on the page, so the root element does not have it.
+ */
+function cssVar(element: Element, name: string): string {
+  return getComputedStyle(element).getPropertyValue(name).trim();
 }
 
 function draw() {
@@ -122,10 +132,10 @@ function draw() {
 
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
   context.clearRect(0, 0, width, height);
-  context.fillStyle = cssVar('--k-sunken');
+  context.fillStyle = cssVar(element, '--k-sunken');
   context.fillRect(0, 0, width, height);
 
-  const accent = cssVar('--k-accent');
+  const accent = cssVar(element, '--mv-key');
   const { cells, columns, max } = heat.value;
   const cellWidth = width / columns;
 
@@ -171,7 +181,7 @@ function draw() {
   }
 
   context.globalAlpha = 1;
-  context.strokeStyle = cssVar('--k-line');
+  context.strokeStyle = cssVar(element, '--k-line');
   context.lineWidth = 1;
 
   for (let hour = 3; hour < 24; hour += 3) {
@@ -187,7 +197,7 @@ function draw() {
 
   if (at === null) return;
 
-  context.strokeStyle = cssVar('--k-text');
+  context.strokeStyle = cssVar(element, '--k-text');
   context.lineWidth = 1.5;
   context.strokeRect(
     Math.round(at.column * cellWidth) + 0.25,
@@ -220,7 +230,7 @@ function drawColumns() {
   const { byColumn, columnMax, columns } = heat.value;
   const cellWidth = width / columns;
 
-  context.fillStyle = cssVar('--k-accent');
+  context.fillStyle = cssVar(element, '--mv-key');
   context.globalAlpha = 0.62;
 
   byColumn.forEach((value, column) => {
@@ -237,7 +247,7 @@ function drawColumns() {
   });
 
   context.globalAlpha = 1;
-  context.strokeStyle = cssVar('--k-line');
+  context.strokeStyle = cssVar(element, '--k-line');
   context.lineWidth = 1;
   context.beginPath();
   context.moveTo(0, height - 0.5);

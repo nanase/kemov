@@ -144,7 +144,7 @@ const hasSeries = (series: readonly (number | null)[]) => series.some((value) =>
 }
 
 .line :deep(.line) {
-  stroke: var(--mv-bar);
+  stroke: var(--mv-key);
   stroke-width: 1.25px;
 }
 

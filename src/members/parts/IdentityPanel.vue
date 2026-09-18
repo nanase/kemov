@@ -220,7 +220,7 @@ const figures = computed(() => [
 }
 
 .link:hover {
-  border-color: var(--k-accent);
+  border-color: var(--mv-key);
   color: var(--k-text);
 }
 
