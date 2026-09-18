@@ -3,6 +3,7 @@ import { env } from 'cloudflare:test';
 import type { CertsCache } from '../src/lib/access';
 import { handleAdminRequest } from '../src/admin';
 import { accessToken, certsFetch, signedAccessToken } from './access-token';
+import { clearEverything } from './reset-db';
 
 /** Routing and the Access check in front of it; what an authorized caller can do is #144's own scope. */
 
@@ -116,5 +117,108 @@ describe('handleAdminRequest', () => {
     expect((await request('/admin', null, AUD)).status).toEqual(404);
     expect((await request('/admin/', null, AUD)).status).toEqual(404);
     expect((await request('/admin/foo', null, AUD)).status).toEqual(404);
+  });
+});
+
+// What each footprints route actually does is footprints.test.ts and
+// footprints-publish.test.ts's job. This only checks that a path and a
+// method reach the function that owns them.
+describe('handleAdminRequest routing to footprints', () => {
+  beforeEach(clearEverything);
+
+  async function call(path: string, init: RequestInit = {}): Promise<Response> {
+    const { token, certs } = await signedAccessToken(validPayload());
+
+    return handleAdminRequest(
+      new Request(`https://kemov.nanase.cc${path}`, {
+        ...init,
+        headers: { ...init.headers, 'Cf-Access-Jwt-Assertion': token },
+      }),
+      { ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM } as typeof env,
+      undefined,
+      certsFetch(certs),
+      new Map() as CertsCache,
+    );
+  }
+
+  const minimalEventBody = {
+    datePrecision: 'day',
+    startDate: '2025-01-01',
+    startsAt: null,
+    endDate: null,
+    kind: 'debut',
+    emphasized: false,
+    title: 'x',
+    place: null,
+    supplement: null,
+    videoId: null,
+    sourcePending: true,
+    memo: null,
+    channelIds: [],
+    sources: [],
+  };
+
+  const post = (path: string, body: unknown) =>
+    call(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+  const put = (path: string, body: unknown) =>
+    call(path, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+  test('routes GET and POST /admin/api/footprints/events', async () => {
+    expect((await call('/admin/api/footprints/events')).status).toEqual(200);
+
+    const created = await post('/admin/api/footprints/events', minimalEventBody);
+
+    expect(created.status).toEqual(201);
+
+    const wrongMethod = await call('/admin/api/footprints/events', { method: 'DELETE' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('GET, POST');
+  });
+
+  test('routes GET, PUT and DELETE /admin/api/footprints/events/:eventId', async () => {
+    const created = await post('/admin/api/footprints/events', minimalEventBody);
+    const { event } = (await created.json()) as { event: { eventId: number } };
+
+    expect((await call(`/admin/api/footprints/events/${event.eventId}`)).status).toEqual(200);
+
+    const updated = await put(`/admin/api/footprints/events/${event.eventId}`, minimalEventBody);
+
+    expect(updated.status).toEqual(200);
+
+    const deleted = await call(`/admin/api/footprints/events/${event.eventId}`, { method: 'DELETE' });
+
+    expect(deleted.status).toEqual(200);
+  });
+
+  test('answers 404 for a non-numeric event id', async () => {
+    expect((await call('/admin/api/footprints/events/not-a-number')).status).toEqual(404);
+  });
+
+  test('routes POST .../publish and .../withdraw', async () => {
+    const created = await post('/admin/api/footprints/events', {
+      ...minimalEventBody,
+      sourcePending: true,
+      sources: [],
+    });
+    const { event } = (await created.json()) as { event: { eventId: number } };
+
+    const published = await post(`/admin/api/footprints/events/${event.eventId}/publish`, {});
+
+    expect(published.status).toEqual(200);
+
+    const withdrawn = await post(`/admin/api/footprints/events/${event.eventId}/withdraw`, {});
+
+    expect(withdrawn.status).toEqual(200);
+
+    const unknownAction = await post(`/admin/api/footprints/events/${event.eventId}/nope`, {});
+
+    expect(unknownAction.status).toEqual(404);
+  });
+
+  test('routes GET /admin/api/footprints/pending and POST /admin/api/footprints/publish', async () => {
+    expect((await call('/admin/api/footprints/pending')).status).toEqual(200);
+    expect((await post('/admin/api/footprints/publish', {})).status).toEqual(200);
   });
 });

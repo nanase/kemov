@@ -185,6 +185,26 @@ Every `/admin/api/*` request is also checked by the worker itself, in `worker/sr
 
 `ACCESS_AUD` is the `aud` tag of the Access application in front of `/admin`, and `ACCESS_TEAM_DOMAIN` is that Access team's domain (e.g. `nanase.cloudflareaccess.com`) — a `[vars]` entry in `wrangler.toml`, not a secret, because it is the same domain a browser is already sent to for the Access login page. With either `ACCESS_AUD` or `ACCESS_TEAM_DOMAIN` unset, or with a key set that cannot be fetched, every `/admin/api/*` request is refused, Access policy notwithstanding.
 
+### Footprints: Editing and Publishing
+
+| Method | Path                                               | Answers with                                                                                     |
+| ------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| GET    | `/admin/api/footprints/events`                     | Every `footprints_event` row, with its members and sources                                       |
+| GET    | `/admin/api/footprints/events/<event ID>`          | One row, with its members and sources                                                            |
+| POST   | `/admin/api/footprints/events`                     | The row after creating it in `draft`                                                             |
+| PUT    | `/admin/api/footprints/events/<event ID>`          | The row after replacing it, its members and its sources - `status` unchanged                     |
+| DELETE | `/admin/api/footprints/events/<event ID>`          | `{}` - 409 instead, if the event is `published`                                                  |
+| POST   | `/admin/api/footprints/events/<event ID>/publish`  | The row after validating it and setting `status` to `published`                                  |
+| POST   | `/admin/api/footprints/events/<event ID>/withdraw` | The row after setting `status` back to `draft`                                                   |
+| GET    | `/admin/api/footprints/pending`                    | Events not yet reflected in the published JSON, and published events whose row has since changed |
+| POST   | `/admin/api/footprints/publish`                    | Whether anything was published, and how many events if so                                        |
+
+`GET /admin/api/footprints/events` takes `status` and `q` (a substring of `title`) as query parameters, narrowing the list.
+
+An event passes through a publish gate rather than taking effect on save - unlike `channel`, `video_override` and `channel_snapshot_exclusion` above, which do not. Creating, updating and deleting an event logs no `revision` at all; only `publish` and `withdraw` do, in the same `db.batch` as the `status` change. `POST .../publish` refuses with 400 and every failing condition together when the event is not ready — an empty `title`, `sourcePending: false` with no source in the whitelist (`worker/src/lib/source-whitelist.ts`), or a `videoId` that is not 11 characters. Publishing an already-published event is allowed, and is how an event `GET .../pending` reports as changed gets a fresh `publish` revision matching its current row.
+
+`POST /admin/api/footprints/publish` builds `footprints/events.json` from the latest `revision` of every event whose latest action is not `withdraw`, writes it to `PUBLIC_DATA`, and appends one `publication` row recording the newest `revision_id` it saw. Nothing is written when there is nothing newer than the last run.
+
 ## Database
 
 The collected data lives in a Cloudflare D1 database named `kemov`, running in the APAC region. Everything the site publishes can be rebuilt from it. The commands below need wrangler, which comes with the Worker setup.
