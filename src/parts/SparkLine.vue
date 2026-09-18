@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-import { plotOf } from '../draw';
+import { plotOf } from '@/lib/plot';
 
 /**
  * One row's month-by-month shape, drawn small.

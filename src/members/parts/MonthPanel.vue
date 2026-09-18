@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 
-import SegmentGroup from '@/stats/parts/SegmentGroup.vue';
-import { formatCount } from '@/stats/draw';
+import SegmentGroup from '@/parts/SegmentGroup.vue';
+import { formatCount } from '@/lib/numberFormat';
 
 import { formatLength } from '../draw';
 import { MONTHLY_SERIES, monthlySeries, type MonthlySeriesId } from '../model';
@@ -32,9 +32,21 @@ const chosen = ref<number | null>(null);
 const values = computed(() => (row === null ? [] : monthlySeries(row, series)));
 const peak = computed(() => Math.max(1, ...values.value.map((value) => value ?? 0)));
 
-/** The newest month with a value, which is what the readout opens on. */
+/**
+ * The month the readout opens on: the newest one with something in it.
+ *
+ * Not simply the newest month the site knows about. For a member who has
+ * finished, that is a month of zeros years after their last stream, and the
+ * panel would open by saying they did nothing.
+ */
 const newest = computed(() => {
-  for (let index = values.value.length - 1; index >= 0; index -= 1) if (values.value[index] !== null) return index;
+  for (let index = values.value.length - 1; index >= 0; index -= 1) {
+    if ((values.value[index] ?? 0) > 0) return index;
+  }
+
+  for (let index = values.value.length - 1; index >= 0; index -= 1) {
+    if (values.value[index] !== null) return index;
+  }
 
   return null;
 });

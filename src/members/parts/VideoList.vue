@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-import SegmentGroup from '@/stats/parts/SegmentGroup.vue';
-import { formatCount } from '@/stats/draw';
+import SegmentGroup from '@/parts/SegmentGroup.vue';
+import { formatCount } from '@/lib/numberFormat';
 import { getPropertyName, VIDEO_PROPERTIES, type VideoProperty } from '@/type/video';
 
 import { KINDS, LIST_PERIODS, type ListPeriodId, type TitlePart } from '../model';

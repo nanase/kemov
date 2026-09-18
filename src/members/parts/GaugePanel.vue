@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-import SparkLine from '@/stats/parts/SparkLine.vue';
-import { formatCount } from '@/stats/draw';
+import SparkLine from '@/parts/SparkLine.vue';
+import { formatCount } from '@/lib/numberFormat';
 
 import { formatLength, formatRate } from '../draw';
 import { GAUGES, gaugeChange, gaugeSeries, gaugeValue, type WindowTotals } from '../model';
@@ -70,7 +70,7 @@ const hasSeries = (series: readonly (number | null)[]) => series.some((value) =>
           <div class="value mv-n">
             {{ gauge.value }}<small v-if="gauge.unit"> {{ gauge.unit }}</small>
           </div>
-          <SparkLine v-if="hasSeries(gauge.series)" class="line" :values="gauge.series" kind="flow" />
+          <SparkLine v-if="hasSeries(gauge.series)" class="line" :values="gauge.series" kind="level" />
           <div v-else class="none">記録がありません</div>
           <div class="previous mv-n">前の 90 日 {{ gauge.previous }}</div>
         </div>
@@ -135,15 +135,21 @@ const hasSeries = (series: readonly (number | null)[]) => series.some((value) =>
   font-weight: 400;
 }
 
+/* A thin line of every month (#136), not a filled shape: the gauge above it
+   is the figure, and a solid block under it would read as a second one. */
 .line {
   display: block;
   width: 100%;
   height: 26px;
-  color: var(--mv-bar);
 }
 
-.line :deep(.bar) {
-  fill: var(--mv-bar);
+.line :deep(.line) {
+  stroke: var(--mv-bar);
+  stroke-width: 1.25px;
+}
+
+.line :deep(.area) {
+  display: none;
 }
 
 /* The line's place is kept, so a gauge without a history is the same height

@@ -3,8 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt from '@/shell/UpdatedAt.vue';
-import SegmentGroup from '@/stats/parts/SegmentGroup.vue';
-import { formatCount } from '@/stats/draw';
+import SegmentGroup from '@/parts/SegmentGroup.vue';
+import { formatCount } from '@/lib/numberFormat';
 import { freshnessOf } from '@/stats/model';
 import { rankByMetric, type RankingPeriod } from '@/lib/ranking';
 import { formatProperty, readProperty } from '@/type/video';
@@ -118,7 +118,9 @@ function pick(id: string) {
 const rows = computed(() =>
   member.value === null ? [] : data.rows.value.filter((row) => row.channelId === member.value?.channelId),
 );
-const months = computed(() => data.months.value?.channels.find((entry) => entry.channelId === memberId.value) ?? null);
+const months = computed(
+  () => data.months.value?.channels.find((entry) => entry.channelId === member.value?.channelId) ?? null,
+);
 const monthLabels = computed(() => data.months.value?.months ?? []);
 
 const totals = computed(() => (member.value === null ? null : cumulativeOf(member.value, rows.value, now.value)));

@@ -1,7 +1,9 @@
-import { formatCount } from '@/stats/draw';
+import { formatCount } from '@/lib/numberFormat';
 import { formatDuration } from '@/type/video';
 
-import { DAY_NAMES, type Top } from './model';
+import { DAY_NAMES } from '@/lib/timeFormat';
+
+import type { Top } from './model';
 
 /**
  * How the member page writes what its model worked out.

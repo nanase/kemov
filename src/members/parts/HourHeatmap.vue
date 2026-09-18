@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
 
-import SegmentGroup from '@/stats/parts/SegmentGroup.vue';
-import { formatCount } from '@/stats/draw';
+import SegmentGroup from '@/parts/SegmentGroup.vue';
+import { formatCount } from '@/lib/numberFormat';
 import { HEATMAP_STEP_MINUTES } from '@/lib/heatmap';
 
 import { columnLabel } from '../draw';
-import { busiestCell, DAY_NAMES, heatCounts, heatLevel, HEAT_LEVELS, type MemberStream } from '../model';
+import { DAY_NAMES } from '@/lib/timeFormat';
+import { busiestCell, heatCounts, heatLevel, HEAT_LEVELS, type MemberStream } from '../model';
 
 /**
  * When this member is on air, over a week.

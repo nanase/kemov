@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-import MemberAvatar from '@/stats/parts/MemberAvatar.vue';
-import { formatCount } from '@/stats/draw';
+import MemberAvatar from '@/parts/MemberAvatar.vue';
+import { formatCount } from '@/lib/numberFormat';
 
 import type { Cumulative } from '../model';
 import type { Channel } from '@/type/api';

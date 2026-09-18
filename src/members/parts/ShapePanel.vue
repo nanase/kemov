@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-import { formatCount } from '@/stats/draw';
+import { formatCount } from '@/lib/numberFormat';
 
 import { bandLabel, eachWord, formatLength, formatPercent, formatRate, hourName, topWords, weekdayName } from '../draw';
 import type { Shape } from '../model';

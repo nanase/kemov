@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatCount } from '@/stats/draw';
+import { formatCount } from '@/lib/numberFormat';
 
 import type { Streak } from '../model';
 

@@ -1,174 +1,13 @@
+import { DASH, formatCount } from '@/lib/numberFormat';
+
 /**
- * Turning the page's numbers into the shapes and words it draws.
+ * Turning this page's numbers into the shapes and words it draws.
  *
  * Geometry is returned as plain numbers and path strings so it can be checked
  * without rendering anything. Every scale here is taken inside one series:
  * nothing in this file ever sees two members at once, which is how #134's
  * rule against comparing them is kept while drawing.
  */
-
-export interface Hsl {
-  hue: number;
-  saturation: number;
-  lightness: number;
-}
-
-export function toHsl(hex: string): Hsl {
-  const value = hex.replace('#', '');
-  const red = parseInt(value.slice(0, 2), 16) / 255;
-  const green = parseInt(value.slice(2, 4), 16) / 255;
-  const blue = parseInt(value.slice(4, 6), 16) / 255;
-  const max = Math.max(red, green, blue);
-  const min = Math.min(red, green, blue);
-  const lightness = (max + min) / 2;
-
-  if (max === min) return { hue: 0, saturation: 0, lightness };
-
-  const chroma = max - min;
-  const saturation = lightness > 0.5 ? chroma / (2 - max - min) : chroma / (max + min);
-  const hue =
-    max === red
-      ? (green - blue) / chroma + (green < blue ? 6 : 0)
-      : max === green
-        ? (blue - red) / chroma + 2
-        : (red - green) / chroma + 4;
-
-  return { hue: Math.round(hue * 60), saturation, lightness };
-}
-
-function clamp(value: number, low: number, high: number): number {
-  return Math.min(high, Math.max(low, value));
-}
-
-/**
- * A member's own colour, moved to a lightness that reads against the page.
- *
- * The hue is left alone - it is what tells eleven members apart - and only
- * the lightness is pulled into a band that has enough contrast with the
- * background. Saturation is raised to a floor rather than lowered, so a pale
- * colour does not arrive as grey.
- */
-export function memberColor(hex: string, dark: boolean, alpha = 1): string {
-  const { hue, saturation, lightness } = toHsl(hex);
-  const s = clamp(Math.max(saturation, dark ? 0.42 : 0.46), 0, 0.92);
-  const l = dark ? clamp(lightness, 0.6, 0.78) : clamp(lightness, 0.28, 0.42);
-  const percent = (v: number) => `${Math.round(v * 100)}%`;
-
-  return `hsl(${hue} ${percent(s)} ${percent(l)}${alpha < 1 ? ` / ${alpha}` : ''})`;
-}
-
-/**
- * The same colour, darker or lighter, for the month being pointed at.
- *
- * The page's accent green is not used for this: against a member's own colour
- * it reads as a different thing entirely rather than as the same bar, brought
- * forward.
- */
-export function memberAccent(hex: string, dark: boolean): string {
-  const { hue, saturation, lightness } = toHsl(hex);
-  const s = clamp(Math.max(saturation, 0.5) * 1.15, 0, 0.95);
-  const l = dark ? clamp(lightness * 1.2, 0.74, 0.9) : clamp(lightness * 0.72, 0.14, 0.26);
-
-  return `hsl(${hue} ${Math.round(s * 100)}% ${Math.round(l * 100)}%)`;
-}
-
-export interface Bar {
-  /** Where the month sits on the shared axis, in months from its start. */
-  index: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  value: number;
-}
-
-export interface Plot {
-  /** The width of the drawing, in the same units the bars are placed in. */
-  width: number;
-  height: number;
-  bars: Bar[];
-  /** The line and the area under it, for a series that is a level rather than a flow. */
-  line: string;
-  area: string;
-  /** Where zero sits, which is the foot of the bars and the line's baseline. */
-  baseline: number;
-  top: number;
-  bottom: number;
-}
-
-const HEIGHT = 100;
-
-/**
- * Where each month's bar or point goes.
- *
- * Nulls are holes rather than zeros: a month before a member's debut, or one
- * whose subscriber count was never read, has no bar and no point. The scale
- * runs from the series' own smallest value - or zero, whichever is lower - to
- * its own largest, so a quiet member fills the same height as a busy one.
- */
-export function plotOf(values: readonly (number | null)[], kind: 'flow' | 'level', barWidth = 0.76): Plot {
-  const known = values.filter((v): v is number => v !== null);
-  const top = Math.max(1, ...known);
-  const bottom = Math.min(0, ...known);
-  const span = top - bottom || 1;
-  const width = Math.max(1, values.length);
-  const scale = (value: number) => ((top - value) / span) * (HEIGHT - 3);
-  const baseline = scale(0);
-
-  if (kind === 'level') {
-    // Months that were read, in unbroken runs. A month with no reading breaks
-    // the run rather than being skipped over: a line drawn straight across the
-    // gap would put a reading where there is none.
-    const runs: { x: string; y: string }[][] = [];
-    let run: { x: string; y: string }[] = [];
-
-    values.forEach((value, index) => {
-      if (value === null) {
-        if (run.length > 0) runs.push(run);
-        run = [];
-
-        return;
-      }
-
-      run.push({ x: (index + 0.5).toFixed(3), y: scale(value).toFixed(2) });
-    });
-
-    if (run.length > 0) runs.push(run);
-
-    const path = (points: readonly { x: string; y: string }[]) => points.map((p) => `${p.x},${p.y}`).join(' L');
-
-    // One reading cannot be a line. Its area still draws, as a single column,
-    // so the panel does not look broken while the history fills up (#125).
-    const line = runs
-      .filter((points) => points.length > 1)
-      .map((points) => `M${path(points)}`)
-      .join(' ');
-    const area = runs
-      .map((points) => `M${points[0]!.x},${HEIGHT} L${path(points)} L${points.at(-1)!.x},${HEIGHT} Z`)
-      .join(' ');
-
-    return { width, height: HEIGHT, bars: [], line, area, baseline: HEIGHT, top, bottom };
-  }
-
-  const bars = values.flatMap<Bar>((value, index) => {
-    if (value === null || value === 0) return [];
-
-    const height = Math.max(0.8, (Math.abs(value) / span) * (HEIGHT - 3));
-
-    return [
-      {
-        index,
-        x: index + (1 - barWidth) / 2,
-        y: value > 0 ? baseline - height : baseline,
-        width: barWidth,
-        height,
-        value,
-      },
-    ];
-  });
-
-  return { width, height: HEIGHT, bars, line: '', area: '', baseline, top, bottom };
-}
 
 /**
  * The year marks under the chart, with the ones that would collide dropped.
@@ -207,16 +46,6 @@ export function axisMarks(months: readonly string[], widthPx: number): AxisMark[
 }
 
 const NUMBER = new Intl.NumberFormat('ja-JP');
-const NUMBER_1 = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
-
-/** Every absent number on this page is one em dash, so a hole is never a zero. */
-export const DASH = '—';
-
-export function formatCount(value: number | null | undefined, decimals = 0): string {
-  if (value === null || value === undefined) return DASH;
-
-  return decimals > 0 ? NUMBER_1.format(value) : NUMBER.format(Math.round(value));
-}
 
 /** A change, with its sign. The minus is the typographic one, to match the plus's width. */
 export function formatChange(value: number | null | undefined): string {
@@ -261,8 +90,6 @@ export function formatMinutes(minutes: number): string {
     ? `${formatCount(Math.floor(whole / 60))} 時間`
     : `${formatCount(Math.floor(whole / 60))} 時間 ${rest} 分`;
 }
-
-export const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'] as const;
 
 /** Which part of the day a heatmap cell covers, named by the step it was cut with. */
 export function slotLabel(slot: number, stepMinutes: number): string {
