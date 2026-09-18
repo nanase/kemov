@@ -2,6 +2,7 @@ import type { Env } from '../lib/env';
 import { cachedJson, errorWithCacheHeaders, NotFound } from './cache';
 import { getChannel, getHistory, listChannels, readHistoryRange } from './channels';
 import { health, statusFor } from './health';
+import { relayChannelIcon, relayVideoThumbnail } from './image';
 import { listLive } from './live';
 import { monthsSeries } from './months';
 import { publicDataResponse } from './public-data';
@@ -31,7 +32,12 @@ import {
  * so one failing emptied the statistics table with nothing to say why.
  */
 
-export async function handleApiRequest(request: Request, env: Env, cacheImpl: Cache): Promise<Response> {
+export async function handleApiRequest(
+  request: Request,
+  env: Env,
+  cacheImpl: Cache,
+  ctx?: ExecutionContext,
+): Promise<Response> {
   const url = new URL(request.url);
   const { pathname, searchParams } = url;
 
@@ -103,6 +109,17 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
     if ('error' in range) return errorWithCacheHeaders(400, range.error);
 
     return await cached(() => getHistory(env, name, range.from, range.to, range.bucketSeconds));
+  }
+
+  // Not routed through cachedJson: the body is an image, not the JSON every
+  // other endpoint here answers with, and the relay keeps its own cache
+  // entries - one per id and size - rather than one per exact request URL.
+  if (segments.length === 4 && resource === 'image' && name === 'channel' && sub !== undefined) {
+    return await relayChannelIcon(request, env, cacheImpl, ctx, sub, searchParams);
+  }
+
+  if (segments.length === 4 && resource === 'image' && name === 'video' && sub !== undefined) {
+    return await relayVideoThumbnail(request, cacheImpl, ctx, sub, searchParams);
   }
 
   // Not routed through cachedJson: the object in PUBLIC_DATA already carries
