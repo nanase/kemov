@@ -462,7 +462,7 @@ The admin site publishes JSON to its own bucket, `kemov-public`, bound as `PUBLI
 
 It is not backed up. Every published object is built from `revision`, which is backed up, so losing `kemov-public` costs a republish rather than the data itself — the same reasoning that keeps `collect_task` and `chat_author` out of `kemov-backup` (see [Backups](#backups) above), applied to a bucket instead of a table.
 
-Nothing writes to it yet. Which keys it holds and what serves them from `/api` are later work; this only reserves the binding and the bucket.
+Nothing writes to it yet - publishing is later work - but `/api` already serves it. `GET /api/footprints/events` and `GET /api/genet/music` pass the bucket's `footprints/events.json` and `genet/music.json` straight through: the same bytes, the object's own `ETag` and `Last-Modified`, and no reparsing. Until a publish exists to write either key, both answer 404 with `{"error":"not published yet"}`. `If-None-Match` is honoured with 304, and HEAD answers with the same status and headers as GET but no body.
 
 The bucket does not exist until created once, before deploying the code that binds it:
 
