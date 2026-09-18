@@ -1,5 +1,5 @@
 import { resolve } from 'path';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import VueMacros from 'unplugin-vue-macros/vite';
 import Vue from '@vitejs/plugin-vue';
 import webfontDownload from 'vite-plugin-webfont-dl';
@@ -7,6 +7,16 @@ import injectHTML from 'vite-plugin-html-inject';
 
 const root = resolve(import.meta.dirname);
 const srcDir = resolve(root, 'src');
+
+/**
+ * Where the dev server forwards its own /api, when it is told to.
+ *
+ * Read here rather than inside a config function because vitest.config.ts
+ * merges this object, and merging a function is not something it does.
+ * Development's env files are the only ones that can carry it: a build has no
+ * server to proxy with.
+ */
+const apiProxy = loadEnv('development', root, '').VITE_API_PROXY;
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -69,6 +79,13 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // VITE_API_PROXY sends this server's own /api to whatever answers it -
+    // the deployment, or a wrangler dev on another port. The pages keep
+    // asking their own origin, which is the only way a browser will read the
+    // answer: the API sets no Access-Control-Allow-Origin, so pointing the
+    // pages straight at another host with VITE_API_BASE has the browser
+    // refuse every response before the page sees it.
+    proxy: apiProxy ? { '/api': { target: apiProxy, changeOrigin: true } } : undefined,
   },
   preview: {
     port: 4173,
