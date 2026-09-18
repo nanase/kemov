@@ -29,17 +29,29 @@ export interface VideoTableRow extends RankableVideo {
 }
 
 /**
- * The periods a ranking's row count can be narrowed to.
+ * The four rolling periods a ranking's row count can be narrowed to, besides
+ * one Japan-time calendar year.
  *
- * All five have their origin at `now` rather than at a fixed calendar mark -
+ * All four have their origin at `now` rather than at a fixed calendar mark -
  * #136's decision for its member list applies here too, so the same video
- * gets the same rank whichever page asks. `calendarYear` is the one exception
- * inside a period: it still runs to `now`, but it starts at this year's
- * January 1st in Japan time, not 365 days back.
+ * gets the same rank whichever page asks.
  */
-export const RANKING_PERIODS = ['all', 'p30', 'p90', 'p365', 'calendarYear'] as const;
+export const RANKING_PERIODS = ['all', 'p30', 'p90', 'p365'] as const;
 
-export type RankingPeriod = (typeof RANKING_PERIODS)[number];
+export type RankingPeriodId = (typeof RANKING_PERIODS)[number];
+
+/**
+ * A period a ranking can be narrowed to: one of the four rolling windows, or
+ * one Japan-time calendar year.
+ *
+ * A year is a value rather than a fifth id (`{ year: 2021 }` rather than
+ * `'y2021'`) because it carries data no id can: which year. #135's page picks
+ * from several past years, not only the current one, so a fixed id per year
+ * would mean growing this union every January. Which years exist to pick from,
+ * and which one is selected by default, are the caller's business - this file
+ * only has to turn whichever year it is handed into a range.
+ */
+export type RankingPeriod = RankingPeriodId | { year: number };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -47,27 +59,37 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 /**
- * The earliest `publishedAt` a period admits, or null for `all`.
+ * The `[start, end]` a period admits, both inclusive. `start` is null for
+ * `all`, which is unbounded on both ends - see `narrow` for why.
  *
- * `calendarYear` follows the same rule `/api/months` uses for its own month
- * boundary: Japan time's midnight is UTC 15:00 the day before, found by
- * shifting `now` forward nine hours to read its Japanese year and then
- * shifting the result back.
+ * A rolling window's `end` is always `now`. A calendar year's `end` used to be
+ * implied by `now` too, back when the only year on offer was the one `now`
+ * falls in: within that year, "up to now" and "up to December 31st" admit the
+ * same rows, because nothing published after `now` exists yet. That stopped
+ * holding the moment a *past* year became selectable, where "up to now" would
+ * silently admit everything published since - so a year's `end` is now its
+ * own December 31st in Japan time (23:59:59.999), capped at `now` for the
+ * year still running. The boundary is found the same way `/api/months` finds
+ * its own month boundary: Japan time's midnight is UTC 15:00 the day before,
+ * so a year starts and ends there.
  */
-function periodStart(period: RankingPeriod, now: Date): Date | null {
+function periodRange(period: RankingPeriod, now: Date): { start: Date | null; end: Date } {
+  if (typeof period === 'object') {
+    const start = new Date(Date.UTC(period.year, 0, 1) - JST_OFFSET_MS);
+    const end = new Date(Date.UTC(period.year + 1, 0, 1) - JST_OFFSET_MS - 1);
+
+    return { start, end: end.getTime() < now.getTime() ? end : now };
+  }
+
   switch (period) {
     case 'all':
-      return null;
+      return { start: null, end: now };
     case 'p30':
-      return new Date(now.getTime() - 30 * DAY_MS);
+      return { start: new Date(now.getTime() - 30 * DAY_MS), end: now };
     case 'p90':
-      return new Date(now.getTime() - 90 * DAY_MS);
+      return { start: new Date(now.getTime() - 90 * DAY_MS), end: now };
     case 'p365':
-      return new Date(now.getTime() - 365 * DAY_MS);
-    case 'calendarYear': {
-      const jstYear = new Date(now.getTime() + JST_OFFSET_MS).getUTCFullYear();
-      return new Date(Date.UTC(jstYear, 0, 1) - JST_OFFSET_MS);
-    }
+      return { start: new Date(now.getTime() - 365 * DAY_MS), end: now };
   }
 }
 
@@ -75,14 +97,14 @@ function periodStart(period: RankingPeriod, now: Date): Date | null {
  * The rows a ranking counts, before a metric decides which of them have a
  * value.
  *
- * A bounded period also excludes a `publishedAt` after `now`: the collector
+ * A bounded period also excludes a `publishedAt` after its end: the collector
  * stores whatever YouTube reports with no upper check against the request
  * time, and a premiere's `publishedAt` can be a schedule read ahead of the
  * clock a ranking is asked for. `all` stays unbounded on both ends - it is
  * answering "everything", not "everything up to today".
  */
 function narrow(rows: readonly VideoTableRow[], kind: VideoType | null, period: RankingPeriod, now: Date) {
-  const start = periodStart(period, now);
+  const { start, end } = periodRange(period, now);
 
   return rows.filter((row) => {
     if (kind !== null && row.type !== kind) return false;
@@ -90,7 +112,7 @@ function narrow(rows: readonly VideoTableRow[], kind: VideoType | null, period: 
 
     const publishedAt = new Date(row.publishedAt).getTime();
 
-    return publishedAt >= start.getTime() && publishedAt <= now.getTime();
+    return publishedAt >= start.getTime() && publishedAt <= end.getTime();
   });
 }
 
