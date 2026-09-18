@@ -5,6 +5,7 @@ import { AdminApiError, getJson } from '../lib/api';
 import {
   ACTIONS,
   actionLabel,
+  createdViaLabel,
   ENTITIES,
   entityLabel,
   formatBytes,
@@ -156,7 +157,7 @@ onMounted(async () => {
                 <span class="sub">{{ actionLabel(r.action) }}</span>
               </td>
               <td>
-                <span class="sub">{{ r.createdVia }}</span>
+                <span class="sub">{{ createdViaLabel(r.createdVia) }}</span>
               </td>
             </tr>
           </tbody>
@@ -218,7 +219,7 @@ onMounted(async () => {
               <dt>action</dt>
               <dd>{{ actionLabel(detail.action) }}</dd>
               <dt>作った経路</dt>
-              <dd>{{ detail.createdVia }}</dd>
+              <dd>{{ createdViaLabel(detail.createdVia) }}</dd>
             </dl>
           </div>
 
