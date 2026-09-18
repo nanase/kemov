@@ -3,6 +3,7 @@ import dayjs from '@nanase/alnilam/dayjs';
 import {
   announcementsOf,
   busiestCell,
+  dayPeaks,
   deltaOf,
   freshnessOf,
   heatGrid,
@@ -312,6 +313,18 @@ describe('heatGrid', () => {
 
     expect(heatPeak(grid)).toEqual(1);
     expect(busiestCell(grid)).toEqual({ day: 0, slot: 0, minutes: 0 });
+  });
+
+  // The words under the map are one line per day, and they have to follow the
+  // step: a finer map that was still described by the hour would not match.
+  test('names the busiest slot of each day at the step it was cut with', () => {
+    const wednesdayNoon = 3 * 1440 + 12 * 60;
+    const spans = [...sundayEvening, wednesdayNoon + 20, 20];
+
+    expect(dayPeaks(heatGrid(spans, 60))[3]).toMatchObject({ slot: 12, minutes: 20, total: 20 });
+    expect(dayPeaks(heatGrid(spans, 10))[3]).toMatchObject({ slot: 74, minutes: 10, total: 20 });
+    // Nothing at all on a Monday, which is what the words say instead of a time.
+    expect(dayPeaks(heatGrid(spans, 60))[1]).toMatchObject({ minutes: 0, total: 0 });
   });
 
   test('finds the busiest cell', () => {

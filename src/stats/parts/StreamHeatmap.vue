@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
 
 import { DAY_NAMES, formatMinutes, memberColor, slotLabel } from '../draw';
-import { busiestCell, heatGrid, heatPeak } from '../model';
+import { busiestCell, dayPeaks, heatGrid, heatPeak } from '../model';
 
 /**
  * When this member is on air, over a week.
@@ -53,6 +53,22 @@ const readout = computed(() => {
     value: formatMinutes(busiest.minutes),
   };
 });
+
+/**
+ * The map in words, for a reader who cannot point at it.
+ *
+ * One line per day rather than one per cell: the shades are looked at to find
+ * when someone is usually on air, and at the finest step the cells number
+ * 10,080 - a list that long says the same thing in a form nobody can hold.
+ * It follows the step, so a finer map is described more finely.
+ */
+const spoken = computed(() =>
+  dayPeaks(grid.value).map((day) => ({
+    name: DAY_NAMES[day.day] ?? '',
+    text:
+      day.total === 0 ? '配信なし' : `最も長い時間帯は ${slotLabel(day.slot, step)} で ${formatMinutes(day.minutes)}`,
+  })),
+);
 
 function isDark(): boolean {
   return getComputedStyle(document.documentElement).colorScheme.includes('dark');
@@ -181,6 +197,9 @@ onBeforeUnmount(() => {
     <p class="readout n">
       {{ readout.lead }} <b>{{ readout.value }}</b>
     </p>
+    <ul class="reader-only">
+      <li v-for="day in spoken" :key="day.name">{{ day.name }}曜日 {{ day.text }}</li>
+    </ul>
   </div>
 </template>
 
@@ -188,6 +207,19 @@ onBeforeUnmount(() => {
 .heatmap {
   display: grid;
   gap: 6px;
+}
+
+/* Read out but never drawn: the map above says the same thing to everyone who
+   can see it, so putting the words on the page would be saying it twice. */
+.reader-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  list-style: none;
 }
 
 .map {

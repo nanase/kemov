@@ -443,6 +443,28 @@ export function busiestCell(grid: readonly (readonly number[])[]): HeatCell {
   return best;
 }
 
+/**
+ * The busiest cell of each day, and how much of the day there is at all.
+ *
+ * What the map is read for, one line per day: the whole grid is 7 x 1,440
+ * cells at the finest step, and a reader who cannot see the shades is no
+ * better served by ten thousand of them read out in order.
+ */
+export function dayPeaks(grid: readonly (readonly number[])[]): (HeatCell & { total: number })[] {
+  return grid.map((row, day) => {
+    let peak: HeatCell = { day, slot: 0, minutes: 0 };
+    let total = 0;
+
+    row.forEach((minutes, slot) => {
+      total += minutes;
+
+      if (minutes > peak.minutes) peak = { day, slot, minutes };
+    });
+
+    return { ...peak, total };
+  });
+}
+
 /** The largest cell in the grid, which every cell's shade is read against. */
 export function heatPeak(grid: readonly (readonly number[])[]): number {
   return Math.max(1, ...grid.map((row) => Math.max(0, ...row)));
