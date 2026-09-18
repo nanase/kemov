@@ -180,7 +180,7 @@ For local runs, put the same names in `.dev.vars` at the repository root as `NAM
 
 ### `/admin` and Cloudflare Access
 
-`/admin/*` is the write side of the site (#141): the worker answers it directly, with no built file behind it, so a request that finds nothing there gets a 404 rather than the public site's pages. Cloudflare Access sits in front of it and is what actually keeps everyone but its allowed identities out — no request lacking Access's approval reaches the worker at all.
+`/admin/*` is the write side of the site (#141). `/admin/api/*` is its API — the worker answers that directly, with no built file behind it. Every other `/admin/*` path answers with the admin site itself (`src/admin/`, #144): one built page, `dist/admin/index.html`, served through `ASSETS` for whatever the path is — `worker/src/admin/index.ts`'s `servePage`, the same "one file answers every path under here" shape `worker/src/pages/index.ts` already uses for `/members/<id>` and `/videos/<id>`. Which screen that one page shows is a route `src/admin/router.ts` reads client-side, not something the worker itself understands. Cloudflare Access sits in front of all of `/admin` and is what actually keeps everyone but its allowed identities out — no request lacking Access's approval reaches the worker at all.
 
 Every `/admin/api/*` request is also checked by the worker itself, in `worker/src/lib/access.ts`: it fetches Access's own public keys from `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs` and verifies the `Cf-Access-Jwt-Assertion` header's signature, `iss`, `aud` and `exp`/`nbf` against them, the same way Access's own edge does, and refuses the request otherwise. This is not a substitute for Access — the policy in front of `/admin` is what actually authorizes a caller — it exists so that a request is still refused here, rather than reaching a route that writes to D1 or to the public bucket unchecked, if that policy is ever removed or misconfigured. An earlier version compared only the `aud` claim without checking the signature; #144's review found that too little for a route meant to write, so this checks the signature instead (2026-09-18).
 
@@ -223,6 +223,21 @@ A PUT replaces every column at once rather than patching one: a column its endpo
 An event passes through a publish gate rather than taking effect on save, the same as the table above already draws the line for `footprints_event` and `genet_stream`. Creating, updating and deleting an event logs no `revision` at all; only `publish` and `withdraw` do, in the same `db.batch` as the `status` change. `POST .../publish` refuses with 400 and every failing condition together when the event is not ready — an empty `title`, `sourcePending: false` with no source in the whitelist (`worker/src/lib/source-whitelist.ts`), or a `videoId` that is not 11 characters. Publishing an already-published event is allowed, and is how an event `GET .../pending` reports as changed gets a fresh `publish` revision matching its current row.
 
 `POST /admin/api/footprints/publish` builds `footprints/events.json` from the latest `revision` of every event whose latest action is not `withdraw`, writes it to `PUBLIC_DATA`, and appends one `publication` row recording the newest `revision_id` it saw. Nothing is written when there is nothing newer than the last run.
+
+### The Admin Site
+
+`src/admin/` is the admin site's own frontend (#141, #144) — plain Vue, plain HTML and CSS, no Vuetify, because #127's decision to keep the admin site apart from the public site's own component library applies here too. It shares one thing with the public site: `src/shell/tokens.css`'s colour variables. It does not share the public site's own shell (`SiteNav.vue` and friends) or its dark theme — `src/admin/index.html` fixes `<html data-theme="light">`, which pins every colour tokens.css defines to its light block regardless of the reader's own OS setting, because #141's design confirmed the admin site light-only.
+
+`src/admin/router.ts` is a client-side router (`vue-router`, history mode) rather than `#` fragments, so a reload or a shared link lands back on the same screen — the worker answers the same built page for every `/admin/*` path (see "`/admin` and Cloudflare Access" above) and leaves picking a screen to the browser.
+
+`src/admin/AdminShell.vue` is the outer frame every screen sits inside: the top bar (page name, the email `GET /admin/api/me` answers with), and the sidebar's three groups (やること, データ, 運用) in the same order as the public site's own nav. Only 公開's own count is shown — `GET /admin/api/footprints/pending`'s `pending`/`changed` together — because that is the only one this task's own screens can compute; every other sidebar item names itself without a count until a later task builds the screen behind it (`src/admin/pages/PlaceholderPage.vue` in the meantime). The table/edit-panel split (`.main`/`.pane`/`.inspector`) narrows at two widths, `@container` rather than `@media`: `src/admin/shell.css`'s own comment says why.
+
+Two screens exist so far, both reusing #158/#160's `/admin/api/footprints/*`:
+
+- あしあと (`src/admin/pages/FootprintsPage.vue`, `src/admin/components/FootprintsInspector.vue`) — the table (narrowed by `status` and a title substring) and the edit panel (read, save, 公開にする/下書きに戻す, delete). A save's 400 is shown on the panel's own band, and `src/admin/lib/footprints.ts`'s `fieldForSaveError` reads the worker's own message to mark which field it is about, rather than a second copy of the worker's validation living here too.
+- 公開 (`src/admin/pages/PublishPage.vue`) — `GET .../pending`'s two lists and `いま公開する`. Genet music's own publish gate (task 10) has no PR on `main` yet, so this screen has no ジェネット楽曲一覧 section until it does.
+
+The screen-side logic worth testing without a browser — the table's own query string, which field a save error names, which buttons the edit panel shows for a given `status` — is pulled out into `src/admin/lib/*.ts` and tested under `test/admin/lib/`, the same split the rest of this project's frontend already uses for its own `src/lib/*.ts`.
 
 ### `/members/<id>` and `/videos/<id>`
 
