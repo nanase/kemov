@@ -181,11 +181,18 @@ export async function handleAdminRequest(
   return errorResponse(404, `no endpoint at ${pathname}`);
 }
 
-/** A path segment as a footprints_event id, or null when it is not a plain positive integer. */
+/**
+ * A path segment as a footprints_event id, or null when it is not a plain
+ * positive integer. `Number.isSafeInteger` guards against a segment with
+ * enough digits to round to a different integer, or to `Infinity`, once
+ * `Number` parses it - `/^[1-9]\d*$/` alone only rules out a non-digit shape.
+ */
 function readEventId(segment: string): number | null {
   if (!/^[1-9]\d*$/.test(segment)) return null;
 
-  return Number(segment);
+  const value = Number(segment);
+
+  return Number.isSafeInteger(value) ? value : null;
 }
 
 function decodeSegment(segment: string | undefined): string | undefined {

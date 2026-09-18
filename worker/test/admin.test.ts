@@ -196,6 +196,10 @@ describe('handleAdminRequest routing to footprints', () => {
     expect((await call('/admin/api/footprints/events/not-a-number')).status).toEqual(404);
   });
 
+  test('answers 404 for an event id outside the safe integer range', async () => {
+    expect((await call('/admin/api/footprints/events/99999999999999999999')).status).toEqual(404);
+  });
+
   test('routes POST .../publish and .../withdraw', async () => {
     const created = await post('/admin/api/footprints/events', {
       ...minimalEventBody,
