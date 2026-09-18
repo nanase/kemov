@@ -107,7 +107,7 @@ export async function handleAdminRequest(
   }
 
   if (segments.length === 5 && name === 'footprints' && sub === 'events' && id2 !== undefined) {
-    const eventId = readPositiveInt(id2);
+    const eventId = readEventId(id2);
 
     if (eventId === null) return errorResponse(404, `no footprints event ${id2}`);
 
@@ -123,7 +123,7 @@ export async function handleAdminRequest(
   }
 
   if (segments.length === 6 && name === 'footprints' && sub === 'events' && id2 !== undefined) {
-    const eventId = readPositiveInt(id2);
+    const eventId = readEventId(id2);
 
     if (eventId === null) return errorResponse(404, `no footprints event ${id2}`);
 
@@ -376,14 +376,20 @@ export async function handleAdminRequest(
   return errorResponse(404, `no endpoint at ${pathname}`);
 }
 
-/**
- * A path segment as a footprints_event, genet_tune or genet_person id, or
- * null when it is not a plain positive integer. `Number.isSafeInteger`
- * guards against a segment with enough digits to round to a different
- * integer, or to `Infinity`, once `Number` parses it - `/^[1-9]\d*$/` alone
- * only rules out a non-digit shape.
- */
+/** A path segment as a genet_tune or genet_person id, or null when it is not a plain positive integer. */
 function readPositiveInt(segment: string): number | null {
+  if (!/^[1-9]\d*$/.test(segment)) return null;
+
+  return Number(segment);
+}
+
+/**
+ * A path segment as a footprints_event id, or null when it is not a plain
+ * positive integer. `Number.isSafeInteger` guards against a segment with
+ * enough digits to round to a different integer, or to `Infinity`, once
+ * `Number` parses it - `/^[1-9]\d*$/` alone only rules out a non-digit shape.
+ */
+function readEventId(segment: string): number | null {
   if (!/^[1-9]\d*$/.test(segment)) return null;
 
   const value = Number(segment);

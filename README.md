@@ -47,13 +47,20 @@ Do not use `.env.local` for this. Vite reads it in every mode, so a value left t
 | ------------------------------- | -------------------- | ------------------------------- |
 | `VITE_GENET_MUSIC_LIST_URL`     | the music list       | Where the list is fetched from  |
 | `VITE_GENET_MUSIC_LIST_SUB_URL` | the music list       | An extra list, read in dev only |
+| `VITE_API_PROXY`                | the statistics pages | `vite dev` only — see below     |
 | `VITE_API_BASE`                 | the statistics pages | `vite dev` only — see below     |
 
-The published site leaves `VITE_API_BASE` unset and asks `/api` on its own origin, because the worker that answers the API also serves these pages. Under `bun run dev` the pages come from vite on port 5173 and the worker is not there at all, so point it at a `wrangler dev` or at the deployment:
+The published site leaves both unset and asks `/api` on its own origin, because the worker that answers the API also serves these pages. Under `bun run dev` the pages come from vite on port 5173 and the worker is not there at all, so tell the dev server where to send `/api`:
 
 ```sh
-echo 'VITE_API_BASE=https://kemov.nanase.cc/api' >> .env.development.local
+echo 'VITE_API_PROXY=https://kemov.nanase.cc' >> .env.development.local
 ```
+
+The pages still ask their own origin and vite forwards it, which is what makes the answers readable: the API sends no `Access-Control-Allow-Origin`, so a page that asks another host directly has every response refused by the browser before it arrives. A `wrangler dev` works the same way — `VITE_API_PROXY=http://localhost:8787`.
+
+`VITE_API_BASE` is the older setting and points the pages straight at another host. It is only usable where that host allows this origin, which the deployment does not, so prefer `VITE_API_PROXY`.
+
+The dev server reads `.env.development.local` at startup. Restart it after changing the file.
 
 ### Compile and Hot-Reload for Development
 
