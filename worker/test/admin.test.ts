@@ -487,3 +487,121 @@ describe("handleAdminRequest routing to task 12's resources", () => {
     expect(wrongMethod.headers.get('Allow')).toEqual('GET');
   });
 });
+
+// What each genet route actually does is genet-people.test.ts,
+// genet-tunes.test.ts, genet-streams.test.ts and genet-publish.test.ts's own
+// job. This only checks that a path and a method reach the function that
+// owns them.
+describe('handleAdminRequest routing to genet', () => {
+  beforeEach(clearEverything);
+
+  const post = (path: string, body: unknown) =>
+    call(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+  test('routes GET and POST /admin/api/genet/people, and GET/PUT/DELETE .../:personId', async () => {
+    expect((await call('/admin/api/genet/people')).status).toEqual(200);
+
+    const created = await post('/admin/api/genet/people', { name: 'x', link: null, memo: null });
+
+    expect(created.status).toEqual(201);
+
+    const { person } = (await created.json()) as { person: { personId: number } };
+
+    expect((await call(`/admin/api/genet/people/${person.personId}`)).status).toEqual(200);
+
+    const updated = await put(`/admin/api/genet/people/${person.personId}`, { name: 'y', link: null, memo: null });
+
+    expect(updated.status).toEqual(200);
+
+    const deleted = await call(`/admin/api/genet/people/${person.personId}`, { method: 'DELETE' });
+
+    expect(deleted.status).toEqual(200);
+  });
+
+  test('answers 404 for a non-numeric personId', async () => {
+    expect((await call('/admin/api/genet/people/not-a-number')).status).toEqual(404);
+  });
+
+  const minimalTuneBody = {
+    title: 'x',
+    originalTitle: null,
+    subtunes: [],
+    attributes: [],
+    videos: [],
+    scores: [],
+    memo: null,
+  };
+
+  test('routes GET and POST /admin/api/genet/tunes, and GET/PUT/DELETE .../:tuneId', async () => {
+    expect((await call('/admin/api/genet/tunes')).status).toEqual(200);
+
+    const created = await post('/admin/api/genet/tunes', minimalTuneBody);
+
+    expect(created.status).toEqual(201);
+
+    const { tune } = (await created.json()) as { tune: { tuneId: number } };
+
+    expect((await call(`/admin/api/genet/tunes/${tune.tuneId}`)).status).toEqual(200);
+
+    const updated = await put(`/admin/api/genet/tunes/${tune.tuneId}`, minimalTuneBody);
+
+    expect(updated.status).toEqual(200);
+
+    const deleted = await call(`/admin/api/genet/tunes/${tune.tuneId}`, { method: 'DELETE' });
+
+    expect(deleted.status).toEqual(200);
+  });
+
+  const minimalStreamBody = {
+    videoId: 'abcdefghijk',
+    videoType: 'live',
+    title: 'x',
+    shortTitle: null,
+    publishedAt: '2026-01-01T00:00:00Z',
+    categories: [],
+    keywords: [],
+    memo: null,
+    performances: [],
+  };
+
+  test('routes GET and POST /admin/api/genet/streams, and GET/PUT/DELETE .../:videoId', async () => {
+    expect((await call('/admin/api/genet/streams')).status).toEqual(200);
+
+    const created = await post('/admin/api/genet/streams', minimalStreamBody);
+
+    expect(created.status).toEqual(201);
+
+    expect((await call('/admin/api/genet/streams/abcdefghijk')).status).toEqual(200);
+
+    const updated = await put('/admin/api/genet/streams/abcdefghijk', minimalStreamBody);
+
+    expect(updated.status).toEqual(200);
+
+    const deleted = await call('/admin/api/genet/streams/abcdefghijk', { method: 'DELETE' });
+
+    expect(deleted.status).toEqual(200);
+  });
+
+  test('routes POST .../publish and .../withdraw', async () => {
+    await post('/admin/api/genet/streams', minimalStreamBody);
+
+    // no performances, so publish refuses with 400 - still proves the route
+    // was reached rather than falling through to a 404.
+    const published = await post('/admin/api/genet/streams/abcdefghijk/publish', {});
+
+    expect(published.status).toEqual(400);
+
+    const withdrawn = await post('/admin/api/genet/streams/abcdefghijk/withdraw', {});
+
+    expect(withdrawn.status).toEqual(200);
+
+    const unknownAction = await post('/admin/api/genet/streams/abcdefghijk/nope', {});
+
+    expect(unknownAction.status).toEqual(404);
+  });
+
+  test('routes GET /admin/api/genet/pending and POST /admin/api/genet/publish', async () => {
+    expect((await call('/admin/api/genet/pending')).status).toEqual(200);
+    expect((await post('/admin/api/genet/publish', {})).status).toEqual(200);
+  });
+});

@@ -120,10 +120,11 @@ interface RevisionRow extends RevisionListRow {
 
 /**
  * A path segment as a `revision_id`, or null when it is not a plain positive
- * integer. The same shape as footprints.ts's own `readEventId`, duplicated
- * rather than shared: each is local to its own router match and neither
- * exports the other today (see the comment on D1_LIKE_PATTERN_BYTE_LIMIT in
- * videos.ts for the same call on a smaller duplication).
+ * integer. The same shape as index.ts's own `readPositiveInt`, duplicated
+ * rather than shared: index.ts is the router that imports every handler
+ * module, so a handler importing back from it would run the dependency the
+ * other way (see the comment on D1_LIKE_PATTERN_BYTE_LIMIT in videos.ts for
+ * the same call on a smaller duplication).
  */
 export function readRevisionId(segment: string): number | null {
   if (!/^[1-9]\d*$/.test(segment)) return null;
