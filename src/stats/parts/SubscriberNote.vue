@@ -19,6 +19,7 @@ const { subjects } = defineProps<{ subjects: readonly Subject[] }>();
 
 const open = ref(false);
 const dialog = ref<HTMLElement | null>(null);
+const info = ref<HTMLButtonElement | null>(null);
 
 const range = computed(() => {
   const keys = ['最小値', '平均値', '最大値'];
@@ -47,16 +48,36 @@ const range = computed(() => {
   }));
 });
 
-watch(open, async (on) => {
-  if (!on) return;
-
-  await Promise.resolve();
+/**
+ * Keyboard focus stays inside while this is open, and comes back out to the
+ * button that opened it.
+ *
+ * Without that, Tab walks straight out into the page behind, where the Escape
+ * handler below is out of reach and the note can no longer be closed from the
+ * keyboard. There is exactly one thing to focus in here - the close button -
+ * so holding focus is a matter of swallowing Tab rather than cycling through
+ * anything.
+ *
+ * Not a native `<dialog>` with `showModal()`, which would do both for free:
+ * the shade behind it would become `::backdrop` and stop being the one the
+ * page draws, and the screen the user approved would no longer be the screen
+ * they get.
+ */
+function focusClose() {
   dialog.value?.querySelector('button')?.focus();
+}
+
+watch(open, async (on) => {
+  await Promise.resolve();
+
+  if (on) focusClose();
+  else info.value?.focus();
 });
 </script>
 
 <template>
   <button
+    ref="info"
     type="button"
     class="info"
     aria-haspopup="dialog"
@@ -79,6 +100,7 @@ watch(open, async (on) => {
     aria-modal="true"
     aria-labelledby="subscriber-note-title"
     @keydown.esc="open = false"
+    @keydown.tab.prevent="focusClose"
   >
     <button type="button" class="close" aria-label="閉じる" @click="open = false">×</button>
     <h2 id="subscriber-note-title">チャンネル登録者数について</h2>
