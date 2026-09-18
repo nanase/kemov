@@ -109,13 +109,21 @@ function withCacheHeaders(response: Response, outcome: CacheOutcome, now: Date, 
  * `no-store` rather than the usual max-age: a 404 for a channel that is about
  * to exist, or a 503 from a database that is about to come back, must not be
  * held by anything between here and the caller.
+ *
+ * `extraHeaders` exists for the one header this shape does not otherwise
+ * carry: `Allow` on a 405, which names the methods that would have been
+ * honoured.
  */
-export function errorWithCacheHeaders(status: number, message: string): Response {
+export function errorWithCacheHeaders(status: number, message: string, extraHeaders?: HeadersInit): Response {
   const response = errorResponse(status, message);
 
   response.headers.set('x-kemov-cache', 'none');
   response.headers.set('x-kemov-stale-seconds', '0');
   response.headers.set('cache-control', 'no-store');
+
+  for (const [name, value] of new Headers(extraHeaders)) {
+    response.headers.set(name, value);
+  }
 
   return response;
 }

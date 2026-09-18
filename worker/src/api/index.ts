@@ -4,6 +4,7 @@ import { getChannel, getHistory, listChannels, readHistoryRange } from './channe
 import { health, statusFor } from './health';
 import { listLive } from './live';
 import { monthsSeries } from './months';
+import { publicDataResponse } from './public-data';
 import { listStreams } from './streams';
 import {
   DEFAULT_PAGE_SIZE,
@@ -37,7 +38,7 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
   // Reading only. Anything else is refused before a query is built rather
   // than after, so a POST cannot reach D1 by way of a path that ignores it.
   if (request.method !== 'GET' && request.method !== 'HEAD') {
-    return errorWithCacheHeaders(405, `${request.method} is not allowed here`);
+    return errorWithCacheHeaders(405, `${request.method} is not allowed here`, { Allow: 'GET, HEAD' });
   }
 
   // A path of at most four parts, named rather than indexed, so that the
@@ -102,6 +103,18 @@ export async function handleApiRequest(request: Request, env: Env, cacheImpl: Ca
     if ('error' in range) return errorWithCacheHeaders(400, range.error);
 
     return await cached(() => getHistory(env, name, range.from, range.to, range.bucketSeconds));
+  }
+
+  // Not routed through cachedJson: the object in PUBLIC_DATA already carries
+  // its own ETag and Last-Modified, which cachedJson's own storedAt/staleSeconds
+  // headers have no use for, and unlike D1 there is no outage for it to answer
+  // through - R2 either has the key or it does not.
+  if (segments.length === 3 && resource === 'footprints' && name === 'events') {
+    return await publicDataResponse(request, env, 'footprints/events.json');
+  }
+
+  if (segments.length === 3 && resource === 'genet' && name === 'music') {
+    return await publicDataResponse(request, env, 'genet/music.json');
   }
 
   return errorWithCacheHeaders(404, `no endpoint at ${pathname}`);
