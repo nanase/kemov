@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { defineConfig, loadEnv, type PluginOption } from 'vite';
 import VueMacros from 'unplugin-vue-macros/vite';
@@ -42,6 +43,34 @@ const memberPages: PluginOption = {
   },
 };
 
+/**
+ * Answers `/api/footprints/events` from a file on disk while developing.
+ *
+ * Nothing has been published to the deployment yet, and what it will carry is
+ * registered on the server rather than kept here (#140), so the page is
+ * checked against a file a developer puts at `dev-data/footprints-events.json`
+ * - the shape `GET /api/footprints/events` publishes. Without the file the
+ * request falls through to whatever `VITE_API_PROXY` points at, which answers
+ * the 404 the deployment really gives.
+ *
+ * Only while serving: a build never sees this, and the published site reads
+ * the same URL from the worker.
+ */
+const footprintEvents: PluginOption = {
+  name: 'kemov-footprint-events',
+  apply: 'serve',
+  configureServer(server) {
+    const file = resolve(root, 'dev-data', 'footprints-events.json');
+
+    server.middlewares.use((request, response, next) => {
+      if (request.url?.replace(/\?.*$/, '') !== '/api/footprints/events' || !existsSync(file)) return next();
+
+      response.setHeader('Content-Type', 'application/json; charset=utf-8');
+      response.end(readFileSync(file));
+    });
+  },
+};
+
 // https://vitejs.dev/config/
 export default defineConfig({
   root: srcDir,
@@ -66,6 +95,7 @@ export default defineConfig({
       },
     }),
     webfontDownload(),
+    footprintEvents,
     memberPages,
     injectHTML(),
   ],
@@ -90,6 +120,10 @@ export default defineConfig({
     outDir: resolve(root, 'dist'),
     rollupOptions: {
       input: {
+        // The site's top page. `dist/index.html` is what answers `/`, which
+        // is why this one sits at the root of src/ rather than in a directory
+        // of its own (#140).
+        footprints: resolve(srcDir, 'index.html'),
         stats: resolve(srcDir, 'stats', 'index.html'),
         members: resolve(srcDir, 'members', 'index.html'),
         statsDetail: resolve(srcDir, 'stats', 'detail', 'index.html'),

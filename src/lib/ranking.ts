@@ -1,5 +1,5 @@
 import { readProperty, VIDEO_PROPERTIES, type RankableVideo, type VideoProperty } from '@/type/video';
-import type { VideoType } from '@/type/api';
+import type { VideoTable, VideoType } from '@/type/api';
 
 /**
  * Ranking `GET /api/videos/table`'s rows in the browser.
@@ -26,6 +26,34 @@ export interface VideoTableRow extends RankableVideo {
   publishedAt: string;
   actualStartTime: string | null;
   actualEndTime: string | null;
+}
+
+/**
+ * The columnar response as one object per video.
+ *
+ * Every column is the same length - `readVideoTable` refuses a response where
+ * they are not - so the index is the video, and nothing here has to guard
+ * against a column running short. It sits beside the ranking because every
+ * page that reads the table reads it through this first.
+ */
+export function tableRows(table: VideoTable): VideoTableRow[] {
+  const { columns } = table;
+
+  return columns.videoId.map((videoId, index) => ({
+    videoId,
+    channelId: columns.channelId[index]!,
+    title: columns.title[index]!,
+    type: columns.type[index]!,
+    publishedAt: columns.publishedAt[index]!,
+    actualStartTime: columns.actualStartTime[index]!,
+    actualEndTime: columns.actualEndTime[index]!,
+    durationSeconds: columns.durationSeconds[index]!,
+    viewCount: columns.viewCount[index]!,
+    likeCount: columns.likeCount[index]!,
+    commentCount: columns.commentCount[index]!,
+    chatMessageCount: columns.chatMessageCount[index]!,
+    chatUniqueUserCount: columns.chatUniqueUserCount[index]!,
+  }));
 }
 
 /**

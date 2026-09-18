@@ -1,0 +1,93 @@
+/*
+ * The chrome the footprints page shares between its parts.
+ *
+ * Global rather than scoped: the timeline, the filters and the side panels
+ * draw the same frame and the same footprint trail, and a scoped copy in each
+ * would be several places to change one border. Only this page loads the
+ * file, and every class here is prefixed so that nothing reaches another
+ * page's markup.
+ *
+ * The colours are the shell's own tokens (src/shell/tokens.css). The trail is
+ * the one thing drawn rather than coloured: a footprint tile repeated down the
+ * axis, filled for the days that have been walked and dotted for the days
+ * still to come.
+ */
+
+.fp-page {
+  /* The columns every row of the timeline lines up on. */
+  --fp-axis: 56px;
+  --fp-date: 84px;
+  --fp-node: 28px;
+
+  /* The trail, in the two states the axis can be in. */
+  --fp-trail-ink: #9fb3ae;
+  --fp-trail-past: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='50' viewBox='0 0 28 50'%3E%3Cg fill='%239fb3ae'%3E%3Cellipse cx='8.5' cy='9.5' rx='4.4' ry='3.6'/%3E%3Ccircle cx='3.1' cy='14.1' r='1.7'/%3E%3Ccircle cx='6.8' cy='16.9' r='1.7'/%3E%3Ccircle cx='10.3' cy='16.9' r='1.7'/%3E%3Ccircle cx='13.9' cy='14.1' r='1.7'/%3E%3C/g%3E%3Cg fill='%239fb3ae'%3E%3Cellipse cx='19.5' cy='34.5' rx='4.4' ry='3.6'/%3E%3Ccircle cx='14.1' cy='39.1' r='1.7'/%3E%3Ccircle cx='17.8' cy='41.9' r='1.7'/%3E%3Ccircle cx='21.3' cy='41.9' r='1.7'/%3E%3Ccircle cx='24.9' cy='39.1' r='1.7'/%3E%3C/g%3E%3C/svg%3E");
+  --fp-trail-future: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='50' viewBox='0 0 28 50'%3E%3Ccircle cx='8.5' cy='11.5' r='2.2' fill='%239fb3ae'/%3E%3Ccircle cx='19.5' cy='36.5' r='2.2' fill='%239fb3ae'/%3E%3C/svg%3E");
+
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .fp-page {
+    --fp-trail-ink: #5c6467;
+    --fp-trail-past: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='50' viewBox='0 0 28 50'%3E%3Cg fill='%235c6467'%3E%3Cellipse cx='8.5' cy='9.5' rx='4.4' ry='3.6'/%3E%3Ccircle cx='3.1' cy='14.1' r='1.7'/%3E%3Ccircle cx='6.8' cy='16.9' r='1.7'/%3E%3Ccircle cx='10.3' cy='16.9' r='1.7'/%3E%3Ccircle cx='13.9' cy='14.1' r='1.7'/%3E%3C/g%3E%3Cg fill='%235c6467'%3E%3Cellipse cx='19.5' cy='34.5' rx='4.4' ry='3.6'/%3E%3Ccircle cx='14.1' cy='39.1' r='1.7'/%3E%3Ccircle cx='17.8' cy='41.9' r='1.7'/%3E%3Ccircle cx='21.3' cy='41.9' r='1.7'/%3E%3Ccircle cx='24.9' cy='39.1' r='1.7'/%3E%3C/g%3E%3C/svg%3E");
+    --fp-trail-future: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='50' viewBox='0 0 28 50'%3E%3Ccircle cx='8.5' cy='11.5' r='2.2' fill='%235c6467'/%3E%3Ccircle cx='19.5' cy='36.5' r='2.2' fill='%235c6467'/%3E%3C/svg%3E");
+  }
+}
+
+:root[data-theme='dark'] .fp-page {
+  --fp-trail-ink: #5c6467;
+  --fp-trail-past: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='50' viewBox='0 0 28 50'%3E%3Cg fill='%235c6467'%3E%3Cellipse cx='8.5' cy='9.5' rx='4.4' ry='3.6'/%3E%3Ccircle cx='3.1' cy='14.1' r='1.7'/%3E%3Ccircle cx='6.8' cy='16.9' r='1.7'/%3E%3Ccircle cx='10.3' cy='16.9' r='1.7'/%3E%3Ccircle cx='13.9' cy='14.1' r='1.7'/%3E%3C/g%3E%3Cg fill='%235c6467'%3E%3Cellipse cx='19.5' cy='34.5' rx='4.4' ry='3.6'/%3E%3Ccircle cx='14.1' cy='39.1' r='1.7'/%3E%3Ccircle cx='17.8' cy='41.9' r='1.7'/%3E%3Ccircle cx='21.3' cy='41.9' r='1.7'/%3E%3Ccircle cx='24.9' cy='39.1' r='1.7'/%3E%3C/g%3E%3C/svg%3E");
+  --fp-trail-future: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='50' viewBox='0 0 28 50'%3E%3Ccircle cx='8.5' cy='11.5' r='2.2' fill='%235c6467'/%3E%3Ccircle cx='19.5' cy='36.5' r='2.2' fill='%235c6467'/%3E%3C/svg%3E");
+}
+
+.fp-panel {
+  border: 1px solid var(--k-line);
+  border-radius: 8px;
+  background: var(--k-surface);
+  box-shadow: var(--k-shadow);
+}
+
+.fp-n {
+  font-variant-numeric: tabular-nums;
+}
+
+.fp-empty {
+  padding: 26px 16px;
+  color: var(--k-text-2);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* A word about what something is: its kind, where it was, whether it is still
+   to come. Never the member's own colour - that tells people apart (#140). */
+.fp-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 4px;
+  background: var(--k-track);
+  color: var(--k-text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.fp-tag.is-future {
+  border: 1px solid var(--k-accent);
+  background: none;
+  color: var(--k-accent);
+  font-weight: 700;
+}
+
+/* Said in words, never by dimming the row: a record whose source has not been
+   confirmed is still a record (#140). */
+.fp-tag.is-pending {
+  border: 1px dashed var(--k-line-2);
+  background: none;
+  color: var(--k-text-3);
+  font-weight: 400;
+}

@@ -1,38 +1,36 @@
 import { computed, ref, type Ref } from 'vue';
 
-import { getChannels, getMonths, getVideosTable, type ApiError } from '@/lib/api';
+import { getChannels, getFootprintEvents, getVideosTable, type ApiError } from '@/lib/api';
 import { useIntervalAction } from '@/lib/useIntervalAction';
 import { tableRows, type VideoTableRow } from '@/lib/ranking';
-import type { Channel, MonthsSeries } from '@/type/api';
+import type { Channel, FootprintEvent } from '@/type/api';
 
 /**
- * The three endpoints the member page reads, and how often it asks again.
+ * The three things the footprints page reads.
  *
- * `GET /api/videos/table` is the whole public archive in one response, which
- * is what #144 built it for: the list's ranking, the heatmap, the shape of a
- * week and the four distributions are all the same rows read differently, and
- * asking the worker for each combination of member, kind and period would be
- * dozens of requests for data the browser already has.
+ * The events are what the admin site has published, and the streams are the
+ * archive `GET /api/videos/table` already serves - the page puts them in one
+ * column rather than asking for them as one thing.
  *
  * A failure keeps the last answer on screen. Emptying the page would say
- * "there is nothing", which is not what happened.
+ * there is nothing recorded, which is not what happened.
  */
 
 /** How often the collector writes, which is what sets the faster rhythm. */
 const COUNTS_SECONDS = 300;
 
-/** The archive, which only changes as a stream ends or a video is published. */
+/** The archive and the published events, which move when somebody publishes. */
 const ARCHIVE_SECONDS = 1800;
 
 /** How long to wait after a failure before asking again. */
 const RETRY_SECONDS = 600;
 
-export interface MembersData {
+export interface FootprintsData {
   channels: Ref<Channel[]>;
-  months: Ref<MonthsSeries | null>;
+  events: Ref<FootprintEvent[]>;
   rows: Ref<VideoTableRow[]>;
   /** When the counts were read, as the API reports it. */
-  countsFetchedAt: Ref<number | null>;
+  fetchedAt: Ref<number | null>;
   /** True until the first round of each rhythm is over, answered or not. */
   loading: Ref<boolean>;
   /** The last failure, or null once something arrived again. */
@@ -41,15 +39,14 @@ export interface MembersData {
   stop: () => void;
 }
 
-export function useMembersData(): MembersData {
+export function useFootprintsData(): FootprintsData {
   const channels = ref<Channel[]>([]);
-  const months = ref<MonthsSeries | null>(null);
+  const events = ref<FootprintEvent[]>([]);
   const rows = ref<VideoTableRow[]>([]);
-  const countsFetchedAt = ref<number | null>(null);
+  const fetchedAt = ref<number | null>(null);
   const countsAsked = ref(false);
   const archiveAsked = ref(false);
 
-  /** The first endpoint that refused, once the ones that answered are in hand. */
   const refusal = (results: readonly PromiseSettledResult<unknown>[]) =>
     results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
 
@@ -59,7 +56,7 @@ export function useMembersData(): MembersData {
       const channelList = await getChannels();
 
       channels.value = channelList.data.channels;
-      countsFetchedAt.value = channelList.data.fetchedAt?.valueOf() ?? null;
+      fetchedAt.value = channelList.data.fetchedAt?.valueOf() ?? null;
       countsAsked.value = true;
 
       return COUNTS_SECONDS * 1000;
@@ -70,18 +67,21 @@ export function useMembersData(): MembersData {
   const archive = useIntervalAction(
     ARCHIVE_SECONDS * 1000,
     async () => {
-      // Asked together but kept apart: the board can be drawn from the table
-      // alone, and the monthly panel from the months alone.
-      const [table, monthsSeries] = await Promise.allSettled([getVideosTable(), getMonths()]);
+      const [table, published] = await Promise.allSettled([getVideosTable(), getFootprintEvents()]);
 
       if (table.status === 'fulfilled') rows.value = tableRows(table.value.data);
-      if (monthsSeries.status === 'fulfilled') months.value = monthsSeries.value.data;
+
+      if (published.status === 'fulfilled') events.value = published.value.data.events;
 
       archiveAsked.value = true;
 
-      const failed = refusal([table, monthsSeries]);
+      // Nothing has been published yet, and until it is, the endpoint answers
+      // 404. That is an answer - there is nothing recorded - and the timeline
+      // is drawn from the streams alone (#140). Anything else is a failure.
+      const failed = refusal([table, published]);
+      const missing = published.status === 'rejected' && (published.reason as ApiError)?.status === 404;
 
-      if (failed !== undefined) throw failed.reason;
+      if (failed !== undefined && !(missing && table.status === 'fulfilled')) throw failed.reason;
 
       return ARCHIVE_SECONDS * 1000;
     },
@@ -92,9 +92,9 @@ export function useMembersData(): MembersData {
 
   return {
     channels,
-    months,
+    events,
     rows,
-    countsFetchedAt,
+    fetchedAt,
     loading: computed(() => !countsAsked.value || !archiveAsked.value) as Ref<boolean>,
     failure: computed(() => failureOf(counts.error.value) ?? failureOf(archive.error.value)) as Ref<ApiError | null>,
     start: async () => {
