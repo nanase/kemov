@@ -1,0 +1,67 @@
+/*
+ * ジェネット楽曲一覧's own colours, taken from the violin's wood. The page
+ * opts in with `<html data-palette="genet">`; the light and dark blocks are
+ * switched the same way tokens.css switches its own.
+ *
+ * `ok`, `live` and `scrim` are left to tokens.css: the page's design gives
+ * them no colours of its own.
+ */
+
+:root[data-palette='genet'] {
+  --k-bg: #ebe4dc;
+  --k-surface: #fcf9f6;
+  --k-surface-2: #f5eee7;
+  --k-sunken: #f1e9e1;
+  --k-track: #e6dbcf;
+  --k-line: #e3d7ca;
+  --k-line-2: #c8b4a0;
+  --k-text: #26170f;
+  --k-text-2: #574031;
+  --k-text-3: #7b6453;
+  --k-accent: #8c3d1c;
+  --k-on-accent: #fff8f2;
+  --k-accent-soft: #f4e2d4;
+  --k-warn: #a3261a;
+  --k-glass: rgb(235 228 220 / 72%);
+  --k-shadow: 0 1px 1px rgb(38 23 15 / 5%), 0 16px 34px -28px rgb(38 23 15 / 55%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-palette='genet']:not([data-theme='light']) {
+    --k-bg: #120e0b;
+    --k-surface: #1b1612;
+    --k-surface-2: #221c17;
+    --k-sunken: #16110e;
+    --k-track: #2a221c;
+    --k-line: #33291f;
+    --k-line-2: #504133;
+    --k-text: #f0e7de;
+    --k-text-2: #cdbeb0;
+    --k-text-3: #a38f7e;
+    --k-accent: #e59c63;
+    --k-on-accent: #1e1006;
+    --k-accent-soft: #3a2619;
+    --k-warn: #ff8b78;
+    --k-glass: rgb(18 14 11 / 70%);
+    --k-shadow: 0 0 0 1px rgb(255 240 225 / 2%), 0 18px 40px -30px #000;
+  }
+}
+
+:root[data-palette='genet'][data-theme='dark'] {
+  --k-bg: #120e0b;
+  --k-surface: #1b1612;
+  --k-surface-2: #221c17;
+  --k-sunken: #16110e;
+  --k-track: #2a221c;
+  --k-line: #33291f;
+  --k-line-2: #504133;
+  --k-text: #f0e7de;
+  --k-text-2: #cdbeb0;
+  --k-text-3: #a38f7e;
+  --k-accent: #e59c63;
+  --k-on-accent: #1e1006;
+  --k-accent-soft: #3a2619;
+  --k-warn: #ff8b78;
+  --k-glass: rgb(18 14 11 / 70%);
+  --k-shadow: 0 0 0 1px rgb(255 240 225 / 2%), 0 18px 40px -30px #000;
+}
