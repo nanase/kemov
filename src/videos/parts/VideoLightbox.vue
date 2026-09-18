@@ -19,14 +19,27 @@ const emit = defineEmits<{ close: [] }>();
 
 const closeButton = useTemplateRef<HTMLButtonElement>('closeButton');
 
+/** The element Tab should return focus to once this closes - the thumbnail button that opened it. */
+let opener: HTMLElement | null = null;
+
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     event.preventDefault();
     emit('close');
+    return;
+  }
+
+  // The close button is the dialog's only focusable element, so trapping
+  // Tab here means keeping focus on it rather than cycling between several -
+  // there is nothing else inside to cycle to.
+  if (event.key === 'Tab') {
+    event.preventDefault();
+    closeButton.value?.focus({ preventScroll: true });
   }
 }
 
 onMounted(() => {
+  opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   document.addEventListener('keydown', onKeydown);
   // The thumbnail that opened this is already visible behind it, so nothing
   // needs to scroll into view - only the focus needs to move.
@@ -35,6 +48,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKeydown);
+  opener?.focus({ preventScroll: true });
 });
 </script>
 

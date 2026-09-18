@@ -67,14 +67,26 @@ const ledgerGroups = [
   { label: '密度', metrics: RATE_METRICS },
 ];
 
+/**
+ * One Universe per metric, built once per reactive render rather than once
+ * per cell. The template reads `ledgerRank`/`ledgerTotal` up to five times
+ * per metric - at 6,000-plus rows, `universeOf`'s own sort is not cheap
+ * enough to redo that often.
+ */
+const ledgerUniverses = computed(() => {
+  const metrics = [...COUNT_METRICS, ...RATE_METRICS];
+
+  return new Map(metrics.map((m) => [m.id, universeOf(rows, m.id, kind, period, now)]));
+});
+
 function ledgerRank(id: VideoProperty) {
   if (!video) return null;
 
-  return universeOf(rows, id, kind, period, now).byId.get(video.videoId) ?? null;
+  return ledgerUniverses.value.get(id)?.byId.get(video.videoId) ?? null;
 }
 
 function ledgerTotal(id: VideoProperty) {
-  return universeOf(rows, id, kind, period, now).total;
+  return ledgerUniverses.value.get(id)?.total ?? 0;
 }
 
 function avatarStyle() {

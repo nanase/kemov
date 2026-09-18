@@ -55,7 +55,9 @@ function queryToPeriod(periodId: string | null, yearText: string | null): Rankin
     return id ?? null;
   }
 
-  const year = yearText === null ? NaN : Number(yearText);
+  // Four digits only: a 2026 written as `year=21` must not become 1921 by
+  // way of Date.UTC's own two-digit rule (see ../lib/ranking.ts's periodRange).
+  const year = yearText !== null && /^\d{4}$/.test(yearText) ? Number(yearText) : NaN;
 
   return Number.isInteger(year) ? { year } : null;
 }

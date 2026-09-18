@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 import type { Channel } from '@/type/api';
 import type { VideoProperty } from '@/type/video';
@@ -71,6 +71,17 @@ function channelStyle(color: string) {
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 const searchInput = ref(filters.query);
+
+// The shelf's own "条件をすべて消す" and the funnel's suggestions clear
+// filters.query from outside this component - without this, the input box
+// would keep showing the old text after either one.
+watch(
+  () => filters.query,
+  (query) => {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchInput.value = query;
+  },
+);
 
 function onSearchInput(event: Event) {
   const value = (event.target as HTMLInputElement).value;

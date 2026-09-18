@@ -48,7 +48,17 @@ function videoIdFromPath(pathname: string): string | null {
   if (!pathname.startsWith(PATH_PREFIX)) return null;
   const rest = pathname.slice(PATH_PREFIX.length).replace(/\/+$/, '');
 
-  return rest === '' ? null : decodeURIComponent(rest);
+  if (rest === '') return null;
+
+  // Every path this page writes comes from encodeURIComponent (see the watch
+  // below), so a decode failure means someone typed or was handed a broken
+  // % escape - answered with no selection rather than a mount that never
+  // finishes.
+  try {
+    return decodeURIComponent(rest);
+  } catch {
+    return null;
+  }
 }
 
 const params = new URLSearchParams(window.location.search);
@@ -111,8 +121,12 @@ const phase = computed<Phase>(() => {
   // Checked before `loading`: a fetch that keeps failing leaves `loading`
   // true forever (nothing ever "arrives"), and a page stuck on a skeleton
   // hides the one thing worth telling the reader - that it could not be
-  // read - behind an animation that looks like progress.
-  if (data.failure.value !== null && data.channelsFetchedAt.value === null && data.tableFetchedAt.value === null) {
+  // read - behind an animation that looks like progress. `data.loading`
+  // rather than either fetchedAt alone, so a channel fetch that succeeded
+  // while the table fetch keeps failing is not mistaken for "still loading":
+  // one of the two has arrived, but not both, and that is still a failure to
+  // show.
+  if (data.failure.value !== null && data.loading.value) {
     return 'fail';
   }
   if (data.loading.value) return 'loading';
@@ -205,7 +219,7 @@ const freshness = computed(() => {
   return freshnessOf(Math.max(0, Math.round((now.value - at) / 1000)));
 });
 const updatedState = computed(() => {
-  if (data.failure.value !== null && data.channelsFetchedAt.value === null) return 'error' as const;
+  if (data.failure.value !== null && data.loading.value) return 'error' as const;
 
   return data.loading.value ? ('loading' as const) : ('ok' as const);
 });
