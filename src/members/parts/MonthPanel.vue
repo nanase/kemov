@@ -226,7 +226,7 @@ watch(
 
 .bars button:hover i,
 .bars button[aria-current='true'] i {
-  background: var(--k-accent);
+  background: var(--mv-key);
 }
 
 .bars button u {

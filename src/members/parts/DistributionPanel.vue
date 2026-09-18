@@ -115,7 +115,7 @@ const bars = computed(() => {
 
 /* The class the middle stream falls in. */
 .bars span.middle i {
-  background: var(--k-accent);
+  background: var(--mv-key);
 }
 
 .axis {

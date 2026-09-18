@@ -191,7 +191,7 @@ select {
 }
 
 .find:focus-within {
-  border-color: var(--k-accent);
+  border-color: var(--mv-key);
 }
 
 .find svg {
@@ -231,7 +231,7 @@ select {
 }
 
 .clear:hover {
-  border-color: var(--k-accent);
+  border-color: var(--mv-key);
   color: var(--k-text);
 }
 
@@ -248,7 +248,7 @@ select {
 }
 
 .order:hover {
-  border-color: var(--k-accent);
+  border-color: var(--mv-key);
 }
 
 .order svg {
@@ -300,7 +300,7 @@ select {
 }
 
 .go {
-  color: var(--k-accent);
+  color: var(--mv-key);
   opacity: 0;
   transition: opacity 0.18s ease;
 }
@@ -332,8 +332,8 @@ select {
 .title mark {
   padding: 0 1px;
   border-radius: 2px;
-  box-shadow: inset 0 -1px 0 var(--k-accent);
-  background: var(--k-accent-soft);
+  box-shadow: inset 0 -1px 0 var(--mv-key);
+  background: color-mix(in srgb, var(--mv-key) 16%, transparent);
   color: inherit;
 }
 

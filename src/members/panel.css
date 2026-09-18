@@ -6,15 +6,23 @@
  * eight places to change a border. Only this page loads the file, and every
  * class here is prefixed so that nothing can reach another page's markup.
  *
- * The colours are the shell's own tokens (src/shell/tokens.css). The member's
- * colour appears here only as `--mv-key`, which the identity panel puts round
- * their picture: on this page a colour that meant an amount would break
- * #136's rule that a member's colour tells people apart and nothing else.
+ * The colours are the shell's own tokens (src/shell/tokens.css) apart from
+ * `--mv-key` and `--mv-bar` below, which are the member being read.
  */
 
+/*
+ * The member being read is the page's colour.
+ *
+ * Both names are set from the chosen member by MembersPage.vue and fall back
+ * to the site's accent only for the moment before the first answer arrives.
+ * `--mv-key` is the colour itself; `--mv-bar` is the same colour softened for
+ * the marks a chart fills. #136's rule - a member's colour tells people apart
+ * - is not touched by this: the page holds one member at a time, so nothing
+ * here is ever read against another member's colour.
+ */
 .mv-page {
-  --mv-bar: color-mix(in srgb, var(--k-accent) 62%, transparent);
   --mv-key: var(--k-accent);
+  --mv-bar: color-mix(in srgb, var(--mv-key) 62%, transparent);
 
   display: grid;
   gap: 10px;

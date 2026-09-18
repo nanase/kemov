@@ -58,3 +58,19 @@ export function isSchemaDate(value: string): boolean {
 
   return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value);
 }
+
+const AN_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
+/**
+ * Whether `value` is a real instant in the schema's `YYYY-MM-DDTHH:MM:SSZ`
+ * shape - the same round-trip `isSchemaDate` makes, for a timestamp rather
+ * than a date. Unlike `toSchemaTimestamp`, this never converts a different
+ * shape into the schema's one; it only says whether `value` already is it.
+ */
+export function isSchemaTimestamp(value: string): boolean {
+  if (!AN_INSTANT.test(value)) return false;
+
+  const date = new Date(value);
+
+  return !Number.isNaN(date.getTime()) && formatTimestamp(date) === value;
+}

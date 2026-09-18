@@ -5,6 +5,7 @@ import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt from '@/shell/UpdatedAt.vue';
 import SegmentGroup from '@/parts/SegmentGroup.vue';
 import { formatCount } from '@/lib/numberFormat';
+import { memberInk } from '@/lib/memberColor';
 import { freshnessOf } from '@/stats/model';
 import { rankByMetric, type RankingPeriod } from '@/lib/ranking';
 import { formatProperty, readProperty } from '@/type/video';
@@ -124,6 +125,27 @@ const months = computed(
 const monthLabels = computed(() => data.months.value?.months ?? []);
 
 const totals = computed(() => (member.value === null ? null : cumulativeOf(member.value, rows.value, now.value)));
+
+/**
+ * The page takes the colour of whoever is being read.
+ *
+ * The ring round the picture, the marks in every chart, the chosen button and
+ * the heatmap are all this one member's colour rather than the site's green -
+ * which is what a page about one person should look like. `memberInk` is the
+ * darker band: several of these colours are too pale to carry a mark or a
+ * word at the lighter one.
+ */
+const ink = computed(() => (member.value === null ? undefined : memberInk(member.value.color.key, dark.value)));
+const pageColors = computed(() =>
+  member.value === null
+    ? undefined
+    : {
+        '--mv-key': ink.value,
+        '--seg-on': ink.value,
+        '--seg-on-soft': memberInk(member.value.color.key, dark.value, dark.value ? 0.22 : 0.14),
+        '--seg-on-ink': 'var(--k-on-accent)',
+      },
+);
 
 /** The two 90-day windows the gauges read, anchored to this member. */
 const windows = computed(() => {
@@ -343,7 +365,7 @@ onBeforeUnmount(() => {
   <SiteShell page="members" title="けもV メンバー">
     <template #title-aside>
       <span v-if="member" class="picker">
-        <span class="dot" :style="{ background: member.color.key }" aria-hidden="true"></span>
+        <span class="dot" :style="{ background: ink }" aria-hidden="true"></span>
         <!-- Names only: a figure beside each would be eleven members compared
              in one control, which is what #136 rules out. -->
         <select
@@ -361,7 +383,7 @@ onBeforeUnmount(() => {
       </span>
     </template>
 
-    <div class="mv-page">
+    <div class="mv-page" :style="pageColors">
       <p v-if="member === null" class="mv-panel failed">
         <template v-if="data.failure.value">
           メンバーの情報を取得できませんでした<br />しばらく時間をおいてから再度お試しください
@@ -546,8 +568,8 @@ onBeforeUnmount(() => {
 }
 
 .year[data-on='1'] {
-  border-color: var(--k-accent);
-  background: var(--k-accent);
+  border-color: var(--mv-key);
+  background: var(--mv-key);
   color: var(--k-on-accent);
   font-weight: 600;
 }
