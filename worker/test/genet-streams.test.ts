@@ -61,6 +61,21 @@ describe('listStreams', () => {
 
     expect(body.streams.map((s) => s.videoId)).toEqual(['bbbbbbbbbbb', 'aaaaaaaaaaa']);
   });
+
+  // D1 refuses a statement bound to more than 100 parameters - readStreams
+  // builds `IN (?1, ...)` from every listed id at once, so this stays green
+  // only because it chunks (worker/src/lib/d1.ts).
+  test('lists more streams than one D1 statement can bind', async () => {
+    const count = 150;
+
+    for (let i = 0; i < count; i++) {
+      await createValidStream({ videoId: `lst${String(i).padStart(8, '0')}` });
+    }
+
+    const body = (await listStreams(env, null, null).then((r) => r.json())) as { streams: unknown[] };
+
+    expect(body.streams).toHaveLength(count);
+  }, 20000);
 });
 
 describe('createStream', () => {

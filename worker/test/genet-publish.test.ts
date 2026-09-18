@@ -319,6 +319,30 @@ describe('pendingGenetMusic', () => {
 
     expect(body.changed).toEqual(expect.arrayContaining([{ entity: 'genet_stream', key: videoId, title: '新しい題' }]));
   });
+
+  // D1 refuses a statement bound to more than 100 parameters. readStreams
+  // (genet-streams.ts) builds `IN (?1, ...)` from every published stream at
+  // once - #144's real streaming.yml migration alone carries 113 of them -
+  // so this stays green only because it chunks (worker/src/lib/d1.ts).
+  test('reads more published streams than one D1 statement can bind', async () => {
+    const { tuneId } = await createPerformableStream();
+    const count = 150;
+
+    for (let i = 0; i < count; i++) {
+      const videoId = `pub${String(i).padStart(8, '0')}`;
+
+      await createStream(env, validStreamBody({ videoId, performances: [{ tuneId, description: null, scenes: [] }] }));
+      await publishStream(env, videoId);
+    }
+
+    const body = (await pendingGenetMusic(env).then((r) => r.json())) as {
+      pending: { entity: string }[];
+      changed: unknown[];
+    };
+
+    expect(body.pending.filter((row) => row.entity === 'genet_stream')).toHaveLength(count);
+    expect(body.changed).toEqual([]);
+  }, 20000);
 });
 
 describe('publishGenetMusicNow', () => {
