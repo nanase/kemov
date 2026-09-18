@@ -123,6 +123,7 @@ Collection and the HTTP API run as one Cloudflare Worker. Its code lives under `
 ```text
 worker/src/collector/   scheduled collection jobs
 worker/src/api/         the HTTP API
+worker/src/pages/       /members/<id> and /videos/<id> (see below)
 worker/src/lib/         shared code
 worker/test/            tests
 ```
@@ -202,6 +203,14 @@ Every `/admin/api/*` request is also checked by the worker itself, in `worker/sr
 `channel`, `video_override` and `channel_snapshot_exclusion` take effect the moment they are saved — #141's design decision 5 — unlike `footprints_event` and `genet_stream`, which pass through a publish step that later work adds. Every PUT or DELETE above logs one row to `revision` in the same `db.batch` as the row it changes, so a row and its history cannot come apart if one write in the pair fails. A PUT answers with `revisionId` alongside the saved row; a DELETE answers with `revisionId` alone.
 
 A PUT replaces every column at once rather than patching one: a column its endpoint does not name is refused with 400, and a column left out of the body is treated as null, which is itself refused with 400 for a column that may not be null. `worker/src/lib/revision.ts` is what each save's `revision.body` goes through — the row as saved, minus columns that only say when a save happened rather than what it changed, with its JSON keys in the row's own column order.
+
+### `/members/<id>` and `/videos/<id>`
+
+`/members/<channel id>` and `/videos/<video id>` are permalinks to one member or one stream/video (#137), so that sharing one carries that name rather than the site's own title. Neither has a page of its own yet — a later PR adds them — so today `worker/src/pages/index.ts` rewrites whatever `ASSETS` serves at `/members/` or `/videos/` and answers 404, unrewritten, until that page exists. The worker reaches these requests the same way it reaches `/api/*`: no built file answers `/members/<id>` exactly, so Cloudflare wakes the worker instead of serving one directly.
+
+`[assets]` in `wrangler.toml` carries a `binding = "ASSETS"` for this reason — `directory` alone, which every other page already relies on, only lets Cloudflare serve a matching file itself and gives the worker no way to fetch one. `env.ASSETS.fetch()` reads the exact same built files that binding already serves.
+
+A request's id is checked against the shape YouTube gives it — `UC` followed by 22 characters for a channel, 11 characters for a video — before D1 is asked, and answered 404 without a query if it does not match. A well-shaped id D1 has no row for is also 404. Once a row is found, the page's `<title>`, `og:title` and `og:url` are rewritten with `HTMLRewriter`, and its `ETag` is dropped: the header would otherwise still name the unrewritten body, and a conditional request against it could get a `304` carrying the wrong title.
 
 ## Database
 
