@@ -40,8 +40,12 @@ function request(
   aud: string | undefined,
   teamDomain: string | undefined = TEAM,
   fetchImpl?: typeof fetch,
+  assets?: Fetcher,
+  method?: string,
 ) {
-  const init = token === null ? undefined : { headers: { 'Cf-Access-Jwt-Assertion': token } };
+  const init: RequestInit = { method };
+
+  if (token !== null) init.headers = { 'Cf-Access-Jwt-Assertion': token };
 
   return handleAdminRequest(
     new Request(`https://kemov.nanase.cc${path}`, init),
@@ -49,7 +53,22 @@ function request(
     undefined,
     fetchImpl,
     fetchImpl === undefined ? undefined : (new Map() as CertsCache),
+    assets,
   );
+}
+
+/** A fake `ASSETS` that answers `path` with `status`/`body`, and 404 for anything else - the same shape pages.test.ts's own uses. */
+function fakeAssets(pages: Readonly<Record<string, { status: number; body: string }>>): Fetcher {
+  return {
+    fetch: async (input: RequestInfo | URL) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      const page = pages[path];
+
+      if (page === undefined) return new Response('not found', { status: 404 });
+
+      return new Response(page.body, { status: page.status });
+    },
+  } as unknown as Fetcher;
 }
 
 describe('handleAdminRequest', () => {
@@ -112,11 +131,30 @@ describe('handleAdminRequest', () => {
   });
 
   // Not part of /admin/api, so there is nothing to authorize - these answer
-  // 404 without a token, the same as any other unknown path.
-  test('answers 404 for /admin paths outside /admin/api', async () => {
-    expect((await request('/admin', null, AUD)).status).toEqual(404);
-    expect((await request('/admin/', null, AUD)).status).toEqual(404);
-    expect((await request('/admin/foo', null, AUD)).status).toEqual(404);
+  // the admin page without a token, the same as any other path under here.
+  test('answers the admin page for /admin paths outside /admin/api, without a token', async () => {
+    const assets = fakeAssets({ '/admin/': { status: 200, body: '<!doctype html><title>けもV 管理</title>' } });
+
+    for (const path of ['/admin', '/admin/', '/admin/footprints', '/admin/publish/nope']) {
+      const response = await request(path, null, AUD, TEAM, undefined, assets);
+
+      expect(response.status).toEqual(200);
+      expect(await response.text()).toContain('けもV 管理');
+    }
+  });
+
+  test('answers the admin page from ASSETS whatever the path, not a per-page file', async () => {
+    const assets = fakeAssets({ '/admin/other-page.html': { status: 200, body: 'wrong file' } });
+
+    expect((await request('/admin/footprints', null, AUD, TEAM, undefined, assets)).status).toEqual(404);
+  });
+
+  test('answers 405 for a method other than GET/HEAD outside /admin/api', async () => {
+    const assets = fakeAssets({ '/admin/': { status: 200, body: '<!doctype html>' } });
+    const response = await request('/admin/footprints', null, AUD, TEAM, undefined, assets, 'POST');
+
+    expect(response.status).toEqual(405);
+    expect(response.headers.get('Allow')).toEqual('GET, HEAD');
   });
 });
 
