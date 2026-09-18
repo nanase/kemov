@@ -58,6 +58,32 @@ describe('the worker entry', () => {
     expect(await response.json()).toEqual({ error: 'no endpoint at /api/nothing' });
   });
 
+  // /admin/* is asked before /api/*, on its own branch - the API's own 404
+  // for an unknown path must never answer this one. Cloudflare Access, not a
+  // test double, is what would carry a real token here, so this only checks
+  // that the request reached the admin side's own Access check rather than
+  // the API's routing: handleAdminRequest's own tests (admin.test.ts) cover
+  // what an authorized caller sees, with a key fetch this test cannot inject
+  // through ExportedHandler's fixed fetch(request, env, ctx) signature.
+  test('sends admin requests to the admin side, behind Cloudflare Access', async () => {
+    const ctx = createExecutionContext();
+    const response = await handler.fetch!(new Request('https://kemov.nanase.cc/admin/api/me'), env, ctx);
+
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toEqual(401);
+    expect(await response.json()).toEqual({ error: 'not authorized by Cloudflare Access' });
+  });
+
+  test('answers 404 for /admin paths outside /admin/api, unauthorized or not', async () => {
+    const ctx = createExecutionContext();
+    const response = await handler.fetch!(new Request('https://kemov.nanase.cc/admin/foo'), env, ctx);
+
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toEqual(404);
+  });
+
   test('sends scheduled triggers to the collector', async () => {
     const ctx = createExecutionContext();
     const controller = createScheduledController({ cron: '* * * * *', scheduledTime: new Date() });

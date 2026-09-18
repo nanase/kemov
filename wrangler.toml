@@ -53,13 +53,30 @@ crons = [
 # out for itself. Neither is anywhere else, and #72 takes away the old system
 # that has been standing in as a copy of the rest.
 #
-# Three prefix-specific lifecycle rules are set on this bucket, in addition to
-# its existing Default Multipart Abort Rule, because one rule covering the
-# whole bucket would be wrong: see "What Expires and What Does Not" in the
-# README for the rules and why.
+# Prefix-specific lifecycle rules are set on this bucket, in addition to its
+# existing Default Multipart Abort Rule, because one rule covering the whole
+# bucket would be wrong: see "What Expires and What Does Not" in the README
+# for the rules and why.
 [[r2_buckets]]
 binding = "BACKUP"
 bucket_name = "kemov-backup"
+
+# Where the admin site's published JSON lives (#144). A bucket of its own
+# rather than a prefix on `kemov-backup`: the two buckets carry opposite
+# lifecycle rules, and a rule meant for one accidentally reaching the other
+# would either expire published data or leave backup files forever. Not
+# backed up here either - see "Public Data" in the README for why not, and
+# for how to create the bucket.
+[[r2_buckets]]
+binding = "PUBLIC_DATA"
+bucket_name = "kemov-public"
+
+# Public on purpose: this is the same domain a browser is sent to for the
+# Access login page, so committing it protects nothing a secret would.
+# `verifyAccess` (worker/src/lib/access.ts) fetches this team's public keys
+# from it and reads a token's `iss` claim against it.
+[vars]
+ACCESS_TEAM_DOMAIN = "nanase.cloudflareaccess.com"
 
 # The site itself, built from src/ by vite.
 #

@@ -164,9 +164,10 @@ Secrets belong to a Worker that already exists, so the first `bun wrangler deplo
 
 The dashboard is the other way in, if you would rather the value never passed through a terminal: Workers & Pages → `kemov` → Settings → Variables and Secrets → Add → type Secret.
 
-| Secret            | Read by                          |
-| ----------------- | -------------------------------- |
-| `YOUTUBE_API_KEY` | the collection jobs (#62 to #65) |
+| Secret            | Read by                                   |
+| ----------------- | ----------------------------------------- |
+| `YOUTUBE_API_KEY` | the collection jobs (#62 to #65)          |
+| `ACCESS_AUD`      | the check in front of `/admin/api` (#144) |
 
 `Deploy Worker` checks that every secret the worker reads is registered, and fails if one is not. What counts as a secret is decided by absence: a member of `Env` in `worker/src/lib/env.ts` that `wrangler.toml` does not supply as a binding or a `[vars]` entry. Adding a member to `Env` is therefore enough to put it under the check.
 
@@ -175,6 +176,14 @@ It runs after the deploy rather than before, and only names are involved on eith
 For local runs, put the same names in `.dev.vars` at the repository root as `NAME=value` lines. `.dev.vars` and `.dev.vars.*` are gitignored.
 
 `.env` is a different thing and is committed on purpose: Vite inlines it into the published bundle, so what it holds is already public. `wrangler dev` also reads it and hands the worker what it finds, which is another reason nothing secret may go there.
+
+### `/admin` and Cloudflare Access
+
+`/admin/*` is the write side of the site (#141): the worker answers it directly, with no built file behind it, so a request that finds nothing there gets a 404 rather than the public site's pages. Cloudflare Access sits in front of it and is what actually keeps everyone but its allowed identities out — no request lacking Access's approval reaches the worker at all.
+
+Every `/admin/api/*` request is also checked by the worker itself, in `worker/src/lib/access.ts`: it fetches Access's own public keys from `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs` and verifies the `Cf-Access-Jwt-Assertion` header's signature, `iss`, `aud` and `exp`/`nbf` against them, the same way Access's own edge does, and refuses the request otherwise. This is not a substitute for Access — the policy in front of `/admin` is what actually authorizes a caller — it exists so that a request is still refused here, rather than reaching a route that writes to D1 or to the public bucket unchecked, if that policy is ever removed or misconfigured. An earlier version compared only the `aud` claim without checking the signature; #144's review found that too little for a route meant to write, so this checks the signature instead (2026-09-18).
+
+`ACCESS_AUD` is the `aud` tag of the Access application in front of `/admin`, and `ACCESS_TEAM_DOMAIN` is that Access team's domain (e.g. `nanase.cloudflareaccess.com`) — a `[vars]` entry in `wrangler.toml`, not a secret, because it is the same domain a browser is already sent to for the Access login page. With either `ACCESS_AUD` or `ACCESS_TEAM_DOMAIN` unset, or with a key set that cannot be fetched, every `/admin/api/*` request is refused, Access policy notwithstanding.
 
 ## Database
 
@@ -317,9 +326,11 @@ Time travel above covers the last 30 days and only inside D1. The nightly backup
 channel/2026-09-08.sql              every row, rewritten each night
 video/2026-09-08.sql                every row, rewritten each night
 channel_snapshot/2026-09-07.sql     one finished day, written once
+revision/2026-09-07.sql             one finished day, written once
+publication/2026-09-08.sql          every row, rewritten each night
 ```
 
-`channel` and `video` are written whole each night because their current values are the whole story. `channel_snapshot` is not: it only ever gains rows, 1,584 of them a day, so a finished day is written once as its own file and never touched again. That keeps a night's work the size of a day rather than the size of the table, which by the end of a year is 578,000 rows.
+Most tables are written whole each night because their current values are the whole story — every table the admin site added in [#144](https://github.com/nanase/kemov/issues/144) is one of these, alongside `channel` and `video`. `channel_snapshot` and `revision` are not: both only ever gain rows, so a finished day is written once as its own file and never touched again. That keeps a night's work the size of a day rather than the size of the table, which for `channel_snapshot` alone is 578,000 rows by the end of a year at 1,584 a day.
 
 A run writes at most seven missing days, so a gap left by an outage closes over several nights rather than being attempted all at once. Which days are already written is read from the bucket, not remembered anywhere, so nothing can disagree about it.
 
@@ -327,18 +338,20 @@ Inside a file, one `INSERT` names at most 200 rows and at most 80,000 bytes, whi
 
 `collect_task` and `chat_author` are deliberately absent. They hold where collection has got to, they rebuild themselves within a tick or two, and restoring them would send the chat job back through replays it has already read.
 
-`/api/health` covers this job too, since [#115](https://github.com/nanase/kemov/issues/115). It cannot read `collect_task` for it — this job writes none of those rows — so its `backup` field reads the bucket instead: the newest day each table has a file for, and how many days old that is. `channel_snapshot` reads one day older than `channel` and `video` even when nothing is wrong, because it writes yesterday's finished day rather than today's (see above). The field does not say how old is too old; that threshold is [#110](https://github.com/nanase/kemov/issues/110)'s decision.
+`/api/health` covers this job too, since [#115](https://github.com/nanase/kemov/issues/115). It cannot read `collect_task` for it — this job writes none of those rows — so its `backup` field reads the bucket instead: the newest day each table has a file for, and how many days old that is. `channel_snapshot` and `revision` read one day older than the rest even when nothing is wrong, because both write yesterday's finished day rather than today's (see above). The field does not say how old is too old; that threshold is [#110](https://github.com/nanase/kemov/issues/110)'s decision.
 
 ### Restoring from a Backup
 
-The steps below were run end to end on 2026-09-08, against a real remote D1 and the real bucket, and are written from the commands that were actually issued. What was not run is in [What This Has Not Been Tried On](#what-this-has-not-been-tried-on) after them; a restore is not the moment to find out which is which.
+The steps below were run end to end on 2026-09-08, against a real remote D1 and the real bucket, and are written from the commands that were actually issued for the three tables that existed then — `channel`, `video` and `channel_snapshot`. Step 1's command has since been generalized to cover every table `BACKED_UP_TABLES` added afterward. What that generalization was and was not checked against is in [What This Has Not Been Tried On](#what-this-has-not-been-tried-on) after these steps; a restore is not the moment to find out which is which.
 
 The target was a database created for the test, empty and never migrated. Substitute its name for `kemov-restore` throughout.
 
-**1. Give it the schema.** The backup files hold `INSERT` statements and nothing else, so every one of them fails on a database with no tables. Apply `migrations/` in filename order:
+**1. Give it the schema.** The backup files hold `INSERT` statements and nothing else, so every one of them fails on a database with no tables. Apply every file in `migrations/`, in filename order — not only `0001`: a table `BACKED_UP_TABLES` added later, such as `revision` or `publication` (from `0005_add_revision_and_publication.sql`), needs its own migration applied first, or its backup file fails the same way:
 
 ```sh
-bun wrangler d1 execute kemov-restore --remote --file migrations/0001_create_initial_schema.sql
+for f in migrations/*.sql; do
+  bun wrangler d1 execute kemov-restore --remote --file "$f"
+done
 ```
 
 **2. Fetch a file and apply it, `channel` first.** `video` and `channel_snapshot` both carry a foreign key to `channel`, and the schema refuses a row whose channel is not there yet. Then `video`, then every `channel_snapshot` day. Each file repeats this in its own header, so a file found on its own is enough.
@@ -354,16 +367,54 @@ Every statement is `ON CONFLICT DO NOTHING`, so applying a file twice does nothi
 
 ### What This Has Not Been Tried On
 
-**The rest of this is reasoning, not a rehearsal.** It is the best answer available for each case, and none of it has been run.
+**The rest of this is reasoning, not a rehearsal against the real database or bucket.** It is the best answer available for each case; one part of it has since been checked locally, noted below where it applies.
 
-**Restoring into `kemov` itself.** `DO NOTHING` puts back a row that is missing and leaves a row that is present alone, whatever it now says. Against a database whose rows are wrong rather than gone — a bad migration, a job that wrote nonsense — it would change nothing and report success. Emptying it first is what would make a restore mean anything:
+**Restoring into `kemov` itself.** `DO NOTHING` puts back a row that is missing and leaves a row that is present alone, whatever it now says. Against a database whose rows are wrong rather than gone — a bad migration, a job that wrote nonsense — it would change nothing and report success. Emptying it first is what would make a restore mean anything.
+
+`revision` and `publication` each refuse a DELETE by trigger (see [Backups](#backups) above): append-only holds here the same way it holds in `worker/test/backup.test.ts`'s `clearEverything`, so the trigger has to come off for the DELETE below and go back on right after, the same way that test does it. The two `CREATE TRIGGER` statements are copied from `migrations/0005_add_revision_and_publication.sql`, so this drifts if that migration's trigger text ever changes without this being updated too:
 
 ```sh
-bun wrangler d1 execute kemov --remote --command \
-  "DELETE FROM chat_author; DELETE FROM collect_task; DELETE FROM channel_snapshot; DELETE FROM video; DELETE FROM channel"
+bun wrangler d1 execute kemov --remote --command "
+DROP TRIGGER revision_no_delete;
+DROP TRIGGER publication_no_delete;
+
+DELETE FROM chat_author;
+DELETE FROM collect_task;
+DELETE FROM genet_scene;
+DELETE FROM genet_performance;
+DELETE FROM genet_tune_video;
+DELETE FROM genet_tune_score;
+DELETE FROM genet_tune_attribute_person;
+DELETE FROM genet_tune_attribute;
+DELETE FROM genet_stream;
+DELETE FROM genet_tune;
+DELETE FROM genet_person;
+DELETE FROM footprints_event_source;
+DELETE FROM footprints_event_member;
+DELETE FROM footprints_event;
+DELETE FROM channel_snapshot_exclusion;
+DELETE FROM video_override;
+DELETE FROM publication;
+DELETE FROM revision;
+DELETE FROM channel_snapshot;
+DELETE FROM video;
+DELETE FROM channel;
+
+CREATE TRIGGER revision_no_delete BEFORE DELETE ON revision
+BEGIN
+  SELECT RAISE(ABORT, 'revision is append only');
+END;
+
+CREATE TRIGGER publication_no_delete BEFORE DELETE ON publication
+BEGIN
+  SELECT RAISE(ABORT, 'publication is append only');
+END;
+"
 ```
 
-Children before parents, the same order [Rolling Back](#rolling-back) uses and for the same reason. `collect_task` and `chat_author` are not in the backup and would not come back; they rebuild themselves within a tick or two. Losing them is the cost of emptying, so check [time travel](#rolling-back) first: inside 30 days it returns the whole database to a moment, which is a better answer than a restore whenever it is available.
+Children before parents throughout — this is `BACKED_UP_TABLES` in reverse, the same order [Rolling Back](#rolling-back) uses and for the same reason. `collect_task` and `chat_author` are not in the backup and would not come back; they rebuild themselves within a tick or two. Losing them is the cost of emptying, so check [time travel](#rolling-back) first: inside 30 days it returns the whole database to a moment, which is a better answer than a restore whenever it is available.
+
+**Checked locally, not against the real database or bucket.** On 2026-09-17, against a local D1 (`--persist-to`, not the project's regular dev database): applying every migration in filename order — step 1's generalized form — created every table `BACKED_UP_TABLES` lists; applying one hand-written `INSERT ... ON CONFLICT DO NOTHING` file, one statement per table in `BACKED_UP_TABLES` order, put one row in each without a foreign-key error; and the `DROP TRIGGER` / `DELETE` / `CREATE TRIGGER` block above, run against a database already carrying those rows, emptied every table, left both triggers refusing a further `DELETE` exactly as before, and accepted the same file a second time to put the rows back. What this did not use is a real backup file: `genet_person`, `footprints_event` and the rest have none yet, because the nightly job has not run with them in `BACKED_UP_TABLES` before this PR merges, so the hand-written file above stood in for them. Neither check touched the real `kemov` database or the real `kemov-backup` bucket.
 
 **`migrations apply` against a database `wrangler.toml` does not name.** Step 1 above applies the files directly because that is what was run. `bun wrangler d1 migrations apply kemov --remote` is the documented route for the database this repository declares, and whether it resolves some other name was not established either way.
 
@@ -371,30 +422,53 @@ Applying the files directly, as step 1 does, leaves `d1_migrations` empty. That 
 
 ### What Expires and What Does Not
 
-**Three prefix-specific lifecycle rules are set on `kemov-backup`, in addition to its existing Default Multipart Abort Rule, because one rule covering the whole bucket would be wrong.**
+**Prefix-specific lifecycle rules are set on `kemov-backup`, in addition to its existing Default Multipart Abort Rule, because one rule covering the whole bucket would be wrong.**
 
-| Prefix               | Retention    | Why                                                                                                                     |
-| -------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `channel/`, `video/` | 30 days      | Each file is a complete copy. The newest one is all that is needed; older ones are duplicates.                          |
-| `channel_snapshot/`  | **365 days** | Each file is one day and no other file holds that day. Deleting one leaves a hole in the history that nothing can fill. |
+| Prefix                                                                                                                                                                                                                                                                                                                                                                                | Retention    | Why                                                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `video/`                                                                                                                                                                                                                                                                                                                                                                              | 30 days      | Each file is a complete copy, collected fresh from the YouTube API. The newest one is all that is needed; older ones are duplicates. |
+| `channel/`, `channel_snapshot/`, `channel_snapshot_exclusion/`, `video_override/`, `footprints_event/`, `footprints_event_member/`, `footprints_event_source/`, `genet_person/`, `genet_tune/`, `genet_tune_attribute/`, `genet_tune_attribute_person/`, `genet_tune_video/`, `genet_tune_score/`, `genet_stream/`, `genet_performance/`, `genet_scene/`, `revision/`, `publication/` | **365 days** | See below.                                                                                                                           |
 
-That hole is a hole in R2, not in the history itself: `channel_snapshot` only ever gains rows in D1 (see [Backups](#backups) above), so D1 already holds every day of it forever. R2's copy exists to restore D1 if D1 is what breaks, and that need shows up right after an incident, not a year later — 365 days bounds how long the copy waits around for that, not how long the history survives.
+`channel_snapshot/` and `revision/` hold one file per day and no other file holds that day: deleting one leaves a hole in the history that nothing can fill. That hole is a hole in R2, not in the history itself — both tables only ever gain rows in D1 (see [Backups](#backups) above), so D1 already holds every day of either forever. R2's copy exists to restore D1 if D1 is what breaks, and that need shows up right after an incident, not a year later — 365 days bounds how long the copy waits around for that, not how long the history survives.
 
-The snapshot history began on 2026-09-07 and exists nowhere else in R2. A day of it is about 119 KiB of SQL, measured against production values on 2026-09-08, so a year of it costs some 44 MB; `channel` and `video` add roughly 70 MB more at 30 days. Both fit well inside R2's free 10 GB tier.
+Every other table in the 365-day row holds data a person typed once through the admin site rather than data the collector can fetch again — `channel` joined this group for the same reason, once `channel` itself became a table people edit rather than one only the collector wrote to. `video/` is the one table this reasoning does not reach: losing 30 days of it costs nothing beyond a slower rebuild, because it can be recollected from the YouTube API.
 
-Set with three `lifecycle add` calls, run from `worker/`:
+The snapshot history began on 2026-09-07 and exists nowhere else in R2. A day of it is about 119 KiB of SQL, measured against production values on 2026-09-08, so a year of it costs some 44 MB; `video` adds roughly 70 MB more at 30 days (`channel`'s own few dozen rows barely move that figure). Both fit well inside R2's free 10 GB tier; the tables #144 added hold at most a few hundred rows each and add little beside that.
+
+Set with `lifecycle add` calls, run from the repository root. `channel/`'s existing 30-day rule is replaced rather than added beside, since a prefix can carry only one rule. `-y` skips the confirmation `add` otherwise asks for, which would stop the loop partway through:
 
 ```sh
-npx wrangler r2 bucket lifecycle add kemov-backup expire-video-30d video/ --expire-days 30
-npx wrangler r2 bucket lifecycle add kemov-backup expire-channel-30d channel/ --expire-days 30
-npx wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-365d channel_snapshot/ --expire-days 365
+bun wrangler r2 bucket lifecycle add kemov-backup expire-video-30d video/ --expire-days 30 -y
+bun wrangler r2 bucket lifecycle remove kemov-backup --name expire-channel-30d
+bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-365d channel/ --expire-days 365 -y
+bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-365d channel_snapshot/ --expire-days 365 -y
+
+for t in channel_snapshot_exclusion video_override footprints_event footprints_event_member footprints_event_source \
+         genet_person genet_tune genet_tune_attribute genet_tune_attribute_person genet_tune_video genet_tune_score \
+         genet_stream genet_performance genet_scene revision publication; do
+  bun wrangler r2 bucket lifecycle add kemov-backup "expire-${t//_/-}-365d" "$t/" --expire-days 365 -y
+done
 ```
 
-Not `lifecycle set --file <json>`: `set` replaces the bucket's whole ruleset, and the existing "Default Multipart Abort Rule" (7 days, all prefixes) would be lost if it were left out of that file. `add` only adds a rule, so the three calls above cannot touch it.
+Not `lifecycle set --file <json>`: `set` replaces the bucket's whole ruleset, and the existing "Default Multipart Abort Rule" (7 days, all prefixes) would be lost if it were left out of that file. `add` and `remove` only touch the one rule named, so the calls above cannot touch it.
 
-**The trailing slash matters.** `channel` as a prefix also matches `channel_snapshot/`, which would expire a year of irreplaceable history in 30 days instead of 365. All three prefixes above end in `/` for this reason.
+**The trailing slash matters.** `genet_tune` as a prefix also matches `genet_tune_attribute/`, and `video` matches `video_override/`, which would expire either at the wrong retention. Every prefix above ends in `/` for this reason.
 
-Check with `npx wrangler r2 bucket lifecycle list kemov-backup`; it should list four rules — the three above plus the Default Multipart Abort Rule that was already there.
+Check with `bun wrangler r2 bucket lifecycle list kemov-backup`; it should list 20 rules — the 19 above plus the Default Multipart Abort Rule that was already there.
+
+### Public Data
+
+The admin site publishes JSON to its own bucket, `kemov-public`, bound as `PUBLIC_DATA` (#144). No lifecycle rule is set on it: a publish overwrites the same key every time, so there is never an old object for a rule to expire.
+
+It is not backed up. Every published object is built from `revision`, which is backed up, so losing `kemov-public` costs a republish rather than the data itself — the same reasoning that keeps `collect_task` and `chat_author` out of `kemov-backup` (see [Backups](#backups) above), applied to a bucket instead of a table.
+
+Nothing writes to it yet. Which keys it holds and what serves them from `/api` are later work; this only reserves the binding and the bucket.
+
+The bucket does not exist until created once, before deploying the code that binds it:
+
+```sh
+bun wrangler r2 bucket create kemov-public
+```
 
 ## Deployment
 
