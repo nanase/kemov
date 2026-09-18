@@ -20,6 +20,7 @@ import {
 } from './model';
 import AsideList from './parts/AsideList.vue';
 import TimelineView from './parts/TimelineView.vue';
+import TrailDialog from './parts/TrailDialog.vue';
 import TrailMap from './parts/TrailMap.vue';
 import { useFootprintsData } from './useFootprintsData';
 import type { EventKind } from '@/type/api';
@@ -130,9 +131,52 @@ function jumpToNow() {
   document.querySelector('.timeline .row.now')?.scrollIntoView({ block: 'center' });
 }
 
-/** Pressing a month on the trajectory sends the timeline to that month. */
+/** How long the month a reader is sent to stays lit. */
+const FLASH_MS = 1600;
+
+const mapOpen = ref(false);
+const flashed = ref<string | null>(null);
+
+/**
+ * Pressing a month on the trajectory sends the timeline to that month.
+ *
+ * The month it arrives at is lit for a moment, and the dialog folds away
+ * before the page moves rather than vanishing: being moved somewhere without
+ * being shown where is how a reader loses their place.
+ */
 function jumpToMonth(month: string) {
-  document.querySelector(`[data-month="${month}"]`)?.scrollIntoView({ block: 'start' });
+  mapOpen.value = false;
+
+  requestAnimationFrame(() => {
+    document.querySelector(`[data-month="${month}"]`)?.scrollIntoView({ block: 'start' });
+    flashed.value = month;
+    globalThis.setTimeout(() => {
+      if (flashed.value === month) flashed.value = null;
+    }, FLASH_MS);
+  });
+}
+
+/**
+ * The months the timeline is showing, which both charts mark.
+ *
+ * Read from the months on screen rather than from a scroll offset, because
+ * the rows are not all the same height: a month of one event and a month of
+ * forty streams take very different amounts of the page.
+ */
+const reading = ref<{ from: string; to: string } | null>(null);
+
+function readPosition() {
+  const names = [...document.querySelectorAll<HTMLElement>('.timeline [data-month]')]
+    .filter((element) => {
+      const box = element.getBoundingClientRect();
+
+      return box.bottom > 0 && box.top < globalThis.innerHeight;
+    })
+    .map((element) => element.dataset.month ?? '')
+    .filter((month) => month !== '')
+    .sort();
+
+  reading.value = names.length === 0 ? null : { from: names[0]!, to: names[names.length - 1]! };
 }
 
 function openItem(key: string) {
@@ -147,6 +191,8 @@ function readTheme() {
 
 onMounted(async () => {
   readTheme();
+  globalThis.addEventListener('scroll', readPosition, { passive: true });
+  globalThis.addEventListener('resize', readPosition);
   systemTheme.addEventListener('change', readTheme);
   themeObserver = new MutationObserver(readTheme);
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
@@ -158,6 +204,8 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  globalThis.removeEventListener('scroll', readPosition);
+  globalThis.removeEventListener('resize', readPosition);
   data.stop();
   clearInterval(clock);
   themeObserver?.disconnect();
@@ -262,6 +310,7 @@ onBeforeUnmount(() => {
           :open="openBundles"
           :now
           :dark
+          :flashed
           @toggle="toggleBundle"
           @open="openItem"
         />
@@ -304,7 +353,10 @@ onBeforeUnmount(() => {
 
           <div class="stuck">
             <div class="fp-panel side map-card">
-              <h2 class="map-head">軌跡</h2>
+              <div class="map-head">
+                <h2>軌跡</h2>
+                <button type="button" class="detail" aria-haspopup="dialog" @click="mapOpen = true">詳しく見る</button>
+              </div>
               <TrailMap
                 :events="items"
                 :rows="data.rows.value"
@@ -312,6 +364,7 @@ onBeforeUnmount(() => {
                 :filters
                 :now
                 :dark
+                :reading
                 @month="jumpToMonth"
                 @member="toggleMember"
               />
@@ -324,6 +377,22 @@ onBeforeUnmount(() => {
           </div>
         </aside>
       </div>
+
+      <TrailDialog
+        v-if="mapOpen"
+        :events="items"
+        :rows="data.rows.value"
+        :channels="data.channels.value"
+        :filters
+        :soon="soonList"
+        :now
+        :dark
+        :reading
+        @close="mapOpen = false"
+        @month="jumpToMonth"
+        @member="toggleMember"
+        @open="openItem"
+      />
     </div>
 
     <template #notes>
@@ -400,10 +469,34 @@ onBeforeUnmount(() => {
 }
 
 .map-head {
-  margin: 0 0 10px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.map-head h2 {
+  margin: 0;
   color: var(--k-text-2);
   font-size: 12.5px;
   font-weight: 700;
+}
+
+.detail {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--k-line);
+  border-radius: 6px;
+  background: var(--k-surface);
+  color: var(--k-text-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.detail:hover {
+  border-color: var(--k-line-2);
 }
 
 /* Two places a reader always wants to get back to, kept beside the road

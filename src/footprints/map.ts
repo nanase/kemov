@@ -1,6 +1,6 @@
 import { memberColor } from '@/lib/memberColor';
 
-import { jstParts, rowAt, type EventItem, type Filters } from './model';
+import { jstParts, rowAt, type AsideItem, type EventItem, type Filters } from './model';
 import type { VideoTableRow } from '@/lib/ranking';
 import type { Channel } from '@/type/api';
 
@@ -51,6 +51,10 @@ export interface TrailDot {
   large: boolean;
   future: boolean;
   color: string;
+  /** A day that comes round rather than one that was recorded. */
+  recurring?: boolean;
+  /** What opening it opens, where there is something behind it. */
+  key?: string;
 }
 
 /** The thread across the lanes of everybody one event involved. */
@@ -101,6 +105,9 @@ export function buildTrailMap(
   filters: Filters,
   now: number,
   dark: boolean,
+  /** The days that come round, which the large chart draws and the small one
+   * leaves out: there is no room in the rail to tell them from the rest. */
+  soon: readonly AsideItem[] = [],
 ): TrailMap {
   const lanes = [{ channel: null, color: '' }, ...channels.map((channel) => ({ channel, color: '' }))];
   const laneOf = new Map(channels.map((channel, index) => [channel.channelId, index + 1]));
@@ -158,6 +165,31 @@ export function buildTrailMap(
         large: item.event.emphasized,
         future: item.future,
         color: lanes[lane]?.color ?? '',
+        key: item.key,
+      });
+    }
+  }
+
+  // The days that come round are worked out rather than recorded, so they are
+  // drawn hollow the way anything still ahead is.
+  for (const entry of soon) {
+    if (entry.planned) continue;
+
+    const on = entry.channelIds.flatMap((id) => {
+      const lane = laneOf.get(id);
+
+      return lane === undefined ? [] : [lane];
+    });
+
+    for (const lane of on.length === 0 ? [0] : on) {
+      dots.push({
+        lane,
+        at: point(entry.at),
+        large: false,
+        future: true,
+        recurring: true,
+        color: lanes[lane]?.color ?? '',
+        key: entry.key ?? undefined,
       });
     }
   }

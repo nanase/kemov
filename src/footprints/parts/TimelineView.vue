@@ -19,7 +19,7 @@ import type { Channel } from '@/type/api';
  * the side. The month's heading sticks inside that column while the month is
  * on screen, level with the date beside it.
  */
-const { timeline, channels, filters, open, now, dark } = defineProps<{
+const { timeline, channels, filters, open, now, dark, flashed } = defineProps<{
   timeline: Timeline;
   channels: readonly Channel[];
   filters: Filters;
@@ -27,6 +27,8 @@ const { timeline, channels, filters, open, now, dark } = defineProps<{
   open: ReadonlySet<string>;
   now: number;
   dark: boolean;
+  /** The `YYYY-MM` a reader has just been sent to, lit for a moment. */
+  flashed: string | null;
 }>();
 
 const emit = defineEmits<{ toggle: [key: string]; open: [key: string] }>();
@@ -132,7 +134,7 @@ function membersOf(channelIds: readonly string[]): Channel[] {
 
       <section v-for="month in year.months" :key="month.month" class="month" :data-month="month.month">
         <div class="month-label" aria-hidden="true">
-          <div class="month-label-in">
+          <div class="month-label-in" :class="{ flashed: month.month === flashed }">
             <span class="month-year fp-n">{{ month.year }}</span>
             <span class="month-of fp-n">{{ month.monthOfYear }}<small>月</small></span>
           </div>
@@ -296,6 +298,29 @@ function membersOf(channelIds: readonly string[]): Channel[] {
   z-index: 3;
   width: var(--fp-axis);
   pointer-events: none;
+}
+
+/* The month a reader has just been sent to, lit long enough to be found. */
+.month-label-in.flashed {
+  animation: month-flash 1.6s ease-out 1;
+}
+
+@keyframes month-flash {
+  0%,
+  35% {
+    box-shadow: 0 0 0 3px var(--k-accent);
+  }
+
+  100% {
+    box-shadow: 0 0 0 3px var(--k-bg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .month-label-in.flashed {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--k-accent);
+  }
 }
 
 .month-label-in {

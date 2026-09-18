@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
 
 import MemberAvatar from '@/parts/MemberAvatar.vue';
 
-import { buildTrailMap, trailLayout, trailX, trailY } from '../map';
+import { buildTrailMap, monthIndex, trailLayout, trailX, trailY } from '../map';
 import type { EventItem, Filters } from '../model';
 import type { VideoTableRow } from '@/lib/ranking';
 import type { Channel } from '@/type/api';
@@ -19,13 +19,15 @@ import type { Channel } from '@/type/api';
  * thousand the member page's heatmap draws, and a mark that can be pressed
  * and named is worth more than the drawing speed.
  */
-const { events, rows, channels, filters, now, dark } = defineProps<{
+const { events, rows, channels, filters, now, dark, reading } = defineProps<{
   events: readonly EventItem[];
   rows: readonly VideoTableRow[];
   channels: readonly Channel[];
   filters: Filters;
   now: number;
   dark: boolean;
+  /** The `YYYY-MM` the timeline is showing, marked as a band. */
+  reading: { from: string; to: string } | null;
 }>();
 
 const emit = defineEmits<{ month: [month: string]; member: [channelId: string] }>();
@@ -45,6 +47,19 @@ const layout = computed(() =>
     filters.order === 'desc',
   ),
 );
+
+/** Where the timeline's own view falls on this chart's axis. */
+const read = computed(() => {
+  if (reading === null) return null;
+
+  const at = (month: string) => {
+    const [year, index] = month.split('-').map(Number) as [number, number];
+
+    return monthIndex(year, index) - map.value.firstMonth;
+  };
+
+  return { from: at(reading.from), to: at(reading.to) + 1 };
+});
 
 const y = (at: number) => trailY(layout.value, at, map.value.months);
 const x = (lane: number) => trailX(layout.value, lane);
@@ -102,6 +117,17 @@ onBeforeUnmount(() => {
       role="img"
       aria-label="けもV とメンバーの軌跡"
     >
+      <!-- Where the timeline is, so the two say the same thing about where
+           the reader is on the road. -->
+      <rect
+        v-if="read"
+        class="reading"
+        :x="layout.c0 - 4"
+        :y="Math.min(y(read.from), y(read.to))"
+        :width="layout.cLen + 8"
+        :height="Math.max(2, Math.abs(y(read.to) - y(read.from)))"
+      />
+
       <!-- The years, as a rule across the lanes with the year beside it. -->
       <g class="years">
         <line
@@ -243,6 +269,10 @@ svg {
   display: block;
   width: 100%;
   overflow: visible;
+}
+
+.reading {
+  fill: color-mix(in srgb, var(--k-accent) 14%, transparent);
 }
 
 .years line {
