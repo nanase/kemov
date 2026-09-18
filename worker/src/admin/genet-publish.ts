@@ -5,7 +5,13 @@ import { revisionStatement } from '../lib/revision';
 import { isSchemaTimestamp, formatTimestamp } from '../lib/time';
 import { publicShapeOf as personPublicShapeOf, readPeople, type PersonRow } from './genet-people';
 import { publicShapeOf as tunePublicShapeOf, readTunes, type GenetTune } from './genet-tunes';
-import { present as presentStream, publicShapeOf as streamPublicShapeOf, readStream, type GenetStream } from './genet-streams';
+import {
+  present as presentStream,
+  publicShapeOf as streamPublicShapeOf,
+  readStream,
+  readStreams,
+  type GenetStream,
+} from './genet-streams';
 
 /**
  * Publishing `genet_stream` (#141, task 10): the validation that lets a
@@ -280,15 +286,19 @@ export async function pendingGenetMusic(env: Env): Promise<Response> {
   ).all<{ video_id: string }>();
 
   const streamRevisionByKey = new Map(streamRevisions.map((r) => [r.entity_key, r]));
+  const streamsById = await readStreams(
+    env,
+    publishedStreams.map((row) => row.video_id),
+  );
 
   for (const { video_id: videoId } of publishedStreams) {
     const revision = streamRevisionByKey.get(videoId);
 
     if (revision === undefined || revision.body === null) continue;
 
-    const saved = await readStream(env, videoId);
+    const saved = streamsById.get(videoId);
 
-    if (saved === null) continue;
+    if (saved === undefined) continue;
 
     const current = JSON.stringify(streamPublicShapeOf(saved));
     const publishedBody = JSON.stringify(JSON.parse(revision.body));

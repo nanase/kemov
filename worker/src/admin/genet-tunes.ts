@@ -318,7 +318,7 @@ function readAttributeFields(value: unknown): AttributeFields | { error: string 
 
   if (!Array.isArray(peopleValue)) return { error: 'attribute people must be an array' };
 
-  const readPeople: AttributePersonRow[] = [];
+  const readPeople: AttributeFields['people'] = [];
 
   for (const p of peopleValue) {
     if (
@@ -338,8 +338,8 @@ function readAttributeFields(value: unknown): AttributeFields | { error: string 
     const rec = p as Record<string, unknown>;
 
     readPeople.push({
-      person_id: rec.personId as number,
-      credited_as: (rec.creditedAs as string | null) ?? null,
+      personId: rec.personId as number,
+      creditedAs: (rec.creditedAs as string | null) ?? null,
       note: (rec.note as string | null) ?? null,
     });
   }
@@ -347,7 +347,7 @@ function readAttributeFields(value: unknown): AttributeFields | { error: string 
   return {
     name: (name as string | null) ?? null,
     text: (text as string | null) ?? null,
-    people: readPeople.map((p) => ({ personId: p.person_id, creditedAs: p.credited_as, note: p.note })),
+    people: readPeople,
   };
 }
 

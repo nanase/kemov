@@ -1,3 +1,4 @@
+import { readEditableBody } from '../lib/editable-body';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 
@@ -71,41 +72,38 @@ interface PersonFields {
   memo: string | null;
 }
 
+/**
+ * `genet_person`'s three columns are independent of one another - no field
+ * here needs to see a sibling's value the way footprints.ts's `startsAt`
+ * needs `datePrecision` - so this is exactly the shape editable-body.ts's
+ * `readEditableBody` exists for, the same as members.ts's `memberFieldProblem`.
+ */
+const EDITABLE_PERSON_KEYS = ['name', 'link', 'memo'] as const;
+
+type EditablePersonKey = (typeof EDITABLE_PERSON_KEYS)[number];
+
 /** The schema's own CHECKs on `genet_person`, mirrored here for a 400 with a reason instead of a raw constraint error. */
-function personFieldsProblem(fields: PersonFields): string | null {
-  if (fields.name === '') return 'name must not be empty';
-
-  if (fields.link !== null && !LINK_PREFIXES.some((prefix) => fields.link!.startsWith(prefix))) {
-    return `link must start with one of ${LINK_PREFIXES.join(', ')}, or be null`;
+function personFieldProblem(key: EditablePersonKey, value: unknown): string | null {
+  switch (key) {
+    case 'name':
+      return typeof value === 'string' && value !== '' ? null : 'name must be a non-empty string';
+    case 'link':
+      return value === null || (typeof value === 'string' && LINK_PREFIXES.some((prefix) => value.startsWith(prefix)))
+        ? null
+        : `link must start with one of ${LINK_PREFIXES.join(', ')}, or be null`;
+    case 'memo':
+      return value === null || typeof value === 'string' ? null : 'memo must be a string or null';
   }
-
-  return null;
-}
-
-function readPersonFields(body: Record<string, unknown>): PersonFields | { error: string } {
-  if (typeof body.name !== 'string') return { error: 'name must be a string' };
-
-  if (body.link !== undefined && body.link !== null && typeof body.link !== 'string') {
-    return { error: 'link must be a string or null' };
-  }
-
-  if (body.memo !== undefined && body.memo !== null && typeof body.memo !== 'string') {
-    return { error: 'memo must be a string or null' };
-  }
-
-  return { name: body.name, link: (body.link as string | null) ?? null, memo: (body.memo as string | null) ?? null };
 }
 
 function validatedPersonFields(body: Record<string, unknown>): PersonFields | { error: Response } {
-  const fields = readPersonFields(body);
+  const read = readEditableBody(body, EDITABLE_PERSON_KEYS, personFieldProblem);
 
-  if ('error' in fields) return { error: errorResponse(400, fields.error) };
+  if ('error' in read) return read;
 
-  const problem = personFieldsProblem(fields);
+  const { values } = read;
 
-  if (problem !== null) return { error: errorResponse(400, problem) };
-
-  return fields;
+  return { name: values.name as string, link: values.link as string | null, memo: values.memo as string | null };
 }
 
 /** POST /admin/api/genet/people */
