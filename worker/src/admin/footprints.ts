@@ -355,18 +355,30 @@ function readEventFields(body: Record<string, unknown>): EventFields | { error: 
     return { error: 'sources must be an array of { url, title }' };
   }
 
+  // Checked rather than coerced (body.emphasized === true / !== false, as an
+  // earlier version of this function did): a truthy non-boolean like the
+  // string "true", or sourcePending: null, would otherwise silently save as
+  // the opposite of what its own type suggests instead of failing loudly.
+  if (body.emphasized !== undefined && typeof body.emphasized !== 'boolean') {
+    return { error: 'emphasized must be a boolean' };
+  }
+
+  if (body.sourcePending !== undefined && typeof body.sourcePending !== 'boolean') {
+    return { error: 'sourcePending must be a boolean' };
+  }
+
   return {
     datePrecision: (body.datePrecision as string) ?? null,
     startDate: (body.startDate as string) ?? null,
     startsAt: (body.startsAt as string | null) ?? null,
     endDate: (body.endDate as string | null) ?? null,
     kind: (body.kind as string) ?? null,
-    emphasized: body.emphasized === true,
+    emphasized: (body.emphasized as boolean | undefined) ?? false,
     title: (body.title as string) ?? '',
     place: (body.place as string | null) ?? null,
     supplement: (body.supplement as string | null) ?? null,
     videoId: (body.videoId as string | null) ?? null,
-    sourcePending: body.sourcePending !== false,
+    sourcePending: (body.sourcePending as boolean | undefined) ?? true,
     memo: (body.memo as string | null) ?? null,
     // Deduped here, once, rather than left for memberStatements to insert
     // twice: footprints_event_member's primary key is (event_id, channel_id),

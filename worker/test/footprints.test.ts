@@ -118,6 +118,31 @@ describe('createEvent', () => {
     expect(response.status).toEqual(400);
   });
 
+  test.each(['true', null, 1, 0])('refuses emphasized: %p', async (value) => {
+    const response = await createEvent(env, validBody({ emphasized: value }));
+
+    expect(response.status).toEqual(400);
+  });
+
+  test.each(['false', null, 1, 0])('refuses sourcePending: %p', async (value) => {
+    const response = await createEvent(env, validBody({ sourcePending: value }));
+
+    expect(response.status).toEqual(400);
+  });
+
+  test('emphasized defaults to false and sourcePending defaults to true when left out', async () => {
+    const body = validBody();
+
+    delete (body as Record<string, unknown>).emphasized;
+    delete (body as Record<string, unknown>).sourcePending;
+
+    const response = await createEvent(env, body);
+    const created = (await response.json()) as { event: { emphasized: boolean; sourcePending: boolean } };
+
+    expect(created.event.emphasized).toEqual(false);
+    expect(created.event.sourcePending).toEqual(true);
+  });
+
   test('refuses an unknown channelId without creating anything', async () => {
     const response = await createEvent(env, validBody({ channelIds: ['UCnope'] }));
 
