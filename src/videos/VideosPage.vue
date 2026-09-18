@@ -24,7 +24,7 @@ import {
   type Filters,
 } from './model';
 import { queryToState, stateToQuery } from './query';
-import { freshnessOf } from './freshness';
+import { freshnessOf } from '@/stats/model';
 import { useVideosData } from './useVideosData';
 import EmptyRanking, { type Suggestion } from './parts/EmptyRanking.vue';
 import FilterPanel from './parts/FilterPanel.vue';
@@ -454,7 +454,7 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 
-/* The three freshness steps (see ./freshness.ts). The badge itself only
+/* The three freshness steps (see @/stats/model.ts's freshnessOf). The badge itself only
    knows how old the numbers are, not what this page counts as late, so the
    steps are coloured from here - the same rule /stats/ follows for its own
    badge. */

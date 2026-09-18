@@ -5,7 +5,7 @@ import type { Channel } from '@/type/api';
 import { formatDate } from '@/lib/timeFormat';
 import { formatProperty, getPropertyName, type VideoProperty } from '@/type/video';
 import { titleSegments, type UniverseEntry } from '../model';
-import { memberColor } from '../color';
+import { memberColor } from '@/stats/draw';
 import VideoThumbnail from './VideoThumbnail.vue';
 
 /**

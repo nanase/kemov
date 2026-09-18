@@ -15,9 +15,9 @@ import {
   type Filters,
   type YearOption,
 } from '../model';
-import { memberColor } from '../color';
-import MemberAvatar from './MemberAvatar.vue';
-import SegmentGroup from './SegmentGroup.vue';
+import { memberColor } from '@/stats/draw';
+import MemberAvatar from '@/stats/parts/MemberAvatar.vue';
+import SegmentGroup from '@/stats/parts/SegmentGroup.vue';
 
 /**
  * The condition面: the always-visible search field, the collapsible shelf of

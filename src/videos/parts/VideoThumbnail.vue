@@ -10,7 +10,7 @@ import { getThumbnailURL, type ThumbnailSize } from '@/lib/youtube';
  * they are retried:
  *
  * - YouTube's image host answers some requests with 429 when a page asks for
- *   many thumbnails at once - the same failure `MemberAvatar.vue` retries
+ *   many thumbnails at once - the same failure `@/stats/parts/MemberAvatar.vue` retries
  *   once, after a wait long enough for the rate limit to pass.
  * - `maxresdefault` (`size="max"`) simply does not exist for every video.
  *   That failure is not a rate limit and waiting does not fix it, so it steps
