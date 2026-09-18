@@ -1,4 +1,6 @@
+import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
+import type { Plugin } from 'vite';
 import { defineConfig } from 'vite';
 import VueMacros from 'unplugin-vue-macros/vite';
 import Vue from '@vitejs/plugin-vue';
@@ -7,6 +9,40 @@ import injectHTML from 'vite-plugin-html-inject';
 
 const root = resolve(import.meta.dirname);
 const srcDir = resolve(root, 'src');
+
+/**
+ * `GET /api/genet/music`, dev server only (#139, #144's task 15) - the real
+ * worker route (`worker/src/api/index.ts`) answers this in production, but
+ * nothing under `vite dev` runs the worker at all. Reads `genet-music.local`
+ * at the repository root if it exists (gitignored by the existing `*.local`
+ * rule - see `.gitignore`) and serves it verbatim as the confirmation data;
+ * with no such file, falls through so the page's own error state can be
+ * checked against a real 404 instead.
+ *
+ * The file itself is never committed - place a JSON matching
+ * `GET /api/genet/music`'s real shape there yourself to see the page with
+ * data in dev. The PR this task lands in explains how to build one from
+ * `streaming.yml`.
+ */
+function genetMusicDevData(): Plugin {
+  const localPath = resolve(root, 'genet-music.local');
+
+  return {
+    name: 'genet-music-dev-data',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url !== '/api/genet/music' || !existsSync(localPath)) {
+          next();
+          return;
+        }
+
+        res.setHeader('content-type', 'application/json; charset=UTF-8');
+        res.end(readFileSync(localPath, 'utf8'));
+      });
+    },
+  };
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -33,6 +69,7 @@ export default defineConfig({
     }),
     webfontDownload(),
     injectHTML(),
+    genetMusicDevData(),
   ],
   resolve: {
     // v3-infinite-loading's `browser` field points at a UMD build that
