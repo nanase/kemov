@@ -1,7 +1,11 @@
-<script setup lang="ts"></script>
+<script setup lang="ts">
+import AdminShell from './AdminShell.vue';
+</script>
 
 <template>
-  <div>けもV 管理</div>
+  <AdminShell>
+    <router-view />
+  </AdminShell>
 </template>
 
 <script lang="ts">
