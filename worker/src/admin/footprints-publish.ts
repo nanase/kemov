@@ -68,9 +68,27 @@ export async function publishEvent(env: Env, eventId: number): Promise<Response>
 
   if (problems.length > 0) return jsonResponse({ errors: problems }, { status: 400 });
 
+  // The existence check above answers 404 for an event already gone when the
+  // request arrived, but a concurrent updateEvent or deleteEvent can still
+  // touch the row between that check and this batch running - the admin site
+  // is used by one person at a time, behind Cloudflare Access, so this does
+  // not add a `version` column to close that window; if that stops being
+  // true, this is where one belongs. Gating the revision INSERT on EXISTS,
+  // the same way video-overrides.ts's deleteVideoOverride does for the same
+  // kind of race, ties "did we log a revision" to the row as this batch
+  // actually found it: a concurrent delete still lets the UPDATE run (SET on
+  // a row that no longer exists changes nothing), but no revision is logged
+  // for an event that is no longer there to publish. `status` is not part of
+  // the UPDATE's own WHERE: publishing an already-published event is meant
+  // to succeed (see this function's own doc comment above), not be treated
+  // as the same "nothing to do" case as a deleted row.
   const results = await env.DB.batch([
     env.DB.prepare(`UPDATE footprints_event SET status = 'published' WHERE event_id = ?1`).bind(eventId),
-    revisionStatement(env.DB, 'footprints_event', String(eventId), 'publish', publicShapeOf(saved)),
+    env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body, created_via)
+       SELECT 'footprints_event', ?1, 'publish', ?2, 'admin'
+       WHERE EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1)`,
+    ).bind(String(eventId), JSON.stringify(publicShapeOf(saved))),
   ]);
 
   // `saved` with status overridden, rather than a second readEvent: nothing

@@ -152,6 +152,31 @@ describe('publishEvent', () => {
 
     expect(JSON.parse(rows[1].body!)).toMatchObject({ title: 'revised title' });
   });
+
+  // Mirrors publishEvent's own batch, run against a row that is already gone
+  // by the time it executes - the state a concurrent deleteEvent would leave
+  // behind after publishEvent's own readEvent already found the row. The
+  // INSERT's WHERE EXISTS must keep the revision from growing even though
+  // nothing stops the UPDATE itself from running (and changing nothing).
+  test('does not log a revision when its batch runs after the row is already gone', async () => {
+    // No sources or channelIds, so the delete below needs nothing else
+    // removed first: footprints_event_source/_member both foreign-key back
+    // to footprints_event.
+    const eventId = await createValidEvent({ sources: [] });
+
+    await env.DB.prepare('DELETE FROM footprints_event WHERE event_id = ?1').bind(eventId).run();
+
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE footprints_event SET status = 'published' WHERE event_id = ?1`).bind(eventId),
+      env.DB.prepare(
+        `INSERT INTO revision (entity, entity_key, action, body, created_via)
+         SELECT 'footprints_event', ?1, 'publish', ?2, 'admin'
+         WHERE EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1)`,
+      ).bind(String(eventId), JSON.stringify({ event_id: eventId })),
+    ]);
+
+    expect(await revisionRows()).toHaveLength(0);
+  });
 });
 
 describe('withdrawEvent', () => {
