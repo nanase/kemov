@@ -5,11 +5,15 @@ import type { VideoProperty } from '@/type/video';
 import {
   readChannelList,
   readLiveList,
+  readMonthsSeries,
+  readStreamList,
   readVideoPage,
   readVideoRanking,
   readVideoTable,
   type ChannelList,
   type LiveList,
+  type MonthsSeries,
+  type StreamList,
   type Video,
   type VideoPage,
   type VideoRanking,
@@ -127,6 +131,23 @@ export function getChannels(): Promise<ApiResult<ChannelList>> {
 /** What is on air and what is announced. */
 export function getLive(): Promise<ApiResult<LiveList>> {
   return get('/live', readLiveList);
+}
+
+/** Every member's month-by-month series, and the sum of them. */
+export function getMonths(): Promise<ApiResult<MonthsSeries>> {
+  return get('/months', readMonthsSeries);
+}
+
+/**
+ * Every member's finished streams as week-minute spans, with their most
+ * recent few.
+ *
+ * The spans are what the heatmap of when somebody goes live is drawn from.
+ * They arrive already reduced to two numbers per stream, so the page never
+ * reads the video table to draw it.
+ */
+export function getStreams(): Promise<ApiResult<StreamList>> {
+  return get('/streams', readStreamList);
 }
 
 /**

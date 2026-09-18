@@ -49,6 +49,11 @@ const CHANNELS = {
         viewCount: { value: null, reason: 'history too short' },
         videoCount: { value: null, reason: 'history too short' },
       },
+      per30Days: {
+        subscriberCount: { value: null, reason: 'history too short' },
+        viewCount: { value: null, reason: 'history too short' },
+        videoCount: { value: null, reason: 'history too short' },
+      },
     },
   ],
 };

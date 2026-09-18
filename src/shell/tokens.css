@@ -28,6 +28,15 @@
   --k-on-accent: #fff;
   --k-accent-soft: #d6ebe6;
   --k-ok: #136b3b;
+
+  /*
+   * The step between "this is fine" and "this is wrong": data that is late
+   * rather than missing. Added for the statistics page's three freshness
+   * steps (#134), which could not be drawn with `ok` and `warn` alone, and
+   * kept here rather than on that page because a step of its own belongs
+   * beside the other two signal colours.
+   */
+  --k-caution: #805a06;
   --k-warn: #9d2f22;
   --k-live: #c02b33;
   --k-glass: rgb(233 238 236 / 70%);
@@ -53,6 +62,7 @@
     --k-on-accent: #04201c;
     --k-accent-soft: #14302c;
     --k-ok: #4cd08a;
+    --k-caution: #e2b451;
     --k-warn: #ff8b78;
     --k-live: #ff7b7e;
     --k-glass: rgb(14 15 16 / 70%);
@@ -78,6 +88,7 @@
   --k-on-accent: #04201c;
   --k-accent-soft: #14302c;
   --k-ok: #4cd08a;
+  --k-caution: #e2b451;
   --k-warn: #ff8b78;
   --k-live: #ff7b7e;
   --k-glass: rgb(14 15 16 / 70%);
