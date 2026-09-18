@@ -5,8 +5,10 @@ import { errorResponse, jsonResponse } from '../lib/json';
 import { createEvent, deleteEvent, getEvent, listEvents, updateEvent } from './footprints';
 import { pendingFootprints, publishEvent, publishFootprintsNow, withdrawEvent } from './footprints-publish';
 import { listMembers, updateMember } from './members';
+import { listSnapshots } from './snapshots';
 import { deleteSnapshotExclusion, listSnapshotExclusions, saveSnapshotExclusion } from './snapshot-exclusions';
 import { deleteVideoOverride, listVideoOverrides, saveVideoOverride } from './video-overrides';
+import { listVideos } from './videos';
 
 /**
  * The write side of the site, behind Cloudflare Access.
@@ -182,6 +184,28 @@ export async function handleAdminRequest(
     const body = await readJsonObject(request);
 
     return 'error' in body ? body.error : await saveVideoOverride(env, id, body.value, instant);
+  }
+
+  if (segments.length === 3 && name === 'videos') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    const { searchParams } = new URL(request.url);
+
+    return await listVideos(env, searchParams.get('q'), searchParams.get('channelId'), searchParams.get('limit'));
+  }
+
+  if (segments.length === 3 && name === 'snapshots') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    const { searchParams } = new URL(request.url);
+
+    return await listSnapshots(
+      env,
+      searchParams.get('channelId'),
+      searchParams.get('from'),
+      searchParams.get('to'),
+      instant,
+    );
   }
 
   return errorResponse(404, `no endpoint at ${pathname}`);

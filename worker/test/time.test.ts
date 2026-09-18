@@ -1,4 +1,11 @@
-import { formatTimestamp, isSchemaDate, toSchemaTimestamp } from '../src/lib/time';
+import {
+  formatTimestamp,
+  isSchemaDate,
+  japanDateEndUtc,
+  japanDateOf,
+  japanDateStartUtc,
+  toSchemaTimestamp,
+} from '../src/lib/time';
 
 describe('formatTimestamp', () => {
   test('drops sub-second precision and keeps the uppercase Z', () => {
@@ -70,5 +77,43 @@ describe('isSchemaDate', () => {
 
   test('accepts the last real day of February in a leap year', () => {
     expect(isSchemaDate('2024-02-29')).toEqual(true);
+  });
+});
+
+describe('japanDateOf', () => {
+  test('is the same calendar date for an instant well inside the Japan-time day', () => {
+    expect(japanDateOf('2026-09-06T12:00:00Z')).toEqual('2026-09-06');
+  });
+
+  // 2026-09-06T15:00:00Z is 2026-09-07 00:00 in Japan time (+9) - the next
+  // calendar date, not the same one the UTC instant names.
+  test('rolls into the next date once +9 hours crosses midnight', () => {
+    expect(japanDateOf('2026-09-06T15:00:00Z')).toEqual('2026-09-07');
+  });
+
+  test('does not roll for an instant just short of the boundary', () => {
+    expect(japanDateOf('2026-09-06T14:59:59Z')).toEqual('2026-09-06');
+  });
+});
+
+describe('japanDateStartUtc and japanDateEndUtc', () => {
+  test('a Japan-time date starts at the previous UTC day, 15:00', () => {
+    expect(japanDateStartUtc('2026-09-07')).toEqual('2026-09-06T15:00:00Z');
+  });
+
+  test('a Japan-time date ends where the next one starts', () => {
+    expect(japanDateEndUtc('2026-09-07')).toEqual(japanDateStartUtc('2026-09-08'));
+    expect(japanDateEndUtc('2026-09-07')).toEqual('2026-09-07T15:00:00Z');
+  });
+
+  test('every instant in [start, end) maps back to the same Japan-time date', () => {
+    const start = japanDateStartUtc('2026-09-07');
+    const end = japanDateEndUtc('2026-09-07');
+
+    expect(japanDateOf(start)).toEqual('2026-09-07');
+    expect(japanDateOf(new Date(new Date(end).getTime() - 1000).toISOString().slice(0, 19) + 'Z')).toEqual(
+      '2026-09-07',
+    );
+    expect(japanDateOf(end)).toEqual('2026-09-08');
   });
 });

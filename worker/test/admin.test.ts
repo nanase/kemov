@@ -388,4 +388,34 @@ describe("handleAdminRequest routing to task 12's resources", () => {
 
     expect(saved.status).toEqual(200);
   });
+
+  test('routes GET /admin/api/videos, and refuses other methods', async () => {
+    await insertChannel('UCaaa');
+    await env.DB.prepare(
+      `INSERT INTO video (video_id, channel_id, title, published_at, availability, live_broadcast_content, fetched_at)
+       VALUES ('vid1', 'UCaaa', 't', '2026-09-01T00:00:00Z', 'public', 'none', '2026-09-01T00:00:00Z')`,
+    ).run();
+
+    expect((await call('/admin/api/videos')).status).toEqual(200);
+
+    const wrongMethod = await call('/admin/api/videos', { method: 'POST' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('GET');
+  });
+
+  test('routes GET /admin/api/snapshots, and refuses other methods', async () => {
+    await insertChannel('UCaaa');
+    await env.DB.prepare(
+      `INSERT INTO channel_snapshot (channel_id, fetched_at, subscriber_count, view_count, video_count)
+       VALUES ('UCaaa', '2026-09-08T00:00:00Z', 100, 200, 3)`,
+    ).run();
+
+    expect((await call('/admin/api/snapshots')).status).toEqual(200);
+
+    const wrongMethod = await call('/admin/api/snapshots', { method: 'POST' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('GET');
+  });
 });
