@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <load
+      src="../../shell/head.html"
+      title="外枠の確認"
+      description="共通の外枠を開発サーバで確かめるためのページです。"
+      page-path="dev/shell/"
+    />
+    <meta name="robots" content="noindex" />
+    <script>
+      // Only ジェネット楽曲一覧 has its own palette. Set before the first paint
+      // as the real page will, rather than after the app mounts.
+      if (new URLSearchParams(location.search).get('page') === 'genet') {
+        document.documentElement.dataset.palette = 'genet';
+      }
+    </script>
+  </head>
+
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp } from 'vue';
+
+      import '../../shell/tokens.css';
+      import '../../shell/palette-genet.css';
+      import '../../shell/base.css';
+      import ShellPreviewApp from './ShellPreviewApp.vue';
+
+      createApp(ShellPreviewApp).mount('#app');
+    </script>
+  </body>
+</html>
