@@ -49,6 +49,24 @@ describe('the worker entry', () => {
     expect(response.status).not.toEqual(404);
   });
 
+  // The page does not exist yet (#137, #144's later work), so this only
+  // proves the request reaches the dynamic-page handler rather than the
+  // API's own 404 for an unknown path - handleDynamicPageRequest's own
+  // tests (pages.test.ts) cover what it does with an id.
+  test('sends /members/<id> to the dynamic-page handler rather than the API', async () => {
+    const ctx = createExecutionContext();
+    const response = await handler.fetch!(
+      new Request('https://kemov.nanase.cc/members/UCabMjG8p6G5xLkPJgEoTnDg'),
+      env,
+      ctx,
+    );
+
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toEqual(404);
+    expect(await response.text()).not.toContain('no endpoint at');
+  });
+
   test('answers 404 for a path the API does not serve', async () => {
     const ctx = createExecutionContext();
     const response = await handler.fetch!(new Request('https://kemov.nanase.cc/api/nothing'), env, ctx);

@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 
-import { createEvent, deleteEvent, getEvent, listEvents, updateEvent } from '../src/admin/footprints';
+import { createEvent, deleteEvent, getEvent, listEvents, readEvents, updateEvent } from '../src/admin/footprints';
 import { clearEverything } from './reset-db';
 
 beforeEach(clearEverything);
@@ -118,11 +118,46 @@ describe('createEvent', () => {
     expect(response.status).toEqual(400);
   });
 
+  test.each(['true', null, 1, 0])('refuses emphasized: %p', async (value) => {
+    const response = await createEvent(env, validBody({ emphasized: value }));
+
+    expect(response.status).toEqual(400);
+  });
+
+  test.each(['false', null, 1, 0])('refuses sourcePending: %p', async (value) => {
+    const response = await createEvent(env, validBody({ sourcePending: value }));
+
+    expect(response.status).toEqual(400);
+  });
+
+  test('emphasized defaults to false and sourcePending defaults to true when left out', async () => {
+    const body = validBody();
+
+    delete (body as Record<string, unknown>).emphasized;
+    delete (body as Record<string, unknown>).sourcePending;
+
+    const response = await createEvent(env, body);
+    const created = (await response.json()) as { event: { emphasized: boolean; sourcePending: boolean } };
+
+    expect(created.event.emphasized).toEqual(false);
+    expect(created.event.sourcePending).toEqual(true);
+  });
+
   test('refuses an unknown channelId without creating anything', async () => {
     const response = await createEvent(env, validBody({ channelIds: ['UCnope'] }));
 
     expect(response.status).toEqual(400);
     expect(await response.json()).toEqual({ error: 'unknown channelIds: UCnope' });
+  });
+
+  // channel's own D1 IN (...) query would otherwise be bound with more than
+  // D1's 100-parameter limit and fail with a raw constraint error instead of
+  // this 400.
+  test('refuses more than 100 unknown channelIds with 400 rather than a raw D1 error', async () => {
+    const channelIds = Array.from({ length: 101 }, (_, i) => `UC${i}`);
+    const response = await createEvent(env, validBody({ channelIds }));
+
+    expect(response.status).toEqual(400);
   });
 
   // footprints_event_member's primary key is (event_id, channel_id) - a
@@ -244,6 +279,20 @@ describe('listEvents', () => {
     expect(body.events.map((event) => event.title)).toEqual(['ペンギンのデビュー']);
   });
 
+  test('refuses a q whose escaped, wrapped pattern would exceed D1s 50-byte LIKE limit', async () => {
+    // 49 ASCII bytes - one under the limit on its own, but wrapped in `%` on
+    // both sides it becomes 51.
+    const response = await listEvents(env, null, 'a'.repeat(49));
+
+    expect(response.status).toEqual(400);
+  });
+
+  test('accepts a q whose wrapped pattern is exactly 50 bytes', async () => {
+    const response = await listEvents(env, null, 'a'.repeat(48));
+
+    expect(response.status).toEqual(200);
+  });
+
   test('orders by startDate then eventId', async () => {
     await createEvent(env, validBody({ startDate: '2025-03-01' }));
     await createEvent(env, validBody({ startDate: '2025-01-01' }));
@@ -256,18 +305,78 @@ describe('listEvents', () => {
     expect(body.events[0].eventId).toBeLessThan(body.events[1].eventId);
   });
 
+  // The id SELECT and readEvents' own SELECTs are two round trips, not one
+  // batch, so a concurrent deleteEvent can finish in between: the id this
+  // query found is gone by the time readEvents looks it up, and byId then
+  // has no entry for it. Rigs env.DB.prepare to delete the row right after
+  // that one SELECT resolves, the same moment a real race would land in.
+  test('skips a row deleted between the id query and readEvents, rather than throwing', async () => {
+    const created = await createEvent(env, validBody());
+    const { event } = (await created.json()) as { event: { eventId: number } };
+    const eventId = event.eventId;
+    const realPrepare = env.DB.prepare.bind(env.DB);
+
+    const riggedDB = {
+      prepare: (sql: string) => {
+        const stmt = realPrepare(sql);
+
+        if (!sql.startsWith('SELECT event_id FROM footprints_event')) return stmt;
+
+        return {
+          bind: (...args: unknown[]) => {
+            const bound = stmt.bind(...args);
+
+            return {
+              all: async <T = unknown>() => {
+                const result = await bound.all<T>();
+
+                await env.DB.prepare('DELETE FROM footprints_event WHERE event_id = ?1').bind(eventId).run();
+
+                return result;
+              },
+              first: bound.first.bind(bound),
+              run: bound.run.bind(bound),
+              raw: bound.raw.bind(bound),
+            };
+          },
+        };
+      },
+    };
+
+    const response = await listEvents({ ...env, DB: riggedDB } as typeof env, null, null);
+
+    expect(response.status).toEqual(200);
+    expect(await response.json()).toEqual({ events: [] });
+  });
+
   // D1 refuses a statement bound to more than 100 parameters - readEvents
   // builds `IN (?1, ...)` from every listed id at once, so this stays green
   // only because it chunks (worker/src/lib/d1.ts).
-  test('lists more events than one D1 statement can bind', async () => {
-    const count = 150;
+  test(
+    'lists more events than one D1 statement can bind',
+    async () => {
+      const count = 150;
 
-    for (let i = 0; i < count; i++) {
-      await createEvent(env, validBody({ title: `できごと${i}` }));
-    }
+      for (let i = 0; i < count; i++) {
+        await createEvent(env, validBody({ title: `できごと${i}` }));
+      }
 
-    const body = (await listEvents(env, null, null).then((r) => r.json())) as { events: unknown[] };
+      const body = (await listEvents(env, null, null).then((r) => r.json())) as { events: unknown[] };
 
-    expect(body.events).toHaveLength(count);
-  }, 20000);
+      expect(body.events).toHaveLength(count);
+    },
+    20000,
+  );
+});
+
+describe('readEvents', () => {
+  // Without chunking, a single SELECT ... IN (...) bound with all 101 ids
+  // would exceed D1's 100-parameter limit and fail outright, not just answer
+  // with fewer rows than asked for.
+  test('does not fail when asked for more than 100 ids at once', async () => {
+    const ids = Array.from({ length: 101 }, (_, i) => i + 1);
+    const result = await readEvents(env, ids);
+
+    expect(result.size).toEqual(0);
+  });
 });

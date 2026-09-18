@@ -47,13 +47,20 @@ Do not use `.env.local` for this. Vite reads it in every mode, so a value left t
 | ------------------------------- | -------------------- | ------------------------------- |
 | `VITE_GENET_MUSIC_LIST_URL`     | the music list       | Where the list is fetched from  |
 | `VITE_GENET_MUSIC_LIST_SUB_URL` | the music list       | An extra list, read in dev only |
+| `VITE_API_PROXY`                | the statistics pages | `vite dev` only — see below     |
 | `VITE_API_BASE`                 | the statistics pages | `vite dev` only — see below     |
 
-The published site leaves `VITE_API_BASE` unset and asks `/api` on its own origin, because the worker that answers the API also serves these pages. Under `bun run dev` the pages come from vite on port 5173 and the worker is not there at all, so point it at a `wrangler dev` or at the deployment:
+The published site leaves both unset and asks `/api` on its own origin, because the worker that answers the API also serves these pages. Under `bun run dev` the pages come from vite on port 5173 and the worker is not there at all, so tell the dev server where to send `/api`:
 
 ```sh
-echo 'VITE_API_BASE=https://kemov.nanase.cc/api' >> .env.development.local
+echo 'VITE_API_PROXY=https://kemov.nanase.cc' >> .env.development.local
 ```
+
+The pages still ask their own origin and vite forwards it, which is what makes the answers readable: the API sends no `Access-Control-Allow-Origin`, so a page that asks another host directly has every response refused by the browser before it arrives. A `wrangler dev` works the same way — `VITE_API_PROXY=http://localhost:8787`.
+
+`VITE_API_BASE` is the older setting and points the pages straight at another host. It is only usable where that host allows this origin, which the deployment does not, so prefer `VITE_API_PROXY`.
+
+The dev server reads `.env.development.local` at startup. Restart it after changing the file.
 
 ### Compile and Hot-Reload for Development
 
@@ -123,6 +130,7 @@ Collection and the HTTP API run as one Cloudflare Worker. Its code lives under `
 ```text
 worker/src/collector/   scheduled collection jobs
 worker/src/api/         the HTTP API
+worker/src/pages/       /members/<id> and /videos/<id> (see below)
 worker/src/lib/         shared code
 worker/test/            tests
 ```
@@ -252,6 +260,14 @@ An event passes through a publish gate rather than taking effect on save, the sa
 `genet_tune` and `genet_person` carry no `status` of their own - #141's design gives only `genet_stream` a publish gate - so saving either logs no `revision`. Publishing a stream validates it together with every tune it performs and every person one of those tunes credits, and logs a `publish` revision for the stream and for whichever of those tunes/people do not already match their own latest revision, all in one `db.batch`. `POST /admin/api/genet/streams/<video ID>/publish` collects every failing condition into one 400 answer, the same as footprints' own publish endpoint - an empty `title`, a `videoId` that is not 11 characters (`youtube` streams only), an invalid `publishedAt`, no performances, a performance or scene referring to a tune/video that does not exist (this last pair cannot actually happen through this API, since the underlying foreign keys are enforced at save time already; the check stays as a second line of defense), a tune attribute with both `text` and credited people, or an empty tune title/person name.
 
 `POST /admin/api/genet/publish` builds `genet/music.json` from the latest `revision` of every stream whose latest action is not `withdraw`, together with every tune and person those streams' own published bodies name - not a fresh read of the working tables, so a tune dropped from a stream after it was published cannot leak back into the JSON. Streams, tunes and people share one `publication` row (`target = 'genet_music'`).
+
+### `/members/<id>` and `/videos/<id>`
+
+`/members/<channel id>` and `/videos/<video id>` are permalinks to one member or one stream/video (#137), so that sharing one carries that name rather than the site's own title. Neither has a page of its own yet — a later PR adds them — so today `worker/src/pages/index.ts` rewrites whatever `ASSETS` serves at `/members/` or `/videos/` and answers 404, unrewritten, until that page exists. The worker reaches these requests the same way it reaches `/api/*`: no built file answers `/members/<id>` exactly, so Cloudflare wakes the worker instead of serving one directly.
+
+`[assets]` in `wrangler.toml` carries a `binding = "ASSETS"` for this reason — `directory` alone, which every other page already relies on, only lets Cloudflare serve a matching file itself and gives the worker no way to fetch one. `env.ASSETS.fetch()` reads the exact same built files that binding already serves.
+
+A request's id is checked against the shape YouTube gives it — `UC` followed by 22 characters for a channel, 11 characters for a video — before D1 is asked, and answered 404 without a query if it does not match. A well-shaped id D1 has no row for is also 404. Once a row is found, the page's `<title>`, `og:title` and `og:url` are rewritten with `HTMLRewriter`, and its `ETag` is dropped: the header would otherwise still name the unrewritten body, and a conditional request against it could get a `304` carrying the wrong title.
 
 ## Database
 

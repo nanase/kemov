@@ -1,3 +1,4 @@
+import { byteLength } from '../lib/backup';
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
@@ -150,13 +151,12 @@ export async function readEvent(env: Env, eventId: number): Promise<FootprintsEv
 
 /**
  * `readEvent` for several event ids at once, keyed by event_id - three
- * queries in total rather than three per id. Used wherever a caller already
- * has a list of ids and would otherwise call `readEvent` in a loop
- * (listEvents, pendingFootprints's "changed" check).
+ * queries per chunk of ids (`queryInChunks`, worker/src/lib/d1.ts) rather
+ * than three per id. Used wherever a caller already has a list of ids and
+ * would otherwise call `readEvent` in a loop (listEvents, pendingFootprints's
+ * "changed" check).
  */
 export async function readEvents(env: Env, eventIds: readonly number[]): Promise<Map<number, FootprintsEvent>> {
-  if (eventIds.length === 0) return new Map();
-
   const [eventRows, memberRows, sourceRows] = await Promise.all([
     queryInChunks(eventIds, async (chunk) => {
       const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
@@ -208,10 +208,25 @@ export async function readEvents(env: Env, eventIds: readonly number[]): Promise
   return result;
 }
 
+// D1's own LIKE/GLOB pattern length limit is 50 bytes of UTF-8, not
+// characters - see developers.cloudflare.com/d1/platform/limits/. Checked
+// against the pattern this function actually sends (escaped and wrapped in
+// `%`), not against `q` itself, since escaping a `%`, `_` or `\` in `q` grows
+// it by one byte each.
+const D1_LIKE_PATTERN_BYTE_LIMIT = 50;
+
 /** GET /admin/api/footprints/events - optionally narrowed by status and by a substring of title. */
 export async function listEvents(env: Env, status: string | null, q: string | null): Promise<Response> {
   if (status !== null && !isStatus(status)) {
     return errorResponse(400, `status must be one of draft, review, published`);
+  }
+
+  let pattern: string | null = null;
+
+  if (q !== null) {
+    pattern = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+
+    if (byteLength(pattern) > D1_LIKE_PATTERN_BYTE_LIMIT) return errorResponse(400, 'q is too long to search by');
   }
 
   const conditions: string[] = [];
@@ -222,8 +237,8 @@ export async function listEvents(env: Env, status: string | null, q: string | nu
     conditions.push(`status = ?${params.length}`);
   }
 
-  if (q !== null) {
-    params.push(`%${q.replace(/[\\%_]/g, '\\$&')}%`);
+  if (pattern !== null) {
+    params.push(pattern);
     conditions.push(`title LIKE ?${params.length} ESCAPE '\\'`);
   }
 
@@ -242,7 +257,19 @@ export async function listEvents(env: Env, status: string | null, q: string | nu
 
   // The order results was already asked in - readEvents' own Map does not
   // promise one, since it is built from three separate, unordered queries.
-  return jsonResponse({ events: results.map((row) => present(byId.get(row.event_id)!)) });
+  //
+  // flatMap rather than map: a row this SELECT found can still be gone by the
+  // time readEvents reads it, if a concurrent deleteEvent runs in between -
+  // byId then has no entry for it, and present(undefined!) would throw. Left
+  // out of the answer instead, the same as deleteEvent itself removing a row
+  // from what a caller sees next.
+  return jsonResponse({
+    events: results.flatMap((row) => {
+      const saved = byId.get(row.event_id);
+
+      return saved === undefined ? [] : [present(saved)];
+    }),
+  });
 }
 
 /** GET /admin/api/footprints/events/:eventId. 404 when there is no such event. */
@@ -369,18 +396,30 @@ function readEventFields(body: Record<string, unknown>): EventFields | { error: 
     return { error: 'sources must be an array of { url, title }' };
   }
 
+  // Checked rather than coerced (body.emphasized === true / !== false, as an
+  // earlier version of this function did): a truthy non-boolean like the
+  // string "true", or sourcePending: null, would otherwise silently save as
+  // the opposite of what its own type suggests instead of failing loudly.
+  if (body.emphasized !== undefined && typeof body.emphasized !== 'boolean') {
+    return { error: 'emphasized must be a boolean' };
+  }
+
+  if (body.sourcePending !== undefined && typeof body.sourcePending !== 'boolean') {
+    return { error: 'sourcePending must be a boolean' };
+  }
+
   return {
     datePrecision: (body.datePrecision as string) ?? null,
     startDate: (body.startDate as string) ?? null,
     startsAt: (body.startsAt as string | null) ?? null,
     endDate: (body.endDate as string | null) ?? null,
     kind: (body.kind as string) ?? null,
-    emphasized: body.emphasized === true,
+    emphasized: (body.emphasized as boolean | undefined) ?? false,
     title: (body.title as string) ?? '',
     place: (body.place as string | null) ?? null,
     supplement: (body.supplement as string | null) ?? null,
     videoId: (body.videoId as string | null) ?? null,
-    sourcePending: body.sourcePending !== false,
+    sourcePending: (body.sourcePending as boolean | undefined) ?? true,
     memo: (body.memo as string | null) ?? null,
     // Deduped here, once, rather than left for memberStatements to insert
     // twice: footprints_event_member's primary key is (event_id, channel_id),
@@ -396,17 +435,20 @@ function readEventFields(body: Record<string, unknown>): EventFields | { error: 
 
 /** Every channelId in `channelIds` that `channel` has no row for. */
 async function unknownChannelIds(env: Env, channelIds: readonly string[]): Promise<string[]> {
-  if (channelIds.length === 0) return [];
+  const ids = [...new Set(channelIds)];
 
-  const { results } = await env.DB.prepare(
-    `SELECT channel_id FROM channel WHERE channel_id IN (${channelIds.map((_, index) => `?${index + 1}`).join(', ')})`,
-  )
-    .bind(...channelIds)
-    .all<{ channel_id: string }>();
+  const rows = await queryInChunks(ids, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+    const { results } = await env.DB.prepare(`SELECT channel_id FROM channel WHERE channel_id IN (${placeholders})`)
+      .bind(...chunk)
+      .all<{ channel_id: string }>();
 
-  const known = new Set(results.map((row) => row.channel_id));
+    return results;
+  });
 
-  return [...new Set(channelIds)].filter((id) => !known.has(id));
+  const known = new Set(rows.map((row) => row.channel_id));
+
+  return ids.filter((id) => !known.has(id));
 }
 
 /**
