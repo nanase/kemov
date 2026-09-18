@@ -26,3 +26,35 @@ export function toSchemaTimestamp(value: string | undefined): string | null {
 
   return Number.isNaN(date.getTime()) ? null : formatTimestamp(date);
 }
+
+const A_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Whether `value` is a real calendar date in the schema's `YYYY-MM-DD` shape.
+ *
+ * The pattern alone admits 2023-02-29; round-tripping through Date is what
+ * refuses a day that does not exist rather than rolling it into the next
+ * month. The same check as scripts/channels.js's isRealDate, repeated rather
+ * than shared: that one is plain JavaScript so bare node can run it with no
+ * build step, this one is TypeScript for workerd, and neither can import the
+ * other. What they share is the rule, which is not either file's to change
+ * alone - channels.yml's activity_start_date and the admin site's PUT to
+ * `channel` (members.ts) both end up in the same column, so the two checks
+ * must keep agreeing on what a real date is even though the code does not.
+ *
+ * The NaN check matters on its own, not only as part of the round trip:
+ * for an ISO string, `new Date` does not roll an out-of-range component
+ * like month 13 into the next year the way the numeric `Date` constructor
+ * does - it produces an Invalid Date instead, and `toISOString` throws a
+ * RangeError on one rather than returning a string to compare. Without this
+ * check, `isSchemaDate('2023-13-01')` - a value `A_DATE` alone accepts -
+ * would throw out of a PUT this is meant to answer with 400, not crash with
+ * 500 (#158's review, 2026-09-18).
+ */
+export function isSchemaDate(value: string): boolean {
+  if (!A_DATE.test(value)) return false;
+
+  const date = new Date(`${value}T00:00:00Z`);
+
+  return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value);
+}

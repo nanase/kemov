@@ -94,6 +94,17 @@ describe('routing', () => {
     );
 
     expect(response.status).toEqual(405);
+    expect(response.headers.get('Allow')).toEqual('GET, HEAD');
+  });
+
+  // What each key answers - a publish, an unpublished 404, a conditional
+  // request - is public-data.test.ts's job. This only checks that the path
+  // reaches the key it names, which the 404 message proves: the generic
+  // "no endpoint at" 404 and publicDataResponse's "not published yet" read
+  // differently.
+  test('routes /api/footprints/events and /api/genet/music to PUBLIC_DATA', async () => {
+    expect(await (await get('/api/footprints/events')).json()).toEqual({ error: 'not published yet' });
+    expect(await (await get('/api/genet/music')).json()).toEqual({ error: 'not published yet' });
   });
 
   test('reaches each endpoint that needs no parameters', async () => {
