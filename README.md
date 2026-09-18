@@ -223,6 +223,36 @@ An event passes through a publish gate rather than taking effect on save, the sa
 
 `POST /admin/api/footprints/publish` builds `footprints/events.json` from the latest `revision` of every event whose latest action is not `withdraw`, writes it to `PUBLIC_DATA`, and appends one `publication` row recording the newest `revision_id` it saw. Nothing is written when there is nothing newer than the last run.
 
+### Genet Music: Editing and Publishing
+
+| Method | Path                                           | Answers with                                                                                                                      |
+| ------ | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/admin/api/genet/people`                      | Every `genet_person` row                                                                                                          |
+| POST   | `/admin/api/genet/people`                      | The row after creating it                                                                                                         |
+| GET    | `/admin/api/genet/people/<person ID>`          | One row                                                                                                                           |
+| PUT    | `/admin/api/genet/people/<person ID>`          | The row after replacing it                                                                                                        |
+| DELETE | `/admin/api/genet/people/<person ID>`          | `{}` - 409 instead, if a tune still credits them                                                                                  |
+| GET    | `/admin/api/genet/tunes`                       | Every `genet_tune` row, with its attributes, videos and scores                                                                    |
+| POST   | `/admin/api/genet/tunes`                       | The row after creating it                                                                                                         |
+| GET    | `/admin/api/genet/tunes/<tune ID>`             | One row, with its attributes, videos and scores                                                                                   |
+| PUT    | `/admin/api/genet/tunes/<tune ID>`             | The row after replacing it, its attributes, videos and scores                                                                     |
+| DELETE | `/admin/api/genet/tunes/<tune ID>`             | `{}` - 409 instead, if a stream still performs it                                                                                 |
+| GET    | `/admin/api/genet/streams`                     | Every `genet_stream` row, with its performances and scenes                                                                        |
+| POST   | `/admin/api/genet/streams`                     | The row after creating it in `draft`                                                                                              |
+| GET    | `/admin/api/genet/streams/<video ID>`          | One row, with its performances and scenes                                                                                         |
+| PUT    | `/admin/api/genet/streams/<video ID>`          | The row after replacing it, its performances and scenes - `status` unchanged                                                      |
+| DELETE | `/admin/api/genet/streams/<video ID>`          | `{}` - 409 instead, if the stream is `published`                                                                                  |
+| POST   | `/admin/api/genet/streams/<video ID>/publish`  | The row after validating it (and the tunes/people it performs) and setting `status` to `published`                                |
+| POST   | `/admin/api/genet/streams/<video ID>/withdraw` | The row after setting `status` back to `draft`                                                                                    |
+| GET    | `/admin/api/genet/pending`                     | Streams, tunes and people not yet reflected in the published JSON, and published streams/tunes/people whose row has since changed |
+| POST   | `/admin/api/genet/publish`                     | Whether anything was published, and how many streams/tunes/people if so                                                           |
+
+`GET /admin/api/genet/tunes` takes `q` (a substring of `title`); `GET /admin/api/genet/streams` takes `status` and `q`, the same as footprints' own list endpoints.
+
+`genet_tune` and `genet_person` carry no `status` of their own - #141's design gives only `genet_stream` a publish gate - so saving either logs no `revision`. Publishing a stream validates it together with every tune it performs and every person one of those tunes credits, and logs a `publish` revision for the stream and for whichever of those tunes/people do not already match their own latest revision, all in one `db.batch`. `POST /admin/api/genet/streams/<video ID>/publish` collects every failing condition into one 400 answer, the same as footprints' own publish endpoint - an empty `title`, a `videoId` that is not 11 characters (`youtube` streams only), an invalid `publishedAt`, no performances, a performance or scene referring to a tune/video that does not exist (this last pair cannot actually happen through this API, since the underlying foreign keys are enforced at save time already; the check stays as a second line of defense), a tune attribute with both `text` and credited people, or an empty tune title/person name.
+
+`POST /admin/api/genet/publish` builds `genet/music.json` from the latest `revision` of every stream whose latest action is not `withdraw`, together with every tune and person those streams' own published bodies name - not a fresh read of the working tables, so a tune dropped from a stream after it was published cannot leak back into the JSON. Streams, tunes and people share one `publication` row (`target = 'genet_music'`).
+
 ## Database
 
 The collected data lives in a Cloudflare D1 database named `kemov`, running in the APAC region. Everything the site publishes can be rebuilt from it. The commands below need wrangler, which comes with the Worker setup.
