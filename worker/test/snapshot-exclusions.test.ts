@@ -187,4 +187,28 @@ describe('deleteSnapshotExclusion', () => {
       body: null,
     });
   });
+
+  // Mirrors deleteSnapshotExclusion's own batch, run against a row already
+  // gone by the time it executes - see the same test on video-overrides.
+  test('does not log a revision when its batch runs after the row is already gone', async () => {
+    await insertTick('UCaaa', TICK);
+    await saveSnapshotExclusion(env, 'UCaaa', TICK, { reason: 'x' });
+    await env.DB.prepare('DELETE FROM channel_snapshot_exclusion WHERE channel_id = ?1 AND fetched_at = ?2')
+      .bind('UCaaa', TICK)
+      .run();
+
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO revision (entity, entity_key, action, body, created_via)
+         SELECT 'channel_snapshot_exclusion', ?3, 'delete', NULL, 'admin'
+         WHERE EXISTS (SELECT 1 FROM channel_snapshot_exclusion WHERE channel_id = ?1 AND fetched_at = ?2)`,
+      ).bind('UCaaa', TICK, `UCaaa/${TICK}`),
+      env.DB.prepare('DELETE FROM channel_snapshot_exclusion WHERE channel_id = ?1 AND fetched_at = ?2').bind(
+        'UCaaa',
+        TICK,
+      ),
+    ]);
+
+    expect(await revisionRows()).toHaveLength(1);
+  });
 });

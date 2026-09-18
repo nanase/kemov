@@ -181,4 +181,26 @@ describe('deleteVideoOverride', () => {
     expect(rows).toHaveLength(2);
     expect(rows[1]).toEqual({ entity: 'video_override', entity_key: 'vid1', action: 'delete', body: null });
   });
+
+  // Mirrors deleteVideoOverride's own batch, run against a row that is
+  // already gone by the time it executes - the state a second request would
+  // find if it won a race against the one whose pre-check saw the row. The
+  // INSERT's WHERE EXISTS must keep the revision from growing even though
+  // nothing stops the DELETE itself from running.
+  test('does not log a revision when its batch runs after the row is already gone', async () => {
+    await insertVideo('vid1');
+    await saveVideoOverride(env, 'vid1', { title: 'x' }, NOW);
+    await env.DB.prepare('DELETE FROM video_override WHERE video_id = ?1').bind('vid1').run();
+
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO revision (entity, entity_key, action, body, created_via)
+         SELECT 'video_override', ?1, 'delete', NULL, 'admin'
+         WHERE EXISTS (SELECT 1 FROM video_override WHERE video_id = ?1)`,
+      ).bind('vid1'),
+      env.DB.prepare('DELETE FROM video_override WHERE video_id = ?1').bind('vid1'),
+    ]);
+
+    expect(await revisionRows()).toHaveLength(1);
+  });
 });

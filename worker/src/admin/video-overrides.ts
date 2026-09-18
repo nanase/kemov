@@ -133,10 +133,23 @@ export async function deleteVideoOverride(env: Env, videoId: string): Promise<Re
 
   if (existing === null) return errorResponse(404, `no override for video ${videoId}`);
 
+  // The existence check above answers 404 for a row already gone when the
+  // request arrived, but a second request can still delete the same row
+  // between that check and this batch running. Ordering the revision INSERT
+  // before the DELETE, and gating it on EXISTS, ties "did we log a revision"
+  // to the row as this batch actually found it: the loser of that race still
+  // gets a 200 (this does not add a second existence check to prevent that),
+  // but it no longer logs a revision for a delete that deleted nothing.
+  // meta.changes is not used here - D1 does not document it as a reliable
+  // row count.
   const results = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body, created_via)
+       SELECT 'video_override', ?1, 'delete', NULL, 'admin'
+       WHERE EXISTS (SELECT 1 FROM video_override WHERE video_id = ?1)`,
+    ).bind(videoId),
     env.DB.prepare('DELETE FROM video_override WHERE video_id = ?1').bind(videoId),
-    revisionStatement(env.DB, 'video_override', videoId, 'delete', null),
   ]);
 
-  return jsonResponse({ revisionId: results[1].meta.last_row_id });
+  return jsonResponse({ revisionId: results[0].meta.last_row_id });
 }

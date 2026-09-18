@@ -104,13 +104,21 @@ export async function deleteSnapshotExclusion(env: Env, channelId: string, fetch
 
   if (existing === null) return errorResponse(404, `no exclusion for ${channelId} ${fetchedAt}`);
 
+  // Same trade-off as video-overrides.ts's deleteVideoOverride: the
+  // existence check above can go stale between it and this batch running, so
+  // the revision INSERT is ordered before the DELETE and gated on EXISTS
+  // against the row as this batch actually found it, not on meta.changes.
   const results = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body, created_via)
+       SELECT 'channel_snapshot_exclusion', ?3, 'delete', NULL, 'admin'
+       WHERE EXISTS (SELECT 1 FROM channel_snapshot_exclusion WHERE channel_id = ?1 AND fetched_at = ?2)`,
+    ).bind(channelId, fetchedAt, entityKey(channelId, fetchedAt)),
     env.DB.prepare('DELETE FROM channel_snapshot_exclusion WHERE channel_id = ?1 AND fetched_at = ?2').bind(
       channelId,
       fetchedAt,
     ),
-    revisionStatement(env.DB, 'channel_snapshot_exclusion', entityKey(channelId, fetchedAt), 'delete', null),
   ]);
 
-  return jsonResponse({ revisionId: results[1].meta.last_row_id });
+  return jsonResponse({ revisionId: results[0].meta.last_row_id });
 }
