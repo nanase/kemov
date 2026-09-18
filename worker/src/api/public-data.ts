@@ -18,39 +18,33 @@ import { CACHE_SECONDS, errorWithCacheHeaders } from './cache';
 
 /**
  * The entity-tags an `If-None-Match` header names, or `'any'` for a bare
- * `*` (RFC 7232 §3.2). A comma inside a quoted tag is not a separator - not
- * that R2's own tags ever contain one, but a header this reads is a caller's
- * to shape, not R2's.
+ * `*` (RFC 7232 §3.2) - only when the whole header is that one character,
+ * not when `*` sits among other values, since `*` is not itself a valid
+ * entity-tag there.
+ *
+ * Splits the header on comma without tracking a read position by hand - a
+ * hand-advanced index is what let an unquoted element leave it unmoved and
+ * spin the previous version of this function forever. R2's own ETag is a
+ * hex digest with no comma in it, so a header naming only R2 ETags never
+ * has one inside a quoted value, even though RFC 7232's entity-tag grammar
+ * would allow it in general. An element that is not a properly quoted
+ * string once any `W/` prefix is set aside is dropped rather than kept as a
+ * tag - the same as a bare `If-None-Match: invalid`, or the empty element
+ * between the commas in `"a", , "b"`.
  */
 function parseIfNoneMatch(header: string): readonly string[] | 'any' {
   const trimmed = header.trim();
 
   if (trimmed === '*') return 'any';
 
-  const tags: string[] = [];
-  let index = 0;
+  return trimmed
+    .split(',')
+    .map((element) => element.trim())
+    .filter((element) => {
+      const unweighted = withoutWeakPrefix(element);
 
-  while (index < trimmed.length) {
-    while (index < trimmed.length && /[\s,]/.test(trimmed[index])) index++;
-
-    if (index >= trimmed.length) break;
-
-    const start = index;
-
-    if (trimmed.startsWith('W/', index)) index += 2;
-
-    if (trimmed[index] === '"') {
-      index++;
-
-      while (index < trimmed.length && trimmed[index] !== '"') index++;
-
-      index++;
-    }
-
-    tags.push(trimmed.slice(start, index));
-  }
-
-  return tags;
+      return unweighted.length >= 2 && unweighted.startsWith('"') && unweighted.endsWith('"');
+    });
 }
 
 /** An entity-tag with any `W/` weak-comparison prefix removed, so a weak and a strong tag over the same value compare equal. */

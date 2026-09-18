@@ -115,6 +115,66 @@ describe('publicDataResponse', () => {
     expect(response.status).toEqual(200);
   });
 
+  // These all give parseIfNoneMatch something other than a well-formed
+  // quoted entity-tag. Each has an explicit timeout so a hang - the shape of
+  // bug this function used to have - fails the test rather than the run.
+  describe('malformed If-None-Match values', () => {
+    test('serves the object in full for a bare, unquoted token', async () => {
+      await putObject(KEY, '{"events":[]}');
+
+      const response = await publicDataResponse(request({ headers: { 'If-None-Match': 'invalid' } }), env, KEY);
+
+      expect(response.status).toEqual(200);
+    }, 2000);
+
+    test('still matches a real ETag listed alongside a bare, unquoted token', async () => {
+      const put = await putObject(KEY, '{"events":[]}');
+
+      const response = await publicDataResponse(
+        request({ headers: { 'If-None-Match': `invalid, ${put.httpEtag}` } }),
+        env,
+        KEY,
+      );
+
+      expect(response.status).toEqual(304);
+    }, 2000);
+
+    test('still matches a real ETag listed alongside an empty element', async () => {
+      const put = await putObject(KEY, '{"events":[]}');
+
+      const response = await publicDataResponse(
+        request({ headers: { 'If-None-Match': `"not-this-one", , ${put.httpEtag}` } }),
+        env,
+        KEY,
+      );
+
+      expect(response.status).toEqual(304);
+    }, 2000);
+
+    test('serves the object in full for an empty If-None-Match header', async () => {
+      await putObject(KEY, '{"events":[]}');
+
+      const response = await publicDataResponse(request({ headers: { 'If-None-Match': '' } }), env, KEY);
+
+      expect(response.status).toEqual(200);
+    }, 2000);
+
+    // * only means "any" for the whole header - RFC 7232 §3.2 gives it no
+    // meaning as one element among others, and it is not itself a quoted
+    // entity-tag, so mixed in in with real tags it simply matches nothing.
+    test('serves the object in full when * is mixed with other values rather than standing alone', async () => {
+      await putObject(KEY, '{"events":[]}');
+
+      const response = await publicDataResponse(
+        request({ headers: { 'If-None-Match': '"not-this-one", *' } }),
+        env,
+        KEY,
+      );
+
+      expect(response.status).toEqual(200);
+    }, 2000);
+  });
+
   test('answers HEAD the same as GET, without a body', async () => {
     await putObject(KEY, '{"events":[]}');
 
