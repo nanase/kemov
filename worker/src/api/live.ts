@@ -1,4 +1,5 @@
 import type { Env } from '../lib/env';
+import { VIDEO_EFFECTIVE } from '../lib/overrides';
 import { isFreeChatPlaceholder } from '../lib/video';
 
 /**
@@ -21,13 +22,17 @@ interface LiveRow {
 }
 
 export async function listLive(env: Env, now: Date = new Date()) {
-  // The partial index video_live covers exactly this predicate - the schema
-  // added it because live and upcoming rows are a handful among thousands.
+  // The partial index video_live covers `live_broadcast_content <> 'none'`
+  // directly on `video` - the schema added it because live and upcoming rows
+  // are a handful among thousands. `availability = 'public'` only has
+  // anything to filter once an override sets one to a hidden value, which is
+  // rare enough that this endpoint has never needed its own measurement.
   const { results } = await env.DB.prepare(
-    `SELECT video_id, channel_id, title, live_broadcast_content,
+    `WITH ${VIDEO_EFFECTIVE}
+     SELECT video_id, channel_id, title, live_broadcast_content,
             scheduled_start_time, actual_start_time, fetched_at
-       FROM video
-      WHERE live_broadcast_content <> 'none'
+       FROM video_effective
+      WHERE availability = 'public' AND live_broadcast_content <> 'none'
       ORDER BY live_broadcast_content DESC, scheduled_start_time ASC, video_id ASC`,
   ).all<LiveRow>();
 
