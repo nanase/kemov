@@ -221,11 +221,11 @@ onBeforeUnmount(() => {
 <template>
   <SiteShell page="stats" title="けもV 統計">
     <template #title-aside>
-      <span class="stamp-wrap">
+      <span class="stamp-wrap" :data-freshness="updatedState === 'ok' ? freshness : undefined">
         <UpdatedAt :at="data.countsFetchedAt.value" :state="updatedState" />
         <div v-if="alertShown" class="alert" role="status">
           <button type="button" class="alert-close" aria-label="閉じる" @click="alertDismissed = true">×</button>
-          <b>最新の数値を取得できていません</b>
+          <b>最新の数値を取得できません</b>
           <span>表示は {{ staleFor }}前の数値です</span>
         </div>
       </span>
@@ -343,6 +343,28 @@ onBeforeUnmount(() => {
   display: inline-flex;
   position: relative;
   align-items: center;
+}
+
+/* The three freshness steps (#134). The shell's badge knows how old the
+   numbers are but not what this page counts as late, so the steps are
+   coloured from here. Colour is never the only sign: the relative time is
+   there to read, and the third step opens the bubble below. */
+.stamp-wrap[data-freshness='warn'] :deep(.updated-at .dot),
+.stamp-wrap[data-freshness='warn'] :deep(.updated-at .age) {
+  color: var(--k-caution);
+}
+
+.stamp-wrap[data-freshness='warn'] :deep(.updated-at .dot) {
+  background: var(--k-caution);
+}
+
+.stamp-wrap[data-freshness='bad'] :deep(.updated-at .dot),
+.stamp-wrap[data-freshness='bad'] :deep(.updated-at .age) {
+  color: var(--k-warn);
+}
+
+.stamp-wrap[data-freshness='bad'] :deep(.updated-at .dot) {
+  background: var(--k-warn);
 }
 
 /* Old numbers speak from the badge they belong to rather than from a strip
