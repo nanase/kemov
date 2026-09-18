@@ -259,7 +259,19 @@ export async function listEvents(env: Env, status: string | null, q: string | nu
 
   // The order results was already asked in - readEvents' own Map does not
   // promise one, since it is built from three separate, unordered queries.
-  return jsonResponse({ events: results.map((row) => present(byId.get(row.event_id)!)) });
+  //
+  // flatMap rather than map: a row this SELECT found can still be gone by the
+  // time readEvents reads it, if a concurrent deleteEvent runs in between -
+  // byId then has no entry for it, and present(undefined!) would throw. Left
+  // out of the answer instead, the same as deleteEvent itself removing a row
+  // from what a caller sees next.
+  return jsonResponse({
+    events: results.flatMap((row) => {
+      const saved = byId.get(row.event_id);
+
+      return saved === undefined ? [] : [present(saved)];
+    }),
+  });
 }
 
 /** GET /admin/api/footprints/events/:eventId. 404 when there is no such event. */

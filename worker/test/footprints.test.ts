@@ -304,6 +304,50 @@ describe('listEvents', () => {
     expect(body.events.map((event) => event.startDate)).toEqual(['2025-01-01', '2025-01-01', '2025-03-01']);
     expect(body.events[0].eventId).toBeLessThan(body.events[1].eventId);
   });
+
+  // The id SELECT and readEvents' own SELECTs are two round trips, not one
+  // batch, so a concurrent deleteEvent can finish in between: the id this
+  // query found is gone by the time readEvents looks it up, and byId then
+  // has no entry for it. Rigs env.DB.prepare to delete the row right after
+  // that one SELECT resolves, the same moment a real race would land in.
+  test('skips a row deleted between the id query and readEvents, rather than throwing', async () => {
+    const created = await createEvent(env, validBody());
+    const { event } = (await created.json()) as { event: { eventId: number } };
+    const eventId = event.eventId;
+    const realPrepare = env.DB.prepare.bind(env.DB);
+
+    const riggedDB = {
+      prepare: (sql: string) => {
+        const stmt = realPrepare(sql);
+
+        if (!sql.startsWith('SELECT event_id FROM footprints_event')) return stmt;
+
+        return {
+          bind: (...args: unknown[]) => {
+            const bound = stmt.bind(...args);
+
+            return {
+              all: async <T = unknown>() => {
+                const result = await bound.all<T>();
+
+                await env.DB.prepare('DELETE FROM footprints_event WHERE event_id = ?1').bind(eventId).run();
+
+                return result;
+              },
+              first: bound.first.bind(bound),
+              run: bound.run.bind(bound),
+              raw: bound.raw.bind(bound),
+            };
+          },
+        };
+      },
+    };
+
+    const response = await listEvents({ ...env, DB: riggedDB } as typeof env, null, null);
+
+    expect(response.status).toEqual(200);
+    expect(await response.json()).toEqual({ events: [] });
+  });
 });
 
 describe('readEvents', () => {
