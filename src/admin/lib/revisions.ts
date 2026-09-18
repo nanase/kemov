@@ -48,13 +48,6 @@ const TARGET_LABEL: Record<string, string> = {
   genet_music: 'ジェネット楽曲一覧',
 };
 
-// created_via's two values, in one place so nothing else spells 'admin' or
-// 'claude_code' out as a label of its own - HQ's decision (2026-09-19).
-const CREATED_VIA_LABEL: Record<string, string> = {
-  admin: '管理サイト',
-  claude_code: 'Claude Code',
-};
-
 export const ENTITIES = Object.keys(ENTITY_LABEL);
 export const ACTIONS = Object.keys(ACTION_LABEL);
 
@@ -68,10 +61,6 @@ export function actionLabel(action: string): string {
 
 export function targetLabel(target: string): string {
   return TARGET_LABEL[target] ?? target;
-}
-
-export function createdViaLabel(createdVia: string): string {
-  return CREATED_VIA_LABEL[createdVia] ?? createdVia;
 }
 
 export interface RevisionFilters {

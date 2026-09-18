@@ -100,6 +100,7 @@ export interface Channel {
   latest: Record<CountName, number | null>;
   perHour: Record<CountName, Delta>;
   perDay: Record<CountName, Delta>;
+  per30Days: Record<CountName, Delta>;
 }
 
 export function readChannel(value: unknown, path: string): Channel {
@@ -133,6 +134,7 @@ export function readChannel(value: unknown, path: string): Channel {
     ) as Record<CountName, number | null>,
     perHour: readDeltas(field(value, 'perHour', path), `${path}.perHour`),
     perDay: readDeltas(field(value, 'perDay', path), `${path}.perDay`),
+    per30Days: readDeltas(field(value, 'per30Days', path), `${path}.per30Days`),
   };
 }
 
@@ -319,5 +321,141 @@ export function readLiveList(body: unknown): LiveList {
   return {
     streams: readEach(field(body, 'streams', 'body'), 'body.streams', readLiveStream),
     excludedFreeChats: readNumber(field(body, 'excludedFreeChats', 'body'), 'body.excludedFreeChats'),
+  };
+}
+
+/**
+ * The series `GET /api/months` carries for each member and for the sum.
+ *
+ * Every array has one entry per month in `months`, in the same order. A null
+ * is not a zero: in a member's own series it means the month is before their
+ * debut, and in `subscribers` it means no count was read that month.
+ */
+export const MONTH_SERIES = [
+  'streams',
+  'videos',
+  'shorts',
+  'streamSeconds',
+  'chatMessages',
+  'chatUniqueUsers',
+  'views',
+] as const;
+
+export type MonthSeriesName = (typeof MONTH_SERIES)[number];
+
+export type ChannelMonths = { channelId: string } & Record<MonthSeriesName, (number | null)[]> & {
+    /**
+     * What this member's subscriber count was read as that month.
+     *
+     * Null where no snapshot covers the month, which is every month before
+     * collection started (#125). `total.subscribers` is not this summed - see
+     * below.
+     */
+    subscribers: (number | null)[];
+  };
+
+/**
+ * The same series for every member at once.
+ *
+ * `subscribers` carries an ended member's last known count forward rather
+ * than dropping it, which is what #134 asks of the total and what a member's
+ * own series deliberately does not do.
+ */
+export type MonthTotals = Record<MonthSeriesName, number[]> & { subscribers: (number | null)[] };
+
+export interface MonthsSeries {
+  /** The newest reading behind these numbers, or null when there is none yet. */
+  fetchedAt: Dayjs | null;
+  /** Every month from the earliest debut to the current one, as 'YYYY-MM'. */
+  months: string[];
+  channels: ChannelMonths[];
+  total: MonthTotals;
+}
+
+function readCounts(value: unknown, path: string, name: string): (number | null)[] {
+  return readEach(field(value, name, path), `${path}.${name}`, (v, p) => readOrNull(v, p, readNumber));
+}
+
+function readChannelMonths(value: unknown, path: string): ChannelMonths {
+  return {
+    channelId: readString(field(value, 'channelId', path), `${path}.channelId`),
+    ...(Object.fromEntries(MONTH_SERIES.map((name) => [name, readCounts(value, path, name)])) as Record<
+      MonthSeriesName,
+      (number | null)[]
+    >),
+    subscribers: readCounts(value, path, 'subscribers'),
+  };
+}
+
+function readMonthTotals(value: unknown, path: string): MonthTotals {
+  return {
+    ...(Object.fromEntries(
+      MONTH_SERIES.map((name) => [name, readEach(field(value, name, path), `${path}.${name}`, readNumber)]),
+    ) as Record<MonthSeriesName, number[]>),
+    subscribers: readCounts(value, path, 'subscribers'),
+  };
+}
+
+export function readMonthsSeries(body: unknown): MonthsSeries {
+  return {
+    fetchedAt: readOrNull(field(body, 'fetchedAt', 'body'), 'body.fetchedAt', (v, p) => dayjs(readInstant(v, p))),
+    months: readEach(field(body, 'months', 'body'), 'body.months', readString),
+    channels: readEach(field(body, 'channels', 'body'), 'body.channels', readChannelMonths),
+    total: readMonthTotals(field(body, 'total', 'body'), 'body.total'),
+  };
+}
+
+/** One finished stream, as `GET /api/streams` reports the recent ones. */
+export interface RecentStream {
+  videoId: string;
+  title: string;
+  actualStartTime: Dayjs;
+  actualEndTime: Dayjs;
+  durationSeconds: number | null;
+  viewCount: number | null;
+  chatMessageCount: number | null;
+}
+
+function readRecentStream(value: unknown, path: string): RecentStream {
+  const count = (name: string) => readOrNull(field(value, name, path), `${path}.${name}`, readNumber);
+
+  return {
+    videoId: readString(field(value, 'videoId', path), `${path}.videoId`),
+    title: readString(field(value, 'title', path), `${path}.title`),
+    actualStartTime: dayjs(readInstant(field(value, 'actualStartTime', path), `${path}.actualStartTime`)),
+    actualEndTime: dayjs(readInstant(field(value, 'actualEndTime', path), `${path}.actualEndTime`)),
+    durationSeconds: count('durationSeconds'),
+    viewCount: count('viewCount'),
+    chatMessageCount: count('chatMessageCount'),
+  };
+}
+
+export interface ChannelStreams {
+  channelId: string;
+  /**
+   * Every finished stream as a `[week minute, minutes]` pair, flattened.
+   *
+   * Two numbers per stream rather than an object each, which is how the
+   * endpoint sends it: this array carries thousands of streams and the pairs
+   * are read by position, never by name.
+   */
+  spans: number[];
+  /** The most recent streams, newest first. */
+  recent: RecentStream[];
+}
+
+export interface StreamList {
+  fetchedAt: Dayjs | null;
+  channels: ChannelStreams[];
+}
+
+export function readStreamList(body: unknown): StreamList {
+  return {
+    fetchedAt: readOrNull(field(body, 'fetchedAt', 'body'), 'body.fetchedAt', (v, p) => dayjs(readInstant(v, p))),
+    channels: readEach(field(body, 'channels', 'body'), 'body.channels', (value, path) => ({
+      channelId: readString(field(value, 'channelId', path), `${path}.channelId`),
+      spans: readEach(field(value, 'spans', path), `${path}.spans`, readNumber),
+      recent: readEach(field(value, 'recent', path), `${path}.recent`, readRecentStream),
+    })),
   };
 }

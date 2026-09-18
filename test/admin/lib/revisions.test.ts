@@ -1,26 +1,16 @@
-import {
-  actionLabel,
-  createdViaLabel,
-  entityLabel,
-  formatBytes,
-  revisionsQuery,
-  targetLabel,
-} from '@/admin/lib/revisions';
+import { actionLabel, entityLabel, formatBytes, revisionsQuery, targetLabel } from '@/admin/lib/revisions';
 
-describe('entityLabel and actionLabel and targetLabel and createdViaLabel', () => {
+describe('entityLabel and actionLabel and targetLabel', () => {
   test('label a known value', () => {
     expect(entityLabel('channel')).toEqual('メンバー');
     expect(actionLabel('publish')).toEqual('公開');
     expect(targetLabel('footprints')).toEqual('あしあと');
-    expect(createdViaLabel('admin')).toEqual('管理サイト');
-    expect(createdViaLabel('claude_code')).toEqual('Claude Code');
   });
 
   test('fall back to the raw value for an unknown one', () => {
     expect(entityLabel('future_entity')).toEqual('future_entity');
     expect(actionLabel('future_action')).toEqual('future_action');
     expect(targetLabel('future_target')).toEqual('future_target');
-    expect(createdViaLabel('future_via')).toEqual('future_via');
   });
 });
 
