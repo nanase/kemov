@@ -68,6 +68,53 @@ describe('publicDataResponse', () => {
     expect(response.status).toEqual(200);
   });
 
+  // RFC 7232 §3.2: If-None-Match is a comma-separated list of entity-tags,
+  // or a bare *, not one bare tag - a browser holding more than one cached
+  // response for this URL (there should only ever be one, but the header
+  // does not promise that) sends every ETag it has.
+  test('answers 304 when the current ETag is one of several in If-None-Match', async () => {
+    const put = await putObject(KEY, '{"events":[]}');
+
+    const response = await publicDataResponse(
+      request({ headers: { 'If-None-Match': `"not-this-one", ${put.httpEtag}, "not-this-one-either"` } }),
+      env,
+      KEY,
+    );
+
+    expect(response.status).toEqual(304);
+  });
+
+  test('answers 304 for a bare *', async () => {
+    await putObject(KEY, '{"events":[]}');
+
+    const response = await publicDataResponse(request({ headers: { 'If-None-Match': '*' } }), env, KEY);
+
+    expect(response.status).toEqual(304);
+  });
+
+  // Weak comparison (RFC 7232 §2.3.2) is what GET/HEAD's own If-None-Match
+  // uses: a weak tag over the same value as the current strong one still
+  // means "I already have this".
+  test('answers 304 for a weak (W/) tag over the same value as the current ETag', async () => {
+    const put = await putObject(KEY, '{"events":[]}');
+
+    const response = await publicDataResponse(request({ headers: { 'If-None-Match': `W/${put.httpEtag}` } }), env, KEY);
+
+    expect(response.status).toEqual(304);
+  });
+
+  test('serves the object in full when none of several If-None-Match tags match', async () => {
+    await putObject(KEY, '{"events":[]}');
+
+    const response = await publicDataResponse(
+      request({ headers: { 'If-None-Match': '"not-this-one", "not-this-one-either"' } }),
+      env,
+      KEY,
+    );
+
+    expect(response.status).toEqual(200);
+  });
+
   test('answers HEAD the same as GET, without a body', async () => {
     await putObject(KEY, '{"events":[]}');
 

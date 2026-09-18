@@ -16,6 +16,57 @@ import { CACHE_SECONDS, errorWithCacheHeaders } from './cache';
  * request, rather than from a second, conditional shape of the same call.
  */
 
+/**
+ * The entity-tags an `If-None-Match` header names, or `'any'` for a bare
+ * `*` (RFC 7232 §3.2). A comma inside a quoted tag is not a separator - not
+ * that R2's own tags ever contain one, but a header this reads is a caller's
+ * to shape, not R2's.
+ */
+function parseIfNoneMatch(header: string): readonly string[] | 'any' {
+  const trimmed = header.trim();
+
+  if (trimmed === '*') return 'any';
+
+  const tags: string[] = [];
+  let index = 0;
+
+  while (index < trimmed.length) {
+    while (index < trimmed.length && /[\s,]/.test(trimmed[index])) index++;
+
+    if (index >= trimmed.length) break;
+
+    const start = index;
+
+    if (trimmed.startsWith('W/', index)) index += 2;
+
+    if (trimmed[index] === '"') {
+      index++;
+
+      while (index < trimmed.length && trimmed[index] !== '"') index++;
+
+      index++;
+    }
+
+    tags.push(trimmed.slice(start, index));
+  }
+
+  return tags;
+}
+
+/** An entity-tag with any `W/` weak-comparison prefix removed, so a weak and a strong tag over the same value compare equal. */
+function withoutWeakPrefix(tag: string): string {
+  return tag.startsWith('W/') ? tag.slice(2) : tag;
+}
+
+/** Whether `etag` (always a strong tag - R2's own) is one `ifNoneMatch` names, under the weak comparison RFC 7232 §2.3.2 asks GET/HEAD to use. */
+function ifNoneMatchIncludes(ifNoneMatch: readonly string[] | 'any', etag: string): boolean {
+  if (ifNoneMatch === 'any') return true;
+
+  const target = withoutWeakPrefix(etag);
+
+  return ifNoneMatch.some((tag) => withoutWeakPrefix(tag) === target);
+}
+
 /** The body of an object this bucket has, or null for one it does not. */
 async function answerFor(request: Request, object: R2ObjectBody): Promise<Response> {
   const headers = new Headers({
@@ -30,7 +81,7 @@ async function answerFor(request: Request, object: R2ObjectBody): Promise<Respon
 
   const ifNoneMatch = request.headers.get('If-None-Match');
 
-  if (ifNoneMatch !== null && ifNoneMatch === object.httpEtag) {
+  if (ifNoneMatch !== null && ifNoneMatchIncludes(parseIfNoneMatch(ifNoneMatch), object.httpEtag)) {
     return new Response(null, { status: 304, headers });
   }
 
