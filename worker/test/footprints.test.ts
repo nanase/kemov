@@ -360,4 +360,19 @@ describe('readEvents', () => {
 
     expect(result.size).toEqual(0);
   });
+
+  // The same limit, exercised through real rows rather than ids nothing
+  // answers to - readEvents (via listEvents) reads every column back, not
+  // only whether a row exists.
+  test('reads more real events than one D1 statement can bind', async () => {
+    const count = 150;
+
+    for (let i = 0; i < count; i++) {
+      await createEvent(env, validBody({ title: `できごと${i}` }));
+    }
+
+    const body = (await listEvents(env, null, null).then((r) => r.json())) as { events: unknown[] };
+
+    expect(body.events).toHaveLength(count);
+  }, 20000);
 });
