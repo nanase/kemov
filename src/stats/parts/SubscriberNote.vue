@@ -21,13 +21,17 @@ const open = ref(false);
 const dialog = ref<HTMLElement | null>(null);
 
 const range = computed(() => {
+  const keys = ['最小値', '平均値', '最大値'];
   let low = 0;
   let high = 0;
 
-  subjects.forEach((subject) => {
+  for (const subject of subjects) {
     const count = subject.counts.subscriberCount;
 
-    if (count === null) return;
+    // A member whose count was not read cannot be left out of the sum: what
+    // came back would then be the range of the others, under a heading that
+    // says it covers everyone. The three figures are unknown together.
+    if (count === null) return keys.map((key) => ({ key, value: '不明' }));
 
     // The reading is rounded down to three figures, so the true count is
     // somewhere in the step it was rounded by.
@@ -35,13 +39,12 @@ const range = computed(() => {
 
     low += count;
     high += count + step - 1;
-  });
+  }
 
-  return [
-    { key: '最小値', value: formatCount(low) },
-    { key: '平均値', value: formatCount((low + high) / 2) },
-    { key: '最大値', value: formatCount(high) },
-  ];
+  return [formatCount(low), formatCount((low + high) / 2), formatCount(high)].map((value, index) => ({
+    key: keys[index]!,
+    value,
+  }));
 });
 
 watch(open, async (on) => {
