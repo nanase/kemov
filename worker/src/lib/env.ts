@@ -18,6 +18,15 @@ export interface Env {
   /** R2. Where the admin site's published JSON lives, for the site to read (#144). Not backed up. */
   PUBLIC_DATA: R2Bucket;
 
+  /**
+   * The built site (`dist/`), the same files `[assets]` in wrangler.toml
+   * already serves directly. This binding exists so the worker can fetch one
+   * of those files itself - `/members/<id>` and `/videos/<id>` rewrite a
+   * page's `<title>` and `og:title` before answering, rather than being a
+   * file of their own (#137, #144).
+   */
+  ASSETS: Fetcher;
+
   /** YouTube Data API v3 key, set with `wrangler secret put YOUTUBE_API_KEY`. */
   YOUTUBE_API_KEY: string;
 

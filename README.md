@@ -123,6 +123,7 @@ Collection and the HTTP API run as one Cloudflare Worker. Its code lives under `
 ```text
 worker/src/collector/   scheduled collection jobs
 worker/src/api/         the HTTP API
+worker/src/pages/       /members/<id> (see below)
 worker/src/lib/         shared code
 worker/test/            tests
 ```
@@ -184,6 +185,14 @@ For local runs, put the same names in `.dev.vars` at the repository root as `NAM
 Every `/admin/api/*` request is also checked by the worker itself, in `worker/src/lib/access.ts`: it fetches Access's own public keys from `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs` and verifies the `Cf-Access-Jwt-Assertion` header's signature, `iss`, `aud` and `exp`/`nbf` against them, the same way Access's own edge does, and refuses the request otherwise. This is not a substitute for Access — the policy in front of `/admin` is what actually authorizes a caller — it exists so that a request is still refused here, rather than reaching a route that writes to D1 or to the public bucket unchecked, if that policy is ever removed or misconfigured. An earlier version compared only the `aud` claim without checking the signature; #144's review found that too little for a route meant to write, so this checks the signature instead (2026-09-18).
 
 `ACCESS_AUD` is the `aud` tag of the Access application in front of `/admin`, and `ACCESS_TEAM_DOMAIN` is that Access team's domain (e.g. `nanase.cloudflareaccess.com`) — a `[vars]` entry in `wrangler.toml`, not a secret, because it is the same domain a browser is already sent to for the Access login page. With either `ACCESS_AUD` or `ACCESS_TEAM_DOMAIN` unset, or with a key set that cannot be fetched, every `/admin/api/*` request is refused, Access policy notwithstanding.
+
+### `/members/<id>`
+
+`/members/<channel id>` is a permalink to one member (#137), so that sharing it carries that member's name rather than the site's own title. There is no page of its own yet — a later PR adds one — so today `worker/src/pages/index.ts` rewrites whatever `ASSETS` serves at `/members/` and answers 404, unrewritten, until that page exists. The worker reaches this request the same way it reaches `/api/*`: no built file answers `/members/<id>` exactly, so Cloudflare wakes the worker instead of serving one directly.
+
+`[assets]` in `wrangler.toml` carries a `binding = "ASSETS"` for this reason — `directory` alone, which every other page already relies on, only lets Cloudflare serve a matching file itself and gives the worker no way to fetch one. `env.ASSETS.fetch()` reads the exact same built files that binding already serves.
+
+A request's id is checked against the shape YouTube gives a channel — `UC` followed by 22 characters — before D1 is asked, and answered 404 without a query if it does not match. A well-shaped id D1 has no row for is also 404. Once a row is found, the page's `<title>`, `og:title` and `og:url` are rewritten with `HTMLRewriter`, and its `ETag` is dropped: the header would otherwise still name the unrewritten body, and a conditional request against it could get a `304` carrying the wrong title.
 
 ## Database
 
