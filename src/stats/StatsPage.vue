@@ -184,10 +184,17 @@ function select(id: string) {
  * record (#134). The navigation belongs to the shell above this page, so the
  * page marks the document and the style block below reaches it from there.
  * The mark is removed as the page closes, so it cannot outlive it.
+ *
+ * The record is closed with it: under 900px an open record hides the list, and
+ * minimal display takes the record away, which would leave nothing on screen.
  */
 watch(minimal, (on) => {
-  if (on) document.documentElement.dataset.statsMinimal = '1';
-  else delete document.documentElement.dataset.statsMinimal;
+  if (on) {
+    sheetOpen.value = false;
+    document.documentElement.dataset.statsMinimal = '1';
+  } else {
+    delete document.documentElement.dataset.statsMinimal;
+  }
 });
 
 function readTheme() {
