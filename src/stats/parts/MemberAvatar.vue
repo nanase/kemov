@@ -32,6 +32,8 @@ const errors = ref(0);
 /** Bumped to ask again: the element is rebuilt, so the browser re-requests. */
 const token = ref(0);
 const failed = ref(false);
+/** True through the wait before the one retry. */
+const waiting = ref(false);
 
 watch(
   () => src,
@@ -39,6 +41,7 @@ watch(
     errors.value = 0;
     token.value = 0;
     failed.value = false;
+    waiting.value = false;
   },
 );
 
@@ -53,12 +56,16 @@ function onError() {
     return;
   }
 
+  // The stand-in shows through the wait as well. Left in place, the picture
+  // that failed would be a gap in the row for as long as the wait lasts.
+  waiting.value = true;
   window.setTimeout(() => {
+    waiting.value = false;
     token.value += 1;
   }, RETRY_MS);
 }
 
-const shown = computed(() => (src === null || failed.value ? null : src));
+const shown = computed(() => (src === null || failed.value || waiting.value ? null : src));
 const initial = computed(() => [...name][0] ?? '');
 const style = computed(() => ({
   width: `${size}px`,
