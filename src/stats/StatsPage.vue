@@ -9,12 +9,16 @@ import { formatDate, formatDateTime } from '@/lib/timeFormat';
 import {
   announcementsOf,
   freshnessOf,
+  HEAT_STEPS,
+  knownId,
   METRICS,
   PERIODS,
+  SERIES,
   subjectOf,
   totalOf,
   TOTAL_ID,
   type AnnouncementKind,
+  type HeatStep,
   type MetricId,
   type PeriodId,
   type SeriesId,
@@ -50,8 +54,15 @@ let clock: ReturnType<typeof setInterval> | undefined;
 const metric = useStorage<MetricId>('kemov/stats/metric', 'subscriberCount');
 const period = useStorage<PeriodId>('kemov/stats/period', 'perDay');
 const series = useStorage<SeriesId>('kemov/stats/series', 'streams');
-const step = useStorage<number>('kemov/stats/heatStep', 60);
+const step = useStorage<HeatStep>('kemov/stats/heatStep', 60);
 const activeOnly = useStorage<boolean>('kemov/stats/activeOnly', false);
+
+// The store hands back what is in it, not what this page can draw. Anything
+// it does not recognise starts the reader off at the default instead.
+metric.value = knownId(METRICS, metric.value, 'subscriberCount');
+period.value = knownId(PERIODS, period.value, 'perDay');
+series.value = knownId(SERIES, series.value, 'streams');
+step.value = knownId(HEAT_STEPS, step.value, 60);
 
 const selected = ref<string>(TOTAL_ID);
 const sheetOpen = ref(false);

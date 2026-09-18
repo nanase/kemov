@@ -4,12 +4,15 @@ import { computed } from 'vue';
 import { changeSign, formatChange, formatCount, memberAccent, memberColor } from '../draw';
 import {
   deltaOf,
+  HEAT_STEPS,
+  knownId,
   METRICS,
   periodLabel,
   seriesDef,
   SERIES,
   valueOf,
   type AnnouncementKind,
+  type HeatStep,
   type MetricId,
   type PeriodId,
   type SeriesId,
@@ -35,7 +38,7 @@ const { subject, metric, period, series, step, months, dark, state, streams, hea
   period: PeriodId;
   series: SeriesId;
   /** Minutes per heatmap cell. */
-  step: number;
+  step: HeatStep;
   months: readonly string[];
   dark: boolean;
   /** Whether this member is on air or due to start, when they are. */
@@ -45,14 +48,11 @@ const { subject, metric, period, series, step, months, dark, state, streams, hea
   heading: string;
 }>();
 
-const emit = defineEmits<{ metric: [id: MetricId]; series: [id: SeriesId]; step: [minutes: number]; close: [] }>();
+const emit = defineEmits<{ metric: [id: MetricId]; series: [id: SeriesId]; step: [minutes: HeatStep]; close: [] }>();
 
-const STEPS = [
-  { id: '60', label: '1時間' },
-  { id: '30', label: '30分' },
-  { id: '10', label: '10分' },
-  { id: '1', label: '1分' },
-];
+// The same list the page checks the kept choice against, as the buttons need
+// it: one row of ids, written the way a segment group reads them.
+const STEPS = HEAT_STEPS.map(({ id, label }) => ({ id: String(id), label }));
 
 const colors = computed(() =>
   subject.color === null
@@ -160,7 +160,12 @@ const seriesItems = SERIES.map((s) => ({
       <div class="block-head">
         <div class="lead">
           <h3>配信時刻ヒートマップ</h3>
-          <SegmentGroup :items="STEPS" :value="String(step)" label="刻み" @pick="emit('step', Number($event))" />
+          <SegmentGroup
+            :items="STEPS"
+            :value="String(step)"
+            label="刻み"
+            @pick="emit('step', knownId(HEAT_STEPS, Number($event), 60))"
+          />
         </div>
       </div>
       <StreamHeatmap :spans="subject.spans" :step="step" :color="subject.color" />

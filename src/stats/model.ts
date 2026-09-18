@@ -57,6 +57,30 @@ export const SERIES = [
 export type SeriesId = (typeof SERIES)[number]['id'];
 export type SeriesKind = 'flow' | 'level';
 
+/** How finely the heatmap can be cut, in minutes per cell. */
+export const HEAT_STEPS = [
+  { id: 60, label: '1時間' },
+  { id: 30, label: '30分' },
+  { id: 10, label: '10分' },
+  { id: 1, label: '1分' },
+] as const;
+
+export type HeatStep = (typeof HEAT_STEPS)[number]['id'];
+
+/**
+ * A choice kept from last time, checked against the list it came from.
+ *
+ * What the browser hands back is whatever is in its store: text somebody
+ * edited, or an id this page offered in an earlier version and no longer
+ * knows. An unknown metric reads a definition that is not there and the page
+ * stops drawing; a step of 0 asks `heatGrid` for a row of infinite length.
+ * Every list above is checked the same way, so renaming an id is a change in
+ * one place.
+ */
+export function knownId<T extends string | number>(list: readonly { id: T }[], value: unknown, fallback: T): T {
+  return list.some((item) => item.id === value) ? (value as T) : fallback;
+}
+
 export interface SeriesDef {
   id: SeriesId;
   label: string;

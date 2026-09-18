@@ -6,9 +6,15 @@ import {
   dayPeaks,
   deltaOf,
   freshnessOf,
+  HEAT_STEPS,
   heatGrid,
   heatPeak,
+  knownId,
+  METRICS,
+  metricDef,
   monthlyGain,
+  SERIES,
+  seriesDef,
   subjectOf,
   totalOf,
   valueOf,
@@ -201,6 +207,35 @@ describe('totalOf', () => {
 
     expect(valueOf(total, 'chatCount')).toEqual(600);
     expect(deltaOf(total, 'chatCount', 'perDay')).toBeNull();
+  });
+});
+
+describe('knownId', () => {
+  test('keeps a choice the list still has', () => {
+    expect(knownId(METRICS, 'viewCount', 'subscriberCount')).toEqual('viewCount');
+    expect(knownId(HEAT_STEPS, 10, 60)).toEqual(10);
+  });
+
+  // What the browser kept could be anything: hand-edited, or an id an earlier
+  // version of this page offered and this one no longer has.
+  test.each([['subscribers'], [''], [null], [undefined], [0], [{}]])('falls back for the metric %s', (value) => {
+    expect(knownId(METRICS, value, 'subscriberCount')).toEqual('subscriberCount');
+  });
+
+  test.each([[0], [-30], [7.5], [90], ['60'], [null]])('falls back for the step %s', (value) => {
+    expect(knownId(HEAT_STEPS, value, 60)).toEqual(60);
+  });
+
+  // The point of the check: every part that reads one of these keeps working.
+  test('leaves every reader with something it can draw', () => {
+    const metric = knownId(METRICS, 'gone', 'subscriberCount');
+    const series = knownId(SERIES, 'gone', 'streams');
+    const step = knownId(HEAT_STEPS, 0, 60);
+
+    expect(metricDef(metric).series).toBeDefined();
+    expect(seriesDef(series).kind).toBeDefined();
+    expect(() => heatGrid([60, 60], step)).not.toThrow();
+    expect(heatGrid([60, 60], step)[0]).toHaveLength(24);
   });
 });
 
