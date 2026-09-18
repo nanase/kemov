@@ -20,6 +20,7 @@ import {
 } from './model';
 import AsideList from './parts/AsideList.vue';
 import TimelineView from './parts/TimelineView.vue';
+import TrailMap from './parts/TrailMap.vue';
 import { useFootprintsData } from './useFootprintsData';
 import type { EventKind } from '@/type/api';
 
@@ -127,6 +128,11 @@ function jumpToStart() {
 
 function jumpToNow() {
   document.querySelector('.timeline .row.now')?.scrollIntoView({ block: 'center' });
+}
+
+/** Pressing a month on the trajectory sends the timeline to that month. */
+function jumpToMonth(month: string) {
+  document.querySelector(`[data-month="${month}"]`)?.scrollIntoView({ block: 'start' });
 }
 
 function openItem(key: string) {
@@ -296,9 +302,25 @@ onBeforeUnmount(() => {
             />
           </div>
 
-          <div class="jump" role="group" aria-label="年表の端へ送る">
-            <button type="button" class="order" @click="jumpToStart">はじまり</button>
-            <button type="button" class="order" @click="jumpToNow">いま</button>
+          <div class="stuck">
+            <div class="fp-panel side map-card">
+              <h2 class="map-head">軌跡</h2>
+              <TrailMap
+                :events="items"
+                :rows="data.rows.value"
+                :channels="data.channels.value"
+                :filters
+                :now
+                :dark
+                @month="jumpToMonth"
+                @member="toggleMember"
+              />
+            </div>
+
+            <div class="jump" role="group" aria-label="年表の端へ送る">
+              <button type="button" class="order" @click="jumpToStart">はじまり</button>
+              <button type="button" class="order" @click="jumpToNow">いま</button>
+            </div>
           </div>
         </aside>
       </div>
@@ -321,7 +343,10 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 292px;
   gap: 22px;
-  align-items: start;
+
+  /* Stretched, not started: the rail has to be as tall as the timeline for
+     the trajectory inside it to have anywhere to stick to. */
+  align-items: stretch;
   min-width: 0;
 }
 
@@ -357,6 +382,28 @@ onBeforeUnmount(() => {
 
 .more:hover {
   border-color: var(--k-line-2);
+}
+
+/* The trajectory and the two buttons under it stay put as the page is read.
+   They are separate objects that share a way of sticking (#140), which is why
+   the panel and the buttons are laid out apart and only the wrapper sticks. */
+.stuck {
+  display: flex;
+  position: sticky;
+  top: calc(var(--shell-nav-height, 44px) + 14px);
+  flex-direction: column;
+  gap: 12px;
+}
+
+.map-card {
+  padding: 10px 12px 12px;
+}
+
+.map-head {
+  margin: 0 0 10px;
+  color: var(--k-text-2);
+  font-size: 12.5px;
+  font-weight: 700;
 }
 
 /* Two places a reader always wants to get back to, kept beside the road
