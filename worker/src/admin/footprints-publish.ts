@@ -82,6 +82,15 @@ export async function publishEvent(env: Env, eventId: number): Promise<Response>
   // the UPDATE's own WHERE: publishing an already-published event is meant
   // to succeed (see this function's own doc comment above), not be treated
   // as the same "nothing to do" case as a deleted row.
+  //
+  // This closes the delete race, not an update race: a concurrent updateEvent
+  // that finishes after `readEvent` above but before this batch runs still
+  // logs a `publish` revision built from the now-stale `saved` - EXISTS only
+  // asks whether a row is there, not whether it is the one this function
+  // read. Accepted for the same reason as the missing `version` column above,
+  // and closed the same way once there is one: a conditional UPDATE and a
+  // revision INSERT gated on it actually having changed the row, rather than
+  // on the row merely existing.
   const results = await env.DB.batch([
     env.DB.prepare(`UPDATE footprints_event SET status = 'published' WHERE event_id = ?1`).bind(eventId),
     env.DB.prepare(
