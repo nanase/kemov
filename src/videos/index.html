@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <load
+      src="../shell/head.html"
+      title="けもV 配信・動画"
+      description="けもVの配信・動画を、指標ごとに検索・絞り込みできる非公式のファンサイトです。"
+      page-path="videos/"
+    />
+  </head>
+
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp } from 'vue';
+
+      import '../shell/tokens.css';
+      import '../shell/base.css';
+      import VideosPage from './VideosPage.vue';
+
+      createApp(VideosPage).mount('#app');
+    </script>
+  </body>
+</html>

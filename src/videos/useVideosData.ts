@@ -32,8 +32,16 @@ const RETRY_SECONDS = 600;
 export interface VideosData {
   channels: Ref<Channel[]>;
   rows: Ref<VideoTableRow[]>;
+  /**
+   * When the channel list was read, as the API reports it.
+   *
+   * The badge and the three-step freshness read this one, not the video
+   * table's own age: the channel list is what the collector refreshes on the
+   * fast rhythm, so it is the one number that says how current the page is.
+   */
+  channelsFetchedAt: Ref<number | null>;
   /** When the video table was built, as the API reports it. */
-  fetchedAt: Ref<number | null>;
+  tableFetchedAt: Ref<number | null>;
   /** True until both endpoints have answered once. */
   loading: Ref<boolean>;
   /** The last failure, or null once something arrived again. */
@@ -45,7 +53,8 @@ export interface VideosData {
 export function useVideosData(): VideosData {
   const channels = ref<Channel[]>([]);
   const rows = ref<VideoTableRow[]>([]);
-  const fetchedAt = ref<number | null>(null);
+  const channelsFetchedAt = ref<number | null>(null);
+  const tableFetchedAt = ref<number | null>(null);
   const channelsArrived = ref(false);
   const tableArrived = ref(false);
 
@@ -55,6 +64,7 @@ export function useVideosData(): VideosData {
       const { data } = await getChannels();
 
       channels.value = data.channels;
+      channelsFetchedAt.value = data.fetchedAt?.valueOf() ?? null;
       channelsArrived.value = true;
 
       return CHANNELS_SECONDS * 1000;
@@ -68,7 +78,7 @@ export function useVideosData(): VideosData {
       const { data } = await getVideosTable();
 
       rows.value = rowsFrom(data);
-      fetchedAt.value = data.fetchedAt?.valueOf() ?? null;
+      tableFetchedAt.value = data.fetchedAt?.valueOf() ?? null;
       tableArrived.value = true;
 
       return TABLE_SECONDS * 1000;
@@ -81,7 +91,8 @@ export function useVideosData(): VideosData {
   return {
     channels,
     rows,
-    fetchedAt,
+    channelsFetchedAt,
+    tableFetchedAt,
     loading: computed(() => !channelsArrived.value || !tableArrived.value) as Ref<boolean>,
     failure: computed(
       () => failureOf(channelsFetch.error.value) ?? failureOf(tableFetch.error.value),
