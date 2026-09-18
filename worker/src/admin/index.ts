@@ -2,6 +2,8 @@ import type { CertsCache } from '../lib/access';
 import { verifyAccess } from '../lib/access';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
+import { createEvent, deleteEvent, getEvent, listEvents, updateEvent } from './footprints';
+import { pendingFootprints, publishEvent, publishFootprintsNow, withdrawEvent } from './footprints-publish';
 import { listMembers, updateMember } from './members';
 import { deleteSnapshotExclusion, listSnapshotExclusions, saveSnapshotExclusion } from './snapshot-exclusions';
 import { deleteVideoOverride, listVideoOverrides, saveVideoOverride } from './video-overrides';
@@ -18,9 +20,9 @@ import { deleteVideoOverride, listVideoOverrides, saveVideoOverride } from './vi
  * `now`, `fetchImpl` and `certsCache` exist only so a test can hand
  * `verifyAccess` a key fetch and a clock of its own; every real caller leaves
  * all three out and gets `verifyAccess`'s own defaults. The same `now`, once
- * resolved, is also what a save stamps its own timestamp with (see
- * video-overrides.ts): one instant for the whole request rather than two
- * clock reads a moment apart.
+ * resolved, is also what "publish now" stamps `published_at` with, and what a
+ * save stamps its own timestamp with (see video-overrides.ts): one instant
+ * for the whole request rather than two clock reads a moment apart.
  */
 export async function handleAdminRequest(
   request: Request,
@@ -36,15 +38,23 @@ export async function handleAdminRequest(
   // is nothing here for it to be compared against. segments.length below
   // counts these raw segments, so decoding happens after: it must not change
   // how many of them there are.
-  const [, resource, name, rawId, rawId2] = segments;
+  //
+  // The last two positions mean different things for different resources:
+  // footprints' own routes use them as a literal word (`sub`, e.g. 'events'
+  // or 'publish') and an action (`action`, e.g. 'publish' or 'withdraw'),
+  // while members/video-overrides/snapshot-exclusions use the same two slots
+  // as a second id instead - snapshot-exclusions needs both a channel_id and
+  // a fetched_at. `id` and `id2` below decode whichever of the two a given
+  // route actually reads as an id.
+  const [, resource, name, sub, rawId, action] = segments;
   // channel_snapshot_exclusion's fetched_at (2026-09-08T00:00:00Z) has colons
   // in it, which a caller that percent-encodes a path segment - the ordinary
   // way to build one from an arbitrary string - turns into %3A. Left
   // undecoded, that value would never match the row it names. A segment that
   // fails to decode (a malformed % escape) becomes undefined, the same as
   // one that was never there, and falls through to the 404 below.
-  const id = decodeSegment(rawId);
-  const id2 = decodeSegment(rawId2);
+  const id = decodeSegment(sub);
+  const id2 = decodeSegment(rawId);
 
   if (resource !== 'api') return errorResponse(404, `no endpoint at ${pathname}`);
 
@@ -67,6 +77,61 @@ export async function handleAdminRequest(
     return jsonResponse({ email: identity.email });
   }
 
+  if (segments.length === 4 && name === 'footprints' && sub === 'events') {
+    if (request.method === 'POST') {
+      const body = await readJsonObject(request);
+
+      return 'error' in body ? body.error : await createEvent(env, body.value);
+    }
+
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET, POST');
+
+    const { searchParams } = new URL(request.url);
+
+    return await listEvents(env, searchParams.get('status'), searchParams.get('q'));
+  }
+
+  if (segments.length === 5 && name === 'footprints' && sub === 'events' && id2 !== undefined) {
+    const eventId = readEventId(id2);
+
+    if (eventId === null) return errorResponse(404, `no footprints event ${id2}`);
+
+    if (request.method === 'GET') return await getEvent(env, eventId);
+
+    if (request.method === 'DELETE') return await deleteEvent(env, eventId);
+
+    if (request.method !== 'PUT') return methodNotAllowed(request, 'GET, PUT, DELETE');
+
+    const body = await readJsonObject(request);
+
+    return 'error' in body ? body.error : await updateEvent(env, eventId, body.value);
+  }
+
+  if (segments.length === 6 && name === 'footprints' && sub === 'events' && id2 !== undefined) {
+    const eventId = readEventId(id2);
+
+    if (eventId === null) return errorResponse(404, `no footprints event ${id2}`);
+
+    if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
+
+    if (action === 'publish') return await publishEvent(env, eventId);
+    if (action === 'withdraw') return await withdrawEvent(env, eventId);
+
+    return errorResponse(404, `no endpoint at ${pathname}`);
+  }
+
+  if (segments.length === 4 && name === 'footprints' && sub === 'pending') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    return await pendingFootprints(env);
+  }
+
+  if (segments.length === 4 && name === 'footprints' && sub === 'publish') {
+    if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
+
+    return await publishFootprintsNow(env, instant);
+  }
+
   if (segments.length === 3 && name === 'members') {
     if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
 
@@ -79,22 +144,6 @@ export async function handleAdminRequest(
     const body = await readJsonObject(request);
 
     return 'error' in body ? body.error : await updateMember(env, id, body.value);
-  }
-
-  if (segments.length === 3 && name === 'video-overrides') {
-    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
-
-    return await listVideoOverrides(env);
-  }
-
-  if (segments.length === 4 && name === 'video-overrides' && id !== undefined) {
-    if (request.method === 'DELETE') return await deleteVideoOverride(env, id);
-
-    if (request.method !== 'PUT') return methodNotAllowed(request, 'PUT, DELETE');
-
-    const body = await readJsonObject(request);
-
-    return 'error' in body ? body.error : await saveVideoOverride(env, id, body.value, instant);
   }
 
   if (segments.length === 3 && name === 'snapshot-exclusions') {
@@ -113,7 +162,37 @@ export async function handleAdminRequest(
     return 'error' in body ? body.error : await saveSnapshotExclusion(env, id, id2, body.value);
   }
 
+  if (segments.length === 3 && name === 'video-overrides') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    return await listVideoOverrides(env);
+  }
+
+  if (segments.length === 4 && name === 'video-overrides' && id !== undefined) {
+    if (request.method === 'DELETE') return await deleteVideoOverride(env, id);
+
+    if (request.method !== 'PUT') return methodNotAllowed(request, 'PUT, DELETE');
+
+    const body = await readJsonObject(request);
+
+    return 'error' in body ? body.error : await saveVideoOverride(env, id, body.value, instant);
+  }
+
   return errorResponse(404, `no endpoint at ${pathname}`);
+}
+
+/**
+ * A path segment as a footprints_event id, or null when it is not a plain
+ * positive integer. `Number.isSafeInteger` guards against a segment with
+ * enough digits to round to a different integer, or to `Infinity`, once
+ * `Number` parses it - `/^[1-9]\d*$/` alone only rules out a non-digit shape.
+ */
+function readEventId(segment: string): number | null {
+  if (!/^[1-9]\d*$/.test(segment)) return null;
+
+  const value = Number(segment);
+
+  return Number.isSafeInteger(value) ? value : null;
 }
 
 function decodeSegment(segment: string | undefined): string | undefined {
@@ -135,14 +214,14 @@ function methodNotAllowed(request: Request, allow: string): Response {
 }
 
 /**
- * A PUT body, parsed and confirmed to be a JSON object - or the 400 to
+ * A POST/PUT body, parsed and confirmed to be a JSON object - or the 400 to
  * answer with instead of routing any further.
  *
- * Centralized here rather than in each of members.ts, video-overrides.ts and
- * snapshot-exclusions.ts: all three need the same "is this something a save
- * could possibly apply to" check before their own field-by-field validation,
- * and only the router sees the raw Request each of them would otherwise have
- * to parse for itself.
+ * Centralized here rather than in each of footprints.ts, members.ts,
+ * video-overrides.ts and snapshot-exclusions.ts: all of them need the same
+ * "is this something a save could possibly apply to" check before their own
+ * field-by-field validation, and only the router sees the raw Request each
+ * of them would otherwise have to parse for itself.
  */
 async function readJsonObject(request: Request): Promise<{ value: Record<string, unknown> } | { error: Response }> {
   let parsed: unknown;
