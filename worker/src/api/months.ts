@@ -1,4 +1,5 @@
 import type { Env } from '../lib/env';
+import { CHANNEL_SNAPSHOT_EFFECTIVE, VIDEO_EFFECTIVE } from '../lib/overrides';
 
 /**
  * GET /api/months: each member's month-by-month series, and their sum.
@@ -115,7 +116,8 @@ async function listChannels(db: D1Database): Promise<ChannelRow[]> {
 async function monthlyTotals(db: D1Database): Promise<AggregateRow[]> {
   const { results } = await db
     .prepare(
-      `SELECT channel_id,
+      `WITH ${VIDEO_EFFECTIVE}
+       SELECT channel_id,
               strftime('%Y-%m', published_at, '+9 hours') AS month,
               SUM(CASE WHEN type = 'streaming' THEN 1 ELSE 0 END) AS streams,
               SUM(CASE WHEN type = 'video' THEN 1 ELSE 0 END) AS videos,
@@ -124,7 +126,7 @@ async function monthlyTotals(db: D1Database): Promise<AggregateRow[]> {
               SUM(COALESCE(chat_message_count, 0)) AS chat_messages,
               SUM(COALESCE(chat_unique_user_count, 0)) AS chat_unique_users,
               SUM(COALESCE(view_count, 0)) AS views
-         FROM video
+         FROM video_effective
         WHERE availability = 'public' AND type IS NOT NULL
         GROUP BY channel_id, month`,
     )
@@ -161,14 +163,15 @@ async function subscriberSnapshots(db: D1Database, months: readonly string[]): P
          SELECT 0
          UNION ALL
          SELECT n + 1 FROM month_offset WHERE n < ?1 - 1
-       )
+       ),
+       ${CHANNEL_SNAPSHOT_EFFECTIVE}
        SELECT c.channel_id,
               strftime('%Y-%m', date(?2, '+' || month_offset.n || ' months')) AS month,
-              (SELECT s.subscriber_count FROM channel_snapshot s
+              (SELECT s.subscriber_count FROM channel_snapshot_effective s
                 WHERE s.channel_id = c.channel_id
                   AND s.fetched_at < strftime('%Y-%m-%dT%H:%M:%SZ', ?2, '+' || (month_offset.n + 1) || ' months', '-9 hours')
                 ORDER BY s.fetched_at DESC LIMIT 1) AS subscriber_count,
-              (SELECT s.fetched_at FROM channel_snapshot s
+              (SELECT s.fetched_at FROM channel_snapshot_effective s
                 WHERE s.channel_id = c.channel_id
                   AND s.fetched_at < strftime('%Y-%m-%dT%H:%M:%SZ', ?2, '+' || (month_offset.n + 1) || ' months', '-9 hours')
                 ORDER BY s.fetched_at DESC LIMIT 1) AS fetched_at
@@ -183,7 +186,10 @@ async function subscriberSnapshots(db: D1Database, months: readonly string[]): P
 /** The newest `fetched_at` among the videos this endpoint counts, or null when there are none. */
 async function newestFetch(db: D1Database): Promise<string | null> {
   const row = await db
-    .prepare(`SELECT MAX(fetched_at) AS fetched_at FROM video WHERE availability = 'public' AND type IS NOT NULL`)
+    .prepare(
+      `WITH ${VIDEO_EFFECTIVE}
+       SELECT MAX(fetched_at) AS fetched_at FROM video_effective WHERE availability = 'public' AND type IS NOT NULL`,
+    )
     .first<{ fetched_at: string | null }>();
 
   return row?.fetched_at ?? null;

@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test';
 
 import { listStreams, spanOf } from '../src/api/streams';
-import { SPAN_CASES } from '../../test/fixtures/spanCases';
+import { ANOMALOUS_SPAN_CASES, SPAN_CASES } from '../../test/fixtures/spanCases';
 
 /**
  * What /api/streams computes, against the real D1. The routing that reaches
@@ -50,8 +50,18 @@ async function insertStream(
     .run();
 }
 
+async function insertOverride(
+  videoId: string,
+  overrides: { title?: string | null; type?: string | null; availability?: string | null } = {},
+): Promise<void> {
+  await env.DB.prepare(`INSERT INTO video_override (video_id, title, type, availability) VALUES (?1, ?2, ?3, ?4)`)
+    .bind(videoId, overrides.title ?? null, overrides.type ?? null, overrides.availability ?? null)
+    .run();
+}
+
 beforeEach(async () => {
   await env.DB.prepare('DELETE FROM collect_task').run();
+  await env.DB.prepare('DELETE FROM video_override').run();
   await env.DB.prepare('DELETE FROM channel_snapshot').run();
   await env.DB.prepare('DELETE FROM video').run();
   await env.DB.prepare('DELETE FROM channel').run();
@@ -178,5 +188,49 @@ describe('listStreams', () => {
     ).run();
 
     expect((await listStreams(env)).fetchedAt).toEqual('2026-09-14T02:00:00Z');
+  });
+
+  // Shared with test/lib/heatmap.test.ts's streamSpans, so the two rules
+  // cannot drift apart on which rows are anomalous.
+  test.each(ANOMALOUS_SPAN_CASES)(
+    'leaves out a stream whose end is not after its start (%s)',
+    async (_name, actualStartTime, actualEndTime) => {
+      await insertChannel('UCaaa');
+      await insertStream('anomalous', 'UCaaa', actualStartTime, actualEndTime);
+
+      const { channels } = await listStreams(env);
+
+      expect(channels[0]).toMatchObject({ spans: [], recent: [] });
+    },
+  );
+
+  test('reflects an overridden title in recent', async () => {
+    await insertChannel('UCaaa');
+    await insertStream('v1', 'UCaaa', '2026-09-14T00:00:00Z', '2026-09-14T01:00:00Z', { title: 'original' });
+    await insertOverride('v1', { title: 'renamed' });
+
+    const { channels } = await listStreams(env);
+
+    expect(channels[0]?.recent[0]?.title).toEqual('renamed');
+  });
+
+  test('leaves a video out of the target set once its type is overridden away from streaming', async () => {
+    await insertChannel('UCaaa');
+    await insertStream('v1', 'UCaaa', '2026-09-14T00:00:00Z', '2026-09-14T01:00:00Z');
+    await insertOverride('v1', { type: 'video' });
+
+    const { channels } = await listStreams(env);
+
+    expect(channels[0]).toMatchObject({ spans: [], recent: [] });
+  });
+
+  test('leaves out a stream overridden to a non-public availability', async () => {
+    await insertChannel('UCaaa');
+    await insertStream('v1', 'UCaaa', '2026-09-14T00:00:00Z', '2026-09-14T01:00:00Z');
+    await insertOverride('v1', { availability: 'private' });
+
+    const { channels } = await listStreams(env);
+
+    expect(channels[0]).toMatchObject({ spans: [], recent: [] });
   });
 });

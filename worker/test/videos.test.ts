@@ -64,8 +64,18 @@ async function insertVideo(
     .run();
 }
 
+async function insertOverride(
+  videoId: string,
+  overrides: { title?: string | null; type?: string | null; availability?: string | null } = {},
+): Promise<void> {
+  await env.DB.prepare(`INSERT INTO video_override (video_id, title, type, availability) VALUES (?1, ?2, ?3, ?4)`)
+    .bind(videoId, overrides.title ?? null, overrides.type ?? null, overrides.availability ?? null)
+    .run();
+}
+
 beforeEach(async () => {
   await env.DB.prepare('DELETE FROM collect_task').run();
+  await env.DB.prepare('DELETE FROM video_override').run();
   await env.DB.prepare('DELETE FROM channel_snapshot').run();
   await env.DB.prepare('DELETE FROM video').run();
   await env.DB.prepare('DELETE FROM channel').run();
@@ -127,6 +137,27 @@ describe('listVideos', () => {
     const page = await listVideos(env, 'UCaaa', { limit: 10, cursor: null });
 
     expect(page.videos.map((video) => video.videoId)).toEqual(['mine']);
+  });
+
+  test('reflects an overridden title', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('v1', 'UCaaa');
+    await insertOverride('v1', { title: 'renamed' });
+
+    const page = await listVideos(env, 'UCaaa', { limit: 10, cursor: null });
+
+    expect(page.videos[0]?.title).toEqual('renamed');
+  });
+
+  test('leaves a video with no override row unchanged', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('overridden', 'UCaaa');
+    await insertVideo('plain', 'UCaaa');
+    await insertOverride('overridden', { title: 'renamed' });
+
+    const page = await listVideos(env, 'UCaaa', { limit: 10, cursor: null });
+
+    expect(page.videos.find((video) => video.videoId === 'plain')?.title).toEqual('plain');
   });
 });
 
@@ -199,6 +230,33 @@ describe('rankVideos', () => {
     }
 
     expect((await rankVideos(env, 'viewCount', 2)).videos).toHaveLength(2);
+  });
+
+  test('reflects an overridden title', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('v1', 'UCaaa', { type: 'video', viewCount: 10 });
+    await insertOverride('v1', { title: 'renamed' });
+
+    expect((await rankVideos(env, 'viewCount', 10)).videos[0]?.title).toEqual('renamed');
+  });
+
+  // The migration leaves every row with a null type; overriding it is what
+  // lets a row rankVideos would otherwise leave out (see "leaves out a row
+  // that cannot supply the metric" above) be ranked under its overridden kind.
+  test('ranks a row under a type overridden onto it', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('v1', 'UCaaa', { type: null, viewCount: 1000 });
+    await insertOverride('v1', { type: 'video' });
+
+    expect((await rankVideos(env, 'viewCount', 10)).videos.map((video) => video.videoId)).toEqual(['v1']);
+  });
+
+  test('leaves out a video overridden to a non-public availability', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('v1', 'UCaaa', { type: 'video', viewCount: 1000 });
+    await insertOverride('v1', { availability: 'private' });
+
+    expect((await rankVideos(env, 'viewCount', 10)).videos).toEqual([]);
   });
 });
 
@@ -349,6 +407,58 @@ describe('videosTable', () => {
     expect(table.fetchedAt).toBeNull();
     expect(table.columns.videoId).toEqual([]);
     expect(Object.values(table.columns).every((column) => column.length === 0)).toEqual(true);
+  });
+
+  test('reflects an overridden title', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('v1', 'UCaaa', { type: 'video' });
+    await insertOverride('v1', { title: 'renamed' });
+
+    expect((await videosTable(env)).columns.title).toEqual(['renamed']);
+  });
+
+  test('an overridden type brings an unclassified video into the table', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('v1', 'UCaaa', { type: null });
+    await insertOverride('v1', { type: 'video' });
+
+    const table = await videosTable(env);
+
+    expect(table.columns.videoId).toEqual(['v1']);
+    expect(table.columns.type).toEqual(['video']);
+  });
+
+  test('an availability override to private removes the video from the table', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('v1', 'UCaaa', { type: 'video' });
+    await insertOverride('v1', { availability: 'private' });
+
+    expect((await videosTable(env)).columns.videoId).toEqual([]);
+  });
+
+  // video_override's own CHECK refuses a row that overrides nothing, so a
+  // NULL column here always falls back to what the collector wrote.
+  test('a NULL override column leaves the collected value in place', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('v1', 'UCaaa', { type: 'video' });
+    await insertOverride('v1', { title: 'renamed' });
+
+    const table = await videosTable(env);
+
+    expect(table.columns.title).toEqual(['renamed']);
+    expect(table.columns.type).toEqual(['video']);
+  });
+
+  test('leaves a video with no override row unchanged', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('overridden', 'UCaaa', { type: 'video' });
+    await insertVideo('plain', 'UCaaa', { type: 'video' });
+    await insertOverride('overridden', { title: 'renamed' });
+
+    const table = await videosTable(env);
+    const index = table.columns.videoId.indexOf('plain');
+
+    expect(table.columns.title[index]).toEqual('plain');
   });
 });
 
