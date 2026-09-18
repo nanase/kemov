@@ -5,6 +5,7 @@ import { useDragScroll } from '@/shell/useDragScroll';
 
 import { memberColor } from '../draw';
 import type { Announcement, Subject } from '../model';
+import MemberAvatar from './MemberAvatar.vue';
 
 /**
  * What is on air and what starts later today.
@@ -61,16 +62,7 @@ function style(member: Subject) {
                   : `${announcement.time} 開始予定`
             }}
           </span>
-          <img
-            v-if="member.avatar"
-            class="avatar"
-            :src="member.avatar"
-            alt=""
-            width="18"
-            height="18"
-            decoding="async"
-          />
-          <span v-else class="avatar" aria-hidden="true"></span>
+          <MemberAvatar :src="member.avatar" :name="member.name" :color="member.color" :size="18" :dark="dark" />
           <span class="name">{{ member.name }}</span>
           <span class="title">{{ announcement.title }}</span>
         </button>
@@ -157,11 +149,9 @@ function style(member: Subject) {
   white-space: nowrap;
 }
 
-.avatar {
+.item :deep(.avatar) {
   width: 18px;
   height: 18px;
-  border-radius: 50%;
-  background: var(--member-color, var(--k-track));
 }
 
 .mark {

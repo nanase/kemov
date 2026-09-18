@@ -15,6 +15,7 @@ import {
   type SeriesId,
   type Subject,
 } from '../model';
+import MemberAvatar from './MemberAvatar.vue';
 import MonthChart from './MonthChart.vue';
 import RecentStreams, { type StreamRow } from './RecentStreams.vue';
 import SegmentGroup from './SegmentGroup.vue';
@@ -81,7 +82,14 @@ const seriesItems = SERIES.map((s) => ({
   <section class="record" :style="colors" :class="{ ended: subject.ended }">
     <div class="back">
       <span class="rail" :class="{ ended: subject.ended }" aria-hidden="true"></span>
-      <img v-if="subject.avatar" :src="subject.avatar" alt="" width="22" height="22" decoding="async" />
+      <MemberAvatar
+        v-if="subject.members === undefined"
+        :src="subject.avatar"
+        :name="subject.name"
+        :color="subject.color"
+        :size="22"
+        :dark="dark"
+      />
       <span class="back-name">{{ subject.name }}</span>
       <button type="button" class="close" aria-label="一覧へ戻る" @click="emit('close')">×</button>
     </div>
@@ -89,24 +97,23 @@ const seriesItems = SERIES.map((s) => ({
     <header class="head">
       <div class="portrait">
         <div v-if="subject.members" class="stack">
-          <img
+          <MemberAvatar
             v-for="member in subject.members"
             :key="member.id"
-            :src="member.avatar ?? ''"
-            alt=""
-            width="20"
-            height="20"
-            decoding="async"
+            :src="member.avatar"
+            :name="member.name"
+            :color="member.color"
+            :size="20"
+            :dark="dark"
           />
         </div>
-        <img
-          v-else-if="subject.avatar"
-          class="avatar"
+        <MemberAvatar
+          v-else
           :src="subject.avatar"
-          alt=""
-          width="46"
-          height="46"
-          decoding="async"
+          :name="subject.name"
+          :color="subject.color"
+          :size="46"
+          :dark="dark"
         />
       </div>
       <div class="titles">
@@ -207,10 +214,9 @@ const seriesItems = SERIES.map((s) => ({
   background: none;
 }
 
-.back img {
+.back :deep(.avatar) {
   width: 22px;
   height: 22px;
-  border-radius: 50%;
 }
 
 .back-name {
@@ -249,10 +255,9 @@ const seriesItems = SERIES.map((s) => ({
   padding: 12px 14px;
 }
 
-.avatar {
+.portrait :deep(.avatar) {
   width: 46px;
   height: 46px;
-  border-radius: 50%;
 }
 
 .stack {
@@ -262,10 +267,9 @@ const seriesItems = SERIES.map((s) => ({
   max-width: 92px;
 }
 
-.stack img {
+.stack :deep(.avatar) {
   width: 20px;
   height: 20px;
-  border-radius: 50%;
 }
 
 .name {
@@ -443,7 +447,7 @@ const seriesItems = SERIES.map((s) => ({
 }
 
 @container (max-width: 430px) {
-  .avatar {
+  .portrait :deep(.avatar) {
     width: 38px;
     height: 38px;
   }

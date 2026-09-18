@@ -13,6 +13,7 @@ import {
   type Subject,
 } from '../model';
 import type { AnnouncementKind } from '../model';
+import MemberAvatar from './MemberAvatar.vue';
 import SparkLine from './SparkLine.vue';
 
 /**
@@ -38,6 +39,9 @@ const { subjects, total, metric, period, selected, dark, states, minimal } = def
 }>();
 
 const emit = defineEmits<{ select: [id: string] }>();
+
+/** The list's pictures shrink with the row at the narrowest width. */
+const avatarSize = 20;
 
 const series = computed(() => tableSeries(metric));
 const kind = computed(() => (series.value === 'subsLevel' ? 'level' : 'flow'));
@@ -92,8 +96,13 @@ function press(id: string) {
           <td class="c-name">
             <span class="who" :class="{ ended: subject.ended }">
               <span class="rail" aria-hidden="true"></span>
-              <img v-if="subject.avatar" :src="subject.avatar" alt="" width="20" height="20" decoding="async" />
-              <span v-else class="no-avatar" aria-hidden="true"></span>
+              <MemberAvatar
+                :src="subject.avatar"
+                :name="subject.name"
+                :color="subject.color"
+                :size="avatarSize"
+                :dark="dark"
+              />
               <span class="name-wrap">
                 <span class="name">{{ subject.name }}</span>
                 <span
@@ -258,15 +267,16 @@ td.c-name {
   background: none;
 }
 
-.who img,
+.who :deep(.avatar) {
+  width: 20px;
+  height: 20px;
+  transition: transform 0.22s ease;
+}
+
 .no-avatar {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-}
-
-.who img {
-  transition: transform 0.22s ease;
 }
 
 .name-wrap {
@@ -277,7 +287,7 @@ td.c-name {
   transition: transform 0.22s ease;
 }
 
-tbody tr[role='button']:hover .who img {
+tbody tr[role='button']:hover .who :deep(.avatar) {
   transform: scale(1.45);
 }
 
@@ -443,7 +453,7 @@ tfoot tr[aria-selected='true'] td {
     gap: 5px;
   }
 
-  .who img,
+  .who :deep(.avatar),
   .no-avatar {
     width: 18px;
     height: 18px;
@@ -459,12 +469,12 @@ tfoot tr[aria-selected='true'] td {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .who img,
+  .who :deep(.avatar),
   .name-wrap {
     transition: none;
   }
 
-  tbody tr[role='button']:hover .who img,
+  tbody tr[role='button']:hover .who :deep(.avatar),
   tbody tr[role='button']:hover .name-wrap {
     transform: none;
   }

@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { ref } from 'vue';
+
 import { getThumbnailURL } from '@/lib/youtube';
 
 import { DASH, formatCount, formatDuration, memberColor } from '../draw';
 import type { Subject } from '../model';
+import MemberAvatar from './MemberAvatar.vue';
 
 /**
  * The last few streams, and the ones that have not started yet.
@@ -31,8 +34,23 @@ const { rows, showOwner, dark } = defineProps<{
   dark: boolean;
 }>();
 
-function thumbnail(videoId: string | null): string | null {
-  return videoId === null ? null : getThumbnailURL(videoId, { size: 'mq' });
+/**
+ * Which thumbnails did not arrive.
+ *
+ * YouTube's image host refuses some of these when a page asks for a dozen at
+ * once, so a row has to be able to stand without its picture: the member's
+ * own panel takes its place, at the same size, and the row keeps its line.
+ */
+const missing = ref(new Set<string>());
+
+function thumbnail(row: StreamRow): string | null {
+  if (row.videoId === null || missing.value.has(row.key)) return null;
+
+  return getThumbnailURL(row.videoId, { size: 'mq' });
+}
+
+function onThumbnailError(row: StreamRow) {
+  missing.value = new Set(missing.value).add(row.key);
 }
 
 function ownerStyle(owner: Subject) {
@@ -44,17 +62,18 @@ function ownerStyle(owner: Subject) {
   <ul class="streams">
     <li v-for="row in rows" :key="row.key" class="stream">
       <img
-        v-if="thumbnail(row.videoId)"
+        v-if="thumbnail(row)"
         class="shot"
-        :src="thumbnail(row.videoId)!"
+        :src="thumbnail(row)!"
         alt=""
         width="96"
         height="54"
         loading="lazy"
         decoding="async"
+        @error="onThumbnailError(row)"
       />
       <span v-else class="shot none">
-        <img v-if="row.owner.avatar" :src="row.owner.avatar" alt="" width="28" height="28" decoding="async" />
+        <MemberAvatar :src="row.owner.avatar" :name="row.owner.name" :color="row.owner.color" :size="28" :dark="dark" />
       </span>
       <div class="body">
         <a v-if="row.videoId" class="title" :href="`/videos/${row.videoId}`">{{ row.title }}</a>
@@ -130,10 +149,9 @@ function ownerStyle(owner: Subject) {
   place-items: center;
 }
 
-.shot.none img {
+.shot.none :deep(.avatar) {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
 }
 
 .body {
