@@ -9,6 +9,7 @@ interface TaskRow {
   attempts: number;
   cursor: string | null;
   next_attempt_at: string | null;
+  checked_at: string | null;
 }
 
 interface VideoRow {
@@ -53,7 +54,7 @@ async function insertChannel(): Promise<void> {
 async function allTasks(): Promise<TaskRow[]> {
   return (
     await env.DB.prepare(
-      `SELECT target_id, state, attempts, cursor, next_attempt_at FROM collect_task
+      `SELECT target_id, state, attempts, cursor, next_attempt_at, checked_at FROM collect_task
         WHERE kind = 'chat_replay' ORDER BY target_id`,
     ).all<TaskRow>()
   ).results;
@@ -280,6 +281,24 @@ describe('runChatReplay', () => {
       expect(await authorCount('vid-1')).toEqual(0);
       expect(await allTasks()).toEqual([
         expect.objectContaining({ target_id: 'vid-1', state: 'done', cursor: null, next_attempt_at: null }),
+      ]);
+    });
+
+    // checked_at is the admin site's mark that a person has already seen this
+    // failure; a later success has to clear it, or a video that recovered and
+    // failed again would stay hidden behind the old acknowledgement. Same
+    // check as channel-stats.test.ts's and video.test.ts's own.
+    test('clears checked_at once a video a person acknowledged succeeds again', async () => {
+      await insertVideo('vid-1');
+      await queue('vid-1');
+      await env.DB.prepare(
+        "UPDATE collect_task SET checked_at = '2026-01-01T00:00:00Z' WHERE kind = 'chat_replay' AND target_id = 'vid-1'",
+      ).run();
+
+      await runChatReplay(env, serves([replayPage(['author-1'])]));
+
+      expect(await allTasks()).toEqual([
+        expect.objectContaining({ target_id: 'vid-1', state: 'done', checked_at: null }),
       ]);
     });
 
