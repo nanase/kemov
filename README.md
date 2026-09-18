@@ -193,16 +193,36 @@ Every `/admin/api/*` request is also checked by the worker itself, in `worker/sr
 | GET    | `/admin/api/me`                                            | The email Cloudflare Access identified the caller as                |
 | GET    | `/admin/api/members`                                       | Every `channel` row                                                 |
 | PUT    | `/admin/api/members/<channel ID>`                          | The row after replacing the columns a person may edit               |
-| GET    | `/admin/api/video-overrides`                               | Every `video_override` row, with the video's own title alongside it |
-| PUT    | `/admin/api/video-overrides/<video ID>`                    | The override after creating or replacing it                         |
-| DELETE | `/admin/api/video-overrides/<video ID>`                    | Nothing but the revision logged for the removal                     |
 | GET    | `/admin/api/snapshot-exclusions`                           | Every `channel_snapshot_exclusion` row                              |
 | PUT    | `/admin/api/snapshot-exclusions/<channel ID>/<fetched_at>` | The exclusion after creating or replacing it                        |
 | DELETE | `/admin/api/snapshot-exclusions/<channel ID>/<fetched_at>` | Nothing but the revision logged for the removal                     |
+| GET    | `/admin/api/video-overrides`                               | Every `video_override` row, with the video's own title alongside it |
+| PUT    | `/admin/api/video-overrides/<video ID>`                    | The override after creating or replacing it                         |
+| DELETE | `/admin/api/video-overrides/<video ID>`                    | Nothing but the revision logged for the removal                     |
 
-`channel`, `video_override` and `channel_snapshot_exclusion` take effect the moment they are saved — #141's design decision 5 — unlike `footprints_event` and `genet_stream`, which pass through a publish step that later work adds. Every PUT or DELETE above logs one row to `revision` in the same `db.batch` as the row it changes, so a row and its history cannot come apart if one write in the pair fails. A PUT answers with `revisionId` alongside the saved row; a DELETE answers with `revisionId` alone.
+`channel`, `video_override` and `channel_snapshot_exclusion` take effect the moment they are saved — #141's design decision 5 — unlike `footprints_event` and `genet_stream` below, which pass through a publish step instead. Every PUT or DELETE above logs one row to `revision` in the same `db.batch` as the row it changes, so a row and its history cannot come apart if one write in the pair fails. A PUT answers with `revisionId` alongside the saved row; a DELETE answers with `revisionId` alone.
 
 A PUT replaces every column at once rather than patching one: a column its endpoint does not name is refused with 400, and a column left out of the body is treated as null, which is itself refused with 400 for a column that may not be null. `worker/src/lib/revision.ts` is what each save's `revision.body` goes through — the row as saved, minus columns that only say when a save happened rather than what it changed, with its JSON keys in the row's own column order.
+
+### Footprints: Editing and Publishing
+
+| Method | Path                                               | Answers with                                                                                     |
+| ------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| GET    | `/admin/api/footprints/events`                     | Every `footprints_event` row, with its members and sources                                       |
+| GET    | `/admin/api/footprints/events/<event ID>`          | One row, with its members and sources                                                            |
+| POST   | `/admin/api/footprints/events`                     | The row after creating it in `draft`                                                             |
+| PUT    | `/admin/api/footprints/events/<event ID>`          | The row after replacing it, its members and its sources - `status` unchanged                     |
+| DELETE | `/admin/api/footprints/events/<event ID>`          | `{}` - 409 instead, if the event is `published`                                                  |
+| POST   | `/admin/api/footprints/events/<event ID>/publish`  | The row after validating it and setting `status` to `published`                                  |
+| POST   | `/admin/api/footprints/events/<event ID>/withdraw` | The row after setting `status` back to `draft`                                                   |
+| GET    | `/admin/api/footprints/pending`                    | Events not yet reflected in the published JSON, and published events whose row has since changed |
+| POST   | `/admin/api/footprints/publish`                    | Whether anything was published, and how many events if so                                        |
+
+`GET /admin/api/footprints/events` takes `status` and `q` (a substring of `title`) as query parameters, narrowing the list.
+
+An event passes through a publish gate rather than taking effect on save, the same as the table above already draws the line for `footprints_event` and `genet_stream`. Creating, updating and deleting an event logs no `revision` at all; only `publish` and `withdraw` do, in the same `db.batch` as the `status` change. `POST .../publish` refuses with 400 and every failing condition together when the event is not ready — an empty `title`, `sourcePending: false` with no source in the whitelist (`worker/src/lib/source-whitelist.ts`), or a `videoId` that is not 11 characters. Publishing an already-published event is allowed, and is how an event `GET .../pending` reports as changed gets a fresh `publish` revision matching its current row.
+
+`POST /admin/api/footprints/publish` builds `footprints/events.json` from the latest `revision` of every event whose latest action is not `withdraw`, writes it to `PUBLIC_DATA`, and appends one `publication` row recording the newest `revision_id` it saw. Nothing is written when there is nothing newer than the last run.
 
 ### `/members/<id>` and `/videos/<id>`
 

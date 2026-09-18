@@ -68,8 +68,8 @@ export const BYTES_PER_STATEMENT = 80_000;
 
 const encoder = new TextEncoder();
 
-/** What D1 counts, which is bytes of UTF-8 rather than characters. */
-function byteLength(text: string): number {
+/** What D1 counts, which is bytes of UTF-8 rather than characters. Exported for `publication.byte_length` (footprints-publish.ts), which counts the same way. */
+export function byteLength(text: string): number {
   return encoder.encode(text).length;
 }
 
