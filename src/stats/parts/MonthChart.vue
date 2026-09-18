@@ -43,6 +43,26 @@ const readout = computed(() => {
   return { month: monthLabel(months[at] ?? ''), value: formatCount(values[at], series.decimals ?? 0) };
 });
 
+/**
+ * The same numbers as a table, for a reader who cannot point at the chart.
+ *
+ * The chart reads one month out at a time under the pointer, which leaves a
+ * keyboard or a screen reader with the newest month and nothing else. The
+ * table is the whole series, one row per month, and it is the months already
+ * on the chart rather than a second request.
+ */
+const caption = computed(() => `${series.label}の月ごとの値`);
+const table = computed(() =>
+  months.map((month, index) => {
+    const value = values[index] ?? null;
+
+    return {
+      month: monthLabel(month),
+      value: value === null ? '記録なし' : `${formatCount(value, series.decimals ?? 0)} ${series.unit}`,
+    };
+  }),
+);
+
 const scaleLabels = computed(() => {
   const decimals = series.decimals ?? 0;
 
@@ -114,6 +134,21 @@ onBeforeUnmount(() => observer?.disconnect());
         <line class="base" x1="0" :y1="plot.baseline" :x2="plot.width" :y2="plot.baseline" />
       </svg>
     </div>
+    <div class="reader-only">
+      <table>
+        <caption>
+          {{
+            caption
+          }}
+        </caption>
+        <tbody>
+          <tr v-for="row in table" :key="row.month">
+            <th scope="row">{{ row.month }}</th>
+            <td>{{ row.value }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
     <div ref="axis" class="axis">
       <span
         v-for="mark in marks"
@@ -131,6 +166,17 @@ onBeforeUnmount(() => observer?.disconnect());
 .month-chart {
   display: grid;
   gap: 6px;
+}
+
+/* Read out but never drawn: the chart above is the same numbers for everyone
+   who can see it, so showing the table as well would be the page said twice. */
+.reader-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .readout {
