@@ -185,6 +185,24 @@ Every `/admin/api/*` request is also checked by the worker itself, in `worker/sr
 
 `ACCESS_AUD` is the `aud` tag of the Access application in front of `/admin`, and `ACCESS_TEAM_DOMAIN` is that Access team's domain (e.g. `nanase.cloudflareaccess.com`) — a `[vars]` entry in `wrangler.toml`, not a secret, because it is the same domain a browser is already sent to for the Access login page. With either `ACCESS_AUD` or `ACCESS_TEAM_DOMAIN` unset, or with a key set that cannot be fetched, every `/admin/api/*` request is refused, Access policy notwithstanding.
 
+### The Admin API's Endpoints
+
+| Method | Path                                                       | Answers with                                                        |
+| ------ | ---------------------------------------------------------- | ------------------------------------------------------------------- |
+| GET    | `/admin/api/me`                                            | The email Cloudflare Access identified the caller as                |
+| GET    | `/admin/api/members`                                       | Every `channel` row                                                 |
+| PUT    | `/admin/api/members/<channel ID>`                          | The row after replacing the columns a person may edit               |
+| GET    | `/admin/api/video-overrides`                               | Every `video_override` row, with the video's own title alongside it |
+| PUT    | `/admin/api/video-overrides/<video ID>`                    | The override after creating or replacing it                         |
+| DELETE | `/admin/api/video-overrides/<video ID>`                    | Nothing but the revision logged for the removal                     |
+| GET    | `/admin/api/snapshot-exclusions`                           | Every `channel_snapshot_exclusion` row                              |
+| PUT    | `/admin/api/snapshot-exclusions/<channel ID>/<fetched_at>` | The exclusion after creating or replacing it                        |
+| DELETE | `/admin/api/snapshot-exclusions/<channel ID>/<fetched_at>` | Nothing but the revision logged for the removal                     |
+
+`channel`, `video_override` and `channel_snapshot_exclusion` take effect the moment they are saved — #141's design decision 5 — unlike `footprints_event` and `genet_stream`, which pass through a publish step that later work adds. Every PUT or DELETE above logs one row to `revision` in the same `db.batch` as the row it changes, so a row and its history cannot come apart if one write in the pair fails. A PUT answers with `revisionId` alongside the saved row; a DELETE answers with `revisionId` alone.
+
+A PUT replaces every column at once rather than patching one: a column its endpoint does not name is refused with 400, and a column left out of the body is treated as null, which is itself refused with 400 for a column that may not be null. `worker/src/lib/revision.ts` is what each save's `revision.body` goes through — the row as saved, minus columns that only say when a save happened rather than what it changed, with its JSON keys in the row's own column order.
+
 ## Database
 
 The collected data lives in a Cloudflare D1 database named `kemov`, running in the APAC region. Everything the site publishes can be rebuilt from it. The commands below need wrangler, which comes with the Worker setup.
