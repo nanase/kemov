@@ -386,7 +386,15 @@ describe('handleAdminRequest routing to genet', () => {
     expect((await call('/admin/api/genet/people/not-a-number')).status).toEqual(404);
   });
 
-  const minimalTuneBody = { title: 'x', originalTitle: null, subtunes: [], attributes: [], videos: [], scores: [], memo: null };
+  const minimalTuneBody = {
+    title: 'x',
+    originalTitle: null,
+    subtunes: [],
+    attributes: [],
+    videos: [],
+    scores: [],
+    memo: null,
+  };
 
   test('routes GET and POST /admin/api/genet/tunes, and GET/PUT/DELETE .../:tuneId', async () => {
     expect((await call('/admin/api/genet/tunes')).status).toEqual(200);

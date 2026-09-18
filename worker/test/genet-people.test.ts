@@ -6,7 +6,12 @@ import { clearEverything } from './reset-db';
 beforeEach(clearEverything);
 
 async function createValidPerson(overrides: Record<string, unknown> = {}): Promise<number> {
-  const response = await createPerson(env, { name: 'ベートーヴェン', link: 'wiki:ベートーヴェン', memo: null, ...overrides });
+  const response = await createPerson(env, {
+    name: 'ベートーヴェン',
+    link: 'wiki:ベートーヴェン',
+    memo: null,
+    ...overrides,
+  });
   const body = (await response.json()) as { person: { personId: number } };
 
   return body.person.personId;
@@ -53,17 +58,23 @@ describe('createPerson', () => {
     expect(response.status).toEqual(400);
   });
 
-  test.each(['not-a-real-scheme:foo', 'ftp://example.com'])('refuses a link not starting with wiki:, wikien: or https:// (%s)', async (link) => {
-    const response = await createPerson(env, { name: 'x', link, memo: null });
+  test.each(['not-a-real-scheme:foo', 'ftp://example.com'])(
+    'refuses a link not starting with wiki:, wikien: or https:// (%s)',
+    async (link) => {
+      const response = await createPerson(env, { name: 'x', link, memo: null });
 
-    expect(response.status).toEqual(400);
-  });
+      expect(response.status).toEqual(400);
+    },
+  );
 
-  test.each(['wiki:foo', 'wikien:foo', 'https://example.com/foo'])('accepts a link starting with wiki:, wikien: or https:// (%s)', async (link) => {
-    const response = await createPerson(env, { name: 'x', link, memo: null });
+  test.each(['wiki:foo', 'wikien:foo', 'https://example.com/foo'])(
+    'accepts a link starting with wiki:, wikien: or https:// (%s)',
+    async (link) => {
+      const response = await createPerson(env, { name: 'x', link, memo: null });
 
-    expect(response.status).toEqual(201);
-  });
+      expect(response.status).toEqual(201);
+    },
+  );
 });
 
 describe('getPerson', () => {
@@ -105,7 +116,9 @@ describe('updatePerson', () => {
 
     expect(response.status).toEqual(400);
 
-    const stored = await env.DB.prepare('SELECT name FROM genet_person WHERE person_id = ?1').bind(personId).first<{ name: string }>();
+    const stored = await env.DB.prepare('SELECT name FROM genet_person WHERE person_id = ?1')
+      .bind(personId)
+      .first<{ name: string }>();
 
     expect(stored!.name).toEqual('ベートーヴェン');
   });

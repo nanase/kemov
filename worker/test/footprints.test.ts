@@ -352,21 +352,17 @@ describe('listEvents', () => {
   // D1 refuses a statement bound to more than 100 parameters - readEvents
   // builds `IN (?1, ...)` from every listed id at once, so this stays green
   // only because it chunks (worker/src/lib/d1.ts).
-  test(
-    'lists more events than one D1 statement can bind',
-    async () => {
-      const count = 150;
+  test('lists more events than one D1 statement can bind', async () => {
+    const count = 150;
 
-      for (let i = 0; i < count; i++) {
-        await createEvent(env, validBody({ title: `できごと${i}` }));
-      }
+    for (let i = 0; i < count; i++) {
+      await createEvent(env, validBody({ title: `できごと${i}` }));
+    }
 
-      const body = (await listEvents(env, null, null).then((r) => r.json())) as { events: unknown[] };
+    const body = (await listEvents(env, null, null).then((r) => r.json())) as { events: unknown[] };
 
-      expect(body.events).toHaveLength(count);
-    },
-    20000,
-  );
+    expect(body.events).toHaveLength(count);
+  }, 20000);
 });
 
 describe('readEvents', () => {

@@ -100,7 +100,9 @@ describe('createTune', () => {
     const response = await createTune(
       env,
       validBody({
-        attributes: [{ name: '作曲', text: 'ただの文', people: [{ personId: composerId, creditedAs: null, note: null }] }],
+        attributes: [
+          { name: '作曲', text: 'ただの文', people: [{ personId: composerId, creditedAs: null, note: null }] },
+        ],
       }),
     );
 
@@ -113,7 +115,9 @@ describe('createTune', () => {
   test('refuses an attribute person naming a personId that does not exist', async () => {
     const response = await createTune(
       env,
-      validBody({ attributes: [{ name: '作曲', text: null, people: [{ personId: 999, creditedAs: null, note: null }] }] }),
+      validBody({
+        attributes: [{ name: '作曲', text: null, people: [{ personId: 999, creditedAs: null, note: null }] }],
+      }),
     );
 
     expect(response.status).toEqual(400);
@@ -134,7 +138,9 @@ describe('createTune', () => {
       tune: { videos: { videoId: string }[]; scores: { url: string; title: string }[] };
     };
 
-    expect(body.tune.videos).toEqual([{ videoId: 'abcdefghijk', title: 'ref video', startSeconds: 10, description: null }]);
+    expect(body.tune.videos).toEqual([
+      { videoId: 'abcdefghijk', title: 'ref video', startSeconds: 10, description: null },
+    ]);
     expect(body.tune.scores).toEqual([{ url: 'https://imslp.org/wiki/x', title: 'sheet music' }]);
   });
 
@@ -212,7 +218,9 @@ describe('deleteTune', () => {
 
     expect(response.status).toEqual(200);
     expect(await env.DB.prepare('SELECT 1 FROM genet_tune WHERE tune_id = ?1').bind(tuneId).first()).toBeNull();
-    expect(await env.DB.prepare('SELECT 1 FROM genet_tune_attribute WHERE tune_id = ?1').bind(tuneId).first()).toBeNull();
+    expect(
+      await env.DB.prepare('SELECT 1 FROM genet_tune_attribute WHERE tune_id = ?1').bind(tuneId).first(),
+    ).toBeNull();
     expect(await env.DB.prepare('SELECT 1 FROM genet_tune_video WHERE tune_id = ?1').bind(tuneId).first()).toBeNull();
     expect(await env.DB.prepare('SELECT 1 FROM genet_tune_score WHERE tune_id = ?1').bind(tuneId).first()).toBeNull();
   });

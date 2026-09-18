@@ -45,7 +45,11 @@ const VIDEO_ID_LENGTH = 11;
  * `publishProblems` in footprints-publish.ts does the same for its own
  * schema-guaranteed conditions).
  */
-function publishProblems(saved: GenetStream, tunes: ReadonlyMap<number, GenetTune>, people: ReadonlyMap<number, PersonRow>): string[] {
+function publishProblems(
+  saved: GenetStream,
+  tunes: ReadonlyMap<number, GenetTune>,
+  people: ReadonlyMap<number, PersonRow>,
+): string[] {
   const { stream, performances } = saved;
   const problems: string[] = [];
 
@@ -274,9 +278,24 @@ export async function pendingGenetMusic(env: Env): Promise<Response> {
   ]);
 
   const pending = [
-    ...streamRevisions.map((r) => ({ entity: 'genet_stream' as const, key: r.entity_key, revisionId: r.revision_id, latestAction: r.action })),
-    ...tuneRevisions.map((r) => ({ entity: 'genet_tune' as const, key: r.entity_key, revisionId: r.revision_id, latestAction: r.action })),
-    ...personRevisions.map((r) => ({ entity: 'genet_person' as const, key: r.entity_key, revisionId: r.revision_id, latestAction: r.action })),
+    ...streamRevisions.map((r) => ({
+      entity: 'genet_stream' as const,
+      key: r.entity_key,
+      revisionId: r.revision_id,
+      latestAction: r.action,
+    })),
+    ...tuneRevisions.map((r) => ({
+      entity: 'genet_tune' as const,
+      key: r.entity_key,
+      revisionId: r.revision_id,
+      latestAction: r.action,
+    })),
+    ...personRevisions.map((r) => ({
+      entity: 'genet_person' as const,
+      key: r.entity_key,
+      revisionId: r.revision_id,
+      latestAction: r.action,
+    })),
   ].filter((row) => row.revisionId > lastRevisionId);
 
   const changed: { entity: 'genet_stream' | 'genet_tune' | 'genet_person'; key: string; title: string }[] = [];
