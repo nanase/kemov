@@ -32,6 +32,14 @@ const CHANNEL = {
     viewCount: { value: null, reason: 'count not collected' },
     videoCount: { value: 0, over: { from: '2026-09-06T12:00:00Z', to: '2026-09-07T12:00:00Z', seconds: 86400 } },
   },
+  per30Days: {
+    subscriberCount: {
+      value: 120,
+      over: { from: '2026-08-08T12:00:00Z', to: '2026-09-07T12:00:00Z', seconds: 2592000 },
+    },
+    viewCount: { value: null, reason: 'history too short' },
+    videoCount: { value: 8, over: { from: '2026-08-08T12:00:00Z', to: '2026-09-07T12:00:00Z', seconds: 2592000 } },
+  },
 };
 
 const list = (channel: Record<string, unknown> = CHANNEL) => ({
