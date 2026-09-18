@@ -1,4 +1,4 @@
-import { formatTimestamp, toSchemaTimestamp } from '../src/lib/time';
+import { formatTimestamp, isSchemaDate, toSchemaTimestamp } from '../src/lib/time';
 
 describe('formatTimestamp', () => {
   test('drops sub-second precision and keeps the uppercase Z', () => {
@@ -37,5 +37,38 @@ describe('toSchemaTimestamp', () => {
   test('is null rather than a guess for something that is not an instant', () => {
     expect(toSchemaTimestamp('yesterday')).toBeNull();
     expect(toSchemaTimestamp('')).toBeNull();
+  });
+});
+
+describe('isSchemaDate', () => {
+  test('accepts a real calendar date in the schema shape', () => {
+    expect(isSchemaDate('2026-09-18')).toEqual(true);
+  });
+
+  test('refuses a shape that is not YYYY-MM-DD', () => {
+    expect(isSchemaDate('2026-9-18')).toEqual(false);
+    expect(isSchemaDate('2026/09/18')).toEqual(false);
+    expect(isSchemaDate('')).toEqual(false);
+  });
+
+  // 2023-02-29 matches A_DATE but is not a real day; rolling it into March
+  // instead of refusing it is what the round trip through Date exists to
+  // catch.
+  test('refuses a day that does not exist, in a month that does', () => {
+    expect(isSchemaDate('2023-02-29')).toEqual(false);
+  });
+
+  // #158's review (2026-09-18): month 13 matches A_DATE too, and unlike an
+  // out-of-range day, it used to make this function throw a RangeError
+  // instead of returning false - new Date leaves an out-of-range ISO
+  // component as an Invalid Date rather than rolling it over, and
+  // toISOString on one throws.
+  test('refuses an out-of-range month without throwing', () => {
+    expect(() => isSchemaDate('2023-13-01')).not.toThrow();
+    expect(isSchemaDate('2023-13-01')).toEqual(false);
+  });
+
+  test('accepts the last real day of February in a leap year', () => {
+    expect(isSchemaDate('2024-02-29')).toEqual(true);
   });
 });

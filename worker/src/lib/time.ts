@@ -41,7 +41,20 @@ const A_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * alone - channels.yml's activity_start_date and the admin site's PUT to
  * `channel` (members.ts) both end up in the same column, so the two checks
  * must keep agreeing on what a real date is even though the code does not.
+ *
+ * The NaN check matters on its own, not only as part of the round trip:
+ * for an ISO string, `new Date` does not roll an out-of-range component
+ * like month 13 into the next year the way the numeric `Date` constructor
+ * does - it produces an Invalid Date instead, and `toISOString` throws a
+ * RangeError on one rather than returning a string to compare. Without this
+ * check, `isSchemaDate('2023-13-01')` - a value `A_DATE` alone accepts -
+ * would throw out of a PUT this is meant to answer with 400, not crash with
+ * 500 (#158's review, 2026-09-18).
  */
 export function isSchemaDate(value: string): boolean {
-  return A_DATE.test(value) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value);
+  if (!A_DATE.test(value)) return false;
+
+  const date = new Date(`${value}T00:00:00Z`);
+
+  return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value);
 }
