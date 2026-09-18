@@ -569,8 +569,8 @@ function snippetText(text: string): string {
                   @click="selectStream(s.stream.video_id)"
                 >
                   <img
+                    v-if="s.stream.platform === 'youtube'"
                     class="thumb"
-                    :class="{ none: false }"
                     :src="thumbSrc(s.stream.video_id)"
                     :data-video-id="s.stream.video_id"
                     loading="lazy"
@@ -578,6 +578,7 @@ function snippetText(text: string): string {
                     alt=""
                     @error="onThumbError"
                   />
+                  <span v-else class="thumb none" aria-hidden="true"></span>
                   <div class="sbody">
                     <div class="sl1">
                       <span class="n">{{ publishedDateText(s.stream.published_at) }}</span>
@@ -647,7 +648,7 @@ function snippetText(text: string): string {
               </div>
               <div v-else class="pb" @click="onMarkdownClick">
                 <div class="phead">
-                  <figure class="frame">
+                  <figure v-if="selectedStream.stream.platform === 'youtube'" class="frame">
                     <button
                       class="zoom"
                       type="button"
@@ -670,6 +671,9 @@ function snippetText(text: string): string {
                       /></span>
                     </button>
                   </figure>
+                  <figure v-else class="frame">
+                    <span class="mat"><span class="fnone">TikTok</span></span>
+                  </figure>
                   <div class="pmeta">
                     <div class="pdate">{{ publishedDateTimeText(selectedStream.stream.published_at) }}</div>
                     <h3 class="ptitle" v-html="highlightPlain(unesc(selectedStream.stream.title))"></h3>
@@ -687,11 +691,20 @@ function snippetText(text: string): string {
                     </div>
                     <div class="plinks">
                       <a
+                        v-if="selectedStream.stream.platform === 'youtube'"
                         class="ibtn"
                         :href="`https://www.youtube.com/watch?v=${selectedStream.stream.video_id}`"
                         target="_blank"
                         rel="noopener"
                         >YouTube で開く</a
+                      >
+                      <a
+                        v-else-if="selectedStream.stream.url"
+                        class="ibtn"
+                        :href="selectedStream.stream.url"
+                        target="_blank"
+                        rel="noopener"
+                        >TikTok で開く</a
                       >
                     </div>
                   </div>
@@ -1341,6 +1354,11 @@ function snippetText(text: string): string {
   background: var(--k-track);
 }
 
+.gm .thumb.none {
+  border-style: dotted;
+  background: none;
+}
+
 .gm .sbody {
   display: grid;
   gap: 2px;
@@ -1556,6 +1574,11 @@ function snippetText(text: string): string {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.gm .mat .fnone {
+  font-size: 11px;
+  color: #cdbeb0;
 }
 
 .gm .zoom {
