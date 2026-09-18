@@ -460,4 +460,30 @@ describe("handleAdminRequest routing to task 12's resources", () => {
     );
     expect((await call('/admin/api/collect-tasks/video_update/vid1/nope', { method: 'POST' })).status).toEqual(404);
   });
+
+  test('routes GET /admin/api/revisions and /admin/api/revisions/:id, and refuses other methods', async () => {
+    await env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body) VALUES ('channel', 'UCaaa', 'save', '{}')`,
+    ).run();
+
+    const row = await env.DB.prepare('SELECT revision_id FROM revision').first<{ revision_id: number }>();
+
+    expect((await call('/admin/api/revisions')).status).toEqual(200);
+    expect((await call(`/admin/api/revisions/${row!.revision_id}`)).status).toEqual(200);
+    expect((await call('/admin/api/revisions/999999')).status).toEqual(404);
+
+    const wrongMethod = await call('/admin/api/revisions', { method: 'POST' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('GET');
+  });
+
+  test('routes GET /admin/api/publications, and refuses other methods', async () => {
+    expect((await call('/admin/api/publications')).status).toEqual(200);
+
+    const wrongMethod = await call('/admin/api/publications', { method: 'POST' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('GET');
+  });
 });

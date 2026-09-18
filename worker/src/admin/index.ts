@@ -6,6 +6,8 @@ import { ackCollectTask, listCollectTasks, markCollectTaskUnavailable, retryColl
 import { createEvent, deleteEvent, getEvent, listEvents, updateEvent } from './footprints';
 import { pendingFootprints, publishEvent, publishFootprintsNow, withdrawEvent } from './footprints-publish';
 import { listMembers, updateMember } from './members';
+import { listPublications } from './publications';
+import { getRevision, listRevisions, readRevisionId } from './revisions';
 import { listSnapshots } from './snapshots';
 import { deleteSnapshotExclusion, listSnapshotExclusions, saveSnapshotExclusion } from './snapshot-exclusions';
 import { deleteVideoOverride, listVideoOverrides, saveVideoOverride } from './video-overrides';
@@ -229,6 +231,37 @@ export async function handleAdminRequest(
     if (action === 'unavailable') return await markCollectTaskUnavailable(env, id, id2, instant);
 
     return errorResponse(404, `no endpoint at ${pathname}`);
+  }
+
+  if (segments.length === 3 && name === 'revisions') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    const { searchParams } = new URL(request.url);
+
+    return await listRevisions(
+      env,
+      searchParams.get('entity'),
+      searchParams.get('action'),
+      searchParams.get('from'),
+      searchParams.get('to'),
+      searchParams.get('limit'),
+    );
+  }
+
+  if (segments.length === 4 && name === 'revisions' && id !== undefined) {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    const revisionId = readRevisionId(id);
+
+    if (revisionId === null) return errorResponse(404, `no revision ${id}`);
+
+    return await getRevision(env, revisionId);
+  }
+
+  if (segments.length === 3 && name === 'publications') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    return await listPublications(env);
   }
 
   return errorResponse(404, `no endpoint at ${pathname}`);
