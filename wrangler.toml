@@ -88,6 +88,7 @@ ACCESS_TEAM_DOMAIN = "nanase.cloudflareaccess.com"
 # something 404s in production.
 [assets]
 directory = "./dist"
+binding = "ASSETS"
 
 # The site's own hostname. A custom domain rather than a route pattern:
 # Cloudflare creates and keeps the DNS record for it, which is what makes this
