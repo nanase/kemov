@@ -83,7 +83,7 @@ function avatarStyle() {
 </script>
 
 <template>
-  <div v-if="!video" class="blank">左の 1 行を選ぶと、<br />その 1 本の記録がここに出ます。</div>
+  <div v-if="!video" class="blank">配信・動画を選択してください。</div>
 
   <div v-else class="rec">
     <div class="hero">
