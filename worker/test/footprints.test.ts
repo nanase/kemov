@@ -269,6 +269,20 @@ describe('listEvents', () => {
     expect(body.events.map((event) => event.title)).toEqual(['ペンギンのデビュー']);
   });
 
+  test('refuses a q whose escaped, wrapped pattern would exceed D1s 50-byte LIKE limit', async () => {
+    // 49 ASCII bytes - one under the limit on its own, but wrapped in `%` on
+    // both sides it becomes 51.
+    const response = await listEvents(env, null, 'a'.repeat(49));
+
+    expect(response.status).toEqual(400);
+  });
+
+  test('accepts a q whose wrapped pattern is exactly 50 bytes', async () => {
+    const response = await listEvents(env, null, 'a'.repeat(48));
+
+    expect(response.status).toEqual(200);
+  });
+
   test('orders by startDate then eventId', async () => {
     await createEvent(env, validBody({ startDate: '2025-03-01' }));
     await createEvent(env, validBody({ startDate: '2025-01-01' }));

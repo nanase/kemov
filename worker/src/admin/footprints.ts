@@ -1,3 +1,4 @@
+import { byteLength } from '../lib/backup';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 import { isSchemaDate, isSchemaTimestamp } from '../lib/time';
@@ -194,10 +195,25 @@ export async function readEvents(env: Env, eventIds: readonly number[]): Promise
   return result;
 }
 
+// D1's own LIKE/GLOB pattern length limit is 50 bytes of UTF-8, not
+// characters - see developers.cloudflare.com/d1/platform/limits/. Checked
+// against the pattern this function actually sends (escaped and wrapped in
+// `%`), not against `q` itself, since escaping a `%`, `_` or `\` in `q` grows
+// it by one byte each.
+const D1_LIKE_PATTERN_BYTE_LIMIT = 50;
+
 /** GET /admin/api/footprints/events - optionally narrowed by status and by a substring of title. */
 export async function listEvents(env: Env, status: string | null, q: string | null): Promise<Response> {
   if (status !== null && !isStatus(status)) {
     return errorResponse(400, `status must be one of draft, review, published`);
+  }
+
+  let pattern: string | null = null;
+
+  if (q !== null) {
+    pattern = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+
+    if (byteLength(pattern) > D1_LIKE_PATTERN_BYTE_LIMIT) return errorResponse(400, 'q is too long to search by');
   }
 
   const conditions: string[] = [];
@@ -208,8 +224,8 @@ export async function listEvents(env: Env, status: string | null, q: string | nu
     conditions.push(`status = ?${params.length}`);
   }
 
-  if (q !== null) {
-    params.push(`%${q.replace(/[\\%_]/g, '\\$&')}%`);
+  if (pattern !== null) {
+    params.push(pattern);
     conditions.push(`title LIKE ?${params.length} ESCAPE '\\'`);
   }
 
