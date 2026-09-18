@@ -24,6 +24,12 @@ import SparkLine from './SparkLine.vue';
  * reason every row's chart is scaled inside itself, and a member who has
  * finished is marked by a dotted rail rather than by being greyed out or
  * moved to the end.
+ *
+ * A row opens that member's record. It stays a row rather than becoming a
+ * button, so `aria-selected` is the state its role actually has, and what
+ * makes it pressable is the tab stop and the Enter and Space handlers. The
+ * look hangs on `data-` attributes instead, so the CSS does not decide which
+ * ARIA attribute is the right one.
  */
 const { subjects, total, metric, period, selected, dark, states, minimal } = defineProps<{
   subjects: readonly Subject[];
@@ -34,7 +40,7 @@ const { subjects, total, metric, period, selected, dark, states, minimal } = def
   dark: boolean;
   /** Which members are on air, starting soon, or starting later today. */
   states: ReadonlyMap<string, AnnouncementKind>;
-  /** In minimal display the rows are numbers to read, not buttons to press. */
+  /** In minimal display the rows are numbers to read, not rows to press. */
   minimal: boolean;
 }>();
 
@@ -87,8 +93,9 @@ function press(id: string) {
           :key="subject.id"
           :style="rowStyle(subject)"
           :aria-selected="selected === subject.id"
+          :data-selected="selected === subject.id ? '' : undefined"
+          :data-pressable="minimal ? undefined : ''"
           :tabindex="minimal ? undefined : 0"
-          :role="minimal ? undefined : 'button'"
           @click="press(subject.id)"
           @keydown.enter.prevent="press(subject.id)"
           @keydown.space.prevent="press(subject.id)"
@@ -129,8 +136,9 @@ function press(id: string) {
       <tfoot>
         <tr
           :aria-selected="selected === total.id"
+          :data-selected="selected === total.id ? '' : undefined"
+          :data-pressable="minimal ? undefined : ''"
           :tabindex="minimal ? undefined : 0"
-          :role="minimal ? undefined : 'button'"
           @click="press(total.id)"
           @keydown.enter.prevent="press(total.id)"
           @keydown.space.prevent="press(total.id)"
@@ -222,20 +230,20 @@ tbody tr:last-child td {
   border-bottom: 0;
 }
 
-tbody tr[role='button'],
-tfoot tr[role='button'] {
+tbody tr[data-pressable],
+tfoot tr[data-pressable] {
   cursor: pointer;
 }
 
-tbody tr[role='button']:hover td {
+tbody tr[data-pressable]:hover td {
   background: var(--k-surface-2);
 }
 
-tbody tr[aria-selected='true'] td {
+tbody tr[data-selected] td {
   background: var(--member-pick, var(--k-surface-2));
 }
 
-tbody tr[aria-selected='true'] .name {
+tbody tr[data-selected] .name {
   color: var(--member-color);
   font-weight: 600;
 }
@@ -287,11 +295,11 @@ td.c-name {
   transition: transform 0.22s ease;
 }
 
-tbody tr[role='button']:hover .who :deep(.avatar) {
+tbody tr[data-pressable]:hover .who :deep(.avatar) {
   transform: scale(1.45);
 }
 
-tbody tr[role='button']:hover .name-wrap {
+tbody tr[data-pressable]:hover .name-wrap {
   transform: translateX(6px);
 }
 
@@ -379,7 +387,7 @@ td.c-spark {
   display: none;
 }
 
-tr[aria-selected='true'] .pick {
+tr[data-selected] .pick {
   display: block;
   position: absolute;
   top: 2px;
@@ -400,7 +408,7 @@ tfoot td {
   font-weight: 600;
 }
 
-tfoot tr[aria-selected='true'] td {
+tfoot tr[data-selected] td {
   background: var(--k-accent-soft);
 }
 
@@ -474,8 +482,8 @@ tfoot tr[aria-selected='true'] td {
     transition: none;
   }
 
-  tbody tr[role='button']:hover .who :deep(.avatar),
-  tbody tr[role='button']:hover .name-wrap {
+  tbody tr[data-pressable]:hover .who :deep(.avatar),
+  tbody tr[data-pressable]:hover .name-wrap {
     transform: none;
   }
 
