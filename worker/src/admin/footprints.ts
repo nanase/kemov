@@ -323,6 +323,16 @@ export interface EventFields {
  * out to null (or `[]` for the two arrays) - the same full-replace reading
  * #158 gives a PUT body, extended to POST here because there is no partial
  * form of creating an event either.
+ *
+ * Not built on `editable-body.ts`'s `readEditableBody`, even though this is
+ * the same full-replace shape: that helper's `FieldProblem` checks one key
+ * against its own value alone, with no way to see a sibling field, but
+ * `eventFieldsProblem` below needs several at once - `startsAt` is only
+ * valid when `datePrecision` is `day`, and its Japan-time date must match
+ * `startDate`. `channelIds` and `sources` are arrays besides, which
+ * `readEditableBody` has no shape for. `editable-body.ts`'s own comment
+ * already says as much: it exists for the shape of the check members.ts and
+ * video-overrides.ts share, not to force every resource through it.
  */
 function readEventFields(body: Record<string, unknown>): EventFields | { error: string } {
   const channelIds = body.channelIds ?? [];
