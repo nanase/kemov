@@ -51,12 +51,10 @@ const years = computed(() => {
 
   if (!descending.value) return list;
 
-  return [...list]
-    .reverse()
-    .map((year) => ({
-      ...year,
-      months: [...year.months].reverse().map((month) => ({ ...month, rows: [...month.rows].reverse() })),
-    }));
+  return [...list].reverse().map((year) => ({
+    ...year,
+    months: [...year.months].reverse().map((month) => ({ ...month, rows: [...month.rows].reverse() })),
+  }));
 });
 
 /** One row of the timeline, with what the date column says about it. */

@@ -5,7 +5,20 @@ import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt from '@/shell/UpdatedAt.vue';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
 
-import { buildTimeline, eventItems, KIND_LABELS, STREAM_MODES, type Filters, type StreamModeId } from './model';
+import {
+  buildTimeline,
+  daysBetween,
+  eventItems,
+  thisWeekInPast,
+  upcoming,
+  KIND_LABELS,
+  SOON_DAYS,
+  SOON_SHOW,
+  STREAM_MODES,
+  type Filters,
+  type StreamModeId,
+} from './model';
+import AsideList from './parts/AsideList.vue';
 import TimelineView from './parts/TimelineView.vue';
 import { useFootprintsData } from './useFootprintsData';
 import type { EventKind } from '@/type/api';
@@ -82,6 +95,38 @@ function jumpToYear(year: string) {
   if (year === '') return;
 
   document.querySelector(`[data-year="${year}"]`)?.scrollIntoView({ block: 'start' });
+}
+
+/**
+ * The two lists beside the road: what is coming, and the same week before.
+ *
+ * Both are worked out from the same records the timeline reads, so a member
+ * chosen above narrows them too - a reader who has picked one person is not
+ * shown somebody else's anniversary in the corner.
+ */
+const soonAll = ref(false);
+const soonList = computed(() => upcoming(items.value, data.rows.value, data.channels.value, filters.value, now.value));
+const soonShown = computed(() => {
+  const near = soonList.value.filter((entry) => daysBetween(now.value, entry.at) <= SOON_DAYS);
+
+  // Three is the fewest worth a panel. A quiet month reaches further ahead
+  // rather than leaving a heading with nothing under it.
+  if (soonAll.value) return soonList.value;
+
+  return (near.length >= 3 ? near : soonList.value.slice(0, 3)).slice(0, SOON_SHOW);
+});
+const agoList = computed(() => thisWeekInPast(items.value, data.rows.value, filters.value, now.value));
+
+/** The first row of the road, which is whichever end the order puts it at. */
+function jumpToStart() {
+  const rows = document.querySelectorAll('.timeline .row');
+  const first = filters.value.order === 'asc' ? document.querySelector('.timeline .year') : rows[rows.length - 1];
+
+  first?.scrollIntoView({ block: 'start' });
+}
+
+function jumpToNow() {
+  document.querySelector('.timeline .row.now')?.scrollIntoView({ block: 'center' });
 }
 
 function openItem(key: string) {
@@ -199,20 +244,64 @@ onBeforeUnmount(() => {
         しばらく時間をおいてから再度お試しください
       </p>
       <p v-else-if="data.loading.value" class="fp-panel fp-empty">読み込んでいます</p>
-      <p v-else-if="timeline.events === 0 && timeline.streams === 0" class="fp-panel fp-empty">
-        条件に合う記録はありません
-      </p>
-      <TimelineView
-        v-else
-        :timeline
-        :channels="data.channels.value"
-        :filters
-        :open="openBundles"
-        :now
-        :dark
-        @toggle="toggleBundle"
-        @open="openItem"
-      />
+      <div v-else class="main">
+        <p v-if="timeline.events === 0 && timeline.streams === 0" class="fp-panel fp-empty">
+          条件に合う記録はありません
+        </p>
+        <TimelineView
+          v-else
+          :timeline
+          :channels="data.channels.value"
+          :filters
+          :open="openBundles"
+          :now
+          :dark
+          @toggle="toggleBundle"
+          @open="openItem"
+        />
+
+        <aside class="rail">
+          <div class="fp-panel side">
+            <AsideList
+              :items="soonShown"
+              :channels="data.channels.value"
+              heading="これからのあしあと"
+              mode="soon"
+              :now
+              :dark
+              empty="この条件でめぐってくる日はありません"
+              @open="openItem"
+            >
+              <template #foot>
+                <button
+                  v-if="soonList.length > soonShown.length || soonAll"
+                  type="button"
+                  class="more fp-n"
+                  @click="soonAll = !soonAll"
+                >
+                  {{ soonAll ? '近いものだけ表示' : `1 年先まで表示（${soonList.length} 件）` }}
+                </button>
+              </template>
+            </AsideList>
+
+            <AsideList
+              :items="agoList"
+              :channels="data.channels.value"
+              heading="むかしの今週"
+              mode="ago"
+              :now
+              :dark
+              empty="この週の記録はまだありません"
+              @open="openItem"
+            />
+          </div>
+
+          <div class="jump" role="group" aria-label="年表の端へ送る">
+            <button type="button" class="order" @click="jumpToStart">はじまり</button>
+            <button type="button" class="order" @click="jumpToNow">いま</button>
+          </div>
+        </aside>
+      </div>
     </div>
 
     <template #notes>
@@ -226,6 +315,76 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* The road and the panels beside it. Below 1040px the panels go, and what
+   they held moves to the band at the foot of the screen (#140). */
+.main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 292px;
+  gap: 22px;
+  align-items: start;
+  min-width: 0;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.side {
+  padding: 10px 12px 12px;
+}
+
+.side > * + * {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--k-line);
+}
+
+.more {
+  width: 100%;
+  height: 28px;
+  margin-top: 6px;
+  border: 1px solid var(--k-line);
+  border-radius: 6px;
+  background: var(--k-surface);
+  color: var(--k-text-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.more:hover {
+  border-color: var(--k-line-2);
+}
+
+/* Two places a reader always wants to get back to, kept beside the road
+   rather than inside a panel: they move the timeline, they do not describe
+   it. */
+.jump {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.jump .order {
+  justify-content: center;
+  height: 36px;
+  box-shadow: var(--k-shadow);
+}
+
+@container (max-width: 1040px) {
+  .main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .rail {
+    display: none;
+  }
+}
+
 .filters {
   padding: 4px 14px;
   margin-bottom: 8px;

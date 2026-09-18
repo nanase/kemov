@@ -391,3 +391,304 @@ export function yearFaces(channels: readonly Channel[], year: number, now: numbe
     return start <= to && start <= now && (end === null || end >= from);
   });
 }
+
+/**
+ * How far ahead the upcoming list looks, and how much of it is shown at rest.
+ *
+ * A year is the window because the things that come round - an anniversary, a
+ * round number of days - come round once in one. `SOON_DAYS` is what counts as
+ * near enough to be worth the space at rest; `SOON_SHOW` caps the list so that
+ * a quiet stretch does not push the map below the screen.
+ */
+export const SOON_WINDOW_DAYS = 365;
+export const SOON_DAYS = 45;
+export const SOON_SHOW = 6;
+
+/** Days between the round numbers that are marked (500, 1,000, 1,500 …). */
+export const DAY_STEP = 500;
+
+/** How far either side of today counts as "this week" in an earlier year. */
+export const AGO_SPREAD_DAYS = 3;
+
+/** How many rows the list that looks back holds. */
+export const AGO_SHOW = 4;
+
+/** One row of either list beside the timeline. */
+export interface AsideItem {
+  /** What opening the row opens, or null where there is nothing behind it. */
+  key: string | null;
+  at: number;
+  /** Whether a time of day is known, so it can be written after the date. */
+  timed: boolean;
+  label: string;
+  /** Still to come, which the row marks with an outline rather than a fill. */
+  planned: boolean;
+  channelIds: string[];
+  title: string;
+  /** The stream this row is, where it is one. */
+  row: VideoTableRow | null;
+  /** How many years ago it was, for the list that looks back. */
+  yearsAgo?: number;
+}
+
+/** The JST calendar day number an instant falls on. */
+function dayNumber(ms: number): number {
+  return Math.floor((ms + JST_OFFSET_MS) / DAY_MS);
+}
+
+/** Midnight JST on a year, month and day, as an instant. */
+function dayAt(year: number, month: number, day: number): number {
+  const pad = (value: number) => String(value).padStart(2, '0');
+
+  return dayStart(`${year}-${pad(month)}-${pad(day)}`);
+}
+
+/** Whether a set of members passes the filter. Nobody named means everybody. */
+function membersPass(channelIds: readonly string[], filters: Filters): boolean {
+  return filters.members.size === 0 || channelIds.length === 0
+    ? true
+    : channelIds.some((id) => filters.members.has(id));
+}
+
+/**
+ * The days a member or the project started on, which round numbers count from.
+ *
+ * Taken from the record rather than from `channels`: #140 puts a debut on the
+ * timeline as an event, and counting from a second date would put "5 周年" on
+ * one row and the debut it counts from on another. Only the first thing of
+ * each kind counts - a project is announced once, and a member debuts once -
+ * so a later announcement does not start a second count of its own.
+ *
+ * The row is named after whoever it belongs to rather than after the event's
+ * own title, because the title is a sentence ("ケープとフンボルトが初配信")
+ * and this row is a count.
+ */
+function origins(
+  events: readonly EventItem[],
+  channels: readonly Channel[],
+): { item: EventItem; name: string; what: string }[] {
+  const names = new Map(channels.map((channel) => [channel.channelId, channel.name]));
+  const found: { item: EventItem; name: string; what: string }[] = [];
+  const taken = new Set<string>();
+
+  for (const item of events) {
+    const { kind, channelIds } = item.event;
+
+    if (item.event.datePrecision !== 'day') continue;
+    if (kind !== 'debut' && kind !== 'project') continue;
+
+    const who =
+      kind === 'project'
+        ? 'けもV'
+        : channelIds
+            .map((id) => names.get(id) ?? '')
+            .filter(Boolean)
+            .join('・');
+    const name = who === '' ? item.event.title : who;
+
+    if (taken.has(name)) continue;
+
+    taken.add(name);
+    found.push({ item, name, what: kind === 'debut' ? 'デビュー' : '発表' });
+  }
+
+  return found;
+}
+
+/**
+ * The days that are coming, nearest first.
+ *
+ * Four things land here: the anniversaries of a start, the round numbers of
+ * days since one, the events already recorded with a date still ahead, and the
+ * streams that have been scheduled. The first two are worked out rather than
+ * recorded, so they open the day they count from.
+ */
+export function upcoming(
+  events: readonly EventItem[],
+  rows: readonly VideoTableRow[],
+  channels: readonly Channel[],
+  filters: Filters,
+  now: number,
+): AsideItem[] {
+  const today = dayNumber(now);
+  const end = today + SOON_WINDOW_DAYS;
+  const claimed = new Set(events.flatMap((item) => (item.row === null ? [] : [item.row.videoId])));
+  const out: AsideItem[] = [];
+
+  for (const { item, name, what } of origins(events, channels)) {
+    const { channelIds } = item.event;
+    const [year, month, day] = item.event.startDate.split('-').map(Number) as [number, number, number];
+
+    for (let round = year + 1; dayNumber(dayAt(round, month, day)) <= end; round += 1) {
+      const at = dayAt(round, month, day);
+
+      // 29 February in a year that has none rolls into March, which is not the
+      // anniversary of anything.
+      if (dayNumber(at) < today || new Date(at + JST_OFFSET_MS).getUTCMonth() + 1 !== month) continue;
+
+      out.push({
+        key: item.key,
+        at,
+        timed: false,
+        label: '周年',
+        planned: false,
+        channelIds,
+        title: `${name}の${what} ${round - year} 周年`,
+        row: null,
+      });
+    }
+
+    const gone = today - dayNumber(item.at);
+
+    for (
+      let days = Math.max(DAY_STEP, Math.ceil(gone / DAY_STEP) * DAY_STEP);
+      dayNumber(item.at) + days <= end;
+      days += DAY_STEP
+    ) {
+      if (dayNumber(item.at) + days < today) continue;
+
+      out.push({
+        key: item.key,
+        at: item.at + days * DAY_MS,
+        timed: false,
+        label: '日数',
+        planned: false,
+        channelIds,
+        title: `${name}の${what}から ${days.toLocaleString('ja-JP')} 日`,
+        row: null,
+      });
+    }
+  }
+
+  for (const item of events) {
+    // A date known only to the month cannot be counted down to.
+    if (!item.future || item.event.datePrecision !== 'day') continue;
+
+    out.push({
+      key: item.key,
+      at: item.at,
+      timed: item.timed,
+      label: KIND_LABELS[item.event.kind],
+      planned: true,
+      channelIds: item.event.channelIds,
+      title: item.event.title,
+      row: item.row,
+    });
+  }
+
+  for (const row of rows) {
+    if (claimed.has(row.videoId) || rowAt(row) <= now) continue;
+
+    out.push({
+      key: `v:${row.videoId}`,
+      at: rowAt(row),
+      timed: true,
+      label: row.type === null ? '配信' : VIDEO_LABELS[row.type],
+      planned: true,
+      channelIds: [row.channelId],
+      title: row.title,
+      row,
+    });
+  }
+
+  return out
+    .filter((entry) => dayNumber(entry.at) <= end && membersPass(entry.channelIds, filters))
+    .sort(
+      (a, b) =>
+        dayNumber(a.at) - dayNumber(b.at) ||
+        Number(a.timed) - Number(b.timed) ||
+        a.at - b.at ||
+        a.title.localeCompare(b.title),
+    );
+}
+
+/**
+ * The same week, in the years before this one.
+ *
+ * Three days either side of today rather than the calendar week: somebody
+ * opening the page on a Tuesday is looking for what happened around now, not
+ * for what happened on a Monday four years ago.
+ */
+export function thisWeekInPast(
+  events: readonly EventItem[],
+  rows: readonly VideoTableRow[],
+  filters: Filters,
+  now: number,
+): AsideItem[] {
+  const today = dayNumber(now);
+  const thisYear = new Date(now + JST_OFFSET_MS).getUTCFullYear();
+  const claimed = new Set(events.flatMap((item) => (item.row === null ? [] : [item.row.videoId])));
+
+  /** How many years ago this fell, and how far off today it was, or null. */
+  function near(at: number): { yearsAgo: number; offset: number } | null {
+    const date = new Date(at + JST_OFFSET_MS);
+    const year = date.getUTCFullYear();
+
+    if (year >= thisYear) return null;
+
+    const offset = dayNumber(dayAt(thisYear, date.getUTCMonth() + 1, date.getUTCDate())) - today;
+
+    return Math.abs(offset) <= AGO_SPREAD_DAYS ? { yearsAgo: thisYear - year, offset } : null;
+  }
+
+  const found: { entry: AsideItem; offset: number; rank: number }[] = [];
+
+  for (const item of events) {
+    if (item.event.datePrecision !== 'day' || !membersPass(item.event.channelIds, filters)) continue;
+
+    const when = near(item.at);
+
+    if (when === null) continue;
+
+    found.push({
+      offset: when.offset,
+      rank: item.event.emphasized ? 0 : 1,
+      entry: {
+        key: item.key,
+        at: item.at,
+        timed: item.timed,
+        label: KIND_LABELS[item.event.kind],
+        planned: false,
+        channelIds: item.event.channelIds,
+        title: item.event.title,
+        row: item.row,
+        yearsAgo: when.yearsAgo,
+      },
+    });
+  }
+
+  // Streams only fill a gap: a week with enough recorded days does not need
+  // them, and a week with none would otherwise show nothing at all.
+  if (found.length < 3) {
+    for (const row of rows) {
+      if (claimed.has(row.videoId) || !isKeyStream(row.title)) continue;
+      if (filters.members.size !== 0 && !filters.members.has(row.channelId)) continue;
+
+      const when = near(rowAt(row));
+
+      if (when === null) continue;
+
+      found.push({
+        offset: when.offset,
+        rank: 2,
+        entry: {
+          key: `v:${row.videoId}`,
+          at: rowAt(row),
+          timed: true,
+          label: row.type === null ? '配信' : VIDEO_LABELS[row.type],
+          planned: false,
+          channelIds: [row.channelId],
+          title: row.title,
+          row,
+          yearsAgo: when.yearsAgo,
+        },
+      });
+    }
+  }
+
+  return found
+    .sort((a, b) => a.rank - b.rank || a.offset - b.offset || b.entry.at - a.entry.at)
+    .slice(0, AGO_SHOW)
+    .sort((a, b) => a.offset - b.offset || b.entry.at - a.entry.at)
+    .map((entry) => entry.entry);
+}

@@ -2,11 +2,10 @@
  * The paths the built site has no file for.
  *
  * Cloudflare serves anything that matches a built file and wakes the worker for
- * everything else, so `/api/*` and these arrive here together. Vite's entries
- * are `stats/index.html`, `stats/detail/index.html`, `stats/ranking/index.html`
- * and `genet/music/index.html`: every page sits under a directory, and the two
- * directories above them hold no index of their own. Somebody typing the host
- * name reaches one of those and is answered with the API's 404 JSON.
+ * everything else, so `/api/*` and these arrive here together. Most of vite's
+ * entries sit under a directory of their own, and a directory above them holds
+ * no index: somebody typing one reaches nothing and is answered with the API's
+ * 404 JSON.
  *
  * That is #70's split working exactly as written rather than a fault in it, and
  * the fix belongs here rather than in the build: adding an index.html to those
@@ -17,17 +16,20 @@
 /**
  * Where a directory with no page of its own should send a visitor.
  *
- * `/` picks a landing page among three, and the statistics table is what this
- * site is for. `/genet/` has exactly one page beneath it, so there is nothing
- * to choose.
+ * `/genet/` has exactly one page beneath it, so there is nothing to choose.
+ *
+ * `/` used to be here, sending the site root to the statistics page. It has its
+ * own page now - the footprints page is the site's top page (#140) and builds
+ * to `index.html` at the root - so Cloudflare serves it from the file and the
+ * worker is never woken for it. A rule kept here would be dead either way, and
+ * a wrong one would take the top page down.
  *
  * Matched as whole paths and never as prefixes. A rule that sent anything
- * beginning with `/` to the statistics page would send `/api/channels` there
- * too and take the front end down with it, so the lookup is exact by
- * construction rather than by an ordering that a later edit could disturb.
+ * beginning with `/` to a page would send `/api/channels` there too and take
+ * the front end down with it, so the lookup is exact by construction rather
+ * than by an ordering that a later edit could disturb.
  */
 const LANDING: Readonly<Record<string, string>> = {
-  '/': '/stats/',
   '/genet': '/genet/music/',
   '/genet/': '/genet/music/',
 };
@@ -39,9 +41,10 @@ const LANDING: Readonly<Record<string, string>> = {
  * written here, so this answers the same way on the custom domain, on a
  * preview and under `wrangler dev`.
  *
- * 302 rather than 301: which page `/` opens is a decision that may change -
- * #99 has just added a third candidate - and a permanent redirect is kept by
- * browsers for as long as they like, which would outlive the decision.
+ * 302 rather than 301: where a directory opens is a decision that may change -
+ * `/` moved from the statistics page to a page of its own - and a permanent
+ * redirect is kept by browsers for as long as they like, which would outlive
+ * the decision.
  */
 export function siteRedirect(url: URL): Response | null {
   const target = LANDING[url.pathname];

@@ -8,8 +8,9 @@ import {
   isKeyStream,
   jstDay,
   jstMonth,
-  rowAt,
   streamPasses,
+  thisWeekInPast,
+  upcoming,
   yearFaces,
   DEFAULT_FILTERS,
   type Filters,
@@ -226,5 +227,178 @@ describe('yearFaces', () => {
 
   test('leaves out a member whose debut is still to come', () => {
     expect(yearFaces([channel('UCa', '2027-01-01')], 2027, NOW)).toEqual([]);
+  });
+});
+
+/** The debut the round numbers beside the timeline are counted from. */
+const DEBUT = event({
+  eventId: 10,
+  kind: 'debut',
+  startDate: '2021-04-28',
+  title: 'フンボルトペンギン',
+  channelIds: ['UCa'],
+});
+
+const items = (list: FootprintEvent[], now = NOW) => eventItems(list, new Map(), now);
+
+describe('upcoming', () => {
+  test('counts an anniversary from the debut that is on the timeline', () => {
+    const list = upcoming(items([DEBUT]), [], [], filters(), NOW);
+    const anniversary = list.find((entry) => entry.label === '周年');
+
+    expect(anniversary?.title).toEqual('フンボルトペンギンのデビュー 6 周年');
+    expect(jstDay(anniversary?.at ?? 0)).toEqual('2027-04-28');
+    // Worked out rather than recorded, so it opens the day it counts from.
+    expect(anniversary?.key).toEqual('e:10');
+  });
+
+  test('marks the round numbers of days, and only the ones still ahead', () => {
+    const days = upcoming(items([DEBUT]), [], [], filters(), NOW).filter((entry) => entry.label === '日数');
+
+    expect(days.map((entry) => entry.title)).toEqual(['フンボルトペンギンのデビューから 2,000 日']);
+    expect(jstDay(days[0]?.at ?? 0)).toEqual('2026-10-19');
+  });
+
+  // The event's own title is a sentence; this row is a count, so it is named
+  // after whoever it belongs to.
+  test('names the count after the member rather than after the event', () => {
+    const debut = event({
+      eventId: 11,
+      kind: 'debut',
+      startDate: '2021-04-28',
+      title: 'ケープとフンボルトが初配信',
+      channelIds: ['UCa', 'UCb'],
+    });
+    const named = (id: string, name: string) => ({ channelId: id, name }) as Channel;
+    const list = upcoming(
+      items([debut]),
+      [],
+      [named('UCa', 'ケープペンギン'), named('UCb', 'フンボルトペンギン')],
+      filters(),
+      NOW,
+    );
+
+    expect(list[0]?.title).toContain('ケープペンギン・フンボルトペンギンのデビュー');
+  });
+
+  // A project is announced once. A later announcement is an event, not a
+  // second beginning to count from.
+  test('counts from the first beginning of each kind only', () => {
+    const first = event({ eventId: 12, kind: 'project', startDate: '2021-04-25', title: 'けもV 発表' });
+    const later = event({ eventId: 13, kind: 'project', startDate: '2023-04-25', title: '第 2 期の発表' });
+    const list = upcoming(items([first, later]), [], [], filters(), NOW).filter((entry) => entry.label === '周年');
+
+    expect(list.map((entry) => entry.title)).toEqual(['けもVの発表 6 周年']);
+  });
+
+  test('carries a recorded event that is still to come, as a plan', () => {
+    const soon = event({ eventId: 2, startDate: '2026-10-01', kind: 'live-event', title: '会場イベント' });
+    const list = upcoming(items([soon]), [], [], filters(), NOW);
+
+    expect(list.map((entry) => [entry.title, entry.label, entry.planned])).toEqual([
+      ['会場イベント', 'リアルイベント', true],
+    ]);
+  });
+
+  test('leaves out an event known only to the month, which cannot be counted down to', () => {
+    const vague = event({ eventId: 3, datePrecision: 'month', startDate: '2026-11', title: '月までのできごと' });
+
+    expect(upcoming(items([vague]), [], [], filters(), NOW)).toEqual([]);
+  });
+
+  test('carries a scheduled stream, and never one an event already is', () => {
+    const scheduled = row({ videoId: 'v9', publishedAt: '2026-09-25T11:00:00Z', actualStartTime: null });
+    const claimed = row({ videoId: 'v8', publishedAt: '2026-09-26T11:00:00Z', actualStartTime: null });
+    const list = upcoming(
+      eventItems([event({ eventId: 4, startDate: '2026-09-26', videoId: 'v8' })], new Map([['v8', claimed]]), NOW),
+      [scheduled, claimed],
+      [],
+      filters(),
+      NOW,
+    );
+
+    expect(list.filter((entry) => entry.key === 'v:v9')).toHaveLength(1);
+    expect(list.filter((entry) => entry.key === 'v:v8')).toHaveLength(0);
+  });
+
+  test('stops at a year ahead', () => {
+    const far = event({ eventId: 5, startDate: '2028-01-01', title: 'ずっと先' });
+
+    expect(upcoming(items([far]), [], [], filters(), NOW)).toEqual([]);
+  });
+
+  test('keeps only the members being read, and always keeps けもV itself', () => {
+    const mine = event({ eventId: 6, startDate: '2026-10-02', channelIds: ['UCa'], title: '本人の予定' });
+    const other = event({ eventId: 7, startDate: '2026-10-03', channelIds: ['UCb'], title: '別の方の予定' });
+    const whole = event({ eventId: 8, startDate: '2026-10-04', channelIds: [], title: 'けもV 全体' });
+    const list = upcoming(items([mine, other, whole]), [], [], filters({ members: new Set(['UCa']) }), NOW);
+
+    expect(list.map((entry) => entry.title)).toEqual(['本人の予定', 'けもV 全体']);
+  });
+
+  test('puts the nearest day first, and an undated one before a timed one', () => {
+    const timed = event({ eventId: 9, startDate: '2026-10-19', startsAt: '2026-10-19T02:00:00Z', title: '時刻あり' });
+    const list = upcoming(items([DEBUT, timed]), [], [], filters(), NOW);
+    const sameDay = list.filter((entry) => jstDay(entry.at) === '2026-10-19');
+
+    expect(sameDay.map((entry) => entry.label)).toEqual(['日数', 'コラボ']);
+  });
+});
+
+describe('thisWeekInPast', () => {
+  const near = event({ eventId: 20, startDate: '2024-09-20', title: '2 年前の今週' });
+
+  test('finds the same week in an earlier year, and says how long ago', () => {
+    const list = thisWeekInPast(items([near]), [], filters(), NOW);
+
+    expect(list.map((entry) => [entry.title, entry.yearsAgo])).toEqual([['2 年前の今週', 2]]);
+  });
+
+  test('leaves out a day more than three either side of today', () => {
+    const far = event({ eventId: 21, startDate: '2024-09-25', title: '同じ月の別の週' });
+
+    expect(thisWeekInPast(items([far]), [], filters(), NOW)).toEqual([]);
+  });
+
+  test('leaves out this year, which is not "years ago"', () => {
+    const sameYear = event({ eventId: 22, startDate: '2026-09-20', title: '今年の今週' });
+
+    expect(thisWeekInPast(items([sameYear]), [], filters(), NOW)).toEqual([]);
+  });
+
+  // Which four survive is decided by weight; the order they are read in is
+  // the week's own, so a day drawn large does not jump out of its place.
+  test('keeps a day drawn large when the week is fuller than the list', () => {
+    const plain = [1, 2, 3, 4].map((n) =>
+      event({ eventId: 40 + n, startDate: `202${n}-09-18`, title: `ふつうの日 ${n}` }),
+    );
+    const big = event({ eventId: 23, startDate: '2023-09-22', emphasized: true, title: '大きな日' });
+    const list = thisWeekInPast(items([...plain, big]), [], filters(), NOW);
+
+    expect(list.map((entry) => entry.title)).toEqual(['ふつうの日 4', 'ふつうの日 3', 'ふつうの日 2', '大きな日']);
+  });
+
+  test('fills a quiet week with the streams worth naming, and no others', () => {
+    const marked = row({
+      videoId: 'v2',
+      publishedAt: '2023-09-19T03:00:00Z',
+      actualStartTime: '2023-09-19T03:00:00Z',
+      title: '1 周年記念配信',
+    });
+    const plain = row({
+      videoId: 'v3',
+      publishedAt: '2023-09-19T05:00:00Z',
+      actualStartTime: '2023-09-19T05:00:00Z',
+      title: 'いつもの雑談',
+    });
+    const list = thisWeekInPast([], [marked, plain], filters(), NOW);
+
+    expect(list.map((entry) => entry.title)).toEqual(['1 周年記念配信']);
+  });
+
+  test('holds four rows at most', () => {
+    const many = [1, 2, 3, 4, 5].map((n) => event({ eventId: 30 + n, startDate: `202${n}-09-19`, title: `${n} 件目` }));
+
+    expect(thisWeekInPast(items(many), [], filters(), NOW)).toHaveLength(4);
   });
 });
