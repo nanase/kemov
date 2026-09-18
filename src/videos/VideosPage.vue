@@ -108,10 +108,14 @@ const pinned = computed(() => {
 type Phase = 'loading' | 'fail' | 'noUniverse' | 'funnel' | 'normal';
 
 const phase = computed<Phase>(() => {
-  if (data.loading.value) return 'loading';
+  // Checked before `loading`: a fetch that keeps failing leaves `loading`
+  // true forever (nothing ever "arrives"), and a page stuck on a skeleton
+  // hides the one thing worth telling the reader - that it could not be
+  // read - behind an animation that looks like progress.
   if (data.failure.value !== null && data.channelsFetchedAt.value === null && data.tableFetchedAt.value === null) {
     return 'fail';
   }
+  if (data.loading.value) return 'loading';
   if (universe.value.total === 0) return 'noUniverse';
   if (view.value.rows.length === 0) return 'funnel';
 
@@ -175,10 +179,13 @@ const alternatives = computed(() =>
 );
 
 const countSentence = computed(() => {
+  if (phase.value === 'loading') return '読み込み中';
+  if (phase.value === 'fail') return '';
+
   const scope = scopeName(kind.value, period.value);
 
   if (phase.value === 'noUniverse') return `${scope} 0 本`;
-  if (phase.value === 'funnel' || phase.value !== 'normal') return `${scope} ${withCommas(universe.value.total)} 本`;
+  if (phase.value === 'funnel') return `${scope} ${withCommas(universe.value.total)} 本`;
 
   const active =
     filters.value.query !== '' || filters.value.lengthBandId !== 'any' || filters.value.channelIds.size > 0;
@@ -427,10 +434,6 @@ onBeforeUnmount(() => {
         :title="selectedRow.title"
         @close="lightboxOpen = false"
       />
-
-      <p v-if="data.failure.value && data.channelsFetchedAt.value === null" class="failed">
-        配信・動画情報を取得できませんでした。しばらく時間をおいてから再度お試しください
-      </p>
     </div>
 
     <template #notes>
@@ -526,15 +529,6 @@ onBeforeUnmount(() => {
 
 .closerec {
   display: none;
-}
-
-.failed {
-  margin: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--k-warn);
-  border-radius: 6px;
-  color: var(--k-warn);
-  font-size: 12.5px;
 }
 
 /* Below 1000px the list drops its 配信者/公開 columns (js-driven, see
