@@ -6,10 +6,10 @@ import { createRouter, createWebHistory } from 'vue-router';
  * `/admin/*` path (see `worker/src/admin/index.ts`), so a reload or a shared
  * link lands back on the same screen instead of the shell's default.
  *
- * `FootprintsPage`, `PublishPage`, `MembersPage`, `VideosPage` and
- * `SnapsPage` are this project's own screens so far. Every other sidebar
- * destination still routes to `PlaceholderPage.vue` until a later task
- * builds a real screen for it.
+ * `FootprintsPage`, `PublishPage`, `MembersPage`, `VideosPage`, `SnapsPage`
+ * and `CollectPage` are this project's own screens so far. Every other
+ * sidebar destination still routes to `PlaceholderPage.vue` until a later
+ * task builds a real screen for it.
  */
 const router = createRouter({
   history: createWebHistory('/admin/'),
@@ -20,6 +20,7 @@ const router = createRouter({
     { path: '/channels', component: () => import('./pages/MembersPage.vue') },
     { path: '/videos', component: () => import('./pages/VideosPage.vue') },
     { path: '/snaps', component: () => import('./pages/SnapsPage.vue') },
+    { path: '/inbox-collect', component: () => import('./pages/CollectPage.vue') },
     {
       path: '/:page',
       component: () => import('./pages/PlaceholderPage.vue'),

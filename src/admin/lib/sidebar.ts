@@ -1,14 +1,14 @@
 /**
  * The sidebar's 3 groups and their order (#141, #144's handoff) - the same
  * order and names as the public site's own nav. Every destination is listed
- * even though only `footprints` and `publish` have a real screen this task;
- * the rest answer through `PlaceholderPage.vue` until a later task builds
- * them.
+ * even though several have no real screen yet; the rest answer through
+ * `PlaceholderPage.vue` until a later task builds them.
  *
- * `count` is left undefined everywhere but `publish`: #144's handoff is
- * explicit that only `GET /admin/api/footprints/pending` is countable today,
- * and every other item shows its name alone rather than a wrong or stale
- * number.
+ * `AdminShell.vue`'s own `badgeFor` is what actually computes a count, for
+ * `publish` (`GET /admin/api/footprints/pending`) and `inbox-collect`
+ * (`GET /admin/api/collect-tasks`) today - every other item shows its name
+ * alone rather than a wrong or stale number, since nothing here can count it
+ * yet.
  */
 export interface NavItem {
   page: string;

@@ -18,13 +18,17 @@ const route = useRoute();
 const drawerOpen = ref(false);
 const email = ref<string | null>(null);
 const publishBadge = ref<number | null>(null);
+const collectFailuresBadge = ref<number | null>(null);
 
 const initial = computed(() => (email.value ? email.value.charAt(0).toUpperCase() : ''));
 const currentPage = computed(() => route.path.replace(/^\/+/, ''));
 const crumb = computed(() => pageTitle(currentPage.value));
 
 function badgeFor(page: string): number | null {
-  return page === 'publish' ? publishBadge.value : null;
+  if (page === 'publish') return publishBadge.value;
+  if (page === 'inbox-collect') return collectFailuresBadge.value;
+
+  return null;
 }
 
 function closeDrawer(): void {
@@ -46,6 +50,14 @@ onMounted(async () => {
     publishBadge.value = publishBadgeCount(pending);
   } catch {
     publishBadge.value = null;
+  }
+
+  try {
+    const failing = await getJson<{ count: number }>('/collect-tasks');
+
+    collectFailuresBadge.value = failing.count;
+  } catch {
+    collectFailuresBadge.value = null;
   }
 });
 </script>
