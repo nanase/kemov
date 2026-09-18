@@ -13,6 +13,11 @@ describe('isWhitelistedSource', () => {
     'https://vtube.tokyo/events/1',
     'https://wikiwiki.jp/kemo_v/some-page',
     'https://virtualyoutuber.fandom.com/wiki/KemoV',
+    // A prefix with no trailing slash (an account handle, not a domain),
+    // matched exactly and with a query string or a fragment after it.
+    'https://x.com/KEMOVP_staff',
+    'https://x.com/KEMOVP_staff?ref=share',
+    'https://x.com/KEMOVP_staff#pinned',
   ])('accepts %s', (url) => {
     expect(isWhitelistedSource(url)).toEqual(true);
   });
@@ -25,6 +30,8 @@ describe('isWhitelistedSource', () => {
     // A prefix elsewhere on the same host is not the same source.
     'https://joysound.com/web/search/title/24171',
     'https://dic.nicovideo.jp/a/some-other-article',
+    // Same prefix text, but the account handle it names is not this one.
+    'https://x.com/KEMOVP_staff_fake',
   ])('refuses %s', (url) => {
     expect(isWhitelistedSource(url)).toEqual(false);
   });
