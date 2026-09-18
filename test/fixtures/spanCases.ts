@@ -21,3 +21,15 @@ export const SPAN_CASES: [name: string, actualStartTime: string, actualEndTime: 
     ['under a minute rounds up to one', '2026-09-14T00:12:00Z', '2026-09-14T00:12:30Z', [1992, 1]],
     ['over a week clamps to a week', '2026-09-12T15:00:00Z', '2026-09-25T15:00:00Z', [0, 10080]],
   ];
+
+/**
+ * A stream whose `actual_end_time` is not after its `actual_start_time` - an
+ * anomaly the collector can still write, not a span either #144's worker
+ * endpoint or `streamSpans` has any use for. Both leave it out entirely
+ * rather than ask `spanOf` to make sense of a non-positive duration, so this
+ * table carries only the input: there is no expected span to share.
+ */
+export const ANOMALOUS_SPAN_CASES: [name: string, actualStartTime: string, actualEndTime: string][] = [
+  ['end equals start', '2026-09-14T00:12:00Z', '2026-09-14T00:12:00Z'],
+  ['end before start', '2026-09-14T00:12:00Z', '2026-09-14T00:00:00Z'],
+];

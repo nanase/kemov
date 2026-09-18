@@ -1,4 +1,5 @@
 import type { Env } from '../lib/env';
+import { VIDEO_EFFECTIVE } from '../lib/overrides';
 
 /**
  * GET /api/streams: each member's stream spans, for #134's heatmap of when
@@ -72,18 +73,27 @@ function presentRecent(row: StreamRow) {
   };
 }
 
-/** GET /api/streams */
+/**
+ * GET /api/streams
+ *
+ * `actual_end_time > actual_start_time` leaves out a stream whose end is not
+ * after its start - an anomaly the collector can still write, not a video
+ * this endpoint has any use for. Left in, `spanOf` would clamp its duration
+ * to one minute rather than report the true, meaningless span.
+ */
 export async function listStreams(env: Env) {
   const [{ results: channelRows }, { results: streamRows }] = await Promise.all([
     env.DB.prepare(`SELECT channel_id FROM channel ORDER BY display_order, channel_id`).all<{
       channel_id: string;
     }>(),
     env.DB.prepare(
-      `SELECT channel_id, video_id, title, actual_start_time, actual_end_time,
+      `WITH ${VIDEO_EFFECTIVE}
+       SELECT channel_id, video_id, title, actual_start_time, actual_end_time,
               duration_seconds, view_count, chat_message_count, fetched_at
-         FROM video
+         FROM video_effective
         WHERE availability = 'public' AND type = 'streaming'
           AND actual_start_time IS NOT NULL AND actual_end_time IS NOT NULL
+          AND actual_end_time > actual_start_time
         ORDER BY actual_start_time ASC`,
     ).all<StreamRow>(),
   ]);

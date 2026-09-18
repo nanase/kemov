@@ -58,8 +58,27 @@ async function insertVideo(
     .run();
 }
 
+async function insertOverride(
+  videoId: string,
+  overrides: { title?: string | null; type?: string | null; availability?: string | null } = {},
+): Promise<void> {
+  await env.DB.prepare(`INSERT INTO video_override (video_id, title, type, availability) VALUES (?1, ?2, ?3, ?4)`)
+    .bind(videoId, overrides.title ?? null, overrides.type ?? null, overrides.availability ?? null)
+    .run();
+}
+
+async function insertExclusion(channelId: string, fetchedAt: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO channel_snapshot_exclusion (channel_id, fetched_at, reason) VALUES (?1, ?2, 'test')`,
+  )
+    .bind(channelId, fetchedAt)
+    .run();
+}
+
 beforeEach(async () => {
   await env.DB.prepare('DELETE FROM collect_task').run();
+  await env.DB.prepare('DELETE FROM channel_snapshot_exclusion').run();
+  await env.DB.prepare('DELETE FROM video_override').run();
   await env.DB.prepare('DELETE FROM channel_snapshot').run();
   await env.DB.prepare('DELETE FROM video').run();
   await env.DB.prepare('DELETE FROM channel').run();
@@ -151,6 +170,33 @@ describe('monthsSeries', () => {
     expect(channel.subscribers).toEqual([1000, null, null]);
     // ...but the total still carries their last count forward.
     expect(result.total.subscribers).toEqual([1000, 1000, 1000]);
+  });
+
+  test("falls back to the last non-excluded tick when the month's last tick is excluded", async () => {
+    await insertChannel('UCaaa', '2026-07-01');
+    await insertSnapshot('UCaaa', '2026-07-10T00:00:00Z', 1000);
+    await insertSnapshot('UCaaa', '2026-07-20T00:00:00Z', 1050);
+    await insertExclusion('UCaaa', '2026-07-20T00:00:00Z');
+
+    const result = await monthsSeries(env, now);
+    const channel = result.channels[0] as { subscribers: (number | null)[] };
+    const july = result.months.indexOf('2026-07');
+
+    expect(channel.subscribers[july]).toEqual(1000);
+    expect(result.total.subscribers[july]).toEqual(1000);
+  });
+
+  test('is null for a month whose only tick is excluded', async () => {
+    await insertChannel('UCaaa', '2026-09-01');
+    await insertSnapshot('UCaaa', '2026-09-10T00:00:00Z', 1000);
+    await insertExclusion('UCaaa', '2026-09-10T00:00:00Z');
+
+    const result = await monthsSeries(env, now);
+    const channel = result.channels[0] as { subscribers: (number | null)[] };
+    const month = result.months.indexOf('2026-09');
+
+    expect(channel.subscribers[month]).toBeNull();
+    expect(result.total.subscribers[month]).toBeNull();
   });
 
   test('total.subscribers is null only while no member has any snapshot yet', async () => {
@@ -262,6 +308,31 @@ describe('monthsSeries', () => {
     expect(channel.chatMessages?.[month]).toEqual(50);
     expect(channel.chatUniqueUsers?.[month]).toEqual(10);
     expect(channel.views?.[month]).toEqual(600);
+  });
+
+  test('a type override moves a video from one series to another', async () => {
+    await insertChannel('UCaaa', '2026-09-01');
+    await insertVideo('v', 'UCaaa', { type: 'video', publishedAt: '2026-09-01T00:00:00Z' });
+    await insertOverride('v', { type: 'streaming' });
+
+    const result = await monthsSeries(env, now);
+    const channel = result.channels[0] as { streams: (number | null)[]; videos: (number | null)[] };
+    const month = result.months.indexOf('2026-09');
+
+    expect(channel.streams[month]).toEqual(1);
+    expect(channel.videos[month]).toEqual(0);
+  });
+
+  test('leaves out a video overridden to a non-public availability', async () => {
+    await insertChannel('UCaaa', '2026-09-01');
+    await insertVideo('v', 'UCaaa', { type: 'streaming', publishedAt: '2026-09-01T00:00:00Z' });
+    await insertOverride('v', { availability: 'private' });
+
+    const result = await monthsSeries(env, now);
+    const channel = result.channels[0] as { streams: (number | null)[] };
+    const month = result.months.indexOf('2026-09');
+
+    expect(channel.streams[month]).toEqual(0);
   });
 
   test('leaves out a video that is not public or not yet typed', async () => {

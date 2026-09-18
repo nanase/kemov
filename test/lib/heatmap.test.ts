@@ -1,6 +1,6 @@
 import { heatmapBins, HEATMAP_STEP_MINUTES, spanOf, streamSpans, WEEK_MINUTES, type StreamSpan } from '@/lib/heatmap';
 import type { VideoTableRow } from '@/lib/ranking';
-import { SPAN_CASES } from '../fixtures/spanCases';
+import { ANOMALOUS_SPAN_CASES, SPAN_CASES } from '../fixtures/spanCases';
 
 /**
  * The two steps between `GET /api/videos/table` and a member's heatmap: one
@@ -66,6 +66,17 @@ describe('streamSpans', () => {
 
     expect(streamSpans(rows)).toEqual([]);
   });
+
+  // The same anomaly worker/test/streams.test.ts leaves out of /api/streams -
+  // shared here so the two cannot disagree about which rows are excluded.
+  test.each(ANOMALOUS_SPAN_CASES)(
+    'leaves out a stream whose end is not after its start (%s)',
+    (_name, actualStartTime, actualEndTime) => {
+      const rows = [row({ actualStartTime, actualEndTime })];
+
+      expect(streamSpans(rows)).toEqual([]);
+    },
+  );
 });
 
 describe('heatmapBins', () => {

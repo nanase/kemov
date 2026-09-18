@@ -1,4 +1,5 @@
 import type { Env } from '../lib/env';
+import { VIDEO_EFFECTIVE } from '../lib/overrides';
 import {
   isRankingMetric,
   isVideoKind,
@@ -129,15 +130,17 @@ export async function listVideos(env: Env, channelId: string, options: { limit: 
   const rows =
     after === null
       ? await env.DB.prepare(
-          `SELECT ${VIDEO_COLUMNS} FROM video WHERE channel_id = ?1
-          ORDER BY published_at DESC, video_id DESC LIMIT ?2`,
+          `WITH ${VIDEO_EFFECTIVE}
+           SELECT ${VIDEO_COLUMNS} FROM video_effective WHERE channel_id = ?1
+           ORDER BY published_at DESC, video_id DESC LIMIT ?2`,
         )
           .bind(channelId, options.limit + 1)
           .all<VideoRow>()
       : await env.DB.prepare(
-          `SELECT ${VIDEO_COLUMNS} FROM video
-          WHERE channel_id = ?1 AND (published_at, video_id) < (?2, ?3)
-          ORDER BY published_at DESC, video_id DESC LIMIT ?4`,
+          `WITH ${VIDEO_EFFECTIVE}
+           SELECT ${VIDEO_COLUMNS} FROM video_effective
+           WHERE channel_id = ?1 AND (published_at, video_id) < (?2, ?3)
+           ORDER BY published_at DESC, video_id DESC LIMIT ?4`,
         )
           .bind(channelId, after[0], after[1], options.limit + 1)
           .all<VideoRow>();
@@ -176,8 +179,9 @@ export async function listVideos(env: Env, channelId: string, options: { limit: 
 export async function rankVideos(env: Env, metric: RankingMetric, limit: number, kind: VideoKind | null = null) {
   const expression = rankingExpression(metric);
   const { results } = await env.DB.prepare(
-    `SELECT ${VIDEO_COLUMNS}, ${expression} AS metric_value
-       FROM video
+    `WITH ${VIDEO_EFFECTIVE}
+     SELECT ${VIDEO_COLUMNS}, ${expression} AS metric_value
+       FROM video_effective
       WHERE availability = 'public'
         AND type IS NOT NULL
         AND (?2 IS NULL OR type = ?2)
@@ -235,7 +239,8 @@ interface TableRow {
  */
 export async function videosTable(env: Env) {
   const { results } = await env.DB.prepare(
-    `SELECT ${TABLE_COLUMNS} FROM video
+    `WITH ${VIDEO_EFFECTIVE}
+     SELECT ${TABLE_COLUMNS} FROM video_effective
       WHERE availability = 'public' AND type IS NOT NULL
       ORDER BY published_at DESC, video_id DESC`,
   ).all<TableRow>();
