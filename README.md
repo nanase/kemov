@@ -185,6 +185,24 @@ Every `/admin/api/*` request is also checked by the worker itself, in `worker/sr
 
 `ACCESS_AUD` is the `aud` tag of the Access application in front of `/admin`, and `ACCESS_TEAM_DOMAIN` is that Access team's domain (e.g. `nanase.cloudflareaccess.com`) — a `[vars]` entry in `wrangler.toml`, not a secret, because it is the same domain a browser is already sent to for the Access login page. With either `ACCESS_AUD` or `ACCESS_TEAM_DOMAIN` unset, or with a key set that cannot be fetched, every `/admin/api/*` request is refused, Access policy notwithstanding.
 
+### The Admin API's Endpoints
+
+| Method | Path                                                       | Answers with                                                        |
+| ------ | ---------------------------------------------------------- | ------------------------------------------------------------------- |
+| GET    | `/admin/api/me`                                            | The email Cloudflare Access identified the caller as                |
+| GET    | `/admin/api/members`                                       | Every `channel` row                                                 |
+| PUT    | `/admin/api/members/<channel ID>`                          | The row after replacing the columns a person may edit               |
+| GET    | `/admin/api/snapshot-exclusions`                           | Every `channel_snapshot_exclusion` row                              |
+| PUT    | `/admin/api/snapshot-exclusions/<channel ID>/<fetched_at>` | The exclusion after creating or replacing it                        |
+| DELETE | `/admin/api/snapshot-exclusions/<channel ID>/<fetched_at>` | Nothing but the revision logged for the removal                     |
+| GET    | `/admin/api/video-overrides`                               | Every `video_override` row, with the video's own title alongside it |
+| PUT    | `/admin/api/video-overrides/<video ID>`                    | The override after creating or replacing it                         |
+| DELETE | `/admin/api/video-overrides/<video ID>`                    | Nothing but the revision logged for the removal                     |
+
+`channel`, `video_override` and `channel_snapshot_exclusion` take effect the moment they are saved — #141's design decision 5 — unlike `footprints_event` and `genet_stream` below, which pass through a publish step instead. Every PUT or DELETE above logs one row to `revision` in the same `db.batch` as the row it changes, so a row and its history cannot come apart if one write in the pair fails. A PUT answers with `revisionId` alongside the saved row; a DELETE answers with `revisionId` alone.
+
+A PUT replaces every column at once rather than patching one: a column its endpoint does not name is refused with 400, and a column left out of the body is treated as null, which is itself refused with 400 for a column that may not be null. `worker/src/lib/revision.ts` is what each save's `revision.body` goes through — the row as saved, minus columns that only say when a save happened rather than what it changed, with its JSON keys in the row's own column order.
+
 ### Footprints: Editing and Publishing
 
 | Method | Path                                               | Answers with                                                                                     |
@@ -201,7 +219,7 @@ Every `/admin/api/*` request is also checked by the worker itself, in `worker/sr
 
 `GET /admin/api/footprints/events` takes `status` and `q` (a substring of `title`) as query parameters, narrowing the list.
 
-An event passes through a publish gate rather than taking effect on save - unlike `channel`, `video_override` and `channel_snapshot_exclusion` above, which do not. Creating, updating and deleting an event logs no `revision` at all; only `publish` and `withdraw` do, in the same `db.batch` as the `status` change. `POST .../publish` refuses with 400 and every failing condition together when the event is not ready — an empty `title`, `sourcePending: false` with no source in the whitelist (`worker/src/lib/source-whitelist.ts`), or a `videoId` that is not 11 characters. Publishing an already-published event is allowed, and is how an event `GET .../pending` reports as changed gets a fresh `publish` revision matching its current row.
+An event passes through a publish gate rather than taking effect on save, the same as the table above already draws the line for `footprints_event` and `genet_stream`. Creating, updating and deleting an event logs no `revision` at all; only `publish` and `withdraw` do, in the same `db.batch` as the `status` change. `POST .../publish` refuses with 400 and every failing condition together when the event is not ready — an empty `title`, `sourcePending: false` with no source in the whitelist (`worker/src/lib/source-whitelist.ts`), or a `videoId` that is not 11 characters. Publishing an already-published event is allowed, and is how an event `GET .../pending` reports as changed gets a fresh `publish` revision matching its current row.
 
 `POST /admin/api/footprints/publish` builds `footprints/events.json` from the latest `revision` of every event whose latest action is not `withdraw`, writes it to `PUBLIC_DATA`, and appends one `publication` row recording the newest `revision_id` it saw. Nothing is written when there is nothing newer than the last run.
 
@@ -482,7 +500,7 @@ The admin site publishes JSON to its own bucket, `kemov-public`, bound as `PUBLI
 
 It is not backed up. Every published object is built from `revision`, which is backed up, so losing `kemov-public` costs a republish rather than the data itself — the same reasoning that keeps `collect_task` and `chat_author` out of `kemov-backup` (see [Backups](#backups) above), applied to a bucket instead of a table.
 
-Nothing writes to it yet. Which keys it holds and what serves them from `/api` are later work; this only reserves the binding and the bucket.
+Nothing writes to it yet - publishing is later work - but `/api` already serves it. `GET /api/footprints/events` and `GET /api/genet/music` pass the bucket's `footprints/events.json` and `genet/music.json` straight through: the same bytes, the object's own `ETag` and `Last-Modified`, and no reparsing. Until a publish exists to write either key, both answer 404 with `{"error":"not published yet"}`. `If-None-Match` is honoured with 304, and HEAD answers with the same status and headers as GET but no body.
 
 The bucket does not exist until created once, before deploying the code that binds it:
 

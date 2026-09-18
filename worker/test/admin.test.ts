@@ -120,26 +120,29 @@ describe('handleAdminRequest', () => {
   });
 });
 
+async function call(path: string, init: RequestInit = {}): Promise<Response> {
+  const { token, certs } = await signedAccessToken(validPayload());
+
+  return handleAdminRequest(
+    new Request(`https://kemov.nanase.cc${path}`, {
+      ...init,
+      headers: { ...init.headers, 'Cf-Access-Jwt-Assertion': token },
+    }),
+    { ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM } as typeof env,
+    undefined,
+    certsFetch(certs),
+    new Map() as CertsCache,
+  );
+}
+
+const put = (path: string, body: unknown) =>
+  call(path, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
 // What each footprints route actually does is footprints.test.ts and
 // footprints-publish.test.ts's job. This only checks that a path and a
 // method reach the function that owns them.
 describe('handleAdminRequest routing to footprints', () => {
   beforeEach(clearEverything);
-
-  async function call(path: string, init: RequestInit = {}): Promise<Response> {
-    const { token, certs } = await signedAccessToken(validPayload());
-
-    return handleAdminRequest(
-      new Request(`https://kemov.nanase.cc${path}`, {
-        ...init,
-        headers: { ...init.headers, 'Cf-Access-Jwt-Assertion': token },
-      }),
-      { ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM } as typeof env,
-      undefined,
-      certsFetch(certs),
-      new Map() as CertsCache,
-    );
-  }
 
   const minimalEventBody = {
     datePrecision: 'day',
@@ -160,9 +163,6 @@ describe('handleAdminRequest routing to footprints', () => {
 
   const post = (path: string, body: unknown) =>
     call(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-
-  const put = (path: string, body: unknown) =>
-    call(path, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
   test('routes GET and POST /admin/api/footprints/events', async () => {
     expect((await call('/admin/api/footprints/events')).status).toEqual(200);
@@ -220,5 +220,130 @@ describe('handleAdminRequest routing to footprints', () => {
   test('routes GET /admin/api/footprints/pending and POST /admin/api/footprints/publish', async () => {
     expect((await call('/admin/api/footprints/pending')).status).toEqual(200);
     expect((await post('/admin/api/footprints/publish', {})).status).toEqual(200);
+  });
+});
+
+// What each resource actually does with a valid save or delete is
+// members.test.ts, video-overrides.test.ts and snapshot-exclusions.test.ts's
+// own job. This only checks that a path and a method reach the function that
+// owns them, since that wiring is this file's, not theirs.
+describe("handleAdminRequest routing to task 12's resources", () => {
+  beforeEach(clearEverything);
+
+  async function insertChannel(channelId: string): Promise<void> {
+    await env.DB.prepare(
+      `INSERT INTO channel (channel_id, name, fullname, color_key, color_sub, color_light, color_back, activity_start_date)
+       VALUES (?1, ?1, ?1, '#000000', '#000000', '#000000', '#000000', '2021-01-01')`,
+    )
+      .bind(channelId)
+      .run();
+  }
+
+  test('routes GET /admin/api/members', async () => {
+    await insertChannel('UCaaa');
+
+    expect((await call('/admin/api/members')).status).toEqual(200);
+  });
+
+  test('routes PUT /admin/api/members/:id, and refuses other methods', async () => {
+    await insertChannel('UCaaa');
+
+    const response = await put('/admin/api/members/UCaaa', {
+      name: 'x',
+      fullname: 'x',
+      globalname: null,
+      twitter: null,
+      twitch: null,
+      colorKey: '#000000',
+      colorSub: '#000000',
+      colorLight: '#000000',
+      colorBack: '#000000',
+      activityStartDate: '2021-01-01',
+      activityEndDate: null,
+      displayOrder: 0,
+    });
+
+    expect(response.status).toEqual(200);
+
+    const refused = await call('/admin/api/members/UCaaa', { method: 'DELETE' });
+
+    expect(refused.status).toEqual(405);
+    expect(refused.headers.get('Allow')).toEqual('PUT');
+  });
+
+  test('refuses a PUT body that is not valid JSON', async () => {
+    await insertChannel('UCaaa');
+
+    const response = await call('/admin/api/members/UCaaa', { method: 'PUT', body: 'not json' });
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ error: 'body must be valid JSON' });
+  });
+
+  test('refuses a PUT body that is not a JSON object', async () => {
+    await insertChannel('UCaaa');
+
+    const response = await put('/admin/api/members/UCaaa', [1, 2, 3]);
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ error: 'body must be a JSON object' });
+  });
+
+  test('routes GET /admin/api/video-overrides and PUT/DELETE .../:videoId', async () => {
+    await insertChannel('UCaaa');
+    await env.DB.prepare(
+      `INSERT INTO video (video_id, channel_id, title, published_at, availability, live_broadcast_content, fetched_at)
+       VALUES ('vid1', 'UCaaa', 't', '2026-09-01T00:00:00Z', 'public', 'none', '2026-09-01T00:00:00Z')`,
+    ).run();
+
+    expect((await call('/admin/api/video-overrides')).status).toEqual(200);
+
+    const saved = await put('/admin/api/video-overrides/vid1', { title: 'x' });
+
+    expect(saved.status).toEqual(200);
+
+    const deleted = await call('/admin/api/video-overrides/vid1', { method: 'DELETE' });
+
+    expect(deleted.status).toEqual(200);
+
+    const wrongMethod = await call('/admin/api/video-overrides/vid1', { method: 'PATCH' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('PUT, DELETE');
+  });
+
+  test('routes GET /admin/api/snapshot-exclusions and PUT/DELETE .../:channelId/:fetchedAt', async () => {
+    await insertChannel('UCaaa');
+    await env.DB.prepare(
+      `INSERT INTO channel_snapshot (channel_id, fetched_at, subscriber_count, view_count, video_count)
+       VALUES ('UCaaa', '2026-09-08T00:00:00Z', 100, 200, 3)`,
+    ).run();
+
+    expect((await call('/admin/api/snapshot-exclusions')).status).toEqual(200);
+
+    const saved = await put('/admin/api/snapshot-exclusions/UCaaa/2026-09-08T00:00:00Z', { reason: 'x' });
+
+    expect(saved.status).toEqual(200);
+
+    const deleted = await call('/admin/api/snapshot-exclusions/UCaaa/2026-09-08T00:00:00Z', { method: 'DELETE' });
+
+    expect(deleted.status).toEqual(200);
+  });
+
+  // fetched_at (2026-09-08T00:00:00Z) has colons, which encodeURIComponent -
+  // the ordinary way to build a path segment from an arbitrary string -
+  // turns into %3A. A router that only split on '/' and never decoded would
+  // look up a fetched_at that never matches any row.
+  test('decodes a percent-encoded fetchedAt path segment', async () => {
+    await insertChannel('UCaaa');
+    await env.DB.prepare(
+      `INSERT INTO channel_snapshot (channel_id, fetched_at, subscriber_count, view_count, video_count)
+       VALUES ('UCaaa', '2026-09-08T00:00:00Z', 100, 200, 3)`,
+    ).run();
+
+    const path = `/admin/api/snapshot-exclusions/UCaaa/${encodeURIComponent('2026-09-08T00:00:00Z')}`;
+    const saved = await put(path, { reason: 'x' });
+
+    expect(saved.status).toEqual(200);
   });
 });

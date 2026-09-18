@@ -19,6 +19,7 @@ import {
   ROWS_PER_STATEMENT,
   toSql,
 } from '../src/lib/backup';
+import { clearEverything } from './reset-db';
 
 // #111's condition is being able to restore, not being able to export, so the
 // test that matters is the round trip: write D1 out, empty it, put the files
@@ -68,9 +69,9 @@ async function insertChannel(channelId: string): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO channel (channel_id, name, fullname, globalname, twitter, color_key, color_sub,
                           color_light, color_back, activity_start_date, activity_end_date,
-                          custom_url, thumbnail_url, fetched_at)
+                          custom_url, thumbnail_url, fetched_at, display_order, twitch)
      VALUES (?1, 'あ', 'あの人', NULL, 'aaa', '#000000', '#111111', '#222222', '#333333',
-             '2021-04-01', NULL, '@aaa', 'https://example.invalid/a.jpg', '2026-09-08T00:00:00Z')`,
+             '2021-04-01', NULL, '@aaa', 'https://example.invalid/a.jpg', '2026-09-08T00:00:00Z', 3, 'aaa_twitch')`,
   )
     .bind(channelId)
     .run();
@@ -207,54 +208,6 @@ async function seed(): Promise<void> {
   }
 
   await seedAdminTables();
-}
-
-async function clearEverything(): Promise<void> {
-  // `publication` and `revision` each carry a trigger refusing a DELETE
-  // (append-only, see migrations/0005_add_revision_and_publication.sql), so
-  // the DELETE loop below would be refused for them. Dropped here and put
-  // back from its own sqlite_master text afterward - not retyped - so this
-  // cannot drift from whatever the migration defines. What it protects in
-  // production, a row surviving until this file's tests are done, is not
-  // weakened: the trigger is gone only for the moment this function runs.
-  const triggers = await env.DB.prepare(
-    `SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name IN ('publication', 'revision')`,
-  ).all<{ name: string; sql: string }>();
-
-  for (const trigger of triggers.results) {
-    await env.DB.prepare(`DROP TRIGGER ${trigger.name}`).run();
-  }
-
-  // Children before parents: the foreign keys refuse it in any other order.
-  for (const table of [
-    'chat_author',
-    'collect_task',
-    'genet_scene',
-    'genet_performance',
-    'genet_tune_video',
-    'genet_tune_score',
-    'genet_tune_attribute_person',
-    'genet_tune_attribute',
-    'genet_stream',
-    'genet_tune',
-    'genet_person',
-    'footprints_event_source',
-    'footprints_event_member',
-    'footprints_event',
-    'channel_snapshot_exclusion',
-    'video_override',
-    'publication',
-    'revision',
-    'channel_snapshot',
-    'video',
-    'channel',
-  ]) {
-    await env.DB.prepare(`DELETE FROM ${table}`).run();
-  }
-
-  for (const trigger of triggers.results) {
-    await env.DB.prepare(trigger.sql).run();
-  }
 }
 
 async function clearBucket(): Promise<void> {
@@ -453,6 +406,24 @@ describe('runBackup', () => {
     const keys = (await env.BACKUP.list({ prefix: 'channel_snapshot/' })).objects;
 
     expect(keys).toEqual([]);
+  });
+});
+
+// This is what channel.display_order and channel.twitch were missing from
+// (2026-09-18): both are columns D1 has always had, so nothing above would
+// have failed to seed or restore them - it is only a value nobody set that
+// happened to match the column's own default. Comparing the two lists of
+// names directly is what actually catches a table gaining a column
+// BACKED_UP_TABLES was not told about.
+describe('BACKED_UP_TABLES columns', () => {
+  test('names every column D1 has for each table, and no other', async () => {
+    for (const table of BACKED_UP_TABLES) {
+      const { results } = await env.DB.prepare('SELECT name FROM pragma_table_info(?1)').bind(table.name).all<{
+        name: string;
+      }>();
+
+      expect(new Set(table.columns), table.name).toEqual(new Set(results.map((row) => row.name)));
+    }
   });
 });
 
