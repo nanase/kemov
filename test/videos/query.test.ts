@@ -91,6 +91,17 @@ describe('queryToState', () => {
     expect(queryToState(new URLSearchParams('period=year&year=abc')).period).toEqual('all');
   });
 
+  // A year short of four digits, zero-padded or not, must not become a
+  // different year by way of Date.UTC's own two-digit rule (see
+  // ../lib/ranking.ts's periodRange) - `year=0021` is `21` once parsed as a
+  // number, the same as `year=21`.
+  test.each(['21', '0021', '999'])(
+    'a year of fewer than four significant digits (%s) falls back to the default period',
+    (year) => {
+      expect(queryToState(new URLSearchParams(`period=year&year=${year}`)).period).toEqual('all');
+    },
+  );
+
   test('a period this page does not have falls back to the default', () => {
     expect(queryToState(new URLSearchParams('period=lastWeek')).period).toEqual('all');
   });

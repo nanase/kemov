@@ -55,9 +55,11 @@ function queryToPeriod(periodId: string | null, yearText: string | null): Rankin
     return id ?? null;
   }
 
-  // Four digits only: a 2026 written as `year=21` must not become 1921 by
-  // way of Date.UTC's own two-digit rule (see ../lib/ranking.ts's periodRange).
-  const year = yearText !== null && /^\d{4}$/.test(yearText) ? Number(yearText) : NaN;
+  // Four digits, the first never zero: `year=21` and its zero-padded twin
+  // `year=0021` must not become 1921 by way of Date.UTC's own two-digit rule
+  // (see ../lib/ranking.ts's periodRange) - `\d{4}` alone lets both through,
+  // since `Number('0021')` is still 21.
+  const year = yearText !== null && /^[1-9]\d{3}$/.test(yearText) ? Number(yearText) : NaN;
 
   return Number.isInteger(year) ? { year } : null;
 }
