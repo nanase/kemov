@@ -1,3 +1,4 @@
+import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 import { isSchemaTimestamp } from '../lib/time';
@@ -166,49 +167,67 @@ export async function readStreams(env: Env, videoIds: readonly string[]): Promis
 
   if (ids.length === 0) return new Map();
 
-  const placeholders = ids.map((_, index) => `?${index + 1}`).join(', ');
+  const [streamRows, perfRows, sceneRows] = await Promise.all([
+    queryInChunks(ids, async (chunk) => {
+      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
 
-  const [streams, perfRows, sceneRows] = await Promise.all([
-    env.DB.prepare(
-      `SELECT video_id, platform, url, video_type, title, short_title, published_at, categories, keywords,
-              status, memo, created_at, updated_at
-         FROM genet_stream WHERE video_id IN (${placeholders})`,
-    )
-      .bind(...ids)
-      .all<StreamRow>(),
-    env.DB.prepare(
-      `SELECT video_id, position, tune_id, description FROM genet_performance WHERE video_id IN (${placeholders}) ORDER BY video_id, position`,
-    )
-      .bind(...ids)
-      .all<RawPerformanceRow & { video_id: string }>(),
-    env.DB.prepare(
-      `SELECT video_id, position, scene_position, style, scene_video_id, start_seconds
-         FROM genet_scene WHERE video_id IN (${placeholders}) ORDER BY video_id, position, scene_position`,
-    )
-      .bind(...ids)
-      .all<RawSceneRow & { video_id: string }>(),
+      const { results } = await env.DB.prepare(
+        `SELECT video_id, platform, url, video_type, title, short_title, published_at, categories, keywords,
+                status, memo, created_at, updated_at
+           FROM genet_stream WHERE video_id IN (${placeholders})`,
+      )
+        .bind(...chunk)
+        .all<StreamRow>();
+
+      return results;
+    }),
+    queryInChunks(ids, async (chunk) => {
+      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+
+      const { results } = await env.DB.prepare(
+        `SELECT video_id, position, tune_id, description FROM genet_performance WHERE video_id IN (${placeholders}) ORDER BY video_id, position`,
+      )
+        .bind(...chunk)
+        .all<RawPerformanceRow & { video_id: string }>();
+
+      return results;
+    }),
+    queryInChunks(ids, async (chunk) => {
+      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+
+      const { results } = await env.DB.prepare(
+        `SELECT video_id, position, scene_position, style, scene_video_id, start_seconds
+           FROM genet_scene WHERE video_id IN (${placeholders}) ORDER BY video_id, position, scene_position`,
+      )
+        .bind(...chunk)
+        .all<RawSceneRow & { video_id: string }>();
+
+      return results;
+    }),
   ]);
 
   const scenesByStreamAndPosition = new Map<string, Map<number, Scene[]>>();
 
-  for (const row of sceneRows.results) {
+  for (const row of sceneRows) {
     if (!scenesByStreamAndPosition.has(row.video_id)) scenesByStreamAndPosition.set(row.video_id, new Map());
 
     const byPosition = scenesByStreamAndPosition.get(row.video_id)!;
 
     if (!byPosition.has(row.position)) byPosition.set(row.position, []);
-    byPosition.get(row.position)!.push({ style: row.style, video_id: row.scene_video_id, start_seconds: row.start_seconds });
+    byPosition
+      .get(row.position)!
+      .push({ style: row.style, video_id: row.scene_video_id, start_seconds: row.start_seconds });
   }
 
   const perfsByStream = new Map<string, RawPerformanceRow[]>();
 
-  for (const row of perfRows.results) {
+  for (const row of perfRows) {
     if (!perfsByStream.has(row.video_id)) perfsByStream.set(row.video_id, []);
     perfsByStream.get(row.video_id)!.push(row);
   }
 
   return new Map(
-    streams.results.map((stream) => [
+    streamRows.map((stream) => [
       stream.video_id,
       {
         stream,
@@ -401,7 +420,9 @@ function streamFieldsProblem(fields: StreamFields): string | null {
   }
 
   if ((fields.platform === 'youtube') !== (fields.url === null)) {
-    return fields.platform === 'youtube' ? 'url must be null when platform is youtube' : 'url is required when platform is not youtube';
+    return fields.platform === 'youtube'
+      ? 'url must be null when platform is youtube'
+      : 'url is required when platform is not youtube';
   }
 
   if (fields.url !== null && !fields.url.startsWith('https://')) return 'url must start with https://';
@@ -432,18 +453,24 @@ async function unknownTuneIds(env: Env, tuneIds: readonly number[]): Promise<num
 
   if (ids.length === 0) return [];
 
-  const { results } = await env.DB.prepare(
-    `SELECT tune_id FROM genet_tune WHERE tune_id IN (${ids.map((_, index) => `?${index + 1}`).join(', ')})`,
-  )
-    .bind(...ids)
-    .all<{ tune_id: number }>();
+  const rows = await queryInChunks(ids, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+    const { results } = await env.DB.prepare(`SELECT tune_id FROM genet_tune WHERE tune_id IN (${placeholders})`)
+      .bind(...chunk)
+      .all<{ tune_id: number }>();
 
-  const known = new Set(results.map((row) => row.tune_id));
+    return results;
+  });
+
+  const known = new Set(rows.map((row) => row.tune_id));
 
   return ids.filter((id) => !known.has(id));
 }
 
-async function validatedStreamFields(env: Env, body: Record<string, unknown>): Promise<StreamFields | { error: Response }> {
+async function validatedStreamFields(
+  env: Env,
+  body: Record<string, unknown>,
+): Promise<StreamFields | { error: Response }> {
   const fields = readStreamFields(body);
 
   if ('error' in fields) return { error: errorResponse(400, fields.error) };
@@ -469,12 +496,9 @@ function childStatements(env: Env, videoId: string, fields: StreamFields): D1Pre
     const position = index + 1;
 
     statements.push(
-      env.DB.prepare('INSERT INTO genet_performance (video_id, position, tune_id, description) VALUES (?1, ?2, ?3, ?4)').bind(
-        videoId,
-        position,
-        p.tuneId,
-        p.description,
-      ),
+      env.DB.prepare(
+        'INSERT INTO genet_performance (video_id, position, tune_id, description) VALUES (?1, ?2, ?3, ?4)',
+      ).bind(videoId, position, p.tuneId, p.description),
     );
 
     p.scenes.forEach((s, sceneIndex) => {

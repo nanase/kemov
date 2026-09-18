@@ -61,6 +61,21 @@ describe('listStreams', () => {
 
     expect(body.streams.map((s) => s.videoId)).toEqual(['bbbbbbbbbbb', 'aaaaaaaaaaa']);
   });
+
+  // D1 refuses a statement bound to more than 100 parameters - readStreams
+  // builds `IN (?1, ...)` from every listed id at once, so this stays green
+  // only because it chunks (worker/src/lib/d1.ts).
+  test('lists more streams than one D1 statement can bind', async () => {
+    const count = 150;
+
+    for (let i = 0; i < count; i++) {
+      await createValidStream({ videoId: `lst${String(i).padStart(8, '0')}` });
+    }
+
+    const body = (await listStreams(env, null, null).then((r) => r.json())) as { streams: unknown[] };
+
+    expect(body.streams).toHaveLength(count);
+  }, 20000);
 });
 
 describe('createStream', () => {
@@ -99,7 +114,10 @@ describe('createStream', () => {
   });
 
   test('accepts platform tiktok with a url', async () => {
-    const response = await createStream(env, validBody({ platform: 'tiktok', url: 'https://www.tiktok.com/@x/video/1' }));
+    const response = await createStream(
+      env,
+      validBody({ platform: 'tiktok', url: 'https://www.tiktok.com/@x/video/1' }),
+    );
 
     expect(response.status).toEqual(201);
   });
@@ -120,7 +138,10 @@ describe('createStream', () => {
   // check a performance naming a tuneId that does not exist would fail the
   // whole batch with a raw constraint error instead of a 400.
   test('refuses a performance naming a tuneId that does not exist', async () => {
-    const response = await createStream(env, validBody({ performances: [{ tuneId: 999, description: null, scenes: [] }] }));
+    const response = await createStream(
+      env,
+      validBody({ performances: [{ tuneId: 999, description: null, scenes: [] }] }),
+    );
 
     expect(response.status).toEqual(400);
   });
@@ -144,7 +165,9 @@ describe('createStream', () => {
     expect(response.status).toEqual(201);
 
     const body = (await response.json()) as {
-      stream: { performances: { tuneId: number; scenes: { style: string; videoId: string; startSeconds: number | null }[] }[] };
+      stream: {
+        performances: { tuneId: number; scenes: { style: string; videoId: string; startSeconds: number | null }[] }[];
+      };
     };
 
     expect(body.stream.performances).toEqual([
@@ -157,7 +180,9 @@ describe('createStream', () => {
 
     const response = await createStream(
       env,
-      validBody({ performances: [{ tuneId, description: null, scenes: [{ style: 'dance', videoId: 'x', startSeconds: null }] }] }),
+      validBody({
+        performances: [{ tuneId, description: null, scenes: [{ style: 'dance', videoId: 'x', startSeconds: null }] }],
+      }),
     );
 
     expect(response.status).toEqual(400);
@@ -213,14 +238,18 @@ describe('deleteStream', () => {
   test('deletes the stream and its performances/scenes', async () => {
     const tuneId = await insertTune();
     const videoId = await createValidStream({
-      performances: [{ tuneId, description: null, scenes: [{ style: 'play', videoId: 'abcdefghijk', startSeconds: 0 }] }],
+      performances: [
+        { tuneId, description: null, scenes: [{ style: 'play', videoId: 'abcdefghijk', startSeconds: 0 }] },
+      ],
     });
 
     const response = await deleteStream(env, videoId);
 
     expect(response.status).toEqual(200);
     expect(await env.DB.prepare('SELECT 1 FROM genet_stream WHERE video_id = ?1').bind(videoId).first()).toBeNull();
-    expect(await env.DB.prepare('SELECT 1 FROM genet_performance WHERE video_id = ?1').bind(videoId).first()).toBeNull();
+    expect(
+      await env.DB.prepare('SELECT 1 FROM genet_performance WHERE video_id = ?1').bind(videoId).first(),
+    ).toBeNull();
     expect(await env.DB.prepare('SELECT 1 FROM genet_scene WHERE video_id = ?1').bind(videoId).first()).toBeNull();
   });
 

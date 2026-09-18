@@ -1,3 +1,4 @@
+import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 
@@ -123,7 +124,9 @@ interface RawAttributePersonRow {
 
 /** `genet_tune`, its attributes (with the people each names), its videos and its scores, all in display order. */
 export async function readTune(env: Env, tuneId: number): Promise<GenetTune | null> {
-  const tune = await env.DB.prepare('SELECT tune_id, title, original_title, subtunes, memo FROM genet_tune WHERE tune_id = ?1')
+  const tune = await env.DB.prepare(
+    'SELECT tune_id, title, original_title, subtunes, memo FROM genet_tune WHERE tune_id = ?1',
+  )
     .bind(tuneId)
     .first<TuneRow>();
 
@@ -139,7 +142,9 @@ export async function readTune(env: Env, tuneId: number): Promise<GenetTune | nu
     )
       .bind(tuneId)
       .all<RawAttributePersonRow>(),
-    env.DB.prepare('SELECT video_id, title, start_seconds, description FROM genet_tune_video WHERE tune_id = ?1 ORDER BY position')
+    env.DB.prepare(
+      'SELECT video_id, title, start_seconds, description FROM genet_tune_video WHERE tune_id = ?1 ORDER BY position',
+    )
       .bind(tuneId)
       .all<VideoRow>(),
     env.DB.prepare('SELECT url, title FROM genet_tune_score WHERE tune_id = ?1 ORDER BY position')
@@ -172,36 +177,63 @@ export async function readTunes(env: Env, tuneIds: readonly number[]): Promise<M
 
   if (ids.length === 0) return new Map();
 
-  const placeholders = ids.map((_, index) => `?${index + 1}`).join(', ');
+  const [tuneRows, attrRows, personRows, videoRows, scoreRows] = await Promise.all([
+    queryInChunks(ids, async (chunk) => {
+      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+      const { results } = await env.DB.prepare(
+        `SELECT tune_id, title, original_title, subtunes, memo FROM genet_tune WHERE tune_id IN (${placeholders})`,
+      )
+        .bind(...chunk)
+        .all<TuneRow>();
 
-  const [tunes, attrRows, personRows, videoRows, scoreRows] = await Promise.all([
-    env.DB.prepare(`SELECT tune_id, title, original_title, subtunes, memo FROM genet_tune WHERE tune_id IN (${placeholders})`)
-      .bind(...ids)
-      .all<TuneRow>(),
-    env.DB.prepare(
-      `SELECT tune_id, position, name, text FROM genet_tune_attribute WHERE tune_id IN (${placeholders}) ORDER BY tune_id, position`,
-    )
-      .bind(...ids)
-      .all<RawAttributeRow & { tune_id: number }>(),
-    env.DB.prepare(
-      `SELECT tune_id, attribute_position, person_id, credited_as, note
-         FROM genet_tune_attribute_person WHERE tune_id IN (${placeholders}) ORDER BY tune_id, attribute_position, position`,
-    )
-      .bind(...ids)
-      .all<RawAttributePersonRow & { tune_id: number }>(),
-    env.DB.prepare(
-      `SELECT tune_id, video_id, title, start_seconds, description FROM genet_tune_video WHERE tune_id IN (${placeholders}) ORDER BY tune_id, position`,
-    )
-      .bind(...ids)
-      .all<VideoRow & { tune_id: number }>(),
-    env.DB.prepare(`SELECT tune_id, url, title FROM genet_tune_score WHERE tune_id IN (${placeholders}) ORDER BY tune_id, position`)
-      .bind(...ids)
-      .all<ScoreRow & { tune_id: number }>(),
+      return results;
+    }),
+    queryInChunks(ids, async (chunk) => {
+      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+      const { results } = await env.DB.prepare(
+        `SELECT tune_id, position, name, text FROM genet_tune_attribute WHERE tune_id IN (${placeholders}) ORDER BY tune_id, position`,
+      )
+        .bind(...chunk)
+        .all<RawAttributeRow & { tune_id: number }>();
+
+      return results;
+    }),
+    queryInChunks(ids, async (chunk) => {
+      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+      const { results } = await env.DB.prepare(
+        `SELECT tune_id, attribute_position, person_id, credited_as, note
+           FROM genet_tune_attribute_person WHERE tune_id IN (${placeholders}) ORDER BY tune_id, attribute_position, position`,
+      )
+        .bind(...chunk)
+        .all<RawAttributePersonRow & { tune_id: number }>();
+
+      return results;
+    }),
+    queryInChunks(ids, async (chunk) => {
+      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+      const { results } = await env.DB.prepare(
+        `SELECT tune_id, video_id, title, start_seconds, description FROM genet_tune_video WHERE tune_id IN (${placeholders}) ORDER BY tune_id, position`,
+      )
+        .bind(...chunk)
+        .all<VideoRow & { tune_id: number }>();
+
+      return results;
+    }),
+    queryInChunks(ids, async (chunk) => {
+      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+      const { results } = await env.DB.prepare(
+        `SELECT tune_id, url, title FROM genet_tune_score WHERE tune_id IN (${placeholders}) ORDER BY tune_id, position`,
+      )
+        .bind(...chunk)
+        .all<ScoreRow & { tune_id: number }>();
+
+      return results;
+    }),
   ]);
 
   const peopleByTuneAndPosition = new Map<number, Map<number, AttributePersonRow[]>>();
 
-  for (const { tune_id: tuneId, attribute_position: position, ...person } of personRows.results) {
+  for (const { tune_id: tuneId, attribute_position: position, ...person } of personRows) {
     if (!peopleByTuneAndPosition.has(tuneId)) peopleByTuneAndPosition.set(tuneId, new Map());
 
     const byPosition = peopleByTuneAndPosition.get(tuneId)!;
@@ -212,27 +244,27 @@ export async function readTunes(env: Env, tuneIds: readonly number[]): Promise<M
 
   const attrsByTune = new Map<number, RawAttributeRow[]>();
 
-  for (const { tune_id: tuneId, ...attr } of attrRows.results) {
+  for (const { tune_id: tuneId, ...attr } of attrRows) {
     if (!attrsByTune.has(tuneId)) attrsByTune.set(tuneId, []);
     attrsByTune.get(tuneId)!.push(attr);
   }
 
   const videosByTune = new Map<number, VideoRow[]>();
 
-  for (const { tune_id: tuneId, ...video } of videoRows.results) {
+  for (const { tune_id: tuneId, ...video } of videoRows) {
     if (!videosByTune.has(tuneId)) videosByTune.set(tuneId, []);
     videosByTune.get(tuneId)!.push(video);
   }
 
   const scoresByTune = new Map<number, ScoreRow[]>();
 
-  for (const { tune_id: tuneId, ...score } of scoreRows.results) {
+  for (const { tune_id: tuneId, ...score } of scoreRows) {
     if (!scoresByTune.has(tuneId)) scoresByTune.set(tuneId, []);
     scoresByTune.get(tuneId)!.push(score);
   }
 
   return new Map(
-    tunes.results.map((tune) => [
+    tuneRows.map((tune) => [
       tune.tune_id,
       {
         tune,
@@ -311,8 +343,10 @@ function readAttributeFields(value: unknown): AttributeFields | { error: string 
 
   const { name, text, people } = value as Record<string, unknown>;
 
-  if (name !== undefined && name !== null && typeof name !== 'string') return { error: 'attribute name must be a string or null' };
-  if (text !== undefined && text !== null && typeof text !== 'string') return { error: 'attribute text must be a string or null' };
+  if (name !== undefined && name !== null && typeof name !== 'string')
+    return { error: 'attribute name must be a string or null' };
+  if (text !== undefined && text !== null && typeof text !== 'string')
+    return { error: 'attribute text must be a string or null' };
 
   const peopleValue = people ?? [];
 
@@ -493,13 +527,16 @@ async function unknownPersonIds(env: Env, personIds: readonly number[]): Promise
 
   if (ids.length === 0) return [];
 
-  const { results } = await env.DB.prepare(
-    `SELECT person_id FROM genet_person WHERE person_id IN (${ids.map((_, index) => `?${index + 1}`).join(', ')})`,
-  )
-    .bind(...ids)
-    .all<{ person_id: number }>();
+  const rows = await queryInChunks(ids, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+    const { results } = await env.DB.prepare(`SELECT person_id FROM genet_person WHERE person_id IN (${placeholders})`)
+      .bind(...chunk)
+      .all<{ person_id: number }>();
 
-  const known = new Set(results.map((row) => row.person_id));
+    return results;
+  });
+
+  const known = new Set(rows.map((row) => row.person_id));
 
   return ids.filter((id) => !known.has(id));
 }
@@ -564,11 +601,9 @@ function childStatementsForNewTune(env: Env, fields: TuneFields): D1PreparedStat
 
   fields.scores.forEach((s, index) => {
     statements.push(
-      env.DB.prepare('INSERT INTO genet_tune_score (tune_id, position, url, title) VALUES (last_insert_rowid(), ?1, ?2, ?3)').bind(
-        index + 1,
-        s.url,
-        s.title,
-      ),
+      env.DB.prepare(
+        'INSERT INTO genet_tune_score (tune_id, position, url, title) VALUES (last_insert_rowid(), ?1, ?2, ?3)',
+      ).bind(index + 1, s.url, s.title),
     );
   });
 
@@ -657,13 +692,9 @@ export async function updateTune(env: Env, tuneId: number, body: Record<string, 
   if ('error' in fields) return fields.error;
 
   await env.DB.batch([
-    env.DB.prepare('UPDATE genet_tune SET title = ?1, original_title = ?2, subtunes = ?3, memo = ?4 WHERE tune_id = ?5').bind(
-      fields.title,
-      fields.originalTitle,
-      JSON.stringify(fields.subtunes),
-      fields.memo,
-      tuneId,
-    ),
+    env.DB.prepare(
+      'UPDATE genet_tune SET title = ?1, original_title = ?2, subtunes = ?3, memo = ?4 WHERE tune_id = ?5',
+    ).bind(fields.title, fields.originalTitle, JSON.stringify(fields.subtunes), fields.memo, tuneId),
     env.DB.prepare('DELETE FROM genet_tune_attribute_person WHERE tune_id = ?1').bind(tuneId),
     env.DB.prepare('DELETE FROM genet_tune_attribute WHERE tune_id = ?1').bind(tuneId),
     env.DB.prepare('DELETE FROM genet_tune_video WHERE tune_id = ?1').bind(tuneId),

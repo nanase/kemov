@@ -1,3 +1,4 @@
+import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 import { isSchemaDate, isSchemaTimestamp } from '../lib/time';
@@ -156,38 +157,51 @@ export async function readEvent(env: Env, eventId: number): Promise<FootprintsEv
 export async function readEvents(env: Env, eventIds: readonly number[]): Promise<Map<number, FootprintsEvent>> {
   if (eventIds.length === 0) return new Map();
 
-  const placeholders = eventIds.map((_, index) => `?${index + 1}`).join(', ');
+  const [eventRows, memberRows, sourceRows] = await Promise.all([
+    queryInChunks(eventIds, async (chunk) => {
+      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+      const { results } = await env.DB.prepare(
+        `SELECT event_id, date_precision, start_date, starts_at, end_date, kind, emphasized, title, place,
+                  supplement, video_id, source_pending, status, memo, created_at, updated_at
+             FROM footprints_event
+            WHERE event_id IN (${placeholders})`,
+      )
+        .bind(...chunk)
+        .all<EventRow>();
 
-  const [events, members, sources] = await Promise.all([
-    env.DB.prepare(
-      `SELECT event_id, date_precision, start_date, starts_at, end_date, kind, emphasized, title, place,
-                supplement, video_id, source_pending, status, memo, created_at, updated_at
-           FROM footprints_event
-          WHERE event_id IN (${placeholders})`,
-    )
-      .bind(...eventIds)
-      .all<EventRow>(),
-    env.DB.prepare(
-      `SELECT event_id, channel_id FROM footprints_event_member WHERE event_id IN (${placeholders}) ORDER BY event_id, channel_id`,
-    )
-      .bind(...eventIds)
-      .all<{ event_id: number; channel_id: string }>(),
-    env.DB.prepare(
-      `SELECT event_id, url, title FROM footprints_event_source WHERE event_id IN (${placeholders}) ORDER BY event_id, position`,
-    )
-      .bind(...eventIds)
-      .all<{ event_id: number } & SourceRow>(),
+      return results;
+    }),
+    queryInChunks(eventIds, async (chunk) => {
+      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+      const { results } = await env.DB.prepare(
+        `SELECT event_id, channel_id FROM footprints_event_member WHERE event_id IN (${placeholders}) ORDER BY event_id, channel_id`,
+      )
+        .bind(...chunk)
+        .all<{ event_id: number; channel_id: string }>();
+
+      return results;
+    }),
+    queryInChunks(eventIds, async (chunk) => {
+      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+      const { results } = await env.DB.prepare(
+        `SELECT event_id, url, title FROM footprints_event_source WHERE event_id IN (${placeholders}) ORDER BY event_id, position`,
+      )
+        .bind(...chunk)
+        .all<{ event_id: number } & SourceRow>();
+
+      return results;
+    }),
   ]);
 
   const result = new Map<number, FootprintsEvent>(
-    events.results.map((event) => [event.event_id, { event, channelIds: [], sources: [] }]),
+    eventRows.map((event) => [event.event_id, { event, channelIds: [], sources: [] }]),
   );
 
-  for (const { event_id: eventId, channel_id: channelId } of members.results) {
+  for (const { event_id: eventId, channel_id: channelId } of memberRows) {
     result.get(eventId)?.channelIds.push(channelId);
   }
 
-  for (const { event_id: eventId, ...source } of sources.results) {
+  for (const { event_id: eventId, ...source } of sourceRows) {
     result.get(eventId)?.sources.push(source);
   }
 

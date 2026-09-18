@@ -1,3 +1,4 @@
+import { queryInChunks } from '../lib/d1';
 import { readEditableBody } from '../lib/editable-body';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
@@ -44,15 +45,18 @@ export async function readPeople(env: Env, personIds: readonly number[]): Promis
 
   if (ids.length === 0) return new Map();
 
-  const placeholders = ids.map((_, index) => `?${index + 1}`).join(', ');
+  const rows = await queryInChunks(ids, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+    const { results } = await env.DB.prepare(
+      `SELECT person_id, name, link, memo FROM genet_person WHERE person_id IN (${placeholders})`,
+    )
+      .bind(...chunk)
+      .all<PersonRow>();
 
-  const { results } = await env.DB.prepare(
-    `SELECT person_id, name, link, memo FROM genet_person WHERE person_id IN (${placeholders})`,
-  )
-    .bind(...ids)
-    .all<PersonRow>();
+    return results;
+  });
 
-  return new Map(results.map((row) => [row.person_id, row]));
+  return new Map(rows.map((row) => [row.person_id, row]));
 }
 
 /** GET /admin/api/genet/people/:personId. 404 when there is no such person. */

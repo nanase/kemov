@@ -20,7 +20,9 @@ beforeEach(async () => {
 const NOW = new Date('2026-09-18T00:00:00Z');
 
 async function revisionRows(entity: string): Promise<{ entity_key: string; action: string; body: string | null }[]> {
-  const { results } = await env.DB.prepare('SELECT entity_key, action, body FROM revision WHERE entity = ?1 ORDER BY revision_id')
+  const { results } = await env.DB.prepare(
+    'SELECT entity_key, action, body FROM revision WHERE entity = ?1 ORDER BY revision_id',
+  )
     .bind(entity)
     .all<{ entity_key: string; action: string; body: string | null }>();
 
@@ -78,7 +80,9 @@ async function createPerformableStream(): Promise<{ videoId: string; tuneId: num
     attributes: [{ name: '作曲', text: null, people: [{ personId, creditedAs: null, note: null }] }],
   });
   const videoId = await createValidStream({
-    performances: [{ tuneId, description: '演奏として', scenes: [{ style: 'play', videoId: 'zzzzzzzzzzz', startSeconds: 0 }] }],
+    performances: [
+      { tuneId, description: '演奏として', scenes: [{ style: 'play', videoId: 'zzzzzzzzzzz', startSeconds: 0 }] },
+    ],
   });
 
   return { videoId, tuneId, personId };
@@ -96,15 +100,25 @@ describe('publishStream', () => {
 
     expect(response.status).toEqual(200);
 
-    const body = (await response.json()) as { stream: { status: string }; tuneRevisionCount: number; personRevisionCount: number };
+    const body = (await response.json()) as {
+      stream: { status: string };
+      tuneRevisionCount: number;
+      personRevisionCount: number;
+    };
 
     expect(body.stream.status).toEqual('published');
     expect(body.tuneRevisionCount).toEqual(1);
     expect(body.personRevisionCount).toEqual(1);
 
-    expect(await revisionRows('genet_stream')).toEqual([{ entity_key: videoId, action: 'publish', body: expect.any(String) }]);
-    expect(await revisionRows('genet_tune')).toEqual([{ entity_key: String(tuneId), action: 'publish', body: expect.any(String) }]);
-    expect(await revisionRows('genet_person')).toEqual([{ entity_key: String(personId), action: 'publish', body: expect.any(String) }]);
+    expect(await revisionRows('genet_stream')).toEqual([
+      { entity_key: videoId, action: 'publish', body: expect.any(String) },
+    ]);
+    expect(await revisionRows('genet_tune')).toEqual([
+      { entity_key: String(tuneId), action: 'publish', body: expect.any(String) },
+    ]);
+    expect(await revisionRows('genet_person')).toEqual([
+      { entity_key: String(personId), action: 'publish', body: expect.any(String) },
+    ]);
   });
 
   test('does not log a tune/person revision the second time nothing about them changed', async () => {
@@ -152,7 +166,9 @@ describe('publishStream', () => {
     const response = await publishStream(env, videoId);
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toMatchObject({ errors: expect.arrayContaining(['performances must have at least one tune']) });
+    expect(await response.json()).toMatchObject({
+      errors: expect.arrayContaining(['performances must have at least one tune']),
+    });
   });
 
   // A performance naming a tune that does not exist, or a tune attribute
@@ -212,7 +228,9 @@ describe('publishStream', () => {
       videoId,
       validStreamBody({
         title: '新しい題',
-        performances: [{ tuneId, description: '演奏として', scenes: [{ style: 'play', videoId: 'zzzzzzzzzzz', startSeconds: 0 }] }],
+        performances: [
+          { tuneId, description: '演奏として', scenes: [{ style: 'play', videoId: 'zzzzzzzzzzz', startSeconds: 0 }] },
+        ],
       }),
     );
 
@@ -291,7 +309,9 @@ describe('pendingGenetMusic', () => {
       videoId,
       validStreamBody({
         title: '新しい題',
-        performances: [{ tuneId, description: '演奏として', scenes: [{ style: 'play', videoId: 'zzzzzzzzzzz', startSeconds: 0 }] }],
+        performances: [
+          { tuneId, description: '演奏として', scenes: [{ style: 'play', videoId: 'zzzzzzzzzzz', startSeconds: 0 }] },
+        ],
       }),
     );
 
@@ -299,6 +319,30 @@ describe('pendingGenetMusic', () => {
 
     expect(body.changed).toEqual(expect.arrayContaining([{ entity: 'genet_stream', key: videoId, title: '新しい題' }]));
   });
+
+  // D1 refuses a statement bound to more than 100 parameters. readStreams
+  // (genet-streams.ts) builds `IN (?1, ...)` from every published stream at
+  // once - #144's real streaming.yml migration alone carries 113 of them -
+  // so this stays green only because it chunks (worker/src/lib/d1.ts).
+  test('reads more published streams than one D1 statement can bind', async () => {
+    const { tuneId } = await createPerformableStream();
+    const count = 150;
+
+    for (let i = 0; i < count; i++) {
+      const videoId = `pub${String(i).padStart(8, '0')}`;
+
+      await createStream(env, validStreamBody({ videoId, performances: [{ tuneId, description: null, scenes: [] }] }));
+      await publishStream(env, videoId);
+    }
+
+    const body = (await pendingGenetMusic(env).then((r) => r.json())) as {
+      pending: { entity: string }[];
+      changed: unknown[];
+    };
+
+    expect(body.pending.filter((row) => row.entity === 'genet_stream')).toHaveLength(count);
+    expect(body.changed).toEqual([]);
+  }, 20000);
 });
 
 describe('publishGenetMusicNow', () => {
@@ -331,7 +375,12 @@ describe('publishGenetMusicNow', () => {
 
     expect(response.status).toEqual(200);
 
-    const body = (await response.json()) as { published: boolean; streamCount: number; tuneCount: number; personCount: number };
+    const body = (await response.json()) as {
+      published: boolean;
+      streamCount: number;
+      tuneCount: number;
+      personCount: number;
+    };
 
     expect(body).toMatchObject({ published: true, streamCount: 1, tuneCount: 1, personCount: 1 });
 
@@ -342,7 +391,9 @@ describe('publishGenetMusicNow', () => {
     expect(published!.tunes.map((t) => t.tune_id)).toEqual([tuneId]);
     expect(published!.people.map((p) => p.person_id)).toEqual([personId]);
 
-    const publication = await env.DB.prepare("SELECT target, object_key FROM publication WHERE target = 'genet_music'").first();
+    const publication = await env.DB.prepare(
+      "SELECT target, object_key FROM publication WHERE target = 'genet_music'",
+    ).first();
 
     expect(publication).toEqual({ target: 'genet_music', object_key: 'genet/music.json' });
   });
