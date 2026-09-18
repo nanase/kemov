@@ -66,6 +66,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         stats: resolve(srcDir, 'stats', 'index.html'),
+        members: resolve(srcDir, 'members', 'index.html'),
         statsDetail: resolve(srcDir, 'stats', 'detail', 'index.html'),
         statsRanking: resolve(srcDir, 'stats', 'ranking', 'index.html'),
         genetMusic: resolve(srcDir, 'genet', 'music', 'index.html'),

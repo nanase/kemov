@@ -1,7 +1,7 @@
 import { spanOf, WEEK_MINUTES } from '@/lib/heatmap';
 import type { VideoTableRow } from '@/lib/ranking';
 import { VIDEO_PROPERTIES, type VideoProperty } from '@/type/video';
-import { VIDEO_TYPES, type Channel, type VideoType } from '@/type/api';
+import { VIDEO_TYPES, type Channel, type ChannelMonths, type VideoType } from '@/type/api';
 
 /**
  * What the member page works out for itself, with nothing here touching the
@@ -399,6 +399,59 @@ export function gaugeValue(id: GaugeId, totals: WindowTotals): number | null {
 }
 
 /**
+ * A gauge's month-by-month line, from `GET /api/months`.
+ *
+ * The thin line under each gauge is the whole history of that measure, so a
+ * 90-day figure can be read against how the member usually is rather than
+ * against anybody else (#136). A month with nothing to divide by is a hole in
+ * the line, not a zero.
+ */
+export function gaugeSeries(months: ChannelMonths, id: GaugeId): (number | null)[] {
+  const published = months.streams.map((streams, index) =>
+    streams === null ? null : streams + (months.videos[index] ?? 0) + (months.shorts[index] ?? 0),
+  );
+  const per = (top: (number | null)[], bottom: (number | null)[]) =>
+    top.map((value, index) => {
+      const divisor = bottom[index];
+
+      return value === null || divisor === null || divisor === undefined || divisor === 0 ? null : value / divisor;
+    });
+
+  switch (id) {
+    case 'count':
+      return published;
+    case 'duration':
+      return months.streamSeconds;
+    case 'perVideo':
+      return per(months.streamSeconds, published);
+    case 'chat':
+      return months.chatMessages;
+    case 'chatUsers':
+      return months.chatUniqueUsers;
+    case 'chatPerStream':
+      return per(months.chatMessages, months.streams);
+  }
+}
+
+/** The monthly panel's bars, in the unit that panel writes them in. */
+export function monthlySeries(months: ChannelMonths, id: MonthlySeriesId): (number | null)[] {
+  switch (id) {
+    case 'streams':
+      return months.streams.map((streams, index) =>
+        streams === null ? null : streams + (months.videos[index] ?? 0) + (months.shorts[index] ?? 0),
+      );
+    case 'hours':
+      return months.streamSeconds.map((seconds) => (seconds === null ? null : seconds / 3600));
+    case 'chat':
+      return months.chatMessages;
+    case 'chatUsers':
+      return months.chatUniqueUsers;
+    case 'views':
+      return months.views;
+  }
+}
+
+/**
  * How this window compares with the one before it, in percent.
  *
  * Null wherever the comparison would be meaningless rather than zero: nothing
@@ -556,6 +609,81 @@ export function shapeOf(streams: readonly MemberStream[]): Shape | null {
     minutes,
     days: ordered,
   };
+}
+
+/**
+ * A title as it is compared against what somebody typed.
+ *
+ * Width and case are folded away, and katakana is read as hiragana, so that
+ * searching for ｶﾗｵｹ, カラオケ and からおけ all find the same streams. Titles on
+ * this site mix all three within a single word.
+ */
+export function normalizeSearch(text: string): string {
+  return text
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[ァ-ヶ]/g, (character) => String.fromCharCode(character.charCodeAt(0) - 0x60));
+}
+
+/**
+ * The words a search box asks for.
+ *
+ * Split after the folding above, which has already turned a full-width space
+ * into an ordinary one - so one rule covers a query typed in either width.
+ */
+export function searchTerms(query: string): string[] {
+  return normalizeSearch(query)
+    .split(/\s+/)
+    .filter((term) => term !== '');
+}
+
+/** Whether a title carries every word asked for. */
+export function matchesSearch(title: string, terms: readonly string[]): boolean {
+  const normalized = normalizeSearch(title);
+
+  return terms.every((term) => normalized.includes(term));
+}
+
+/** One run of a title, and whether the search matched it. */
+export interface TitlePart {
+  text: string;
+  hit: boolean;
+}
+
+/**
+ * A title split into what the search found and what it did not.
+ *
+ * Folding can change a string's length - ﾊﾟ is one character and パ is two -
+ * and the marks are placed by index, so a title that changes length is left
+ * unmarked rather than marked in the wrong place.
+ */
+export function highlightParts(title: string, terms: readonly string[]): TitlePart[] {
+  const normalized = normalizeSearch(title);
+
+  if (terms.length === 0 || normalized.length !== title.length) return [{ text: title, hit: false }];
+
+  const marks = new Array<boolean>(title.length).fill(false);
+
+  terms.forEach((term) => {
+    let at = normalized.indexOf(term);
+
+    while (at >= 0) {
+      for (let index = at; index < at + term.length; index += 1) marks[index] = true;
+      at = normalized.indexOf(term, at + term.length);
+    }
+  });
+
+  const parts: TitlePart[] = [];
+
+  [...title].forEach((character, index) => {
+    const hit = marks[index] ?? false;
+    const last = parts[parts.length - 1];
+
+    if (last !== undefined && last.hit === hit) last.text += character;
+    else parts.push({ text: character, hit });
+  });
+
+  return parts;
 }
 
 /** Days streamed back to back, and how they are written. */

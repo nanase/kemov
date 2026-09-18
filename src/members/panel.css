@@ -1,0 +1,96 @@
+/*
+ * The chrome every panel on the member page shares.
+ *
+ * Global rather than scoped to one component: eight panels draw the same
+ * frame, heading strip and readout row, and a scoped copy in each would be
+ * eight places to change a border. Only this page loads the file, and every
+ * class here is prefixed so that nothing can reach another page's markup.
+ *
+ * The colours are the shell's own tokens (src/shell/tokens.css). The member's
+ * colour appears here only as `--mv-key`, which the identity panel puts round
+ * their picture: on this page a colour that meant an amount would break
+ * #136's rule that a member's colour tells people apart and nothing else.
+ */
+
+.mv-page {
+  --mv-bar: color-mix(in srgb, var(--k-accent) 62%, transparent);
+  --mv-key: var(--k-accent);
+
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mv-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--k-line);
+  border-radius: 8px;
+  background: var(--k-surface);
+  box-shadow: var(--k-shadow);
+}
+
+.mv-head {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--k-line);
+  background: var(--k-surface-2);
+  color: var(--k-text-3);
+  font-size: 11px;
+}
+
+.mv-head b {
+  color: var(--k-text-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.mv-grow {
+  flex: 1 1 10px;
+  min-width: 0;
+}
+
+.mv-body {
+  min-width: 0;
+  min-height: 0;
+  padding: 9px 12px 10px;
+}
+
+/* The readout above a chart, which says in words what the pointer is on. */
+.mv-read {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  align-items: baseline;
+  padding: 5px 12px;
+  border-bottom: 1px dashed var(--k-line);
+  color: var(--k-text-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mv-read b {
+  color: var(--k-text);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.mv-empty {
+  padding: 20px 12px;
+  color: var(--k-text-3);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.mv-n {
+  font-variant-numeric: tabular-nums;
+}
