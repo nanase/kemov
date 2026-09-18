@@ -2,6 +2,7 @@ import type { CertsCache } from '../lib/access';
 import { verifyAccess } from '../lib/access';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
+import { ackCollectTask, listCollectTasks, markCollectTaskUnavailable, retryCollectTask } from './collect-tasks';
 import { createEvent, deleteEvent, getEvent, listEvents, updateEvent } from './footprints';
 import { pendingFootprints, publishEvent, publishFootprintsNow, withdrawEvent } from './footprints-publish';
 import { listMembers, updateMember } from './members';
@@ -206,6 +207,28 @@ export async function handleAdminRequest(
       searchParams.get('to'),
       instant,
     );
+  }
+
+  if (segments.length === 3 && name === 'collect-tasks') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    return await listCollectTasks(env);
+  }
+
+  // id/id2 are the kind and target_id here, not a second id slot the way
+  // snapshot-exclusions reads them - collect_task's own primary key is
+  // likewise composite (kind, target_id), so this reuses the same two slots
+  // for the same reason, with `action` (segment 5) naming which of the three
+  // exits #141 decided rather than a literal the way footprints' own
+  // events/:id/publish reads it.
+  if (segments.length === 6 && name === 'collect-tasks' && id !== undefined && id2 !== undefined) {
+    if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
+
+    if (action === 'retry') return await retryCollectTask(env, id, id2, instant);
+    if (action === 'ack') return await ackCollectTask(env, id, id2, instant);
+    if (action === 'unavailable') return await markCollectTaskUnavailable(env, id, id2, instant);
+
+    return errorResponse(404, `no endpoint at ${pathname}`);
   }
 
   return errorResponse(404, `no endpoint at ${pathname}`);

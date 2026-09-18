@@ -418,4 +418,46 @@ describe("handleAdminRequest routing to task 12's resources", () => {
     expect(wrongMethod.status).toEqual(405);
     expect(wrongMethod.headers.get('Allow')).toEqual('GET');
   });
+
+  test('routes GET /admin/api/collect-tasks, and refuses other methods', async () => {
+    expect((await call('/admin/api/collect-tasks')).status).toEqual(200);
+
+    const wrongMethod = await call('/admin/api/collect-tasks', { method: 'POST' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('GET');
+  });
+
+  test('routes POST /admin/api/collect-tasks/:kind/:targetId/retry|ack, and refuses other methods', async () => {
+    await insertChannel('UCaaa');
+    await env.DB.prepare(
+      `INSERT INTO collect_task (kind, target_id, state, attempts, updated_at)
+       VALUES ('channel_stats', 'UCaaa', 'failed', 1, '2026-09-01T00:00:00Z')`,
+    ).run();
+
+    expect((await call('/admin/api/collect-tasks/channel_stats/UCaaa/retry', { method: 'POST' })).status).toEqual(200);
+    expect((await call('/admin/api/collect-tasks/channel_stats/UCaaa/ack', { method: 'POST' })).status).toEqual(200);
+
+    const wrongMethod = await call('/admin/api/collect-tasks/channel_stats/UCaaa/ack');
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('POST');
+  });
+
+  test('routes POST /admin/api/collect-tasks/:kind/:targetId/unavailable, and 404s an unknown action', async () => {
+    await insertChannel('UCaaa');
+    await env.DB.prepare(
+      `INSERT INTO video (video_id, channel_id, title, published_at, availability, live_broadcast_content, fetched_at)
+       VALUES ('vid1', 'UCaaa', 't', '2026-09-01T00:00:00Z', 'public', 'none', '2026-09-01T00:00:00Z')`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO collect_task (kind, target_id, state, attempts, updated_at)
+       VALUES ('video_update', 'vid1', 'failed', 1, '2026-09-01T00:00:00Z')`,
+    ).run();
+
+    expect((await call('/admin/api/collect-tasks/video_update/vid1/unavailable', { method: 'POST' })).status).toEqual(
+      200,
+    );
+    expect((await call('/admin/api/collect-tasks/video_update/vid1/nope', { method: 'POST' })).status).toEqual(404);
+  });
 });
