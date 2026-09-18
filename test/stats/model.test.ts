@@ -124,7 +124,12 @@ describe('monthlyGain', () => {
 
   // A month nobody read is not a month nobody subscribed in.
   test('reports nothing for a month with no reading, and for the first one with', () => {
-    expect(monthlyGain([null, null, 1000, null, 1100])).toEqual([null, null, null, null, 100]);
+    expect(monthlyGain([null, null, 1000, null, 1100])).toEqual([null, null, null, null, null]);
+  });
+
+  // The 20 here covers two months, so it belongs to neither of them.
+  test('reports nothing for the month after a gap', () => {
+    expect(monthlyGain([100, null, 120])).toEqual([null, null, null]);
   });
 
   test('keeps a loss as a loss', () => {

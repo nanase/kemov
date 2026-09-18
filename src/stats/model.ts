@@ -161,12 +161,20 @@ function monthsOf(
  * first month with one: there is nothing before it to compare against. Both
  * are null rather than zero, so that "nothing was collected" cannot be drawn
  * as "nobody subscribed".
+ *
+ * The month after a gap is the second of those cases: the difference from the
+ * last reading covers every month in between, and drawing it as one month's
+ * growth would put the whole gap on the month that happened to be read.
  */
 export function monthlyGain(counts: readonly (number | null)[]): (number | null)[] {
   let previous: number | null = null;
 
   return counts.map((count) => {
-    if (count === null) return null;
+    if (count === null) {
+      previous = null;
+
+      return null;
+    }
 
     const gain = previous === null ? null : count - previous;
     previous = count;
