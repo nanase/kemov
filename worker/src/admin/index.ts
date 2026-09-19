@@ -4,6 +4,10 @@ import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 import { createEvent, deleteEvent, getEvent, listEvents, updateEvent } from './footprints';
 import { pendingFootprints, publishEvent, publishFootprintsNow, withdrawEvent } from './footprints-publish';
+import { createPerson, deletePerson, getPerson, listPeople, updatePerson } from './genet-people';
+import { pendingGenetMusic, publishGenetMusicNow, publishStream, withdrawStream } from './genet-publish';
+import { createStream, deleteStream, getStream, listStreams, updateStream } from './genet-streams';
+import { createTune, deleteTune, getTune, listTunes, updateTune } from './genet-tunes';
 import { listMembers, updateMember } from './members';
 import { deleteSnapshotExclusion, listSnapshotExclusions, saveSnapshotExclusion } from './snapshot-exclusions';
 import { deleteVideoOverride, listVideoOverrides, saveVideoOverride } from './video-overrides';
@@ -132,6 +136,111 @@ export async function handleAdminRequest(
     return await publishFootprintsNow(env, instant);
   }
 
+  if (segments.length === 4 && name === 'genet' && sub === 'streams') {
+    if (request.method === 'POST') {
+      const body = await readJsonObject(request);
+
+      return 'error' in body ? body.error : await createStream(env, body.value);
+    }
+
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET, POST');
+
+    const { searchParams } = new URL(request.url);
+
+    return await listStreams(env, searchParams.get('status'), searchParams.get('q'));
+  }
+
+  if (segments.length === 5 && name === 'genet' && sub === 'streams' && id2 !== undefined) {
+    if (request.method === 'GET') return await getStream(env, id2);
+
+    if (request.method === 'DELETE') return await deleteStream(env, id2);
+
+    if (request.method !== 'PUT') return methodNotAllowed(request, 'GET, PUT, DELETE');
+
+    const body = await readJsonObject(request);
+
+    return 'error' in body ? body.error : await updateStream(env, id2, body.value);
+  }
+
+  if (segments.length === 6 && name === 'genet' && sub === 'streams' && id2 !== undefined) {
+    if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
+
+    if (action === 'publish') return await publishStream(env, id2);
+    if (action === 'withdraw') return await withdrawStream(env, id2);
+
+    return errorResponse(404, `no endpoint at ${pathname}`);
+  }
+
+  if (segments.length === 4 && name === 'genet' && sub === 'tunes') {
+    if (request.method === 'POST') {
+      const body = await readJsonObject(request);
+
+      return 'error' in body ? body.error : await createTune(env, body.value);
+    }
+
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET, POST');
+
+    const { searchParams } = new URL(request.url);
+
+    return await listTunes(env, searchParams.get('q'));
+  }
+
+  if (segments.length === 5 && name === 'genet' && sub === 'tunes' && id2 !== undefined) {
+    const tuneId = readPositiveInt(id2);
+
+    if (tuneId === null) return errorResponse(404, `no tune ${id2}`);
+
+    if (request.method === 'GET') return await getTune(env, tuneId);
+
+    if (request.method === 'DELETE') return await deleteTune(env, tuneId);
+
+    if (request.method !== 'PUT') return methodNotAllowed(request, 'GET, PUT, DELETE');
+
+    const body = await readJsonObject(request);
+
+    return 'error' in body ? body.error : await updateTune(env, tuneId, body.value);
+  }
+
+  if (segments.length === 4 && name === 'genet' && sub === 'people') {
+    if (request.method === 'POST') {
+      const body = await readJsonObject(request);
+
+      return 'error' in body ? body.error : await createPerson(env, body.value);
+    }
+
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET, POST');
+
+    return await listPeople(env);
+  }
+
+  if (segments.length === 5 && name === 'genet' && sub === 'people' && id2 !== undefined) {
+    const personId = readPositiveInt(id2);
+
+    if (personId === null) return errorResponse(404, `no person ${id2}`);
+
+    if (request.method === 'GET') return await getPerson(env, personId);
+
+    if (request.method === 'DELETE') return await deletePerson(env, personId);
+
+    if (request.method !== 'PUT') return methodNotAllowed(request, 'GET, PUT, DELETE');
+
+    const body = await readJsonObject(request);
+
+    return 'error' in body ? body.error : await updatePerson(env, personId, body.value);
+  }
+
+  if (segments.length === 4 && name === 'genet' && sub === 'pending') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    return await pendingGenetMusic(env);
+  }
+
+  if (segments.length === 4 && name === 'genet' && sub === 'publish') {
+    if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
+
+    return await publishGenetMusicNow(env, instant);
+  }
+
   if (segments.length === 3 && name === 'members') {
     if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
 
@@ -179,6 +288,20 @@ export async function handleAdminRequest(
   }
 
   return errorResponse(404, `no endpoint at ${pathname}`);
+}
+
+/**
+ * A path segment as a genet_tune or genet_person id, or null when it is not a
+ * plain positive integer. `Number.isSafeInteger` guards against a segment
+ * with enough digits to round to a different integer, or to `Infinity`, once
+ * `Number` parses it - `/^[1-9]\d*$/` alone only rules out a non-digit shape.
+ */
+function readPositiveInt(segment: string): number | null {
+  if (!/^[1-9]\d*$/.test(segment)) return null;
+
+  const value = Number(segment);
+
+  return Number.isSafeInteger(value) ? value : null;
 }
 
 /**

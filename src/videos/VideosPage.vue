@@ -24,6 +24,7 @@ import {
   type Filters,
 } from './model';
 import { queryToState, stateToQuery } from './query';
+import { videoPageTitle } from '@/lib/pageTitle';
 import { freshnessOf } from '@/stats/model';
 import { useVideosData } from './useVideosData';
 import EmptyRanking, { type Suggestion } from './parts/EmptyRanking.vue';
@@ -331,6 +332,9 @@ watch(
   { deep: true },
 );
 
+/** The tab's own title, distinct from the page's visible one (#136: no name on screen). */
+const tabTitle = computed(() => (selectedRow.value === null ? undefined : videoPageTitle(selectedRow.value.title)));
+
 onMounted(async () => {
   readTheme();
   systemTheme.addEventListener('change', readTheme);
@@ -360,7 +364,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <SiteShell page="videos" title="けもV 配信・動画">
+  <SiteShell page="videos" title="けもV 配信・動画" :tab-title="tabTitle">
     <template #title-aside>
       <span class="stamp-wrap" :data-freshness="updatedState === 'ok' ? freshness : undefined">
         <UpdatedAt :at="data.channelsFetchedAt.value" :state="updatedState" />
