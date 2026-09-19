@@ -74,3 +74,6 @@ export function formatCalendarAge(thenMs: number, nowMs: number): string {
 function timeIntoMonth(shifted: Date): number {
   return shifted.getTime() - Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), 1);
 }
+
+/** The days of the week, as this site writes them, starting on Sunday. */
+export const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'] as const;

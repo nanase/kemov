@@ -1,5 +1,5 @@
 import { resolve } from 'path';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type PluginOption } from 'vite';
 import VueMacros from 'unplugin-vue-macros/vite';
 import Vue from '@vitejs/plugin-vue';
 import webfontDownload from 'vite-plugin-webfont-dl';
@@ -17,6 +17,30 @@ const srcDir = resolve(root, 'src');
  * server to proxy with.
  */
 const apiProxy = loadEnv('development', root, '').VITE_API_PROXY;
+
+/**
+ * Serves the member page at `/members/<channel id>` while developing.
+ *
+ * The deployment has a worker for this: no built file answers that path, so
+ * the request reaches `worker/src/pages/index.ts`, which serves `/members/`
+ * with the member's name written into its title (#137). The dev server has no
+ * worker in front of it, so without this a member's own address is a 404 here
+ * and only here - which is exactly the address every link on the page uses.
+ */
+const memberPages: PluginOption = {
+  name: 'kemov-member-pages',
+  apply: 'serve',
+  configureServer(server) {
+    server.middlewares.use((request, _response, next) => {
+      const url = request.url;
+      const match = url === undefined ? null : /^\/members\/[\w-]+(?=$|\?)/.exec(url);
+
+      if (match !== null && url !== undefined) request.url = `/members/${url.slice(match[0].length)}`;
+
+      next();
+    });
+  },
+};
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -42,6 +66,7 @@ export default defineConfig({
       },
     }),
     webfontDownload(),
+    memberPages,
     injectHTML(),
   ],
   resolve: {
@@ -66,9 +91,11 @@ export default defineConfig({
     rollupOptions: {
       input: {
         stats: resolve(srcDir, 'stats', 'index.html'),
+        members: resolve(srcDir, 'members', 'index.html'),
         statsDetail: resolve(srcDir, 'stats', 'detail', 'index.html'),
         statsRanking: resolve(srcDir, 'stats', 'ranking', 'index.html'),
         genetMusic: resolve(srcDir, 'genet', 'music', 'index.html'),
+        videos: resolve(srcDir, 'videos', 'index.html'),
       },
       output: {
         chunkFileNames: 'assets/kemov-[name]-[hash].js',

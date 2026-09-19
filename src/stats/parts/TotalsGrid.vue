@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { changeSign, formatChange, formatCount } from '../draw';
+import { formatCount } from '@/lib/numberFormat';
+import { changeSign, formatChange } from '../draw';
 import { deltaOf, METRICS, periodLabel, valueOf, type PeriodId, type Subject } from '../model';
 
 /**
