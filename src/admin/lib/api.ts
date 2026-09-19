@@ -18,6 +18,12 @@ export class AdminApiError extends Error {
   }
 
   private static messageFor(status: number, body: unknown): string {
+    // `call`'s own catch passes a plain description string here (status 0,
+    // the fetch itself failed) rather than a parsed JSON error body - without
+    // this, that string fails every check below and the network failure's
+    // own message is lost behind "/admin/api answered 0".
+    if (typeof body === 'string') return body;
+
     if (typeof body === 'object' && body !== null && 'error' in body && typeof body.error === 'string') {
       return body.error;
     }
