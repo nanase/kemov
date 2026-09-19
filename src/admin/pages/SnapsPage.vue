@@ -171,7 +171,7 @@ onMounted(async () => {
         </select>
         <span class="grow"></span>
         <span class="sub num">{{ days.length }} 日</span>
-        <span v-if="troubleDays > 0" class="chip alarm">処置が必要な日 {{ troubleDays }}</span>
+        <span v-if="troubleDays > 0" class="chip alarm">処置が必要な日 {{ troubleDays }} 日</span>
       </div>
       <div class="scroller">
         <div v-if="loadError" class="empty">
