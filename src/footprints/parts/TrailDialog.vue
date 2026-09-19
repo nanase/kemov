@@ -15,6 +15,7 @@ import {
   type ZoomId,
 } from '../chart';
 import { buildTrailMap, monthIndex } from '../map';
+import TrailMap from './TrailMap.vue';
 import type { AsideItem, EventItem, Filters } from '../model';
 import type { VideoTableRow } from '@/lib/ranking';
 import type { Channel } from '@/type/api';
@@ -139,7 +140,18 @@ const shown = computed(() => {
 });
 
 const window = computed(() => stripWindow(layout.value, scroll.value));
-const scrollable = computed(() => layout.value.track > layout.value.view + 1);
+const scrollable = computed(() => !narrow.value && layout.value.track > layout.value.view + 1);
+
+/**
+ * Where there is no room to lay the record out sideways.
+ *
+ * Below this the chart is turned the way the rail draws it - time down the
+ * screen, the members across it - because a phone has height to spare and no
+ * width at all. It shows the whole record at once, so there is nothing to
+ * zoom or to drag: what a reader does here is press a month and be taken to
+ * it (#140).
+ */
+const narrow = computed(() => view.value < 560);
 
 /** The whole record, drawn once across the strip. */
 const stripMarks = computed(() => {
@@ -219,7 +231,19 @@ function onStripUp(event: PointerEvent) {
 /** Dragging the chart itself, and telling that from a press on a station. */
 let pan: { pointerId: number; x: number; y: number; from: number; moved: boolean; type: string } | null = null;
 
+/**
+ * Whether the click now arriving is the tail of a drag.
+ *
+ * Kept apart from `pan`, which is gone by then: a pointerup ends the drag and
+ * the click follows it, so asking "are we dragging" at click time always
+ * answers no. Without this the chart moves under the finger and then, on
+ * release, also opens whatever the finger came to rest on.
+ */
+let swallowClick = false;
+
 function onChartDown(event: PointerEvent) {
+  swallowClick = false;
+
   if (event.pointerType === 'mouse' && event.button !== 0) return;
 
   pan = {
@@ -252,16 +276,29 @@ function onChartMove(event: PointerEvent) {
 function onChartUp(event: PointerEvent) {
   if (pan === null || event.pointerId !== pan.pointerId) return;
 
-  if (pan.moved && scroller.value?.hasPointerCapture(event.pointerId) === true) {
-    scroller.value.releasePointerCapture(event.pointerId);
+  if (pan.moved) {
+    swallowClick = true;
+
+    if (scroller.value?.hasPointerCapture(event.pointerId) === true) {
+      scroller.value.releasePointerCapture(event.pointerId);
+    }
   }
 
   pan = null;
 }
 
-/** True when the press that has just ended was a drag, so it opens nothing. */
-function panned(): boolean {
-  return pan?.moved === true;
+/**
+ * Whether this click should be acted on, and it is asked once.
+ *
+ * A drag ends in exactly one click, so the flag is spent by whichever handler
+ * reads it first - the station under the finger, or the chart behind it.
+ */
+function tapped(): boolean {
+  if (!swallowClick) return true;
+
+  swallowClick = false;
+
+  return false;
 }
 
 /** The `YYYY-MM` a point along the track falls in. */
@@ -272,7 +309,7 @@ function monthAt(offset: number): string {
 }
 
 function onChartClick(event: MouseEvent) {
-  if (panned()) return;
+  if (!tapped()) return;
 
   const box = scroller.value?.getBoundingClientRect();
 
@@ -303,9 +340,9 @@ onBeforeUnmount(() => {
     <div ref="card" class="card" role="dialog" aria-modal="true" aria-label="軌跡" tabindex="-1">
       <header class="head">
         <h2>軌跡</h2>
-        <span class="shown fp-n" aria-live="polite">{{ shown }}</span>
+        <span v-if="!narrow" class="shown fp-n" aria-live="polite">{{ shown }}</span>
 
-        <span class="segments" role="group" aria-label="寄り方">
+        <span v-if="!narrow" class="segments" role="group" aria-label="寄り方">
           <button
             v-for="step in ZOOMS"
             :key="step.id"
@@ -354,7 +391,29 @@ onBeforeUnmount(() => {
         </svg>
       </div>
 
-      <div class="chart">
+      <!-- Turned on its side where there is no width: time runs down the
+           screen and the members across it, which is how the rail draws the
+           same record. The whole period is on screen, so there is nothing to
+           zoom or to drag. -->
+      <div v-if="narrow" class="upright">
+        <TrailMap
+          :events
+          :rows
+          :channels
+          :filters
+          :now
+          :dark
+          :reading
+          :soon
+          stations
+          :available="520"
+          @month="emit('month', $event)"
+          @member="emit('member', $event)"
+          @open="emit('open', $event)"
+        />
+      </div>
+
+      <div v-else class="chart">
         <div
           v-if="layout.labels > 0"
           class="names"
@@ -485,7 +544,7 @@ onBeforeUnmount(() => {
                   :stroke-width="dot.large ? 1.4 : 1"
                   :stroke-dasharray="dot.recurring ? '2 2' : undefined"
                   :class="{ station: dot.key !== undefined }"
-                  @click.stop="dot.key !== undefined && !panned() && emit('open', dot.key)"
+                  @click.stop="dot.key !== undefined && tapped() && emit('open', dot.key)"
                 />
               </g>
 
@@ -651,6 +710,12 @@ onBeforeUnmount(() => {
   display: flex;
   min-height: 0;
   overflow: hidden;
+}
+
+.upright {
+  min-height: 0;
+  padding: 10px 14px 4px;
+  overflow: auto;
 }
 
 .names {

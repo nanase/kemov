@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
 
 import MemberAvatar from '@/parts/MemberAvatar.vue';
 import { formatCount } from '@/lib/numberFormat';
 
 import { formatDate, formatDayOfMonth, formatMonthDay, formatTime, formatWeekday } from '../draw';
 import { jstDay, jstParts, yearFaces, type Filters, type Timeline, type TimelineItem } from '../model';
+import { placeSpans, LANE_STEP, type Anchor, type PlacedSpan, type Span } from '../spans';
 import EventCard from './EventCard.vue';
 import StreamBundle from './StreamBundle.vue';
 import type { Channel } from '@/type/api';
@@ -32,6 +33,84 @@ const { timeline, channels, filters, open, now, dark, flashed } = defineProps<{
 }>();
 
 const emit = defineEmits<{ toggle: [key: string]; open: [key: string] }>();
+
+const root = useTemplateRef<HTMLDivElement>('root');
+const spans = ref<PlacedSpan[]>([]);
+let observer: ResizeObserver | undefined;
+
+/**
+ * The bands for anything that ran over several days.
+ *
+ * Measured from the rows rather than worked out: where a day lands depends on
+ * how many rows the months around it happen to hold, so the only way to know
+ * is to look. Redone whenever the road changes shape - a run of streams being
+ * opened moves everything below it.
+ */
+function measureSpans() {
+  const element = root.value;
+
+  if (element === null) return;
+
+  const top = element.getBoundingClientRect().top;
+  const anchors: Anchor[] = [...element.querySelectorAll<HTMLElement>('.row[data-at]')]
+    .map((row) => ({ at: Number(row.dataset.at), y: row.getBoundingClientRect().top - top }))
+    .filter((anchor) => Number.isFinite(anchor.at))
+    .sort((a, b) => a.y - b.y);
+
+  const found: Span[] = [...element.querySelectorAll<HTMLElement>('.row[data-end]')].flatMap((row) => {
+    const to = Number(row.dataset.end);
+    const from = Number(row.dataset.at);
+
+    if (!Number.isFinite(to) || !Number.isFinite(from)) return [];
+
+    return [
+      {
+        key: row.dataset.key ?? '',
+        title: row.dataset.title ?? '',
+        from,
+        to,
+        y: row.getBoundingClientRect().top - top + 22,
+      },
+    ];
+  });
+
+  spans.value = placeSpans(found, anchors);
+}
+
+function remeasure() {
+  void nextTick(measureSpans);
+}
+
+/**
+ * Where a band's column sits, measured from the axis rather than guessed.
+ *
+ * Just past the footprint column: the axis is where the nodes and the month
+ * headings are, and #140 keeps the bands out of it. Each column that overlaps
+ * another steps 7px further right.
+ */
+function laneLeft(lane: number): number {
+  const axis = root.value === null ? 56 : Number.parseFloat(getComputedStyle(root.value).getPropertyValue('--fp-axis'));
+
+  return (Number.isFinite(axis) ? axis : 56) + 8 + lane * LANE_STEP;
+}
+
+onMounted(() => {
+  remeasure();
+  observer = new ResizeObserver(remeasure);
+  if (root.value !== null) observer.observe(root.value);
+  globalThis.addEventListener('resize', remeasure);
+});
+
+onBeforeUnmount(() => {
+  observer?.disconnect();
+  globalThis.removeEventListener('resize', remeasure);
+});
+
+watch(
+  () => [timeline, open, filters.order],
+  () => remeasure(),
+  { deep: true },
+);
 
 const byId = computed(() => new Map(channels.map((channel) => [channel.channelId, channel])));
 const descending = computed(() => filters.order === 'desc');
@@ -103,7 +182,20 @@ function membersOf(channelIds: readonly string[]): Channel[] {
 </script>
 
 <template>
-  <div class="timeline">
+  <div ref="root" class="timeline">
+    <!-- Outside the footprint column, never inside it: the nodes and the month
+         headings punch the background out to stay readable, and a band running
+         under them would come out in pieces (#140). -->
+    <div class="spans" aria-hidden="true">
+      <i
+        v-for="band in spans"
+        :key="band.key"
+        :class="{ upwards: band.upwards }"
+        :title="band.title"
+        :style="{ left: `${laneLeft(band.lane)}px`, top: `${band.top}px`, height: `${band.height}px` }"
+      ></i>
+    </div>
+
     <section v-for="year in years" :key="year.year" class="year" :data-year="year.year">
       <header class="year-head">
         <div class="axis"><span class="year-node" aria-hidden="true"></span></div>
@@ -146,6 +238,9 @@ function membersOf(channelIds: readonly string[]): Channel[] {
             :key="row.item.key"
             class="row"
             :data-key="row.item.key"
+            :data-at="row.item.at"
+            :data-end="row.item.kind === 'event' && row.item.endAt !== null ? row.item.endAt : undefined"
+            :data-title="row.item.kind === 'event' ? row.item.event.title : undefined"
             :class="{
               event: row.item.kind === 'event',
               large: row.item.kind === 'event' && row.item.event.emphasized,
@@ -222,6 +317,53 @@ function membersOf(channelIds: readonly string[]): Channel[] {
 .timeline {
   position: relative;
   min-width: 0;
+}
+
+.spans {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+}
+
+.spans i {
+  position: absolute;
+  width: 10px;
+  margin-left: -3px;
+}
+
+/* The run itself, and a cap at the end it finished on. */
+.spans i::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--k-accent);
+  opacity: 0.5;
+}
+
+.spans i::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 10px;
+  height: 2px;
+  background: var(--k-accent);
+}
+
+.spans i.upwards::after {
+  top: 0;
+  bottom: auto;
+}
+
+@container (max-width: 620px) {
+  .spans {
+    display: none;
+  }
 }
 
 .year-head {

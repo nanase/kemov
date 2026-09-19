@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
 
 import { buildTrailMap, monthIndex, trailLayout, trailX, trailY } from '../map';
-import type { EventItem, Filters } from '../model';
+import type { AsideItem, EventItem, Filters } from '../model';
 import type { VideoTableRow } from '@/lib/ranking';
 import type { Channel } from '@/type/api';
 
@@ -19,7 +19,7 @@ import type { Channel } from '@/type/api';
  * thousand the member page's heatmap draws, and a mark that can be pressed
  * and named is worth more than the drawing speed.
  */
-const { events, rows, channels, filters, now, dark, reading } = defineProps<{
+const { events, rows, channels, filters, now, dark, reading, soon, stations, available } = defineProps<{
   events: readonly EventItem[];
   rows: readonly VideoTableRow[];
   channels: readonly Channel[];
@@ -28,20 +28,27 @@ const { events, rows, channels, filters, now, dark, reading } = defineProps<{
   dark: boolean;
   /** The `YYYY-MM` the timeline is showing, marked as a band. */
   reading: { from: string; to: string } | null;
+  /** The days that come round, drawn only where there is room to tell them
+   * apart from the rest. */
+  soon?: readonly AsideItem[];
+  /** Whether a mark can be pressed to open the record behind it. */
+  stations?: boolean;
+  /** How tall the chart may be. Measured from the window when not given. */
+  available?: number;
 }>();
 
-const emit = defineEmits<{ month: [month: string]; member: [channelId: string] }>();
+const emit = defineEmits<{ month: [month: string]; member: [channelId: string]; open: [key: string] }>();
 
 const box = useTemplateRef<HTMLDivElement>('box');
 const width = ref(0);
-const available = ref(520);
+const room = ref(520);
 let observer: ResizeObserver | undefined;
 
-const map = computed(() => buildTrailMap(events, rows, channels, filters, now, dark));
+const map = computed(() => buildTrailMap(events, rows, channels, filters, now, dark, soon ?? []));
 const layout = computed(() =>
   trailLayout(
     Math.max(160, width.value),
-    available.value,
+    room.value,
     map.value.lanes.length,
     map.value.months,
     filters.order === 'desc',
@@ -91,7 +98,7 @@ const heads = computed(() =>
 
 function measure() {
   width.value = box.value?.clientWidth ?? 0;
-  available.value = Math.max(240, window.innerHeight - 300);
+  room.value = available ?? Math.max(240, window.innerHeight - 300);
 }
 
 onMounted(() => {
@@ -202,6 +209,9 @@ onBeforeUnmount(() => {
           :fill="dot.future ? 'var(--k-surface)' : dot.color === '' ? 'var(--k-text-2)' : dot.color"
           :stroke="dot.large || dot.future ? (dot.color === '' ? 'var(--k-text-2)' : dot.color) : 'none'"
           :stroke-width="dot.large ? 1.2 : 1"
+          :stroke-dasharray="dot.recurring ? '2 2' : undefined"
+          :class="{ station: stations === true && dot.key !== undefined }"
+          @click="stations === true && dot.key !== undefined && emit('open', dot.key)"
         />
       </g>
 
@@ -300,6 +310,10 @@ svg {
 }
 
 .hit {
+  cursor: pointer;
+}
+
+.station {
   cursor: pointer;
 }
 
