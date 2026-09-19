@@ -53,13 +53,19 @@ export function useFootprintsData(): FootprintsData {
   const counts = useIntervalAction(
     COUNTS_SECONDS * 1000,
     async () => {
-      const channelList = await getChannels();
+      try {
+        const channelList = await getChannels();
 
-      channels.value = channelList.data.channels;
-      fetchedAt.value = channelList.data.fetchedAt?.valueOf() ?? null;
-      countsAsked.value = true;
+        channels.value = channelList.data.channels;
+        fetchedAt.value = channelList.data.fetchedAt?.valueOf() ?? null;
 
-      return COUNTS_SECONDS * 1000;
+        return COUNTS_SECONDS * 1000;
+      } finally {
+        // Asked, not answered. Without this a first failure leaves the page
+        // saying "読み込んでいます" until a retry succeeds, which is ten
+        // minutes of a screen that is not loading anything.
+        countsAsked.value = true;
+      }
     },
     async () => RETRY_SECONDS * 1000,
   );
