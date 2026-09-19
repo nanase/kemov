@@ -119,6 +119,20 @@ describe('retryCollectTask', () => {
     expect(body.collectTask.nextAttemptAt).toEqual('2026-09-19T12:00:00Z');
   });
 
+  // listCollectTasks only surfaces a `failed` row once checked_at IS NULL -
+  // a task retried after being acknowledged must clear that acknowledgement,
+  // or a renewed failure would stay hidden behind the old one instead of
+  // reappearing in the admin's own failure list.
+  test('clears checked_at, so a renewed failure reappears in the failure list', async () => {
+    await insertChannel('UCaaa');
+    await insertTask('channel_stats', 'UCaaa', { checkedAt: '2026-09-10T00:00:00Z' });
+
+    const response = await retryCollectTask(env, 'channel_stats', 'UCaaa', NOW);
+    const body = (await response.json()) as { collectTask: { checkedAt: string | null } };
+
+    expect(body.collectTask.checkedAt).toBeNull();
+  });
+
   test('refuses an unknown task with 404', async () => {
     const response = await retryCollectTask(env, 'channel_stats', 'UCnope', NOW);
 

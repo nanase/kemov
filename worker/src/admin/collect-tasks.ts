@@ -88,13 +88,22 @@ export async function listCollectTasks(env: Env): Promise<Response> {
   return jsonResponse({ collectTasks: results.map(presentListed), count: results.length });
 }
 
-/** POST /admin/api/collect-tasks/:kind/:targetId/retry - back to `pending`, due now. 404 when there is no such row. */
+/**
+ * POST /admin/api/collect-tasks/:kind/:targetId/retry - back to `pending`,
+ * due now. 404 when there is no such row.
+ *
+ * Also clears `checked_at`: `listCollectTasks` only surfaces a `failed` row
+ * once `checked_at IS NULL`, so a task retried after being acknowledged
+ * would otherwise fail again with the old acknowledgement still in place and
+ * never reappear in that list - the renewed failure would go unseen rather
+ * than merely unstyled.
+ */
 export async function retryCollectTask(env: Env, kind: string, targetId: string, now: Date): Promise<Response> {
   const timestamp = formatTimestamp(now);
 
   const row = await env.DB.prepare(
     `UPDATE collect_task
-        SET state = 'pending', next_attempt_at = ?3, updated_at = ?3
+        SET state = 'pending', next_attempt_at = ?3, checked_at = NULL, updated_at = ?3
       WHERE kind = ?1 AND target_id = ?2
       RETURNING kind, target_id, state, attempts, next_attempt_at, updated_at, checked_at`,
   )
