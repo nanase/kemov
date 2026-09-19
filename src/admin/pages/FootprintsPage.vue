@@ -11,6 +11,8 @@ import {
   type FootprintsEvent,
   type FootprintsMember,
 } from '../lib/footprints';
+import { todayJst } from '../lib/snapshots';
+import { showToast } from '../lib/toast';
 
 /** あしあと (#144, task 9's own admin screen) - the table and its edit panel. */
 
@@ -22,6 +24,7 @@ const status = ref('all');
 const q = ref('');
 const selectedId = ref<number | null>(null);
 const detail = ref(false);
+const adding = ref(false);
 
 const selected = computed(() => events.value.find((e) => e.eventId === selectedId.value) ?? null);
 
@@ -33,14 +36,24 @@ function memberColor(channelId: string): string {
   return members.value.find((m) => m.channelId === channelId)?.colorKey ?? '#9b9289';
 }
 
+// Changing status or q mid-request starts a second, overlapping GET
+// /footprints/events - without this, a slower earlier response can resolve
+// after a faster later one and overwrite the list with results for a filter
+// that is no longer selected.
+let loadGeneration = 0;
+
 async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
+
+  const generation = ++loadGeneration;
 
   try {
     const body = await getJson<{ events: FootprintsEvent[] }>(
       `/footprints/events${footprintsQuery(status.value, q.value)}`,
     );
+
+    if (generation !== loadGeneration) return;
 
     events.value = body.events;
 
@@ -58,9 +71,11 @@ async function load(): Promise<void> {
       selectedId.value = events.value[0]!.eventId;
     }
   } catch (error) {
+    if (generation !== loadGeneration) return;
+
     loadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
-    loading.value = false;
+    if (generation === loadGeneration) loading.value = false;
   }
 }
 
@@ -74,11 +89,18 @@ function back(): void {
 }
 
 async function addEvent(): Promise<void> {
-  const today = new Date().toISOString().slice(0, 10);
-  const body = await postJson<{ event: { eventId: number } }>('/footprints/events', emptyFormFields(today));
+  adding.value = true;
 
-  await load();
-  selectRow(body.event.eventId);
+  try {
+    const body = await postJson<{ event: { eventId: number } }>('/footprints/events', emptyFormFields(todayJst()));
+
+    await load();
+    selectRow(body.event.eventId);
+  } catch (error) {
+    showToast(error instanceof AdminApiError ? error.message : String(error));
+  } finally {
+    adding.value = false;
+  }
 }
 
 async function loadMembers(): Promise<void> {
@@ -117,14 +139,14 @@ onMounted(() => {
         <input v-model="q" type="text" class="btn" placeholder="題で絞り込み" aria-label="題で絞り込み" />
         <span class="grow"></span>
         <span class="sub num">{{ events.length }} 件</span>
-        <button class="btn" type="button" @click="addEvent">＋ 足す</button>
+        <button class="btn" type="button" :disabled="adding" @click="addEvent">＋ 足す</button>
       </div>
       <div class="scroller">
         <div v-if="loadError" class="empty">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
         </div>
-        <table v-else class="grid">
+        <table class="grid">
           <thead>
             <tr>
               <th>状態</th>
