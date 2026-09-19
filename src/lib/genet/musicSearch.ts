@@ -153,6 +153,17 @@ export function highlightRanges(text: string, terms: readonly SearchTerm[], esc:
     }
   }
 
+  // A match's own start/end is a UTF-16 code unit offset, and an emoji right
+  // against one (nothing else about it matched) can leave only half of its
+  // surrogate pair marked - keep every pair fully marked or fully unmarked,
+  // or <mark> would open or close in the middle of one character.
+  for (let i = 0; i < text.length - 1; i++) {
+    const high = text.charCodeAt(i);
+    const low = text.charCodeAt(i + 1);
+
+    if (high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff) marked[i + 1] = marked[i];
+  }
+
   if (!marked.includes(true)) return esc(text);
 
   let html = '';
@@ -345,6 +356,17 @@ export function computeResults(streams: readonly PreparedStream[], filters: Filt
 }
 
 /**
+ * `index`, moved back by one when it currently falls between a surrogate
+ * pair's two halves - `text.slice()` at that offset would otherwise split
+ * one character in two, leaving a lone surrogate at the start of the result.
+ */
+function surrogateSafeIndex(text: string, index: number): number {
+  const code = text.charCodeAt(index);
+
+  return code >= 0xdc00 && code <= 0xdfff ? index - 1 : index;
+}
+
+/**
  * `text` shortened to keep the first match visible when the whole thing is
  * cut to one line - without this, a hit late in a long sentence would be
  * trimmed away before a reader ever sees it.
@@ -364,5 +386,5 @@ export function snippet(text: string, terms: readonly SearchTerm[]): string {
     if (index >= 0 && (at < 0 || index < at)) at = index;
   }
 
-  return at > 14 ? `…${text.slice(at - 6)}` : text;
+  return at > 14 ? `…${text.slice(surrogateSafeIndex(text, at - 6))}` : text;
 }
