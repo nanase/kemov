@@ -317,7 +317,11 @@ export function cumulativeOf(channel: Channel, rows: readonly VideoTableRow[], n
 
 /** What one 90-day window holds, before it is read as six gauges. */
 export interface WindowTotals {
+  /** Everything published in the window, whatever kind it is. */
   count: number;
+  /** How many of those were streams, which is what the length is about. */
+  streamCount: number;
+  /** Seconds streamed. Videos and shorts are not streaming time. */
   durationSeconds: number;
   durationRated: number;
   chatMessages: number;
@@ -329,6 +333,7 @@ export interface WindowTotals {
 export function windowTotals(rows: readonly VideoTableRow[], from: number, to: number): WindowTotals {
   const totals: WindowTotals = {
     count: 0,
+    streamCount: 0,
     durationSeconds: 0,
     durationRated: 0,
     chatMessages: 0,
@@ -343,9 +348,16 @@ export function windowTotals(rows: readonly VideoTableRow[], from: number, to: n
 
     totals.count += 1;
 
-    if (row.durationSeconds !== null) {
-      totals.durationSeconds += row.durationSeconds;
-      totals.durationRated += 1;
+    // Only streams. The gauge is called 配信時間 and the line under it reads
+    // `months.streamSeconds`, so counting a short's nine seconds here would
+    // make the number and its own line disagree.
+    if (row.type === 'streaming') {
+      totals.streamCount += 1;
+
+      if (row.durationSeconds !== null) {
+        totals.durationSeconds += row.durationSeconds;
+        totals.durationRated += 1;
+      }
     }
 
     if (row.type === 'streaming' && row.chatMessageCount !== null) {
@@ -384,9 +396,12 @@ export function gaugeValue(id: GaugeId, totals: WindowTotals): number | null {
     case 'count':
       return totals.count;
     case 'duration':
-      return totals.count === 0 ? 0 : totals.durationRated > 0 ? totals.durationSeconds : null;
+      return totals.streamCount === 0 ? 0 : totals.durationRated > 0 ? totals.durationSeconds : null;
     case 'perVideo':
-      return totals.durationRated > 0 ? totals.durationSeconds / totals.durationRated : null;
+      // Divided by everything published, which is what the line under it does
+      // (`streamSeconds` over `streams + videos + shorts`). The two have to
+      // measure the same thing or the reading contradicts its own history.
+      return totals.count > 0 && totals.durationRated > 0 ? totals.durationSeconds / totals.count : null;
     case 'chat':
       return totals.chatRated > 0 ? totals.chatMessages : null;
     case 'chatUsers':
@@ -394,6 +409,27 @@ export function gaugeValue(id: GaugeId, totals: WindowTotals): number | null {
     case 'chatPerStream':
       return totals.chatRated > 0 ? totals.chatMessages / totals.chatRated : null;
   }
+}
+
+/**
+ * How much was published each month: streams, videos and shorts together.
+ *
+ * A month is only a total where all three are known. One of them missing
+ * makes the sum a lower bound rather than a count, and a lower bound drawn as
+ * a bar reads as a quiet month rather than as a gap in the record. Null is
+ * the honest answer, and the line and the bars both leave a hole for it.
+ */
+function publishedByMonth(months: ChannelMonths): (number | null)[] {
+  return months.streams.map((streams, index) => {
+    const videos = months.videos[index];
+    const shorts = months.shorts[index];
+
+    if (streams === null || videos === null || videos === undefined || shorts === null || shorts === undefined) {
+      return null;
+    }
+
+    return streams + videos + shorts;
+  });
 }
 
 /**
@@ -405,9 +441,7 @@ export function gaugeValue(id: GaugeId, totals: WindowTotals): number | null {
  * the line, not a zero.
  */
 export function gaugeSeries(months: ChannelMonths, id: GaugeId): (number | null)[] {
-  const published = months.streams.map((streams, index) =>
-    streams === null ? null : streams + (months.videos[index] ?? 0) + (months.shorts[index] ?? 0),
-  );
+  const published = publishedByMonth(months);
   const per = (top: (number | null)[], bottom: (number | null)[]) =>
     top.map((value, index) => {
       const divisor = bottom[index];
@@ -435,9 +469,7 @@ export function gaugeSeries(months: ChannelMonths, id: GaugeId): (number | null)
 export function monthlySeries(months: ChannelMonths, id: MonthlySeriesId): (number | null)[] {
   switch (id) {
     case 'streams':
-      return months.streams.map((streams, index) =>
-        streams === null ? null : streams + (months.videos[index] ?? 0) + (months.shorts[index] ?? 0),
-      );
+      return publishedByMonth(months);
     case 'hours':
       return months.streamSeconds.map((seconds) => (seconds === null ? null : seconds / 3600));
     case 'chat':
@@ -673,13 +705,22 @@ export function highlightParts(title: string, terms: readonly string[]): TitlePa
 
   const parts: TitlePart[] = [];
 
-  [...title].forEach((character, index) => {
-    const hit = marks[index] ?? false;
+  // `marks` is indexed the way `indexOf` counts, which is in UTF-16 units,
+  // while this walks whole characters. An emoji is two units and one
+  // character, so the offset is carried along rather than taken from the
+  // character's position - otherwise everything after the first emoji is
+  // highlighted one place out.
+  let at = 0;
+
+  for (const character of title) {
+    const hit = marks[at] ?? false;
     const last = parts[parts.length - 1];
 
     if (last !== undefined && last.hit === hit) last.text += character;
     else parts.push({ text: character, hit });
-  });
+
+    at += character.length;
+  }
 
   return parts;
 }
