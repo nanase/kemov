@@ -96,7 +96,9 @@ const when = computed(() => {
 
   const sameDay = jstDay(start) === jstDay(end);
 
-  return `${head} 〜 ${sameDay ? '' : `${formatDate(end)} `}${formatTime(end)}（${formatLength(row.value.durationSeconds)}）`;
+  const length = row.value.durationSeconds === null ? '' : `（${formatLength(row.value.durationSeconds)}）`;
+
+  return `${head} 〜 ${sameDay ? '' : `${formatDate(end)} `}${formatTime(end)}${length}`;
 });
 
 const title = computed(() => item.value?.event.title ?? row.value?.title ?? '');

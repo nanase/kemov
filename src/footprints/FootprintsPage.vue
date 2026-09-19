@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt from '@/shell/UpdatedAt.vue';
@@ -272,13 +272,16 @@ function readPosition() {
  *
  * Taken from the timeline rather than from the records themselves, so that
  * stepping from one to the next follows what is on screen: a member chosen
- * above, or streams turned off, changes what "the next record" is.
+ * above, streams turned off, or the newest first, changes what "the next
+ * record" is.
  */
-const sequence = computed(() =>
-  timeline.value.order.flatMap((item) =>
+const sequence = computed(() => {
+  const keys = timeline.value.order.flatMap((item) =>
     item.kind === 'event' ? [item.key] : item.kind === 'bundle' ? item.rows.map((row) => `v:${row.videoId}`) : [],
-  ),
-);
+  );
+
+  return filters.value.order === 'desc' ? keys.reverse() : keys;
+});
 
 const openKey = ref<string | null>(null);
 
@@ -331,6 +334,8 @@ onMounted(async () => {
   }, TICK_MS);
 
   await data.start();
+  await nextTick();
+  readPosition();
 });
 
 onBeforeUnmount(() => {

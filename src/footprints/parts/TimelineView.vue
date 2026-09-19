@@ -134,7 +134,7 @@ const years = computed(() => {
 
   return [...list].reverse().map((year) => ({
     ...year,
-    months: [...year.months].reverse().map((month) => ({ ...month, rows: [...month.rows].reverse() })),
+    months: [...year.months].reverse().map((month) => ({ ...month, rows: rowsOf([...month.items].reverse()) })),
   }));
 });
 
