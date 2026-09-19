@@ -68,16 +68,32 @@ async function loadOverrides(): Promise<void> {
   overrideByVideoId.value = new Map(body.videoOverrides.map((o) => [o.videoId, o]));
 }
 
+// The search box debounces when load() starts, not how many are in flight -
+// a load already waiting on a slow response is not cancelled by the next
+// keystroke's timer, so two can still resolve out of order. Each call
+// captures its own generation and only applies a response still on it.
+let loadRequestId = 0;
+
 async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
+
+  const requestId = ++loadRequestId;
 
   try {
     const query = q.value.trim() === '' ? '' : `?q=${encodeURIComponent(q.value.trim())}`;
     const body = await getJson<{ videos: CollectedVideo[] }>(`/videos${query}`);
 
-    videos.value = body.videos;
+    // Before videos.value changes, not after: that assignment is what fires
+    // watch(selected, ...) below (selected depends on videos.value), and
+    // that watcher reads overrideByVideoId.value directly rather than
+    // through a computed of its own - so it would otherwise still see the
+    // old map, from whichever fetch loadOverrides() last finished.
     await loadOverrides();
+
+    if (requestId !== loadRequestId) return;
+
+    videos.value = body.videos;
 
     if (selectedId.value === null && videos.value.length > 0) {
       selectedId.value = videos.value[0]!.videoId;
@@ -86,9 +102,11 @@ async function load(): Promise<void> {
       detail.value = false;
     }
   } catch (error) {
+    if (requestId !== loadRequestId) return;
+
     loadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
-    loading.value = false;
+    if (requestId === loadRequestId) loading.value = false;
   }
 }
 
@@ -181,7 +199,7 @@ onMounted(load);
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
         </div>
-        <table v-else class="grid">
+        <table class="grid">
           <thead>
             <tr>
               <th>タイトル</th>
@@ -196,7 +214,10 @@ onMounted(load);
               v-for="v in videos"
               :key="v.videoId"
               :aria-selected="v.videoId === selectedId"
+              tabindex="0"
               @click="selectRow(v.videoId)"
+              @keydown.enter="selectRow(v.videoId)"
+              @keydown.space.prevent="selectRow(v.videoId)"
             >
               <td>
                 <span class="clip">{{ v.title }}</span>
