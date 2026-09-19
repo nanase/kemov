@@ -93,13 +93,22 @@ describe('the worker entry', () => {
     expect(await response.json()).toEqual({ error: 'not authorized by Cloudflare Access' });
   });
 
-  test('answers 404 for /admin paths outside /admin/api, unauthorized or not', async () => {
+  // The admin site (#144) has no built dist/admin/index.html in this test
+  // run (the worker test project runs before `bun run build` in CI), so
+  // ASSETS itself answers 404 here the same way it does for /members/<id>
+  // above - handleAdminRequest's own tests (admin.test.ts) cover what a real
+  // page answers with, using a fake ASSETS of their own. This only proves the
+  // request reached that branch rather than /admin/api's own JSON 404, with
+  // no Access check in front of it either - Access itself is what actually
+  // guards this in production, and the worker's own check sits in front of
+  // /admin/api/* alone (see the previous test).
+  test('sends /admin paths outside /admin/api to the admin page, not the API', async () => {
     const ctx = createExecutionContext();
     const response = await handler.fetch!(new Request('https://kemov.nanase.cc/admin/foo'), env, ctx);
 
     await waitOnExecutionContext(ctx);
 
-    expect(response.status).toEqual(404);
+    expect(await response.text()).not.toContain('no endpoint at');
   });
 
   test('sends scheduled triggers to the collector', async () => {

@@ -13,17 +13,28 @@
  * `import`) add a row - see #144's task 9/10.
  */
 
-/** Every entity task 9 (this PR), 10 or 12 (#158) writes a `revision` row for. */
-export type RevisionEntity =
-  | 'footprints_event'
-  | 'genet_stream'
-  | 'genet_tune'
-  | 'genet_person'
-  | 'channel'
-  | 'video_override'
-  | 'channel_snapshot_exclusion';
+/**
+ * Every entity task 9 (this PR), 10 or 12 (#158) writes a `revision` row for.
+ * A runtime array rather than a bare union: revisions.ts's own GET (task 13,
+ * #144) validates an `entity` query parameter against this same list, which
+ * needs a value to check membership against, not only a type to check
+ * assignability against.
+ */
+export const REVISION_ENTITIES = [
+  'footprints_event',
+  'genet_stream',
+  'genet_tune',
+  'genet_person',
+  'channel',
+  'video_override',
+  'channel_snapshot_exclusion',
+] as const;
 
-export type RevisionAction = 'import' | 'publish' | 'withdraw' | 'save' | 'delete';
+export type RevisionEntity = (typeof REVISION_ENTITIES)[number];
+
+export const REVISION_ACTIONS = ['import', 'publish', 'withdraw', 'save', 'delete'] as const;
+
+export type RevisionAction = (typeof REVISION_ACTIONS)[number];
 
 /**
  * A statement for one `revision` row, meant to sit in the same `db.batch` as

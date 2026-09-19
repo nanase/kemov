@@ -569,6 +569,15 @@ async function releaseForNextTick(db: D1Database, videoId: string, lease: string
  * One batch again, and in this order: the unique count is taken from
  * chat_author while the rows are still there, so `video` never shows a total
  * that nothing backs, and the delete cannot outrun the count that needs it.
+ *
+ * Also clears `checked_at`, the same as channel-stats.ts's and video.ts's own
+ * `collectedStatement`: a row a person acknowledged from the admin site is
+ * done being watched for once collection has actually recovered, and a fresh
+ * failure afterwards should reappear on the admin site's list rather than
+ * stay hidden behind an old acknowledgement. This was missing until #144's
+ * task 13 review found it - every other settling path here (`recordAbsent`)
+ * already matches video.ts's own asymmetry, where only the fully-succeeded
+ * path clears it.
  */
 async function finishVideo(
   db: D1Database,
@@ -605,7 +614,7 @@ async function finishVideo(
     db
       .prepare(
         `UPDATE collect_task
-           SET state = 'done', attempts = 0, cursor = NULL, next_attempt_at = NULL, updated_at = ?1
+           SET state = 'done', attempts = 0, cursor = NULL, next_attempt_at = NULL, checked_at = NULL, updated_at = ?1
          WHERE kind = 'chat_replay' AND target_id = ?2 AND next_attempt_at = ?3`,
       )
       .bind(formatTimestamp(now), videoId, lease),

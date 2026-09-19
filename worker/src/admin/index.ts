@@ -2,6 +2,7 @@ import type { CertsCache } from '../lib/access';
 import { verifyAccess } from '../lib/access';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
+import { ackCollectTask, listCollectTasks, markCollectTaskUnavailable, retryCollectTask } from './collect-tasks';
 import { createEvent, deleteEvent, getEvent, listEvents, updateEvent } from './footprints';
 import { pendingFootprints, publishEvent, publishFootprintsNow, withdrawEvent } from './footprints-publish';
 import { createPerson, deletePerson, getPerson, listPeople, updatePerson } from './genet-people';
@@ -9,24 +10,32 @@ import { pendingGenetMusic, publishGenetMusicNow, publishStream, withdrawStream 
 import { createStream, deleteStream, getStream, listStreams, updateStream } from './genet-streams';
 import { createTune, deleteTune, getTune, listTunes, updateTune } from './genet-tunes';
 import { listMembers, updateMember } from './members';
+import { listPublications } from './publications';
+import { getRevision, listRevisions, readRevisionId } from './revisions';
+import { listSnapshots } from './snapshots';
 import { deleteSnapshotExclusion, listSnapshotExclusions, saveSnapshotExclusion } from './snapshot-exclusions';
 import { deleteVideoOverride, listVideoOverrides, saveVideoOverride } from './video-overrides';
+import { listVideos } from './videos';
 
 /**
  * The write side of the site, behind Cloudflare Access.
  *
- * `/admin/*` outside `/admin/api/*` is left to answer 404 - there is no
- * built file for it and no route here claims it either, so the routing below
- * falls through to the same 404 the API gives an unknown path. Cloudflare
- * Access is not asked for those: the path does not exist regardless of who is
- * asking.
+ * `/admin/*` outside `/admin/api/*` answers the admin page itself (#144) -
+ * the same built HTML for every path, since which screen it names is a route
+ * `src/admin/router.ts` reads client-side, not one this worker understands.
+ * Cloudflare Access already sits in front of all of `/admin`, so this does
+ * not call `verifyAccess` the way `/admin/api/*` below does: #141's design
+ * keeps the worker's own check in front of the write API alone, not the page
+ * that merely renders it.
  *
  * `now`, `fetchImpl` and `certsCache` exist only so a test can hand
  * `verifyAccess` a key fetch and a clock of its own; every real caller leaves
  * all three out and gets `verifyAccess`'s own defaults. The same `now`, once
  * resolved, is also what "publish now" stamps `published_at` with, and what a
  * save stamps its own timestamp with (see video-overrides.ts): one instant
- * for the whole request rather than two clock reads a moment apart.
+ * for the whole request rather than two clock reads a moment apart. `assets`
+ * exists so a test can hand the page route a `Fetcher` of its own, the same
+ * reason `pages.ts`'s own `handleDynamicPageRequest` takes one.
  */
 export async function handleAdminRequest(
   request: Request,
@@ -34,8 +43,10 @@ export async function handleAdminRequest(
   now?: Date,
   fetchImpl?: typeof fetch,
   certsCache?: CertsCache,
+  assets: Fetcher = env.ASSETS,
 ): Promise<Response> {
-  const { pathname } = new URL(request.url);
+  const url = new URL(request.url);
+  const { pathname } = url;
   const segments = pathname.replace(/^\/+|\/+$/g, '').split('/');
   // The first segment is always 'admin' - the caller only reaches this
   // function for a path under /admin - so unlike api/index.ts's prefix there
@@ -60,7 +71,7 @@ export async function handleAdminRequest(
   const id = decodeSegment(sub);
   const id2 = decodeSegment(rawId);
 
-  if (resource !== 'api') return errorResponse(404, `no endpoint at ${pathname}`);
+  if (resource !== 'api') return await servePage(request, assets, url);
 
   const instant = now ?? new Date();
 
@@ -287,6 +298,81 @@ export async function handleAdminRequest(
     return 'error' in body ? body.error : await saveVideoOverride(env, id, body.value, instant);
   }
 
+  if (segments.length === 3 && name === 'videos') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    const { searchParams } = new URL(request.url);
+
+    return await listVideos(env, searchParams.get('q'), searchParams.get('channelId'), searchParams.get('limit'));
+  }
+
+  if (segments.length === 3 && name === 'snapshots') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    const { searchParams } = new URL(request.url);
+
+    return await listSnapshots(
+      env,
+      searchParams.get('channelId'),
+      searchParams.get('from'),
+      searchParams.get('to'),
+      instant,
+    );
+  }
+
+  if (segments.length === 3 && name === 'collect-tasks') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    return await listCollectTasks(env);
+  }
+
+  // id/id2 are the kind and target_id here, not a second id slot the way
+  // snapshot-exclusions reads them - collect_task's own primary key is
+  // likewise composite (kind, target_id), so this reuses the same two slots
+  // for the same reason, with `action` (segment 5) naming which of the three
+  // exits #141 decided rather than a literal the way footprints' own
+  // events/:id/publish reads it.
+  if (segments.length === 6 && name === 'collect-tasks' && id !== undefined && id2 !== undefined) {
+    if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
+
+    if (action === 'retry') return await retryCollectTask(env, id, id2, instant);
+    if (action === 'ack') return await ackCollectTask(env, id, id2, instant);
+    if (action === 'unavailable') return await markCollectTaskUnavailable(env, id, id2, instant);
+
+    return errorResponse(404, `no endpoint at ${pathname}`);
+  }
+
+  if (segments.length === 3 && name === 'revisions') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    const { searchParams } = new URL(request.url);
+
+    return await listRevisions(
+      env,
+      searchParams.get('entity'),
+      searchParams.get('action'),
+      searchParams.get('from'),
+      searchParams.get('to'),
+      searchParams.get('limit'),
+    );
+  }
+
+  if (segments.length === 4 && name === 'revisions' && id !== undefined) {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    const revisionId = readRevisionId(id);
+
+    if (revisionId === null) return errorResponse(404, `no revision ${id}`);
+
+    return await getRevision(env, revisionId);
+  }
+
+  if (segments.length === 3 && name === 'publications') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    return await listPublications(env);
+  }
+
   return errorResponse(404, `no endpoint at ${pathname}`);
 }
 
@@ -316,6 +402,21 @@ function readEventId(segment: string): number | null {
   const value = Number(segment);
 
   return Number.isSafeInteger(value) ? value : null;
+}
+
+/**
+ * `/admin/*` outside `/admin/api/*` - the built page, whatever the path, so
+ * that `/admin/footprints`, a reload on it, and a shared link all answer the
+ * same way. `ASSETS` is asked for `/admin/` specifically (the built
+ * `src/admin/index.html`), the same "one HTML file answers every path under
+ * here" shape `pages.ts`'s own dynamic pages fall back to.
+ */
+async function servePage(request: Request, assets: Fetcher, url: URL): Promise<Response> {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return new Response(`${request.method} is not allowed here`, { status: 405, headers: { Allow: 'GET, HEAD' } });
+  }
+
+  return await assets.fetch(new Request(new URL('/admin/', url), { method: 'GET' }));
 }
 
 function decodeSegment(segment: string | undefined): string | undefined {
