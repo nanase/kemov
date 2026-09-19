@@ -261,7 +261,7 @@ const occurrences = computed<Occurrence[]>(() => {
   return [...seen.values()];
 });
 
-/* ---- カテゴリの札・演奏のしかたのボタン ------------------------------- */
+/* ---- カテゴリのチップ・演奏のしかたのボタン ------------------------------- */
 
 function toggleCategory(c: string): void {
   category.value = category.value === c ? null : c;
