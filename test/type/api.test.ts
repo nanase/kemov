@@ -286,6 +286,16 @@ describe('readVideoTable', () => {
     expect(() => readVideoTable({ ...TABLE, columns: { ...TABLE.columns, title: [] } })).toThrow(ShapeError);
   });
 
+  // These columns are tallies and the member page adds them up. A negative or
+  // fractional one is not a small error to carry into a total - it is a body
+  // that means something other than what would be read from it.
+  test('refuses a count below zero or with a fraction', () => {
+    expect(() => readVideoTable({ ...TABLE, columns: { ...TABLE.columns, viewCount: [-1] } })).toThrow(ShapeError);
+    expect(() => readVideoTable({ ...TABLE, columns: { ...TABLE.columns, durationSeconds: [1.5] } })).toThrow(
+      ShapeError,
+    );
+  });
+
   test('refuses a type it does not know', () => {
     expect(() => readVideoTable({ ...TABLE, columns: { ...TABLE.columns, type: ['podcast'] } })).toThrow(ShapeError);
   });
