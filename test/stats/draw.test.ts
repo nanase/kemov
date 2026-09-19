@@ -64,9 +64,14 @@ describe('the words numbers are written in', () => {
     expect(monthLabel('2026-09')).toEqual('2026年9月');
   });
 
-  test('a stream length is hours and minutes', () => {
-    expect(formatDuration(7200)).toEqual('2:00');
-    expect(formatDuration(5430)).toEqual('1:30');
+  // The same length has to read the same way on every page. This page used to
+  // write `H:MM`, so 45 minutes came out as `0:45` - which is how 45 seconds
+  // is written where a length under an hour is `mm:ss`.
+  test('a stream length is written the way the rest of the site writes one', () => {
+    expect(formatDuration(7200)).toEqual('2:00:00');
+    expect(formatDuration(5430)).toEqual('1:30:30');
+    expect(formatDuration(2700)).toEqual('45:00');
+    expect(formatDuration(45)).toEqual('00:45');
     expect(formatDuration(null)).toEqual(DASH);
   });
 
