@@ -65,13 +65,30 @@ const years = computed(() => {
   return filters.value.order === 'asc' ? list : [...list].reverse();
 });
 
+/**
+ * `data.failure` alone is what a stream-only or events-only failure looks
+ * like too, not just a total one: `fetchedAt` comes from the channel counts,
+ * a third, independent fetch that can succeed while the archive (events and
+ * streams together) is failing. Gating this on `fetchedAt` as well used to
+ * hide that failure completely whenever the counts happened to be fine - the
+ * badge kept reading "ok" while events or streams silently stopped updating.
+ */
 const updatedState = computed(() => {
-  if (data.failure.value !== null && data.fetchedAt.value === null) return 'error' as const;
+  if (data.failure.value !== null) return 'error' as const;
 
   return data.loading.value ? ('loading' as const) : ('ok' as const);
 });
 
-const failed = computed(() => data.failure.value !== null && data.rows.value.length === 0);
+/**
+ * Only when neither half of the archive has anything to show. One half
+ * failing while the other is fine still draws a timeline from what did
+ * arrive - the same leniency the events-not-published-yet case already gets
+ * (#140) - and `updatedState` above is what tells a reader something is
+ * wrong.
+ */
+const failed = computed(
+  () => data.failure.value !== null && data.rows.value.length === 0 && data.events.value.length === 0,
+);
 
 function toggleMember(channelId: string | null) {
   const members = new Set(filters.value.members);
