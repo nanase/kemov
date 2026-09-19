@@ -3,9 +3,9 @@ import { computed, useTemplateRef } from 'vue';
 
 import { useDragScroll } from '@/shell/useDragScroll';
 
-import { memberColor } from '../draw';
+import { memberColor } from '@/lib/memberColor';
 import type { Announcement, Subject } from '../model';
-import MemberAvatar from './MemberAvatar.vue';
+import MemberAvatar from '@/parts/MemberAvatar.vue';
 
 /**
  * What is on air and what starts later today.

@@ -8,8 +8,8 @@ import { formatDuration, formatProperty, getPropertyName, type VideoProperty } f
 import type { RankingPeriod, VideoTableRow } from '@/lib/ranking';
 import { getWatchURL } from '@/lib/youtube';
 import { COUNT_METRICS, kindName, RATE_METRICS, scopeName, universeOf, type Universe } from '../model';
-import { memberColor } from '@/stats/draw';
-import MemberAvatar from '@/stats/parts/MemberAvatar.vue';
+import { memberColor } from '@/lib/memberColor';
+import MemberAvatar from '@/parts/MemberAvatar.vue';
 import VideoThumbnail from './VideoThumbnail.vue';
 
 /**

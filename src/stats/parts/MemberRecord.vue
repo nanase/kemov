@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-import { changeSign, formatChange, formatCount, memberAccent, memberColor } from '../draw';
+import { memberAccent, memberColor } from '@/lib/memberColor';
+import { formatCount } from '@/lib/numberFormat';
+import { changeSign, formatChange } from '../draw';
 import {
   deltaOf,
   HEAT_STEPS,
@@ -18,10 +20,10 @@ import {
   type SeriesId,
   type Subject,
 } from '../model';
-import MemberAvatar from './MemberAvatar.vue';
+import MemberAvatar from '@/parts/MemberAvatar.vue';
 import MonthChart from './MonthChart.vue';
 import RecentStreams, { type StreamRow } from './RecentStreams.vue';
-import SegmentGroup from './SegmentGroup.vue';
+import SegmentGroup from '@/parts/SegmentGroup.vue';
 import StreamHeatmap from './StreamHeatmap.vue';
 
 /**

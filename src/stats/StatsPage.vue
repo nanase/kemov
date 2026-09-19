@@ -28,7 +28,7 @@ import {
 import AnnouncementBand from './parts/AnnouncementBand.vue';
 import MemberLedger from './parts/MemberLedger.vue';
 import MemberRecord from './parts/MemberRecord.vue';
-import SegmentGroup from './parts/SegmentGroup.vue';
+import SegmentGroup from '@/parts/SegmentGroup.vue';
 import SubscriberNote from './parts/SubscriberNote.vue';
 import TotalsGrid from './parts/TotalsGrid.vue';
 import type { StreamRow } from './parts/RecentStreams.vue';
