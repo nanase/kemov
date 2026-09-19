@@ -157,7 +157,7 @@ const suggestions = computed<Suggestion[]>(() => {
   if (filters.value.lengthBandId !== 'any') {
     tries.push({
       key: 'length',
-      label: `長さ「${lengthBandOf(filters.value.lengthBandId).name}」を外す`,
+      label: `再生時間「${lengthBandOf(filters.value.lengthBandId).name}」を外す`,
       count: filterUniverse(universe.value, { ...filters.value, lengthBandId: 'any' }).rows.length,
     });
   }

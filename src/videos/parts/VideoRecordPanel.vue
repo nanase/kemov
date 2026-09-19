@@ -130,7 +130,7 @@ function avatarStyle() {
 
     <dl class="facts">
       <dt>公開</dt>
-      <dd>{{ formatDateTime(new Date(video.publishedAt).getTime()) }} JST</dd>
+      <dd>{{ formatDateTime(new Date(video.publishedAt).getTime()) }}</dd>
       <dt>種別</dt>
       <dd>{{ kindName(video.type ?? kind) }}</dd>
       <dt>再生時間</dt>

@@ -408,7 +408,7 @@ export function funnelSteps(
   ];
 
   if (filters.lengthBandId !== 'any') {
-    steps.push({ key: 'length', words: ['長さ「', band.name, '」'], count: view.afterLength });
+    steps.push({ key: 'length', words: ['再生時間「', band.name, '」'], count: view.afterLength });
   }
   if (filters.channelIds.size > 0) {
     steps.push({ key: 'channel', words: ['配信者 ', `${filters.channelIds.size} 人`, ''], count: view.afterChannel });

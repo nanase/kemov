@@ -132,7 +132,7 @@ function clearQuery() {
 
     <div v-show="shelfOpen" id="videos-shelf" class="shelf">
       <div class="rail">
-        <span class="tag">長さ</span>
+        <span class="tag">再生時間</span>
         <div class="chips">
           <button
             v-for="band in LENGTH_BANDS"
@@ -170,7 +170,7 @@ function clearQuery() {
         </div>
       </div>
       <div class="shelffoot">
-        <span class="note">長さと配信者は行を隠すだけです。順位は種別と期間で決まります。</span>
+        <span class="note">再生時間と配信者は行を隠すだけです。順位は種別と期間で決まります。</span>
         <button
           type="button"
           class="reset"
