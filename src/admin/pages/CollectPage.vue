@@ -25,6 +25,11 @@ function rowKey(task: CollectTask): string {
   return `${task.kind}/${task.targetId}`;
 }
 
+// Different rows' actions can overlap (busyKeys allows it), and each one
+// reloads on success - an older reload's response must not overwrite a row
+// a later action already settled.
+let loadRequestId = 0;
+
 async function load(): Promise<void> {
   loading.value = true;
   // Leaves `tasks` as it was rather than clearing it - a reload after a
@@ -33,14 +38,20 @@ async function load(): Promise<void> {
   // of it instead.
   loadError.value = null;
 
+  const requestId = ++loadRequestId;
+
   try {
     const body = await getJson<{ collectTasks: CollectTask[] }>('/collect-tasks');
 
+    if (requestId !== loadRequestId) return;
+
     tasks.value = body.collectTasks;
   } catch (error) {
+    if (requestId !== loadRequestId) return;
+
     loadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
-    loading.value = false;
+    if (requestId === loadRequestId) loading.value = false;
   }
 }
 

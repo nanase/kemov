@@ -95,7 +95,15 @@ async function addEvent(): Promise<void> {
     const body = await postJson<{ event: { eventId: number } }>('/footprints/events', emptyFormFields(todayJst()));
 
     await load();
-    selectRow(body.event.eventId);
+
+    // A new event is always a draft with an empty title - the active status
+    // or title filter can exclude it from `events`. Selecting it anyway
+    // would point the inspector at an event the list doesn't show.
+    if (events.value.some((e) => e.eventId === body.event.eventId)) {
+      selectRow(body.event.eventId);
+    } else {
+      showToast('作りました（いまの絞り込みには出ません）');
+    }
   } catch (error) {
     showToast(error instanceof AdminApiError ? error.message : String(error));
   } finally {

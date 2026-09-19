@@ -62,10 +62,10 @@ watch(selected, (video) => {
   fields.value = override === undefined ? emptyOverrideFields() : toOverrideFormFields(override);
 });
 
-async function loadOverrides(): Promise<void> {
+async function fetchOverrides(): Promise<Map<string, VideoOverride>> {
   const body = await getJson<{ videoOverrides: VideoOverride[] }>('/video-overrides');
 
-  overrideByVideoId.value = new Map(body.videoOverrides.map((o) => [o.videoId, o]));
+  return new Map(body.videoOverrides.map((o) => [o.videoId, o]));
 }
 
 // The search box debounces when load() starts, not how many are in flight -
@@ -88,11 +88,13 @@ async function load(): Promise<void> {
     // watch(selected, ...) below (selected depends on videos.value), and
     // that watcher reads overrideByVideoId.value directly rather than
     // through a computed of its own - so it would otherwise still see the
-    // old map, from whichever fetch loadOverrides() last finished.
-    await loadOverrides();
+    // old map. Fetched but not committed until the generation check below,
+    // so a stale response can't overwrite a newer load's already-committed map.
+    const overrides = await fetchOverrides();
 
     if (requestId !== loadRequestId) return;
 
+    overrideByVideoId.value = overrides;
     videos.value = body.videos;
 
     if (selectedId.value === null && videos.value.length > 0) {
