@@ -1,4 +1,5 @@
 import { DAY_NAMES } from '@/lib/timeFormat';
+import { formatDuration } from '@/type/video';
 
 import { jstParts } from './model';
 
@@ -70,16 +71,21 @@ export function formatSince(ms: number, now: number): string {
   return `${years > 0 ? `${years} 年 ` : ''}${rest > 0 ? `${rest} か月` : ''}前`;
 }
 
-/** A length of time as `H:MM:SS`, or `MM:SS` under an hour. */
+/**
+ * A length of time, written as the rest of the site writes a video's length.
+ *
+ * `@/type/video`'s formatter rather than one of this page's own: a stream is
+ * the same stream here as on `/videos/` and `/members/`, and two ways of
+ * writing its length would read as two different measurements.
+ *
+ * Nothing at all for a length nobody recorded, where `src/members/draw.ts`
+ * writes a dash for the same case. The difference is where the two are used:
+ * this one goes inside a sentence - "20:00 〜 21:02（1:02:03）" - and a dash
+ * alone inside those brackets says less than empty brackets would. The member
+ * page puts its own in a cell of its own, where a dash is the reading.
+ */
 export function formatLength(seconds: number | null): string {
-  if (seconds === null) return '';
-
-  const whole = Math.max(0, Math.round(seconds));
-  const minutes = Math.floor(whole / 60) % 60;
-
-  return whole >= 3600
-    ? `${Math.floor(whole / 3600)}:${pad2(minutes)}:${pad2(whole % 60)}`
-    : `${pad2(minutes)}:${pad2(whole % 60)}`;
+  return seconds === null ? '' : formatDuration(Math.max(0, Math.round(seconds)));
 }
 
 /** The host a source is on, which is what the page shows instead of the URL. */

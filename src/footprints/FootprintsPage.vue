@@ -121,9 +121,18 @@ const soonShown = computed(() => {
 });
 const agoList = computed(() => thisWeekInPast(items.value, data.rows.value, filters.value, now.value));
 
+/**
+ * The road's own rows.
+ *
+ * Qualified by the key, because a run of streams that has been opened holds
+ * buttons of the same class: without this, "the last row" can be one stream
+ * inside a run rather than the end of the road.
+ */
+const TIMELINE_ROWS = '.timeline .row[data-key]';
+
 /** The first row of the road, which is whichever end the order puts it at. */
 function jumpToStart() {
-  const rows = document.querySelectorAll('.timeline .row');
+  const rows = document.querySelectorAll(TIMELINE_ROWS);
   const first = filters.value.order === 'asc' ? document.querySelector('.timeline .year') : rows[rows.length - 1];
 
   first?.scrollIntoView({ block: 'start' });
@@ -183,7 +192,7 @@ const END_MARGIN = 140;
 
 function readBand() {
   const panel = document.querySelector('.fp-page .filters')?.getBoundingClientRect();
-  const rows = document.querySelectorAll('.timeline .row');
+  const rows = document.querySelectorAll(TIMELINE_ROWS);
   const last = rows[rows.length - 1]?.getBoundingClientRect();
 
   filtersOffScreen.value = panel !== undefined && panel.bottom < 0;
