@@ -39,9 +39,18 @@ const detail = ref<Revision | null>(null);
 const detailError = ref<string | null>(null);
 const detailLoading = ref(false);
 
+// Changing a filter mid-request starts a second, overlapping GET /revisions -
+// without this, a slower earlier response can resolve after a faster later
+// one and overwrite the list with results for a filter that is no longer
+// selected. Each call captures its own generation and only applies a
+// response still on the latest one.
+let revisionsGeneration = 0;
+
 async function loadRevisions(): Promise<void> {
   loading.value = true;
   loadError.value = null;
+
+  const generation = ++revisionsGeneration;
 
   try {
     const qs = revisionsQuery({
@@ -52,11 +61,15 @@ async function loadRevisions(): Promise<void> {
     });
     const body = await getJson<{ revisions: RevisionListItem[] }>(`/revisions${qs}`);
 
+    if (generation !== revisionsGeneration) return;
+
     revisions.value = body.revisions;
   } catch (error) {
+    if (generation !== revisionsGeneration) return;
+
     loadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
-    loading.value = false;
+    if (generation === revisionsGeneration) loading.value = false;
   }
 }
 
@@ -84,11 +97,18 @@ async function selectRevision(revisionId: number): Promise<void> {
   try {
     const body = await getJson<{ revision: Revision }>(`/revisions/${revisionId}`);
 
+    // Selecting a different row before this resolves must not let this
+    // response - for the row no longer selected - overwrite what the newer
+    // selection already loaded.
+    if (selectedId.value !== revisionId) return;
+
     detail.value = body.revision;
   } catch (error) {
+    if (selectedId.value !== revisionId) return;
+
     detailError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
-    detailLoading.value = false;
+    if (selectedId.value === revisionId) detailLoading.value = false;
   }
 }
 
@@ -134,7 +154,7 @@ onMounted(async () => {
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
         </div>
-        <table v-else class="grid">
+        <table class="grid">
           <thead>
             <tr>
               <th>日時 (JST)</th>
