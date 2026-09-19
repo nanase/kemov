@@ -33,6 +33,11 @@ import type { Channel } from '@/type/api';
  * Pressing a station opens that record. Pressing anywhere else closes this
  * and takes the timeline to the month pressed, rather than simply vanishing:
  * a reader who is moved somewhere needs to see where they arrived.
+ *
+ * How this reads to someone who cannot see it follows `TrailMap.vue`'s own
+ * comment (the same four points, HQ's standard from 2026-09-19) - this chart
+ * is the same record as that one, only larger, so its `aria-label` says the
+ * same thing for the same reason.
  */
 const { events, rows, channels, filters, soon, now, dark, reading } = defineProps<{
   events: readonly EventItem[];
@@ -463,7 +468,7 @@ onBeforeUnmount(() => {
               :height="layout.height"
               :viewBox="`0 0 ${layout.view} ${layout.height}`"
               role="img"
-              aria-label="けもV とメンバーの軌跡"
+              aria-label="年表の中を移動するための図。中身は年表の本文と同じです"
             >
               <rect
                 v-if="read"

@@ -18,6 +18,23 @@ import type { Channel } from '@/type/api';
  * SVG rather than a canvas: there are a few hundred marks here, not the ten
  * thousand the member page's heatmap draws, and a mark that can be pressed
  * and named is worth more than the drawing speed.
+ *
+ * How this reads to someone who cannot see it (HQ's standard, 2026-09-19,
+ * settled after this exact chart came up in review) - keep this comment in
+ * step with whichever of the four the chart itself changes:
+ *
+ * 1. The chart carries `role="img"` and an `aria-label` naming what it is
+ * 2. Nothing the chart says twice what the page already says in words. This
+ *    chart draws no new fact - every day and every month's count is already
+ *    in the timeline's own text - so its label says only that it is a map
+ *    for getting around that timeline, not a second copy of what is on it.
+ *    A reader who hears the label can skip the chart outright and read the
+ *    timeline instead, which is the whole point of the label saying so
+ * 3. Where a chart DOES carry a fact the page says nowhere else in words - the
+ *    month-by-month figures on #161's own chart, for one - a hidden table
+ *    carries that fact instead of leaving it sighted-only
+ * 4. Anything inside the chart that can be pressed (a station, a month band)
+ *    gets its own `aria-label`, not just the chart's outer one
  */
 const { events, rows, channels, filters, now, dark, reading, soon, stations, available } = defineProps<{
   events: readonly EventItem[];
@@ -129,7 +146,7 @@ onBeforeUnmount(() => {
       :height="layout.height"
       :viewBox="`0 0 ${layout.width} ${layout.height}`"
       role="img"
-      aria-label="けもV とメンバーの軌跡"
+      aria-label="年表の中を移動するための図。中身は年表の本文と同じです"
     >
       <!-- Where the timeline is, so the two say the same thing about where
            the reader is on the road. -->
