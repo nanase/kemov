@@ -40,12 +40,15 @@ describe('plotOf', () => {
   });
 
   // The subscriber history starts with one reading (#125). It has to draw
-  // something rather than throw.
-  test('draws a single reading without a line', () => {
+  // something rather than throw - and something with an area, because a shape
+  // between one x and the same x is invisible however solid its fill.
+  test('draws a single reading as a column, not as a line of no width', () => {
     const plot = plotOf([null, null, 1000], 'level');
+    const xs = [...plot.area.matchAll(/[ML](-?[\d.]+),/g)].map(([, x]) => Number(x));
 
     expect(plot.line).toEqual('');
     expect(plot.area).not.toEqual('');
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(0.1);
   });
 
   // A month nobody read is a hole, so the line stops at it and starts again

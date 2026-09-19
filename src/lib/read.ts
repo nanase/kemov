@@ -99,6 +99,23 @@ export function readNumber(value: unknown, path: string): number {
 }
 
 /**
+ * A number that counts something, so cannot be negative or fractional.
+ *
+ * `readNumber` above takes any finite number, which is right for a measured
+ * value but wrong for a tally: -1 views and 1.5 streams are not small errors
+ * to be carried through a sum, they are a body that means something other
+ * than what this site would read it as. Refused where it arrives, so that the
+ * page says "could not be read" instead of showing a total nobody can explain.
+ */
+export function readCount(value: unknown, path: string): number {
+  const count = readNumber(value, path);
+
+  if (!Number.isInteger(count) || count < 0) throw new ShapeError(path, 'a count of zero or more', value);
+
+  return count;
+}
+
+/**
  * A value the API sends as null when it has none.
  *
  * Null is a real answer everywhere in this API - a channel that hides its

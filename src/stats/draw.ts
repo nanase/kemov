@@ -1,4 +1,5 @@
 import { DASH, formatCount } from '@/lib/numberFormat';
+import { formatDuration as formatVideoDuration } from '@/type/video';
 
 /**
  * Turning this page's numbers into the shapes and words it draws.
@@ -70,11 +71,18 @@ function pad2(value: number): string {
   return String(value).padStart(2, '0');
 }
 
-/** A stream's length as `H:MM`, which is how long it ran rather than when. */
+/**
+ * A stream's length, written as the rest of the site writes one.
+ *
+ * `@/type/video`'s formatter rather than one of this page's own. The two were
+ * not the same: this wrote `H:MM`, so a 45-minute stream read as `0:45` -
+ * which on `/videos/` and `/members/`, where a length under an hour is
+ * `mm:ss`, is how 45 seconds is written. The same four characters meant two
+ * different things depending on which page they were on, and nothing on
+ * screen said which.
+ */
 export function formatDuration(seconds: number | null): string {
-  if (seconds === null) return DASH;
-
-  return `${Math.floor(seconds / 3600)}:${pad2(Math.floor((seconds % 3600) / 60))}`;
+  return seconds === null ? DASH : formatVideoDuration(Math.max(0, Math.round(seconds)));
 }
 
 /** An amount of airtime, in hours and minutes. */

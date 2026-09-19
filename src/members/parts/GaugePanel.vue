@@ -17,13 +17,15 @@ import type { ChannelMonths } from '@/type/api';
  * important than another. The comparison is never coloured: streaming less
  * this quarter is not a failure, and green and red would say it was (#136).
  */
-const { current, previous, months, window } = defineProps<{
+const { current, previous, months, window, missing } = defineProps<{
   current: WindowTotals;
   previous: WindowTotals;
   /** This member's own month-by-month series, or null while it is on its way. */
   months: ChannelMonths | null;
   /** Which days the two windows covered, written out. */
   window: string;
+  /** True when the monthly record was asked for and never arrived. */
+  missing: boolean;
 }>();
 
 function write(id: (typeof GAUGES)[number]['id'], kind: string, value: number | null): string {
@@ -71,7 +73,10 @@ const hasSeries = (series: readonly (number | null)[]) => series.some((value) =>
             {{ gauge.value }}<small v-if="gauge.unit"> {{ gauge.unit }}</small>
           </div>
           <SparkLine v-if="hasSeries(gauge.series)" class="line" :values="gauge.series" kind="level" />
-          <div v-else class="none">記録がありません</div>
+          <!-- A line nobody could read is not a line of zeros. Saying which
+               it is keeps "they did nothing" apart from "this did not
+               arrive". -->
+          <div v-else class="none">{{ missing ? '取得できませんでした' : '記録がありません' }}</div>
           <div class="previous mv-n">前の 90 日 {{ gauge.previous }}</div>
         </div>
       </div>

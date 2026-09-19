@@ -4,6 +4,7 @@ import {
   field,
   readArray,
   readBoolean,
+  readCount,
   readDate,
   readEach,
   readInstant,
@@ -374,8 +375,16 @@ export interface MonthsSeries {
   total: MonthTotals;
 }
 
+/**
+ * A month-by-month series, every entry a tally or a hole.
+ *
+ * Read as counts rather than as plain numbers: every one of these is a number
+ * of things - streams, seconds, chat lines, subscribers - and the page adds
+ * them up. A negative or fractional entry would be carried into a total that
+ * nobody could explain.
+ */
 function readCounts(value: unknown, path: string, name: string): (number | null)[] {
-  return readEach(field(value, name, path), `${path}.${name}`, (v, p) => readOrNull(v, p, readNumber));
+  return readEach(field(value, name, path), `${path}.${name}`, (v, p) => readOrNull(v, p, readCount));
 }
 
 function readChannelMonths(value: unknown, path: string): ChannelMonths {
@@ -392,7 +401,7 @@ function readChannelMonths(value: unknown, path: string): ChannelMonths {
 function readMonthTotals(value: unknown, path: string): MonthTotals {
   return {
     ...(Object.fromEntries(
-      MONTH_SERIES.map((name) => [name, readEach(field(value, name, path), `${path}.${name}`, readNumber)]),
+      MONTH_SERIES.map((name) => [name, readEach(field(value, name, path), `${path}.${name}`, readCount)]),
     ) as Record<MonthSeriesName, number[]>),
     subscribers: readCounts(value, path, 'subscribers'),
   };
@@ -530,12 +539,12 @@ export function readVideoTable(body: unknown): VideoTable {
       title: column('title', readString),
       type: column('type', type),
       publishedAt: column('publishedAt', (v, p) => readInstant(v, p)),
-      durationSeconds: column('durationSeconds', nullable(readNumber)),
-      viewCount: column('viewCount', nullable(readNumber)),
-      likeCount: column('likeCount', nullable(readNumber)),
-      commentCount: column('commentCount', nullable(readNumber)),
-      chatMessageCount: column('chatMessageCount', nullable(readNumber)),
-      chatUniqueUserCount: column('chatUniqueUserCount', nullable(readNumber)),
+      durationSeconds: column('durationSeconds', nullable(readCount)),
+      viewCount: column('viewCount', nullable(readCount)),
+      likeCount: column('likeCount', nullable(readCount)),
+      commentCount: column('commentCount', nullable(readCount)),
+      chatMessageCount: column('chatMessageCount', nullable(readCount)),
+      chatUniqueUserCount: column('chatUniqueUserCount', nullable(readCount)),
       actualStartTime: column('actualStartTime', nullable(readInstant)),
       actualEndTime: column('actualEndTime', nullable(readInstant)),
     },

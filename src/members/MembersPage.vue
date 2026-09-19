@@ -79,6 +79,17 @@ function readMemberId(): string | null {
   return resource === 'members' && id !== undefined && id !== '' ? id : null;
 }
 
+/**
+ * The archive never arrived.
+ *
+ * The board, the list and the lower band are the same rows read three ways,
+ * so drawing them without those rows puts "0 本" and "配信なし" on screen -
+ * which says the member did nothing, where the truth is that nothing was
+ * read. An archive that arrives empty is a different thing and draws
+ * normally.
+ */
+const archiveMissing = computed(() => !data.loading.value && data.missing.value.table);
+
 const channels = computed(() => data.channels.value);
 const member = computed(
   () => channels.value.find((channel) => channel.channelId === memberId.value) ?? channels.value[0] ?? null,
@@ -384,11 +395,14 @@ onBeforeUnmount(() => {
     </template>
 
     <div class="mv-page" :style="pageColors">
-      <p v-if="member === null" class="mv-panel failed">
-        <template v-if="data.failure.value">
+      <p v-if="data.loading.value || member === null || archiveMissing" class="mv-panel failed">
+        <template v-if="data.loading.value">読み込んでいます</template>
+        <template v-else-if="member === null">
           メンバーの情報を取得できませんでした<br />しばらく時間をおいてから再度お試しください
         </template>
-        <template v-else>読み込んでいます</template>
+        <template v-else>
+          配信・動画の記録を取得できませんでした<br />しばらく時間をおいてから再度お試しください
+        </template>
       </p>
 
       <template v-else>
@@ -400,11 +414,13 @@ onBeforeUnmount(() => {
               :current="windows.current"
               :previous="windows.previous"
               :months
+              :missing="data.missing.value.months"
               :window="windows.label"
             />
             <MonthPanel
               :months="monthLabels"
               :row="months"
+              :missing="data.missing.value.months"
               :series="state.monthly"
               @series="state = { ...state, monthly: $event as MonthlySeriesId }"
             />

@@ -32,6 +32,9 @@ export interface Plot {
   bottom: number;
 }
 
+/** How wide a single reading's column is, in slots. */
+const COLUMN = 0.8;
+
 const HEIGHT = 100;
 
 /**
@@ -73,14 +76,25 @@ export function plotOf(values: readonly (number | null)[], kind: 'flow' | 'level
 
     const path = (points: readonly { x: string; y: string }[]) => points.map((p) => `${p.x},${p.y}`).join(' L');
 
-    // One reading cannot be a line. Its area still draws, as a single column,
-    // so the panel does not look broken while the history fills up (#125).
+    // One reading cannot be a line, so it is drawn as a column of its own: a
+    // shape between one x and the same x has no area at all, and the panel
+    // would look broken rather than early while the history fills up (#125).
     const line = runs
       .filter((points) => points.length > 1)
       .map((points) => `M${path(points)}`)
       .join(' ');
     const area = runs
-      .map((points) => `M${points[0]!.x},${HEIGHT} L${path(points)} L${points.at(-1)!.x},${HEIGHT} Z`)
+      .map((points) => {
+        if (points.length > 1) {
+          return `M${points[0]!.x},${HEIGHT} L${path(points)} L${points.at(-1)!.x},${HEIGHT} Z`;
+        }
+
+        const only = points[0]!;
+        const left = (Number(only.x) - COLUMN / 2).toFixed(3);
+        const right = (Number(only.x) + COLUMN / 2).toFixed(3);
+
+        return `M${left},${HEIGHT} L${left},${only.y} L${right},${only.y} L${right},${HEIGHT} Z`;
+      })
       .join(' ');
 
     return { width, height: HEIGHT, bars: [], line, area, baseline: HEIGHT, top, bottom };

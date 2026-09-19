@@ -7,11 +7,14 @@ import {
   cumulativeOf,
   distributionOf,
   gaugeChange,
+  gaugeSeries,
   gaugeValue,
+  highlightParts,
   heatCounts,
   heatLevel,
   jstDay,
   memberStreams,
+  monthlySeries,
   niceStep,
   readQuery,
   shapeOf,
@@ -23,7 +26,7 @@ import {
   type PageState,
 } from '@/members/model';
 import type { VideoTableRow } from '@/lib/ranking';
-import type { Channel } from '@/type/api';
+import type { Channel, ChannelMonths } from '@/type/api';
 
 /**
  * What the member page works out for itself.
@@ -171,6 +174,30 @@ describe('windowTotals and the gauges', () => {
     expect(gaugeChange(10, null)).toBeNull();
     expect(gaugeChange(10, 0)).toBeNull();
     expect(gaugeChange(12, 10)).toEqual(20);
+  });
+
+  // The gauge is called 配信時間 and the line under it reads streamSeconds, so
+  // counting a short's length here would make the two disagree.
+  test('leaves videos and shorts out of the streamed time', () => {
+    const mixed = [
+      row({ publishedAt: '2026-09-01T03:00:00Z', type: 'streaming', durationSeconds: 3600 }),
+      row({ publishedAt: '2026-09-01T05:00:00Z', type: 'video', durationSeconds: 600 }),
+      row({ publishedAt: '2026-09-01T06:00:00Z', type: 'shorts', durationSeconds: 30 }),
+    ];
+    const totals = windowTotals(mixed, Date.parse('2026-09-01T00:00:00Z'), Date.parse('2026-09-02T00:00:00Z'));
+
+    expect(totals).toMatchObject({ count: 3, streamCount: 1, durationSeconds: 3600 });
+    expect(gaugeValue('duration', totals)).toEqual(3600);
+  });
+
+  // A month of videos and no streams is a month of no streaming, which the
+  // line draws as a zero. "Unknown" would contradict it.
+  test('reads a window with videos but no streams as zero streamed time', () => {
+    const videos = [row({ publishedAt: '2026-09-01T05:00:00Z', type: 'video', durationSeconds: 600 })];
+    const totals = windowTotals(videos, Date.parse('2026-09-01T00:00:00Z'), Date.parse('2026-09-02T00:00:00Z'));
+
+    expect(gaugeValue('duration', totals)).toEqual(0);
+    expect(gaugeValue('perVideo', totals)).toBeNull();
   });
 });
 
@@ -337,5 +364,53 @@ describe('dayjs is not needed to place a day in Japan', () => {
     // 2026-09-18T15:30:00Z is already 2026-09-19 in Japan.
     expect(jstDay(Date.parse('2026-09-18T15:30:00Z'))).toEqual('2026-09-19');
     expect(jstDay(dayjs('2026-09-18T14:30:00Z').valueOf())).toEqual('2026-09-18');
+  });
+});
+
+describe('highlightParts', () => {
+  test('marks the search term inside the title', () => {
+    const parts = highlightParts('記念配信のおしらせ', ['配信']);
+
+    expect(parts.filter((part) => part.hit).map((part) => part.text)).toEqual(['配信']);
+  });
+
+  // `indexOf` counts in UTF-16 units and an emoji is two of them, so walking
+  // the title one character at a time drifts by one place after the first
+  // emoji and highlights the wrong run.
+  test('keeps the marks in place after an emoji', () => {
+    const parts = highlightParts('🎉 記念配信', ['配信']);
+
+    expect(parts.filter((part) => part.hit).map((part) => part.text)).toEqual(['配信']);
+  });
+
+  test('marks nothing when nothing was searched for', () => {
+    expect(highlightParts('記念配信', [])).toEqual([{ text: '記念配信', hit: false }]);
+  });
+});
+
+describe('a month with one of its three counts missing', () => {
+  const months = (over: Partial<ChannelMonths> = {}): ChannelMonths =>
+    ({
+      channelId: 'UCa',
+      streams: [4, 4, 4],
+      videos: [1, null, 1],
+      shorts: [2, 2, 2],
+      streamSeconds: [3600, 3600, 3600],
+      chatMessages: [10, 10, 10],
+      chatUniqueUsers: [5, 5, 5],
+      views: [100, 100, 100],
+      subscribers: [null, null, null],
+      ...over,
+    }) as ChannelMonths;
+
+  // Counting the hole as zero turns "we do not know" into "seven", which is
+  // drawn as a quiet month rather than as a gap in the record.
+  test('leaves the month out of the count rather than reading the hole as zero', () => {
+    expect(monthlySeries(months(), 'streams')).toEqual([7, null, 7]);
+    expect(gaugeSeries(months(), 'count')).toEqual([7, null, 7]);
+  });
+
+  test('counts a month where all three are known', () => {
+    expect(monthlySeries(months({ videos: [1, 1, 1] }), 'streams')).toEqual([7, 7, 7]);
   });
 });
