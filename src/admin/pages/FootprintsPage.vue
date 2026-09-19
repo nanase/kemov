@@ -153,6 +153,7 @@ onMounted(() => {
         <div v-if="loadError" class="empty">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
+          <button class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
         </div>
         <table class="grid">
           <thead>
@@ -170,7 +171,10 @@ onMounted(() => {
               v-for="e in events"
               :key="e.eventId"
               :aria-selected="e.eventId === selectedId"
+              tabindex="0"
               @click="selectRow(e.eventId)"
+              @keydown.enter="selectRow(e.eventId)"
+              @keydown.space.prevent="selectRow(e.eventId)"
             >
               <td>
                 <span class="chip" :class="{ published: e.status === 'published', review: e.status === 'review' }">{{

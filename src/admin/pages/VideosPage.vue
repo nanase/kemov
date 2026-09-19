@@ -200,6 +200,7 @@ onMounted(load);
         <div v-if="loadError" class="empty">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
+          <button class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
         </div>
         <table class="grid">
           <thead>
