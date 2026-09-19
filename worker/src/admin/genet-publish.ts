@@ -53,7 +53,12 @@ function publishProblems(
   const { stream, performances } = saved;
   const problems: string[] = [];
 
-  if (stream.platform === 'youtube' && stream.video_id.length !== VIDEO_ID_LENGTH) {
+  // The 11-character length is YouTube's own; a TikTok id is 19 digits, and
+  // a scene points at the same id as its stream, so the scenes follow the
+  // stream's platform.
+  const isYoutube = stream.platform === 'youtube';
+
+  if (isYoutube && stream.video_id.length !== VIDEO_ID_LENGTH) {
     problems.push(`videoId must be ${VIDEO_ID_LENGTH} characters`);
   }
 
@@ -71,7 +76,7 @@ function publishProblems(
     }
 
     p.scenes.forEach((s, sceneIndex) => {
-      if (s.video_id.length !== VIDEO_ID_LENGTH) {
+      if (isYoutube && s.video_id.length !== VIDEO_ID_LENGTH) {
         problems.push(`performances[${index}].scenes[${sceneIndex}].videoId must be ${VIDEO_ID_LENGTH} characters`);
       }
       if (s.start_seconds !== null && s.start_seconds < 0) {
