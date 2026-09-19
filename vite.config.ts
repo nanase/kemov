@@ -69,6 +69,7 @@ export default defineConfig({
         statsDetail: resolve(srcDir, 'stats', 'detail', 'index.html'),
         statsRanking: resolve(srcDir, 'stats', 'ranking', 'index.html'),
         genetMusic: resolve(srcDir, 'genet', 'music', 'index.html'),
+        videos: resolve(srcDir, 'videos', 'index.html'),
       },
       output: {
         chunkFileNames: 'assets/kemov-[name]-[hash].js',

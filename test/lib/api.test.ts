@@ -1,5 +1,14 @@
 import axios from '@/lib/axios';
-import { ApiError, ApiShapeError, getAllVideos, getChannels, getLive, getRanking, MAX_VIDEO_PAGES } from '@/lib/api';
+import {
+  ApiError,
+  ApiShapeError,
+  getAllVideos,
+  getChannels,
+  getLive,
+  getRanking,
+  getVideosTable,
+  MAX_VIDEO_PAGES,
+} from '@/lib/api';
 
 vi.mock('@/lib/axios', () => ({ default: { get: vi.fn() } }));
 
@@ -155,6 +164,42 @@ describe('getRanking', () => {
     get.mockResolvedValue(answer(ranked('shorts')));
 
     await expect(getRanking('chatMessageCountPerSecond', 'streaming', 30)).rejects.toThrow(ApiShapeError);
+  });
+});
+
+describe('getVideosTable', () => {
+  const TABLE = {
+    fetchedAt: '2026-09-07T12:00:00Z',
+    columns: {
+      videoId: ['a'],
+      channelId: ['UCaaa'],
+      title: ['a'],
+      type: ['streaming'],
+      publishedAt: ['2026-01-01T00:00:00Z'],
+      durationSeconds: [60],
+      viewCount: [1],
+      likeCount: [null],
+      commentCount: [null],
+      chatMessageCount: [null],
+      chatUniqueUserCount: [null],
+      actualStartTime: [null],
+      actualEndTime: [null],
+    },
+  };
+
+  test('reads the table and what it says about its own age', async () => {
+    get.mockResolvedValue(answer(TABLE, { 'x-kemov-cache': 'fresh', 'x-kemov-stale-seconds': '0' }));
+
+    const { data, freshness } = await getVideosTable();
+
+    expect(data.columns.videoId).toEqual(['a']);
+    expect(freshness).toEqual({ state: 'fresh', staleSeconds: 0 });
+  });
+
+  test('a body of the wrong shape is a failure and not an answer', async () => {
+    get.mockResolvedValue(answer({ columns: { videoId: [1] } }));
+
+    await expect(getVideosTable()).rejects.toThrow(ApiShapeError);
   });
 });
 

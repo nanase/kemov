@@ -9,6 +9,7 @@ import {
   readStreamList,
   readVideoPage,
   readVideoRanking,
+  readVideoTable,
   type ChannelList,
   type LiveList,
   type MonthsSeries,
@@ -16,6 +17,7 @@ import {
   type Video,
   type VideoPage,
   type VideoRanking,
+  type VideoTable,
   type VideoType,
 } from '@/type/api';
 
@@ -167,6 +169,17 @@ export function getRanking(
   if (kind !== null) query.set('type', kind);
 
   return get(`/videos/ranking?${query.toString()}`, readVideoRanking(metric, kind));
+}
+
+/**
+ * Every video that counts toward a ranking, one array per field.
+ *
+ * #135 and #136 read this once and do the ranking, searching and windowing in
+ * the browser - see `@/lib/ranking.ts`, which turns these columns into one
+ * `VideoTableRow` per video.
+ */
+export function getVideosTable(): Promise<ApiResult<VideoTable>> {
+  return get('/videos/table', readVideoTable);
 }
 
 /**
