@@ -467,7 +467,7 @@ onBeforeUnmount(() => {
               :width="layout.view"
               :height="layout.height"
               :viewBox="`0 0 ${layout.view} ${layout.height}`"
-              role="img"
+              role="group"
               aria-label="年表の中を移動するための図。中身は年表の本文と同じです"
             >
               <rect

@@ -23,7 +23,11 @@ import type { Channel } from '@/type/api';
  * settled after this exact chart came up in review) - keep this comment in
  * step with whichever of the four the chart itself changes:
  *
- * 1. The chart carries `role="img"` and an `aria-label` naming what it is
+ * 1. The chart carries an `aria-label` naming what it is, on `role="img"`
+ *    where nothing inside it can be pressed and on `role="group"` where
+ *    something can - this one, whose month bands and stations are buttons.
+ *    `img` makes its children presentational, which would leave a focusable
+ *    mark with no name or role (raised in review of #169, 2026-09-20)
  * 2. Nothing the chart says twice what the page already says in words. This
  *    chart draws no new fact - every day and every month's count is already
  *    in the timeline's own text - so its label says only that it is a map
@@ -145,7 +149,7 @@ onBeforeUnmount(() => {
       :width="layout.width"
       :height="layout.height"
       :viewBox="`0 0 ${layout.width} ${layout.height}`"
-      role="img"
+      role="group"
       aria-label="年表の中を移動するための図。中身は年表の本文と同じです"
     >
       <!-- Where the timeline is, so the two say the same thing about where
@@ -157,6 +161,25 @@ onBeforeUnmount(() => {
         :y="Math.min(y(read.from), y(read.to))"
         :width="layout.cLen + 8"
         :height="Math.max(2, Math.abs(y(read.to) - y(read.from)))"
+      />
+
+      <!-- Pressing a month sends the timeline there. Drawn before the marks:
+           a later sibling paints above and takes the press first, so a band
+           laid over the stations would leave none of them pressable. -->
+      <rect
+        v-for="band in monthBands"
+        :key="band.month"
+        class="hit"
+        x="0"
+        :y="band.top"
+        :width="layout.width"
+        :height="band.height"
+        fill="transparent"
+        tabindex="0"
+        role="button"
+        :aria-label="`${monthLabel(band.month)}へ移動`"
+        @click="emit('month', band.month)"
+        @keydown.enter.space.prevent="emit('month', band.month)"
       />
 
       <!-- The years, as a rule across the lanes with the year beside it. -->
@@ -251,23 +274,6 @@ onBeforeUnmount(() => {
         :y2="y(map.now)"
         stroke-width="1.6"
       />
-
-      <!-- Pressing a month sends the timeline there. -->
-      <rect
-        v-for="band in monthBands"
-        :key="band.month"
-        class="hit"
-        x="0"
-        :y="band.top"
-        :width="layout.width"
-        :height="band.height"
-        fill="transparent"
-        tabindex="0"
-        role="button"
-        :aria-label="`${monthLabel(band.month)}へ移動`"
-        @click="emit('month', band.month)"
-        @keydown.enter.space.prevent="emit('month', band.month)"
-      />
     </svg>
 
     <span
@@ -341,11 +347,18 @@ svg {
   stroke: var(--k-accent);
 }
 
+/* The month bands sit under the drawing, so the drawing lets a press through
+   to them. Only the stations, which are on top, take their own. */
+svg > :not(.hit) {
+  pointer-events: none;
+}
+
 .hit {
   cursor: pointer;
 }
 
 .station {
+  pointer-events: auto;
   cursor: pointer;
 }
 
