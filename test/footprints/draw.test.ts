@@ -63,6 +63,10 @@ describe('formatSince', () => {
     expect(formatSince(Date.parse('2026-07-19T00:00:00+09:00'), now)).toEqual('2 か月前');
     expect(formatSince(Date.parse('2023-07-19T00:00:00+09:00'), now)).toEqual('3 年 2 か月前');
   });
+
+  test('leaves no stray space when the years come out whole', () => {
+    expect(formatSince(Date.parse('2023-09-19T00:00:00+09:00'), now)).toEqual('3 年前');
+  });
 });
 
 describe('hostOf', () => {

@@ -68,7 +68,7 @@ export function formatSince(ms: number, now: number): string {
   const years = Math.floor(months / 12);
   const rest = months % 12;
 
-  return `${years > 0 ? `${years} 年 ` : ''}${rest > 0 ? `${rest} か月` : ''}前`;
+  return `${years > 0 ? `${years} 年${rest > 0 ? ' ' : ''}` : ''}${rest > 0 ? `${rest} か月` : ''}前`;
 }
 
 /**
