@@ -83,6 +83,11 @@ watch(selected, (stream) => {
   streamError.value = null;
   streamErrorField.value = null;
   openIndex.value = null;
+  // Keyed by performance index, which means nothing once the stream changes
+  // - the new stream's own performances start at the same indices, and a
+  // stale entry here would let openTune skip fetching and saveTune send the
+  // previous stream's tune fields to a different tune's ID.
+  tuneFieldsByIndex.value = new Map();
 });
 
 async function load(): Promise<void> {
@@ -253,8 +258,15 @@ async function saveTune(index: number): Promise<void> {
   }
 }
 
+// Every keystroke starts its own request - without this, an older one that
+// resolves after a newer one can overwrite tuneSearchResults with results
+// for a query the search box no longer shows, offering a stale "add" list.
+let tuneSearchRequestId = 0;
+
 async function searchTunes(): Promise<void> {
   tuneSearchError.value = null;
+
+  const requestId = ++tuneSearchRequestId;
 
   if (tuneQuery.value.trim() === '') {
     tuneSearchResults.value = [];
@@ -267,8 +279,12 @@ async function searchTunes(): Promise<void> {
       `/genet/tunes?q=${encodeURIComponent(tuneQuery.value.trim())}`,
     );
 
+    if (requestId !== tuneSearchRequestId) return;
+
     tuneSearchResults.value = body.tunes;
   } catch (error) {
+    if (requestId !== tuneSearchRequestId) return;
+
     // No results left standing, but tuneSearchError below keeps the template
     // from reading a failed search as "genuinely no such tune" and offering
     // 新しく作る over one that already exists.
@@ -306,9 +322,22 @@ function emptyTuneFieldsWithTitle(title: string): TuneFormFields {
 
 function removePerformance(index: number): void {
   streamFields.value.performances.splice(index, 1);
-  tuneFieldsByIndex.value.delete(index);
+
+  // Every cached entry after the removed one now belongs to the performance
+  // that shifted into its old index - reindexing the whole map, rather than
+  // only dropping the removed index, is what keeps openTune/saveTune reading
+  // and writing the tune an index actually names after the splice.
+  const reindexed = new Map<number, TuneFormFields>();
+
+  for (const [i, fields] of tuneFieldsByIndex.value) {
+    if (i < index) reindexed.set(i, fields);
+    else if (i > index) reindexed.set(i - 1, fields);
+  }
+
+  tuneFieldsByIndex.value = reindexed;
 
   if (openIndex.value === index) openIndex.value = null;
+  else if (openIndex.value !== null && openIndex.value > index) openIndex.value -= 1;
 }
 
 /* ---- 曲ごとの行編集: 小曲・作曲/作詞など・参考の動画・外部の資料 --------- */
@@ -325,10 +354,28 @@ function attributeMode(attr: Attribute): 'text' | 'people' {
   return attr.people.length > 0 ? 'people' : 'text';
 }
 
+// people.value[0] is only a placeholder for "the first real person" - when
+// the list is pending, failed, or genuinely empty, there is no person to
+// fall back to, and pushing personId: 0 would add a row this tune can never
+// save (0 names no one).
+function firstAvailablePerson(): GenetPerson | null {
+  const person = people.value[0];
+
+  if (person !== undefined) return person;
+
+  showToast('人がいません。先に「＋ 新しい人を登録」で登録してください');
+
+  return null;
+}
+
 function toggleAttributeMode(attr: Attribute): void {
   if (attributeMode(attr) === 'text') {
+    const person = firstAvailablePerson();
+
+    if (person === null) return;
+
     attr.text = null;
-    attr.people.push({ personId: people.value[0]?.personId ?? 0, creditedAs: null, note: null });
+    attr.people.push({ personId: person.personId, creditedAs: null, note: null });
   } else {
     attr.people = [];
     attr.text = '';
@@ -336,7 +383,11 @@ function toggleAttributeMode(attr: Attribute): void {
 }
 
 function addAttributePerson(attr: Attribute): void {
-  attr.people.push({ personId: people.value[0]?.personId ?? 0, creditedAs: null, note: null });
+  const person = firstAvailablePerson();
+
+  if (person === null) return;
+
+  attr.people.push({ personId: person.personId, creditedAs: null, note: null });
 }
 
 function onAttributeNameChange(attr: Attribute, value: string): void {
@@ -426,6 +477,16 @@ function closePicker(): void {
 
 function confirmPicker(): void {
   if (picker.value === null) return;
+
+  // The seconds field is free text (inputmode="numeric" only hints at a
+  // keyboard, it does not reject input) - without this, a negative,
+  // fractional, or non-numeric value would still be written into the `?t=`
+  // this snippet inserts, which ytParts() elsewhere only ever reads back as
+  // a decimal integer. Zero stays valid: it is a real position, the start of
+  // the video.
+  if (picker.value.kind === 'yt' && !(Number.isSafeInteger(picker.value.seconds) && picker.value.seconds >= 0)) {
+    return;
+  }
 
   const { kind, target, label } = picker.value;
   const snippetTarget =
