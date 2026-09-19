@@ -108,7 +108,7 @@ onMounted(load);
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
         </div>
-        <table v-else class="grid">
+        <table class="grid">
           <thead>
             <tr>
               <th>順</th>
@@ -124,7 +124,10 @@ onMounted(load);
               v-for="m in members"
               :key="m.channelId"
               :aria-selected="m.channelId === selectedId"
+              tabindex="0"
               @click="selectRow(m.channelId)"
+              @keydown.enter="selectRow(m.channelId)"
+              @keydown.space.prevent="selectRow(m.channelId)"
             >
               <td class="num">{{ m.displayOrder }}</td>
               <td>
