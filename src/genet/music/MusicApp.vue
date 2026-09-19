@@ -346,12 +346,33 @@ function onZoomImgLoad(event: Event): void {
   }
 }
 
+const zoomCloseButton = ref<HTMLButtonElement | null>(null);
+let zoomReturnFocus: HTMLElement | null = null;
+
 function openZoom(videoId: string, title: string, dateText: string): void {
+  zoomReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   zoom.value = { videoId, title, dateText };
+  // The overlay is a sibling in document order, not a portal at the end of
+  // <body> - without moving focus in, a keyboard user's next Tab still walks
+  // the page behind it rather than this dialog.
+  void nextTick(() => zoomCloseButton.value?.focus());
 }
 
 function closeZoom(): void {
   zoom.value = null;
+  zoomReturnFocus?.focus();
+  zoomReturnFocus = null;
+}
+
+// The dialog holds exactly one focusable control (the close button) - Tab
+// leaving it would walk into the page behind the overlay, so every Tab
+// simply keeps focus where it already belongs rather than tracking a real
+// cycle among several controls.
+function trapZoomFocus(event: KeyboardEvent): void {
+  if (event.key !== 'Tab') return;
+
+  event.preventDefault();
+  zoomCloseButton.value?.focus();
 }
 
 /* ---- 文言のための小さな整形 -------------------------------------------- */
@@ -942,7 +963,16 @@ function snippetText(text: string): string {
         </div>
       </template>
 
-      <div v-if="zoom" class="zoomback" @click="closeZoom">
+      <div
+        v-if="zoom"
+        class="zoomback"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="zoom.title"
+        @click="closeZoom"
+        @keydown.esc="closeZoom"
+        @keydown="trapZoomFocus"
+      >
         <div class="zoombox" @click.stop>
           <figure class="frame">
             <span class="mat"
@@ -959,7 +989,7 @@ function snippetText(text: string): string {
             <div class="ztitle">{{ zoom.title }}</div>
             <div class="sub">{{ zoom.dateText }}</div>
           </div>
-          <button class="zclose" type="button" @click="closeZoom">
+          <button ref="zoomCloseButton" class="zclose" type="button" @click="closeZoom">
             <svg
               viewBox="0 0 16 16"
               aria-hidden="true"
