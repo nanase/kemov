@@ -138,9 +138,14 @@ describe('publishStream', () => {
     };
 
     const response = await publishStream({ ...env, DB: riggedDB } as typeof env, videoId);
+    const body = (await response.json()) as { revisionId?: number };
 
     expect(response.status).toEqual(200);
     expect(await revisionRows('genet_stream')).toEqual([]);
+    // No revision was actually logged (the row was gone by the time the
+    // guarded INSERT ran), so revisionId must not name one that was never
+    // written - not even the last_row_id an unguarded read would still see.
+    expect(body.revisionId).toBeUndefined();
   });
 
   test('publishes a ready stream and logs publish revisions for the stream, its tune and its person', async () => {

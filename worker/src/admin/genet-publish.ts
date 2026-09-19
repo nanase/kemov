@@ -224,7 +224,8 @@ export async function publishStream(env: Env, videoId: string): Promise<Response
     env.DB.prepare(
       `INSERT INTO revision (entity, entity_key, action, body, created_via)
        SELECT 'genet_stream', ?1, 'publish', ?2, 'admin'
-       WHERE EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1)`,
+       WHERE EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1)
+       RETURNING revision_id`,
     ).bind(videoId, JSON.stringify(streamPublicShapeOf(saved))),
     ...changedTunes.map((tune) =>
       revisionStatement(env.DB, 'genet_tune', String(tune.tune.tune_id), 'publish', tunePublicShapeOf(tune)),
@@ -234,9 +235,17 @@ export async function publishStream(env: Env, videoId: string): Promise<Response
     ),
   ]);
 
+  // `RETURNING` rather than `results[1].meta.last_row_id`: when the EXISTS
+  // guard above skips the INSERT (the concurrent-delete race the comment
+  // above this batch explains), `last_row_id` would answer with whatever the
+  // last statement in this same batch that did insert left behind - one of
+  // changedTunes/changedPeople's own revisions, not this stream's - rather
+  // than admitting no revision was actually logged for it.
+  const streamRevision = (results[1].results as { revision_id: number }[])[0];
+
   return jsonResponse({
     stream: presentStream(withStatus(saved, 'published')),
-    revisionId: results[1].meta.last_row_id,
+    ...(streamRevision === undefined ? {} : { revisionId: streamRevision.revision_id }),
     tuneRevisionCount: changedTunes.length,
     personRevisionCount: changedPeople.length,
   });
