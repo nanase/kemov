@@ -395,7 +395,7 @@ onBeforeUnmount(() => {
     </template>
 
     <div class="mv-page" :style="pageColors">
-      <p v-if="member === null || archiveMissing" class="mv-panel failed">
+      <p v-if="data.loading.value || member === null || archiveMissing" class="mv-panel failed">
         <template v-if="data.loading.value">読み込んでいます</template>
         <template v-else-if="member === null">
           メンバーの情報を取得できませんでした<br />しばらく時間をおいてから再度お試しください
@@ -414,6 +414,7 @@ onBeforeUnmount(() => {
               :current="windows.current"
               :previous="windows.previous"
               :months
+              :missing="data.missing.value.months"
               :window="windows.label"
             />
             <MonthPanel
