@@ -507,7 +507,7 @@ onBeforeUnmount(() => {
                 :size="22"
                 :dark
               />
-              <span v-if="bandFaces.length === 0" class="band-all">全</span>
+              <span v-if="bandFaces.length === 0" class="band-all">V</span>
             </span>
             <span v-if="bandFaces.length === 0" class="band-item">みんな</span>
 

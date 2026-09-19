@@ -264,7 +264,7 @@ onBeforeUnmount(() => {
         class="all"
         :style="{ width: `${layout.avatar}px`, height: `${layout.avatar}px` }"
         aria-label="けもV 全体"
-        >全</span
+        >V</span
       >
     </span>
   </div>

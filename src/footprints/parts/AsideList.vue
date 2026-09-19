@@ -87,7 +87,7 @@ function thumbnail(item: AsideItem): string | null {
                   :size="18"
                   :dark
                 />
-                <span v-if="faces(item).length === 0" class="all" aria-label="けもV 全体">全</span>
+                <span v-if="faces(item).length === 0" class="all" aria-label="けもV 全体">V</span>
               </span>
             </span>
 

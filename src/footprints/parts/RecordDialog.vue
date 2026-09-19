@@ -230,7 +230,7 @@ onBeforeUnmount(() => globalThis.removeEventListener('keydown', onKeydown));
                   :size="faces.length > 3 ? 34 : 52"
                   :dark
                 />
-                <span v-if="faces.length === 0" class="all">全</span>
+                <span v-if="faces.length === 0" class="all">V</span>
               </span>
               <span class="stand-in-kind">{{ kinds?.kind }}</span>
             </div>

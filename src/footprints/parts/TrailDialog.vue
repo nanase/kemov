@@ -437,7 +437,7 @@ onBeforeUnmount(() => {
               :size="Math.min(20, layout.laneHeight - 6)"
               :dark
             />
-            <span v-else class="all">全</span>
+            <span v-else class="all">V</span>
             <span class="label">{{ lane.channel?.name ?? 'けもV 全体' }}</span>
           </button>
         </div>
