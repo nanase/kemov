@@ -228,4 +228,14 @@ describe('snippet', () => {
 
     expect(snippet(text, terms)).toEqual(text);
   });
+
+  // `at - 6` lands exactly on 🎻's own low surrogate here - a plain
+  // text.slice() there would split the violin emoji into a lone, unpaired
+  // surrogate rather than keep it whole.
+  test('does not split a surrogate pair the trim point lands inside', () => {
+    const text = `${'あ'.repeat(10)}🎻${'あ'.repeat(5)}カノン`;
+    const terms = parseQuery('カノン');
+
+    expect(snippet(text, terms)).toEqual(`…🎻${'あ'.repeat(5)}カノン`);
+  });
 });
