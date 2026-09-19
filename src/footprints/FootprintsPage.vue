@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt from '@/shell/UpdatedAt.vue';
@@ -321,6 +321,12 @@ function showItem(key: string) {
 function readTheme() {
   dark.value = getComputedStyle(document.documentElement).colorScheme.includes('dark');
 }
+
+/**
+ * Where the reader is depends on where the months sit on screen, which a
+ * filter, the order or a run opening moves without any scroll or resize.
+ */
+watch([timeline, openBundles], readPosition, { flush: 'post' });
 
 onMounted(async () => {
   readTheme();
