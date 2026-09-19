@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <load
+      src="./shell/head.html"
+      title="けもV あしあと"
+      description="けもVとメンバーが刻んできたできごとと配信を、一本の道としてたどる非公式のファンサイトです。"
+      page-path=""
+    />
+  </head>
+
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp } from 'vue';
+
+      import './shell/tokens.css';
+      import './shell/base.css';
+      import './footprints/panel.css';
+      import FootprintsPage from './footprints/FootprintsPage.vue';
+
+      createApp(FootprintsPage).mount('#app');
+    </script>
+  </body>
+</html>

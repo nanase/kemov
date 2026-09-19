@@ -2,8 +2,8 @@ import { computed, ref, type Ref } from 'vue';
 
 import { getChannels, getMonths, getVideosTable, type ApiError } from '@/lib/api';
 import { useIntervalAction } from '@/lib/useIntervalAction';
-import type { VideoTableRow } from '@/lib/ranking';
-import type { Channel, MonthsSeries, VideoTable } from '@/type/api';
+import { tableRows, type VideoTableRow } from '@/lib/ranking';
+import type { Channel, MonthsSeries } from '@/type/api';
 
 /**
  * The three endpoints the member page reads, and how often it asks again.
@@ -47,33 +47,6 @@ export interface MembersData {
   missing: Ref<{ table: boolean; months: boolean }>;
   start: () => Promise<void>;
   stop: () => void;
-}
-
-/**
- * The columnar response as one object per video.
- *
- * Every column is the same length - `readVideoTable` refuses a response where
- * they are not - so the index is the video and nothing here has to guard
- * against a column running short.
- */
-export function tableRows(table: VideoTable): VideoTableRow[] {
-  const { columns } = table;
-
-  return columns.videoId.map((videoId, index) => ({
-    videoId,
-    channelId: columns.channelId[index]!,
-    title: columns.title[index]!,
-    type: columns.type[index]!,
-    publishedAt: columns.publishedAt[index]!,
-    actualStartTime: columns.actualStartTime[index]!,
-    actualEndTime: columns.actualEndTime[index]!,
-    durationSeconds: columns.durationSeconds[index]!,
-    viewCount: columns.viewCount[index]!,
-    likeCount: columns.likeCount[index]!,
-    commentCount: columns.commentCount[index]!,
-    chatMessageCount: columns.chatMessageCount[index]!,
-    chatUniqueUserCount: columns.chatUniqueUserCount[index]!,
-  }));
 }
 
 export function useMembersData(): MembersData {

@@ -3,18 +3,21 @@ import { siteRedirect } from '../src/lib/site';
 /**
  * The paths the built site has no file at.
  *
- * Every vite entry sits under a directory - stats/, stats/detail/,
- * stats/ranking/, genet/music/ - so the two directories above them hold no
- * index. Somebody typing the host name lands on one and, before this, was
- * answered with the API's 404 JSON.
+ * Most vite entries sit under a directory of their own, so a directory above
+ * them holds no index and somebody typing it was answered with the API's 404
+ * JSON. `/` is not one of them any more: the footprints page builds to
+ * `index.html` at the root (#140), so the file answers it and the worker is
+ * never woken.
  */
 
 const to = (path: string) => siteRedirect(new URL(`https://kemov.nanase.cc${path}`));
 
 describe('siteRedirect', () => {
-  test('sends the site root to the statistics page', () => {
-    expect(to('/')?.status).toEqual(302);
-    expect(to('/')?.headers.get('location')).toEqual('https://kemov.nanase.cc/stats/');
+  // The footprints page is the site's top page and is built as index.html at
+  // the root, so `/` is served from the file. A redirect left here would send
+  // the top page somewhere else.
+  test('leaves the site root alone, now that it has a page of its own', () => {
+    expect(to('/')).toBeNull();
   });
 
   test('sends the music directory to the one page under it', () => {
@@ -32,6 +35,8 @@ describe('siteRedirect', () => {
   });
 
   test('leaves alone the paths that do have a page', () => {
+    expect(to('/')).toBeNull();
+    expect(to('/members/')).toBeNull();
     expect(to('/stats/')).toBeNull();
     expect(to('/stats/detail/')).toBeNull();
     expect(to('/stats/ranking/')).toBeNull();
@@ -49,15 +54,16 @@ describe('siteRedirect', () => {
   // The host comes from the request, so a preview deployment and wrangler dev
   // redirect to themselves rather than to production.
   test('redirects within whatever host asked', () => {
-    expect(siteRedirect(new URL('http://localhost:8787/'))?.headers.get('location')).toEqual(
-      'http://localhost:8787/stats/',
+    expect(siteRedirect(new URL('http://localhost:8787/genet'))?.headers.get('location')).toEqual(
+      'http://localhost:8787/genet/music/',
     );
   });
 
-  // 302, because which page the root opens is a decision that has already
-  // changed once - #99 added a third candidate - and a permanent redirect
-  // outlives the decision in browsers that cached it.
+  // 302, because where a directory opens is a decision that has already
+  // changed once - `/` moved from the statistics page to a page of its own -
+  // and a permanent redirect outlives the decision in browsers that cached it.
   test('does not tell the browser to remember it forever', () => {
-    expect(to('/')?.status).toEqual(302);
+    expect(to('/genet')?.status).toEqual(302);
+    expect(to('/genet/')?.status).toEqual(302);
   });
 });
