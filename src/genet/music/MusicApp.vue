@@ -219,6 +219,11 @@ function pickRandom(): void {
   sheet.value = 'song';
 }
 
+/** A scene with no time (BGM, a talk) has no place to jump to, so it gets no time button. */
+function timedScenes(scenes: readonly GenetScene[]): (GenetScene & { start_seconds: number })[] {
+  return scenes.filter((sc): sc is GenetScene & { start_seconds: number } => sc.start_seconds !== null);
+}
+
 /* ---- 前後の配信 ----------------------------------------------------- */
 
 const streamIndex = computed(() => (selectedStream.value ? result.value.streams.indexOf(selectedStream.value) : -1));
@@ -752,17 +757,17 @@ function snippetText(text: string): string {
                         <span class="t1" v-html="highlightPlain(decodedPlain(perf.tune.title))"></span>
                       </button>
                       <div class="tside">
-                        <div class="times">
+                        <div v-if="timedScenes(perf.scenes).length > 0" class="times">
                           <button
-                            v-for="(sc, si) in perf.scenes"
+                            v-for="(sc, si) in timedScenes(perf.scenes)"
                             :key="si"
                             type="button"
                             class="tbtn"
-                            :aria-pressed="play?.videoId === sc.video_id && play?.seconds === (sc.start_seconds ?? 0)"
-                            :aria-label="`${videoTimeText(sc.start_seconds ?? 0)} から聴く`"
-                            @click="play = { videoId: sc.video_id, seconds: sc.start_seconds ?? 0 }"
+                            :aria-pressed="play?.videoId === sc.video_id && play?.seconds === sc.start_seconds"
+                            :aria-label="`${videoTimeText(sc.start_seconds)} から聴く`"
+                            @click="play = { videoId: sc.video_id, seconds: sc.start_seconds }"
                           >
-                            {{ videoTimeText(sc.start_seconds ?? 0) }}
+                            {{ videoTimeText(sc.start_seconds) }}
                           </button>
                         </div>
                       </div>
