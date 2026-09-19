@@ -6,6 +6,7 @@ import UpdatedAt from '@/shell/UpdatedAt.vue';
 import SegmentGroup from '@/parts/SegmentGroup.vue';
 import { formatCount } from '@/lib/numberFormat';
 import { memberInk } from '@/lib/memberColor';
+import { memberPageTitle } from '@/lib/pageTitle';
 import { freshnessOf } from '@/stats/model';
 import { rankByMetric, type RankingPeriod } from '@/lib/ranking';
 import { formatProperty, readProperty } from '@/type/video';
@@ -119,6 +120,9 @@ watch(state, () => writeUrl(true), { deep: true });
 watch(member, (current) => {
   if (current !== null) writeUrl(memberId.value === null);
 });
+
+/** The tab's own title, distinct from the page's visible one (#136: no name on screen). */
+const tabTitle = computed(() => (member.value === null ? undefined : memberPageTitle(member.value.name)));
 
 function pick(id: string) {
   memberId.value = id;
@@ -373,7 +377,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <SiteShell page="members" title="けもV メンバー">
+  <SiteShell page="members" title="けもV メンバー" :tab-title="tabTitle">
     <template #title-aside>
       <span v-if="member" class="picker">
         <span class="dot" :style="{ background: ink }" aria-hidden="true"></span>
