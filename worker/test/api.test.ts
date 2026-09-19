@@ -150,6 +150,15 @@ describe('routing', () => {
     expect((await get('/api/channels/UCaaa/videos')).status).toEqual(200);
     expect((await get('/api/channels/UCaaa/history')).status).toEqual(200);
   });
+
+  // What each endpoint computes - the fetch to the image host, the cache
+  // headers - is worker/test/image.test.ts's job. This only checks that the
+  // path reaches it, with inputs deliberately invalid so that neither test
+  // needs to fake a call to a real image host to prove the route works.
+  test('reaches the image relay', async () => {
+    expect((await get('/api/image/video/not-a-video-id')).status).toEqual(400);
+    expect((await get('/api/image/channel/UCnope')).status).toEqual(404);
+  });
 });
 
 describe('what every answer carries', () => {

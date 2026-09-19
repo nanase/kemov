@@ -30,7 +30,7 @@ const handler: ExportedHandler<Env> = {
   // (/admin/api, behind Cloudflare Access) into two routes rather than one
   // that branches on the method, and handleApiRequest already refuses every
   // method /api does not read with, so an admin path must never reach it.
-  fetch: async (request, env) => {
+  fetch: async (request, env, ctx) => {
     const url = new URL(request.url);
     const redirect = siteRedirect(url);
 
@@ -42,7 +42,7 @@ const handler: ExportedHandler<Env> = {
 
     return isAdminPath(url.pathname)
       ? handleAdminRequest(request, env)
-      : handleApiRequest(request, env, caches.default);
+      : handleApiRequest(request, env, caches.default, ctx);
   },
   // waitUntil rather than a plain await: collection touches D1 and the
   // YouTube API, so it can run past the point where returning would
