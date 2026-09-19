@@ -56,11 +56,18 @@ const bars = computed(() => {
     </div>
     <p v-if="distribution === null" class="mv-empty">この期間の記録がありません</p>
     <div v-else class="mv-body">
-      <div class="bars">
+      <div class="bars" aria-hidden="true">
         <span v-for="bar in bars" :key="bar.index" :class="{ middle: bar.middle }" :title="bar.label">
           <i :style="{ height: `${bar.height.toFixed(1)}%` }"></i>
         </span>
       </div>
+
+      <!-- The same bars in words. `title` is a hint, not a reading: it needs a
+           pointer to appear at all, so on its own it leaves the distribution
+           unreadable to anybody who cannot hover (#136). -->
+      <ul class="reader-only">
+        <li v-for="bar in bars" :key="bar.index">{{ bar.label }}</li>
+      </ul>
       <div class="axis mv-n">
         <span v-for="mark in axis" :key="mark">{{ mark }}</span>
       </div>
@@ -116,6 +123,19 @@ const bars = computed(() => {
 /* The class the middle stream falls in. */
 .bars span.middle i {
   background: var(--mv-key);
+}
+
+/* Read out but never drawn: the bars above say the same thing to everyone who
+   can see them, so putting the words on the page would be saying it twice. */
+.reader-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  list-style: none;
 }
 
 .axis {
