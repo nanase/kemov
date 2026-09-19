@@ -40,8 +40,12 @@ function request(
   aud: string | undefined,
   teamDomain: string | undefined = TEAM,
   fetchImpl?: typeof fetch,
+  assets?: Fetcher,
+  method?: string,
 ) {
-  const init = token === null ? undefined : { headers: { 'Cf-Access-Jwt-Assertion': token } };
+  const init: RequestInit = { method };
+
+  if (token !== null) init.headers = { 'Cf-Access-Jwt-Assertion': token };
 
   return handleAdminRequest(
     new Request(`https://kemov.nanase.cc${path}`, init),
@@ -49,7 +53,22 @@ function request(
     undefined,
     fetchImpl,
     fetchImpl === undefined ? undefined : (new Map() as CertsCache),
+    assets,
   );
+}
+
+/** A fake `ASSETS` that answers `path` with `status`/`body`, and 404 for anything else - the same shape pages.test.ts's own uses. */
+function fakeAssets(pages: Readonly<Record<string, { status: number; body: string }>>): Fetcher {
+  return {
+    fetch: async (input: RequestInfo | URL) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      const page = pages[path];
+
+      if (page === undefined) return new Response('not found', { status: 404 });
+
+      return new Response(page.body, { status: page.status });
+    },
+  } as unknown as Fetcher;
 }
 
 describe('handleAdminRequest', () => {
@@ -112,11 +131,30 @@ describe('handleAdminRequest', () => {
   });
 
   // Not part of /admin/api, so there is nothing to authorize - these answer
-  // 404 without a token, the same as any other unknown path.
-  test('answers 404 for /admin paths outside /admin/api', async () => {
-    expect((await request('/admin', null, AUD)).status).toEqual(404);
-    expect((await request('/admin/', null, AUD)).status).toEqual(404);
-    expect((await request('/admin/foo', null, AUD)).status).toEqual(404);
+  // the admin page without a token, the same as any other path under here.
+  test('answers the admin page for /admin paths outside /admin/api, without a token', async () => {
+    const assets = fakeAssets({ '/admin/': { status: 200, body: '<!doctype html><title>けもV 管理</title>' } });
+
+    for (const path of ['/admin', '/admin/', '/admin/footprints', '/admin/publish/nope']) {
+      const response = await request(path, null, AUD, TEAM, undefined, assets);
+
+      expect(response.status).toEqual(200);
+      expect(await response.text()).toContain('けもV 管理');
+    }
+  });
+
+  test('answers the admin page from ASSETS whatever the path, not a per-page file', async () => {
+    const assets = fakeAssets({ '/admin/other-page.html': { status: 200, body: 'wrong file' } });
+
+    expect((await request('/admin/footprints', null, AUD, TEAM, undefined, assets)).status).toEqual(404);
+  });
+
+  test('answers 405 for a method other than GET/HEAD outside /admin/api', async () => {
+    const assets = fakeAssets({ '/admin/': { status: 200, body: '<!doctype html>' } });
+    const response = await request('/admin/footprints', null, AUD, TEAM, undefined, assets, 'POST');
+
+    expect(response.status).toEqual(405);
+    expect(response.headers.get('Allow')).toEqual('GET, HEAD');
   });
 });
 
@@ -349,6 +387,104 @@ describe("handleAdminRequest routing to task 12's resources", () => {
     const saved = await put(path, { reason: 'x' });
 
     expect(saved.status).toEqual(200);
+  });
+
+  test('routes GET /admin/api/videos, and refuses other methods', async () => {
+    await insertChannel('UCaaa');
+    await env.DB.prepare(
+      `INSERT INTO video (video_id, channel_id, title, published_at, availability, live_broadcast_content, fetched_at)
+       VALUES ('vid1', 'UCaaa', 't', '2026-09-01T00:00:00Z', 'public', 'none', '2026-09-01T00:00:00Z')`,
+    ).run();
+
+    expect((await call('/admin/api/videos')).status).toEqual(200);
+
+    const wrongMethod = await call('/admin/api/videos', { method: 'POST' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('GET');
+  });
+
+  test('routes GET /admin/api/snapshots, and refuses other methods', async () => {
+    await insertChannel('UCaaa');
+    await env.DB.prepare(
+      `INSERT INTO channel_snapshot (channel_id, fetched_at, subscriber_count, view_count, video_count)
+       VALUES ('UCaaa', '2026-09-08T00:00:00Z', 100, 200, 3)`,
+    ).run();
+
+    expect((await call('/admin/api/snapshots')).status).toEqual(200);
+
+    const wrongMethod = await call('/admin/api/snapshots', { method: 'POST' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('GET');
+  });
+
+  test('routes GET /admin/api/collect-tasks, and refuses other methods', async () => {
+    expect((await call('/admin/api/collect-tasks')).status).toEqual(200);
+
+    const wrongMethod = await call('/admin/api/collect-tasks', { method: 'POST' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('GET');
+  });
+
+  test('routes POST /admin/api/collect-tasks/:kind/:targetId/retry|ack, and refuses other methods', async () => {
+    await insertChannel('UCaaa');
+    await env.DB.prepare(
+      `INSERT INTO collect_task (kind, target_id, state, attempts, updated_at)
+       VALUES ('channel_stats', 'UCaaa', 'failed', 1, '2026-09-01T00:00:00Z')`,
+    ).run();
+
+    expect((await call('/admin/api/collect-tasks/channel_stats/UCaaa/retry', { method: 'POST' })).status).toEqual(200);
+    expect((await call('/admin/api/collect-tasks/channel_stats/UCaaa/ack', { method: 'POST' })).status).toEqual(200);
+
+    const wrongMethod = await call('/admin/api/collect-tasks/channel_stats/UCaaa/ack');
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('POST');
+  });
+
+  test('routes POST /admin/api/collect-tasks/:kind/:targetId/unavailable, and 404s an unknown action', async () => {
+    await insertChannel('UCaaa');
+    await env.DB.prepare(
+      `INSERT INTO video (video_id, channel_id, title, published_at, availability, live_broadcast_content, fetched_at)
+       VALUES ('vid1', 'UCaaa', 't', '2026-09-01T00:00:00Z', 'public', 'none', '2026-09-01T00:00:00Z')`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO collect_task (kind, target_id, state, attempts, updated_at)
+       VALUES ('video_update', 'vid1', 'failed', 1, '2026-09-01T00:00:00Z')`,
+    ).run();
+
+    expect((await call('/admin/api/collect-tasks/video_update/vid1/unavailable', { method: 'POST' })).status).toEqual(
+      200,
+    );
+    expect((await call('/admin/api/collect-tasks/video_update/vid1/nope', { method: 'POST' })).status).toEqual(404);
+  });
+
+  test('routes GET /admin/api/revisions and /admin/api/revisions/:id, and refuses other methods', async () => {
+    await env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body) VALUES ('channel', 'UCaaa', 'save', '{}')`,
+    ).run();
+
+    const row = await env.DB.prepare('SELECT revision_id FROM revision').first<{ revision_id: number }>();
+
+    expect((await call('/admin/api/revisions')).status).toEqual(200);
+    expect((await call(`/admin/api/revisions/${row!.revision_id}`)).status).toEqual(200);
+    expect((await call('/admin/api/revisions/999999')).status).toEqual(404);
+
+    const wrongMethod = await call('/admin/api/revisions', { method: 'POST' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('GET');
+  });
+
+  test('routes GET /admin/api/publications, and refuses other methods', async () => {
+    expect((await call('/admin/api/publications')).status).toEqual(200);
+
+    const wrongMethod = await call('/admin/api/publications', { method: 'POST' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('GET');
   });
 });
 

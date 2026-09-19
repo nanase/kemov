@@ -74,3 +74,37 @@ export function isSchemaTimestamp(value: string): boolean {
 
   return !Number.isNaN(date.getTime()) && formatTimestamp(date) === value;
 }
+
+/**
+ * The Japan-time (UTC+9) calendar date an instant falls on, in the schema's
+ * date shape. Shared by footprints.ts (`startsAt` must fall on `startDate`
+ * in Japan time) and snapshots.ts (grouping ticks into days) - both read the
+ * same rule from here rather than each keeping its own copy, unlike
+ * `isSchemaDate`'s deliberate duplication in scripts/channels.js: that one
+ * crosses a runtime boundary this does not.
+ */
+export function japanDateOf(instant: string): string {
+  return new Date(new Date(instant).getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * A Japan-time calendar date's own midnight, as the UTC instant the schema
+ * stores - the start of the JST day `date` names. `new Date` reads an
+ * explicit `+09:00` offset itself; nothing here does the arithmetic by hand.
+ */
+export function japanDateStartUtc(date: string): string {
+  return formatTimestamp(new Date(`${date}T00:00:00+09:00`));
+}
+
+/**
+ * The UTC instant one Japan-time calendar day after `japanDateStartUtc(date)`
+ * - an exclusive upper bound for a query spanning `date` in Japan time (or,
+ * for a `from`/`to` pair, `to` itself).
+ */
+export function japanDateEndUtc(date: string): string {
+  const start = new Date(`${date}T00:00:00+09:00`);
+
+  start.setUTCDate(start.getUTCDate() + 1);
+
+  return formatTimestamp(start);
+}

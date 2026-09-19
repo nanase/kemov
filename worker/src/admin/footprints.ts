@@ -2,7 +2,7 @@ import { byteLength } from '../lib/backup';
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
-import { isSchemaDate, isSchemaTimestamp } from '../lib/time';
+import { isSchemaDate, isSchemaTimestamp, japanDateOf } from '../lib/time';
 
 /**
  * Reading, saving and deleting `footprints_event` (#141, #140): the
@@ -335,11 +335,6 @@ function eventFieldsProblem(fields: EventFields): string | null {
 
 function isSchemaMonth(value: string): boolean {
   return /^\d{4}-\d{2}$/.test(value) && isSchemaDate(`${value}-01`);
-}
-
-/** The Japan-time calendar date (UTC+9) an instant falls on, in the schema's date shape. */
-function japanDateOf(instant: string): string {
-  return new Date(new Date(instant).getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 export interface EventFields {
