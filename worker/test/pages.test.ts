@@ -182,14 +182,21 @@ describe('handleDynamicPageRequest', () => {
     expect(await response?.text()).toEqual('not found');
   });
 
-  // This is what the current build actually does: neither page exists in
-  // dist/ yet, so env.ASSETS answers 404 without this test injecting anything.
-  test('is 404 through the real ASSETS binding, because the page is not built yet', async () => {
+  // Against the real binding rather than a fake one. What it answers depends
+  // on whether dist/ holds a member page in this checkout - CI runs the
+  // worker tests before it builds, and a developer may have built already -
+  // so this asserts what follows from that answer rather than the answer. The
+  // page did not exist at all when #137 added this; now that it does, the
+  // same request has to come back with the member's name written into it.
+  test('serves the built page with the name in it, or passes a 404 through', async () => {
     await insertChannel(CHANNEL_ID, 'カラカル');
 
+    const built = await env.ASSETS.fetch(new Request('https://kemov.nanase.cc/members/'));
     const response = await handleDynamicPageRequest(new Request(`https://kemov.nanase.cc/members/${CHANNEL_ID}`), env);
 
-    expect(response?.status).toEqual(404);
+    expect(response?.status).toEqual(built.status);
+
+    if (built.status === 200) expect(await response?.text()).toContain('カラカル');
   });
 
   test('refuses a method other than GET or HEAD', async () => {

@@ -3,9 +3,11 @@ import { ref } from 'vue';
 
 import { getThumbnailURL } from '@/lib/youtube';
 
-import { DASH, formatCount, formatDuration, memberColor } from '../draw';
+import { memberColor } from '@/lib/memberColor';
+import { DASH, formatCount } from '@/lib/numberFormat';
+import { formatDuration } from '../draw';
 import type { Subject } from '../model';
-import MemberAvatar from './MemberAvatar.vue';
+import MemberAvatar from '@/parts/MemberAvatar.vue';
 
 /**
  * The last few streams, and the ones that have not started yet.

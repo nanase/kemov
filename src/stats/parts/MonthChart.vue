@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
 
-import { axisMarks, DASH, formatCount, monthLabel, plotOf } from '../draw';
+import { DASH, formatCount } from '@/lib/numberFormat';
+import { plotOf } from '@/lib/plot';
+import { axisMarks, monthLabel } from '../draw';
 import type { SeriesDef } from '../model';
 
 /**

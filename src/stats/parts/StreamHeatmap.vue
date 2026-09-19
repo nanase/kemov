@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
 
-import { DAY_NAMES, formatMinutes, memberColor, slotLabel } from '../draw';
+import { memberColor } from '@/lib/memberColor';
+import { DAY_NAMES } from '@/lib/timeFormat';
+import { formatMinutes, slotLabel } from '../draw';
 import { busiestCell, dayPeaks, heatGrid, heatPeak } from '../model';
 
 /**

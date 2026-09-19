@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 
-import { memberColor } from '../draw';
+import { memberColor } from '@/lib/memberColor';
 
 /**
  * One member's picture, with something to show when it does not arrive.
