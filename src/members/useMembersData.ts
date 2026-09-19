@@ -37,6 +37,14 @@ export interface MembersData {
   loading: Ref<boolean>;
   /** The last failure, or null once something arrived again. */
   failure: Ref<ApiError | null>;
+  /**
+   * The endpoints that have never answered.
+   *
+   * One request failing while another succeeds is the case worth naming: the
+   * page can draw a board without the monthly panel, and an empty panel would
+   * say "nothing was published" where the truth is "nothing was read".
+   */
+  missing: Ref<{ table: boolean; months: boolean }>;
   start: () => Promise<void>;
   stop: () => void;
 }
@@ -75,6 +83,8 @@ export function useMembersData(): MembersData {
   const countsFetchedAt = ref<number | null>(null);
   const countsAsked = ref(false);
   const archiveAsked = ref(false);
+  const tableRead = ref(false);
+  const monthsRead = ref(false);
 
   /** The first endpoint that refused, once the ones that answered are in hand. */
   const refusal = (results: readonly PromiseSettledResult<unknown>[]) =>
@@ -83,13 +93,19 @@ export function useMembersData(): MembersData {
   const counts = useIntervalAction(
     COUNTS_SECONDS * 1000,
     async () => {
-      const channelList = await getChannels();
+      try {
+        const channelList = await getChannels();
 
-      channels.value = channelList.data.channels;
-      countsFetchedAt.value = channelList.data.fetchedAt?.valueOf() ?? null;
-      countsAsked.value = true;
+        channels.value = channelList.data.channels;
+        countsFetchedAt.value = channelList.data.fetchedAt?.valueOf() ?? null;
 
-      return COUNTS_SECONDS * 1000;
+        return COUNTS_SECONDS * 1000;
+      } finally {
+        // Asked, not answered. Without this a first failure leaves the page
+        // saying "読み込んでいます" until a retry succeeds, which could be ten
+        // minutes of a screen that is not loading anything.
+        countsAsked.value = true;
+      }
     },
     async () => RETRY_SECONDS * 1000,
   );
@@ -101,8 +117,15 @@ export function useMembersData(): MembersData {
       // alone, and the monthly panel from the months alone.
       const [table, monthsSeries] = await Promise.allSettled([getVideosTable(), getMonths()]);
 
-      if (table.status === 'fulfilled') rows.value = tableRows(table.value.data);
-      if (monthsSeries.status === 'fulfilled') months.value = monthsSeries.value.data;
+      if (table.status === 'fulfilled') {
+        rows.value = tableRows(table.value.data);
+        tableRead.value = true;
+      }
+
+      if (monthsSeries.status === 'fulfilled') {
+        months.value = monthsSeries.value.data;
+        monthsRead.value = true;
+      }
 
       archiveAsked.value = true;
 
@@ -123,6 +146,10 @@ export function useMembersData(): MembersData {
     rows,
     countsFetchedAt,
     loading: computed(() => !countsAsked.value || !archiveAsked.value) as Ref<boolean>,
+    missing: computed(() => ({ table: !tableRead.value, months: !monthsRead.value })) as Ref<{
+      table: boolean;
+      months: boolean;
+    }>,
     failure: computed(() => failureOf(counts.error.value) ?? failureOf(archive.error.value)) as Ref<ApiError | null>,
     start: async () => {
       await Promise.all([counts.start(), archive.start()]);

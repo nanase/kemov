@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 
 import SegmentGroup from '@/parts/SegmentGroup.vue';
-import { formatCount } from '@/lib/numberFormat';
+import { DASH, formatCount } from '@/lib/numberFormat';
 
 import { formatLength } from '../draw';
 import { MONTHLY_SERIES, monthlySeries, type MonthlySeriesId } from '../model';
@@ -16,12 +16,14 @@ import type { ChannelMonths } from '@/type/api';
  * months either side of one are a year apart, and without the mark a reader
  * counts twelve bars to find out.
  */
-const { months, row, series } = defineProps<{
+const { months, row, series, missing } = defineProps<{
   /** Every month the site knows, as `YYYY-MM`, oldest first. */
   months: readonly string[];
   /** This member's series, or null while they are on their way. */
   row: ChannelMonths | null;
   series: MonthlySeriesId;
+  /** True when the monthly record was asked for and never arrived. */
+  missing: boolean;
 }>();
 
 const emit = defineEmits<{ series: [id: MonthlySeriesId] }>();
@@ -69,14 +71,19 @@ const readout = computed(() => {
 
   if (index === null || row === null) return null;
 
-  const streams = row.streams[index];
-  const videos = row.videos[index];
-  const shorts = row.shorts[index];
-  const total = streams === null ? null : (streams ?? 0) + (videos ?? 0) + (shorts ?? 0);
+  const streams = row.streams[index] ?? null;
+  const videos = row.videos[index] ?? null;
+  const shorts = row.shorts[index] ?? null;
+
+  // A total only where all three are known. One of them missing makes the sum
+  // a lower bound, and a lower bound written as a total reads as a quiet
+  // month rather than as a gap in the record.
+  const total = streams === null || videos === null || shorts === null ? null : streams + videos + shorts;
+  const part = (value: number | null) => (value === null ? DASH : formatCount(value));
 
   return {
     month: months[index] ?? '',
-    total: total === null ? '—' : `${formatCount(total)} 本（配信 ${streams} ・ 動画 ${videos} ・ ショート ${shorts}）`,
+    total: `${total === null ? DASH : formatCount(total)} 本（配信 ${part(streams)} ・ 動画 ${part(videos)} ・ ショート ${part(shorts)}）`,
     duration: formatLength(row.streamSeconds[index] ?? null),
     chat: formatCount(row.chatMessages[index] ?? null),
     chatUsers: formatCount(row.chatUniqueUsers[index] ?? null),
@@ -124,38 +131,42 @@ watch(
         @pick="emit('series', $event as MonthlySeriesId)"
       />
     </div>
-    <div class="mv-read mv-n">
-      <template v-if="readout">
-        <b>{{ readout.month }}</b>
-        <span>{{ readout.total }}</span>
-        <span>配信時間 {{ readout.duration }}</span>
-        <span>チャット {{ readout.chat }}</span>
-        <span>チャットユーザ {{ readout.chatUsers }}</span>
-        <span>再生 {{ readout.views }}</span>
-      </template>
-    </div>
-    <div class="chart">
-      <div class="bars" @mouseleave="pointed = null">
-        <button
-          v-for="bar in bars"
-          :key="bar.month"
-          type="button"
-          :class="{ year: bar.year !== null }"
-          :tabindex="bar.index === at ? 0 : -1"
-          :aria-current="bar.index === at ? 'true' : undefined"
-          :aria-label="label(bar.index)"
-          @mouseover="pointed = bar.index"
-          @focus="chosen = bar.index"
-          @click="chosen = bar.index"
-          @keydown.left.prevent="move(-1)"
-          @keydown.right.prevent="move(1)"
-        >
-          <i :style="{ height: `${bar.height.toFixed(2)}%` }"></i>
-          <u v-if="bar.year">{{ bar.year }}</u>
-        </button>
+    <p v-if="missing" class="mv-empty">月ごとの記録を取得できませんでした</p>
+
+    <template v-else>
+      <div class="mv-read mv-n">
+        <template v-if="readout">
+          <b>{{ readout.month }}</b>
+          <span>{{ readout.total }}</span>
+          <span>配信時間 {{ readout.duration }}</span>
+          <span>チャット {{ readout.chat }}</span>
+          <span>チャットユーザ {{ readout.chatUsers }}</span>
+          <span>再生 {{ readout.views }}</span>
+        </template>
       </div>
-      <div class="axis"></div>
-    </div>
+      <div class="chart">
+        <div class="bars" @mouseleave="pointed = null">
+          <button
+            v-for="bar in bars"
+            :key="bar.month"
+            type="button"
+            :class="{ year: bar.year !== null }"
+            :tabindex="bar.index === at ? 0 : -1"
+            :aria-current="bar.index === at ? 'true' : undefined"
+            :aria-label="label(bar.index)"
+            @mouseover="pointed = bar.index"
+            @focus="chosen = bar.index"
+            @click="chosen = bar.index"
+            @keydown.left.prevent="move(-1)"
+            @keydown.right.prevent="move(1)"
+          >
+            <i :style="{ height: `${bar.height.toFixed(2)}%` }"></i>
+            <u v-if="bar.year">{{ bar.year }}</u>
+          </button>
+        </div>
+        <div class="axis"></div>
+      </div>
+    </template>
   </div>
 </template>
 
