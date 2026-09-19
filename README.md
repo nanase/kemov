@@ -261,6 +261,22 @@ An event passes through a publish gate rather than taking effect on save, the sa
 
 `POST /admin/api/genet/publish` builds `genet/music.json` from the latest `revision` of every stream whose latest action is not `withdraw`, together with every tune and person those streams' own published bodies name - not a fresh read of the working tables, so a tune dropped from a stream after it was published cannot leak back into the JSON. Streams, tunes and people share one `publication` row (`target = 'genet_music'`).
 
+### Read-Only Admin Endpoints
+
+A few of the data screens have nothing to save through - they only pick a row to act on elsewhere, or read a record no other endpoint exposes. None of these log a `revision`.
+
+| Method | Path                                                      | Answers with                                                                                                                                                  |
+| ------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/admin/api/videos`                                       | `video` rows, narrowed by `q` (a substring of `title`), `channelId` and `limit` (default 50, up to 100), for 配信・動画 to pick one to override               |
+| GET    | `/admin/api/snapshots`                                    | `channel_snapshot` ticks for `channelId` between `from`/`to` (Japan-time dates, both default to today), plus any `channel_snapshot_exclusion` over that range |
+| GET    | `/admin/api/collect-tasks`                                | Every `failed`, not yet acknowledged `collect_task` row, and how many                                                                                         |
+| POST   | `/admin/api/collect-tasks/<kind>/<target ID>/retry`       | The row after setting it back to `pending`                                                                                                                    |
+| POST   | `/admin/api/collect-tasks/<kind>/<target ID>/ack`         | The row after stamping `checked_at`, dropping it off the list above                                                                                           |
+| POST   | `/admin/api/collect-tasks/<kind>/<target ID>/unavailable` | The row after settling `video.availability` as `unavailable` - 400 for a channel failure, not a video's                                                       |
+| GET    | `/admin/api/revisions`                                    | `revision` rows, most recent first, narrowed by `entity`, `action`, `from`/`to` (Japan-time dates) and `limit` (default 50, up to 200)                        |
+| GET    | `/admin/api/revisions/<revision ID>`                      | One `revision` row, `body` included                                                                                                                           |
+| GET    | `/admin/api/publications`                                 | Every `publication` row, most recent first                                                                                                                    |
+
 ### The Admin Site
 
 `src/admin/` is the admin site's own frontend (#141, #144) — plain Vue, plain HTML and CSS, no Vuetify, because #127's decision to keep the admin site apart from the public site's own component library applies here too. It shares one thing with the public site: `src/shell/tokens.css`'s colour variables. It does not share the public site's own shell (`SiteNav.vue` and friends) or its dark theme — `src/admin/index.html` fixes `<html data-theme="light">`, which pins every colour tokens.css defines to its light block regardless of the reader's own OS setting, because #141's design confirmed the admin site light-only.
@@ -274,6 +290,11 @@ A few screens worth calling out beyond the general shell above:
 - あしあと (`src/admin/pages/FootprintsPage.vue`, `src/admin/components/FootprintsInspector.vue`) — the table (narrowed by `status` and a title substring) and the edit panel (read, save, 公開にする/下書きに戻す, delete). A save's 400 is shown on the panel's own band, and `src/admin/lib/footprints.ts`'s `fieldForSaveError` reads the worker's own message to mark which field it is about, rather than a second copy of the worker's validation living here too.
 - 公開 (`src/admin/pages/PublishPage.vue`) — footprints and ジェネット楽曲一覧 each get their own `GET .../pending` pair of lists and their own `いま公開する`, loaded and published independently of each other.
 - ジェネット楽曲一覧 (`src/admin/pages/SetsPage.vue`) — the one screen that does not use `.pane`/`.inspector`: `.setlist`/`.editor` instead, full width, because a stream's own data does not fit the narrow inspector every other screen uses (#141's design). A tune is shared across every stream that performs it, so saving a tune's own credits (`src/admin/lib/genet-tunes.ts`) is its own action, separate from saving a stream's own fields and which tunes/scenes it performs (`src/admin/lib/genet-streams.ts`). Every Markdown field (a tune's title, a performance's description) is a write box with a live preview directly below it (`src/components/genet/MarkDown.vue`, the public site's own renderer) and 4 buttons that insert a fixed-shape Markdown link (Wikipedia / English Wikipedia / a stream timestamp / a bare URL) at the caret.
+- メンバー (`src/admin/pages/MembersPage.vue`) — name, colours, activity span and display order, the 12 columns #158 already lets a PUT replace. Adding a member has no endpoint yet (new members arrive through seed, #152); the button here shows a one-line band saying so instead of opening a panel.
+- 配信・動画 (`src/admin/pages/VideosPage.vue`) — picks a collected `video` row (`GET /admin/api/videos`) to give it a `video_override`; saving and deleting the override itself is still video-overrides.ts's own job.
+- 統計 (`src/admin/pages/SnapsPage.vue`) — one day's ticks at a time (`GET /admin/api/snapshots`), each markable excluded or not without deleting the tick itself.
+- 収集の失敗 (`src/admin/pages/CollectPage.vue`) — the three exits #141 decided for a `collect_task` stuck `failed`: retry now, acknowledge without retrying, or settle a video as gone.
+- 版の履歴 (`src/admin/pages/HistoryPage.vue`) — `revision` narrowed by entity/action/date range, one row's `body` opened as fields rather than raw JSON, and `publication`'s own record alongside it in the same screen.
 
 The screen-side logic worth testing without a browser — the table's own query string, which field a save error names, which buttons the edit panel shows for a given `status` — is pulled out into `src/admin/lib/*.ts` and tested under `test/admin/lib/`, the same split the rest of this project's frontend already uses for its own `src/lib/*.ts`.
 
