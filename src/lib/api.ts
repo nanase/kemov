@@ -4,6 +4,7 @@ import { ShapeError } from '@/lib/read';
 import type { VideoProperty } from '@/type/video';
 import {
   readChannelList,
+  readFootprintEvents,
   readLiveList,
   readMonthsSeries,
   readStreamList,
@@ -11,6 +12,7 @@ import {
   readVideoRanking,
   readVideoTable,
   type ChannelList,
+  type FootprintEvents,
   type LiveList,
   type MonthsSeries,
   type StreamList,
@@ -180,6 +182,18 @@ export function getRanking(
  */
 export function getVideosTable(): Promise<ApiResult<VideoTable>> {
   return get('/videos/table', readVideoTable);
+}
+
+/**
+ * Everything that has happened, as the admin site published it.
+ *
+ * A 404 here is an answer rather than a failure: it says nothing has been
+ * published yet, which is the state the site is in until the first publish
+ * (#140). The caller reads it as an empty list and draws the timeline from
+ * the streams alone.
+ */
+export function getFootprintEvents(): Promise<ApiResult<FootprintEvents>> {
+  return get('/footprints/events', readFootprintEvents);
 }
 
 /**
