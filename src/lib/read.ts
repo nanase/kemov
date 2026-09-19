@@ -73,6 +73,20 @@ export function readString(value: unknown, path: string): string {
 }
 
 /**
+ * A flag, and only ever a real one.
+ *
+ * Not `Boolean(value)`: the published JSON uses these flags to say that an
+ * event is shown large or that its source is still unconfirmed (#140), and a
+ * reader that turned a missing field or the string "false" into an answer
+ * would make the page state something nobody published.
+ */
+export function readBoolean(value: unknown, path: string): boolean {
+  if (typeof value !== 'boolean') throw new ShapeError(path, 'true or false', value);
+
+  return value;
+}
+
+/**
  * A number, and never NaN or an infinity.
  *
  * JSON cannot carry either, but a division upstream can, and a NaN that

@@ -3,6 +3,7 @@ import dayjs, { type Dayjs } from '@nanase/alnilam/dayjs';
 import {
   field,
   readArray,
+  readBoolean,
   readCount,
   readDate,
   readEach,
@@ -547,5 +548,119 @@ export function readVideoTable(body: unknown): VideoTable {
       actualStartTime: column('actualStartTime', nullable(readInstant)),
       actualEndTime: column('actualEndTime', nullable(readInstant)),
     },
+  };
+}
+
+/**
+ * The kinds a thing that happened can be, as the published JSON names them.
+ *
+ * The words a reader sees are not here: this file says what the API may send,
+ * and how the page says it belongs with the page (#140).
+ */
+export const EVENT_KINDS = [
+  'project',
+  'reveal',
+  'debut',
+  '3d',
+  'outfit',
+  'live-event',
+  'goods',
+  'music',
+  'collab',
+  'media',
+  'milestone',
+  'graduation',
+  'anniversary',
+  'other',
+] as const;
+
+export type EventKind = (typeof EVENT_KINDS)[number];
+
+/** How exactly a date is known: to the day, to the month, or to the year. */
+export const DATE_PRECISIONS = ['day', 'month', 'year'] as const;
+
+export type DatePrecision = (typeof DATE_PRECISIONS)[number];
+
+/** One thing that happened, as `GET /api/footprints/events` publishes it. */
+export interface FootprintEvent {
+  eventId: number;
+  datePrecision: DatePrecision;
+  /** As much of `YYYY-MM-DD` as the precision says is known. */
+  startDate: string;
+  /** The instant it began, where the time of day is known. */
+  startsAt: string | null;
+  /** The last day of something that ran over several, or null. */
+  endDate: string | null;
+  kind: EventKind;
+  /** Whether this is one of the days the page draws large (#140). */
+  emphasized: boolean;
+  title: string;
+  place: string | null;
+  supplement: string | null;
+  /** The stream or video this is, where it is one. */
+  videoId: string | null;
+  /** True while no allowed source has confirmed it (#140). */
+  sourcePending: boolean;
+  /** Who it involved. An empty list means けもV as a whole, not nobody. */
+  channelIds: string[];
+  sources: { url: string; title: string | null }[];
+}
+
+export interface FootprintEvents {
+  publishedAt: Dayjs | null;
+  events: FootprintEvent[];
+}
+
+const DATE_SHAPES: Readonly<Record<DatePrecision, RegExp>> = {
+  day: /^\d{4}-\d{2}-\d{2}$/,
+  month: /^\d{4}-\d{2}$/,
+  year: /^\d{4}$/,
+};
+
+function readFootprintEvent(value: unknown, path: string): FootprintEvent {
+  const datePrecision = readOneOf(field(value, 'date_precision', path), `${path}.date_precision`, DATE_PRECISIONS);
+  const startDate = readString(field(value, 'start_date', path), `${path}.start_date`);
+
+  // Read to the precision the row claims and no further: a month with no day
+  // is `2026-04`, and checking that against a full date would refuse a body
+  // the API is entitled to send.
+  if (!DATE_SHAPES[datePrecision].test(startDate)) {
+    throw new ShapeError(`${path}.start_date`, `a date as exact as its ${datePrecision} precision`, startDate);
+  }
+
+  return {
+    eventId: readNumber(field(value, 'event_id', path), `${path}.event_id`),
+    datePrecision,
+    startDate,
+    startsAt: readOrNull(field(value, 'starts_at', path), `${path}.starts_at`, readInstant),
+    endDate: readOrNull(field(value, 'end_date', path), `${path}.end_date`, readDate),
+    kind: readOneOf(field(value, 'kind', path), `${path}.kind`, EVENT_KINDS),
+    emphasized: readBoolean(field(value, 'emphasized', path), `${path}.emphasized`),
+    title: readString(field(value, 'title', path), `${path}.title`),
+    place: readOrNull(field(value, 'place', path), `${path}.place`, readString),
+    supplement: readOrNull(field(value, 'supplement', path), `${path}.supplement`, readString),
+    videoId: readOrNull(field(value, 'video_id', path), `${path}.video_id`, readString),
+    sourcePending: readBoolean(field(value, 'source_pending', path), `${path}.source_pending`),
+    channelIds: readEach(field(value, 'channel_ids', path), `${path}.channel_ids`, readString),
+    sources: readEach(field(value, 'sources', path), `${path}.sources`, (source, at) => ({
+      url: readString(field(source, 'url', at), `${at}.url`),
+      title: readOrNull(field(source, 'title', at), `${at}.title`, readString),
+    })),
+  };
+}
+
+/**
+ * `GET /api/footprints/events`'s body.
+ *
+ * Nothing has been published yet, so the endpoint answers 404 for now. That is
+ * not a failure to report: it means there is nothing recorded, and the page
+ * draws its timeline from the streams alone (#140).
+ */
+export function readFootprintEvents(body: unknown): FootprintEvents {
+  return {
+    publishedAt: readOrNull(field(body, 'published_at', 'body'), 'body.published_at', (v, p) =>
+      dayjs(readInstant(v, p)),
+    ),
+    events: readEach(field(body, 'events', 'body'), 'body.events', readFootprintEvent),
   };
 }

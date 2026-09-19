@@ -25,15 +25,17 @@ describe('the worker entry', () => {
   });
 
   // The site's own directories have no built file, so they arrive here beside
-  // /api/*. Before this they were answered with the API's 404 JSON.
-  test('sends the site root to a page rather than to the API', async () => {
+  // /api/*. Before this they were answered with the API's 404 JSON. `/` is no
+  // longer one of them: the footprints page builds to index.html at the root
+  // (#140), so the file answers it and the worker is never woken.
+  test('sends a directory with no page of its own to the page under it', async () => {
     const ctx = createExecutionContext();
-    const response = await handler.fetch!(new Request('https://kemov.nanase.cc/'), env, ctx);
+    const response = await handler.fetch!(new Request('https://kemov.nanase.cc/genet'), env, ctx);
 
     await waitOnExecutionContext(ctx);
 
     expect(response.status).toEqual(302);
-    expect(response.headers.get('location')).toEqual('https://kemov.nanase.cc/stats/');
+    expect(response.headers.get('location')).toEqual('https://kemov.nanase.cc/genet/music/');
   });
 
   // The redirect is asked first, so this is the test that it cannot swallow
