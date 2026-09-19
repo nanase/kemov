@@ -19,6 +19,8 @@ import {
   type StreamModeId,
 } from './model';
 import AsideList from './parts/AsideList.vue';
+import PanelDialog from './parts/PanelDialog.vue';
+import RecordDialog from './parts/RecordDialog.vue';
 import TimelineView from './parts/TimelineView.vue';
 import TrailDialog from './parts/TrailDialog.vue';
 import TrailMap from './parts/TrailMap.vue';
@@ -165,6 +167,65 @@ function jumpToMonth(month: string) {
  */
 const reading = ref<{ from: string; to: string } | null>(null);
 
+/**
+ * Whether the filters are still on screen, and whether the road is ending.
+ *
+ * The band at the foot only says what the filters say, so it appears when
+ * they scroll away and goes again when they come back. It also retracts near
+ * the end of the road: the last row would otherwise sit under it, which is
+ * one row a reader could never finish reading.
+ */
+const filtersOffScreen = ref(false);
+const nearEnd = ref(false);
+
+/** How close to the end of the road the band gets out of the way, in px. */
+const END_MARGIN = 140;
+
+function readBand() {
+  const panel = document.querySelector('.fp-page .filters')?.getBoundingClientRect();
+  const rows = document.querySelectorAll('.timeline .row');
+  const last = rows[rows.length - 1]?.getBoundingClientRect();
+
+  filtersOffScreen.value = panel !== undefined && panel.bottom < 0;
+  nearEnd.value = last !== undefined && last.bottom < globalThis.innerHeight + END_MARGIN;
+}
+
+/** What the band says, which is only what is not left at its default. */
+const chosen = computed(() => {
+  const list: { label: string; value: string; dim: boolean }[] = [];
+  const kind = filters.value.kind;
+
+  list.push({
+    label: 'できごと',
+    value:
+      kind === 'all'
+        ? 'すべて'
+        : kind === 'emphasized'
+          ? '顔ぶれと姿'
+          : kind === 'none'
+            ? '出さない'
+            : KIND_LABELS[kind],
+    dim: kind === 'all',
+  });
+  list.push({
+    label: '配信',
+    value: STREAM_MODES.find((mode) => mode.id === filters.value.streams)?.label ?? '',
+    dim: filters.value.streams === 'all',
+  });
+  list.push({ label: '並び', value: filters.value.order === 'asc' ? '過去から' : '未来から', dim: true });
+
+  return list;
+});
+
+const bandFaces = computed(() => data.channels.value.filter((channel) => filters.value.members.has(channel.channelId)));
+
+function backToFilters() {
+  document.querySelector('.fp-page .filters')?.scrollIntoView({ block: 'start' });
+}
+
+/** Which side panel the narrow layout has opened, or null. */
+const panel = ref<'soon' | 'ago' | null>(null);
+
 function readPosition() {
   const names = [...document.querySelectorAll<HTMLElement>('.timeline [data-month]')]
     .filter((element) => {
@@ -177,12 +238,55 @@ function readPosition() {
     .sort();
 
   reading.value = names.length === 0 ? null : { from: names[0]!, to: names[names.length - 1]! };
+  readBand();
 }
 
+/**
+ * Every record that can be opened, in the order the timeline shows them.
+ *
+ * Taken from the timeline rather than from the records themselves, so that
+ * stepping from one to the next follows what is on screen: a member chosen
+ * above, or streams turned off, changes what "the next record" is.
+ */
+const sequence = computed(() =>
+  timeline.value.order.flatMap((item) =>
+    item.kind === 'event' ? [item.key] : item.kind === 'bundle' ? item.rows.map((row) => `v:${row.videoId}`) : [],
+  ),
+);
+
+const openKey = ref<string | null>(null);
+
 function openItem(key: string) {
-  // Opening one record on its own is the next part of this page's work; for
-  // now the row itself is what a reader sees.
-  void key;
+  openKey.value = key;
+}
+
+/**
+ * Closes what is open and takes the page to that record's row.
+ *
+ * A stream folded inside a run has no row of its own, so the run it belongs
+ * to is where the reader is sent. Being put somewhere near is better than
+ * being left where they were with nothing having happened.
+ */
+function rowKeyFor(key: string): string {
+  if (!key.startsWith('v:')) return key;
+
+  const videoId = key.slice(2);
+  const holder = timeline.value.order.find(
+    (item) => item.kind === 'bundle' && item.rows.some((row) => row.videoId === videoId),
+  );
+
+  return holder?.key ?? key;
+}
+
+function showItem(key: string) {
+  const target = rowKeyFor(key);
+
+  openKey.value = null;
+  mapOpen.value = false;
+
+  requestAnimationFrame(() => {
+    document.querySelector(`.timeline [data-key="${target}"]`)?.scrollIntoView({ block: 'center' });
+  });
 }
 
 function readTheme() {
@@ -378,6 +482,99 @@ onBeforeUnmount(() => {
         </aside>
       </div>
 
+      <!-- What the filters say, at the foot of the screen once they have
+           scrolled away. A frame of no height, so nothing below it moves
+           when the band appears or goes. -->
+      <div v-if="filtersOffScreen && !nearEnd" class="band">
+        <div class="band-in">
+          <button type="button" class="band-open" @click="backToFilters">
+            <span class="band-faces">
+              <MemberAvatar
+                v-for="face in bandFaces"
+                :key="face.channelId"
+                :src="face.thumbnailUrl"
+                :name="face.name"
+                :color="face.color.key"
+                :size="22"
+                :dark
+              />
+              <span v-if="bandFaces.length === 0" class="band-all">全</span>
+            </span>
+            <span v-if="bandFaces.length === 0" class="band-item">みんな</span>
+
+            <span v-for="entry in chosen" :key="entry.label" class="band-item" :class="{ dim: entry.dim }">
+              <i>{{ entry.label }}</i>
+              <b>{{ entry.value }}</b>
+            </span>
+
+            <span class="band-go">絞り込みへ ↑</span>
+          </button>
+
+          <span class="band-jump" role="group" aria-label="年表の端へ送る">
+            <button type="button" class="band-b" @click="jumpToStart">はじまり</button>
+            <button type="button" class="band-b" @click="jumpToNow">いま</button>
+          </span>
+        </div>
+      </div>
+
+      <!-- Where the rail does not fit, what it held is reached from here. -->
+      <div class="dock" role="group" aria-label="軌跡・これからのあしあと・むかしの今週">
+        <button type="button" aria-haspopup="dialog" @click="mapOpen = true">軌跡</button>
+        <button type="button" aria-haspopup="dialog" @click="panel = 'soon'">これからのあしあと</button>
+        <button type="button" aria-haspopup="dialog" @click="panel = 'ago'">むかしの今週</button>
+      </div>
+
+      <PanelDialog v-if="panel === 'soon'" heading="これからのあしあと" @close="panel = null">
+        <AsideList
+          :items="soonShown"
+          :channels="data.channels.value"
+          heading=""
+          mode="soon"
+          :now
+          :dark
+          empty="この条件でめぐってくる日はありません"
+          @open="openItem"
+        >
+          <template #foot>
+            <button
+              v-if="soonList.length > soonShown.length || soonAll"
+              type="button"
+              class="more fp-n"
+              @click="soonAll = !soonAll"
+            >
+              {{ soonAll ? '近いものだけ表示' : `1 年先まで表示（${soonList.length} 件）` }}
+            </button>
+          </template>
+        </AsideList>
+      </PanelDialog>
+
+      <PanelDialog v-if="panel === 'ago'" heading="むかしの今週" @close="panel = null">
+        <AsideList
+          :items="agoList"
+          :channels="data.channels.value"
+          heading=""
+          mode="ago"
+          :now
+          :dark
+          empty="この週の記録はまだありません"
+          @open="openItem"
+        />
+      </PanelDialog>
+
+      <RecordDialog
+        v-if="openKey !== null"
+        :open="openKey"
+        :events="items"
+        :rows="data.rows.value"
+        :channels="data.channels.value"
+        :sequence
+        :now
+        :dark
+        @close="openKey = null"
+        @open="openItem"
+        @show="showItem"
+      />
+
       <TrailDialog
         v-if="mapOpen"
         :events="items"
@@ -514,6 +711,195 @@ onBeforeUnmount(() => {
   box-shadow: var(--k-shadow);
 }
 
+/*
+ * What the filters say, once they have scrolled away.
+ *
+ * A frame of no height with its contents floating above it, so that the
+ * timeline does not move when the band appears or goes. It sits above the
+ * dock where there is one.
+ */
+.band {
+  position: sticky;
+  z-index: 30;
+  bottom: var(--fp-dock, 0);
+  height: 0;
+}
+
+.band-in {
+  display: flex;
+  position: absolute;
+  right: 0;
+  bottom: 10px;
+  left: 0;
+  gap: 6px;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  height: 42px;
+  margin: 0 auto;
+  padding: 0 6px;
+  border: 1px solid var(--k-line-2);
+  border-radius: 999px;
+
+  /* Opaque, because the timeline runs under it and text through text is
+     text nobody can read. */
+  background: var(--k-surface);
+  box-shadow:
+    0 2px 4px rgb(14 31 28 / 6%),
+    0 12px 26px -14px rgb(14 31 28 / 50%);
+}
+
+.band-open {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  height: 34px;
+  padding: 0 4px 0 6px;
+  overflow: auto hidden;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--k-text-2);
+  font: inherit;
+  font-size: 12px;
+  scrollbar-width: none;
+  cursor: pointer;
+}
+
+.band-open::-webkit-scrollbar {
+  display: none;
+}
+
+.band-open:hover {
+  background: var(--k-sunken);
+}
+
+.band-faces {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
+.band-faces > * + * {
+  margin-left: -5px;
+}
+
+.band-all {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--k-text-3);
+  border-radius: 50%;
+  background: var(--k-surface);
+  color: var(--k-text-2);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+/* The rule belongs to the item on its left, so hiding the item hides the
+   rule with it. */
+.band-item {
+  display: inline-flex;
+  flex: none;
+  gap: 5px;
+  align-items: baseline;
+  padding-left: 8px;
+  border-left: 1px solid var(--k-line-2);
+  white-space: nowrap;
+}
+
+.band-item i {
+  color: var(--k-text-3);
+  font-size: 11.5px;
+  font-style: normal;
+}
+
+.band-item b {
+  color: var(--k-text);
+  font-weight: 600;
+}
+
+.band-go {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 26px;
+  margin-left: 2px;
+  padding: 0 9px;
+  border: 1px solid var(--k-line);
+  border-radius: 999px;
+  background: var(--k-sunken);
+  white-space: nowrap;
+}
+
+/* The two ends of the road ride here only where the rail has gone. */
+.band-jump {
+  display: none;
+  flex: none;
+  gap: 6px;
+  padding-left: 6px;
+  border-left: 1px solid var(--k-line);
+}
+
+.band-b {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--k-line);
+  border-radius: 999px;
+  background: var(--k-sunken);
+  color: var(--k-text-2);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.band-b:hover {
+  border-color: var(--k-line-2);
+}
+
+.dock {
+  display: none;
+  position: sticky;
+  z-index: 31;
+  bottom: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px 0 calc(6px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--k-line);
+  background: var(--k-bg);
+}
+
+.dock button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 44px;
+  padding: 0 4px;
+  overflow: hidden;
+  border: 1px solid var(--k-line);
+  border-radius: 8px;
+  background: var(--k-surface);
+  color: var(--k-text-2);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.dock button:hover {
+  border-color: var(--k-line-2);
+}
+
 @container (max-width: 1040px) {
   .main {
     grid-template-columns: minmax(0, 1fr);
@@ -521,6 +907,25 @@ onBeforeUnmount(() => {
   }
 
   .rail {
+    display: none;
+  }
+
+  .dock {
+    display: grid;
+  }
+
+  .band {
+    --fp-dock: 56px;
+  }
+
+  .band-jump {
+    display: inline-flex;
+  }
+}
+
+/* Narrower still, the band keeps only what is not at its default. */
+@container (max-width: 620px) {
+  .band-item.dim {
     display: none;
   }
 }

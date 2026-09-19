@@ -145,6 +145,7 @@ function membersOf(channelIds: readonly string[]): Channel[] {
             v-for="row in month.rows"
             :key="row.item.key"
             class="row"
+            :data-key="row.item.key"
             :class="{
               event: row.item.kind === 'event',
               large: row.item.kind === 'event' && row.item.event.emphasized,
