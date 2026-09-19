@@ -62,6 +62,7 @@ const streams = ref<GenetStream[]>([]);
 const people = ref<GenetPerson[]>([]);
 const loading = ref(false);
 const loadError = ref<string | null>(null);
+const peopleLoadError = ref<string | null>(null);
 
 const statusFilter = ref<(typeof STATUS_OPTIONS)[number]['value']>('all');
 const selectedVideoId = ref<string | null>(null);
@@ -105,12 +106,17 @@ async function load(): Promise<void> {
 }
 
 async function loadPeople(): Promise<void> {
+  peopleLoadError.value = null;
+
   try {
     const body = await getJson<{ people: GenetPerson[] }>('/genet/people');
 
     people.value = body.people;
-  } catch {
-    people.value = [];
+  } catch (error) {
+    // Leaves `people` as it was rather than clearing it to [] - an empty
+    // picker here reads as "nobody is registered yet" and invites a
+    // duplicate via 新しい人を登録, when the truth is this request failed.
+    peopleLoadError.value = error instanceof AdminApiError ? error.message : String(error);
   }
 }
 
@@ -187,6 +193,7 @@ const tuneError = ref<string | null>(null);
 const tuneErrorField = ref<ReturnType<typeof fieldForTuneSaveError>>(null);
 const tuneQuery = ref('');
 const tuneSearchResults = ref<{ tuneId: number; title: string }[]>([]);
+const tuneSearchError = ref<string | null>(null);
 
 async function openTune(index: number): Promise<void> {
   if (openIndex.value === index) {
@@ -247,6 +254,8 @@ async function saveTune(index: number): Promise<void> {
 }
 
 async function searchTunes(): Promise<void> {
+  tuneSearchError.value = null;
+
   if (tuneQuery.value.trim() === '') {
     tuneSearchResults.value = [];
 
@@ -259,8 +268,12 @@ async function searchTunes(): Promise<void> {
     );
 
     tuneSearchResults.value = body.tunes;
-  } catch {
+  } catch (error) {
+    // No results left standing, but tuneSearchError below keeps the template
+    // from reading a failed search as "genuinely no such tune" and offering
+    // 新しく作る over one that already exists.
     tuneSearchResults.value = [];
+    tuneSearchError.value = error instanceof AdminApiError ? error.message : String(error);
   }
 }
 
@@ -811,6 +824,11 @@ watch(statusFilter, load);
                         @input="attr.text = ($event.target as HTMLInputElement).value || null"
                       />
                       <template v-else>
+                        <div v-if="peopleLoadError" class="panel flag">
+                          <h4>人の一覧を取得できません</h4>
+                          <div class="hint">{{ peopleLoadError }}</div>
+                          <button class="btn" type="button" @click="loadPeople">読み直す</button>
+                        </div>
                         <div v-for="(person, pj) in attr.people" :key="pj" class="row-item two">
                           <select v-model="person.personId" aria-label="人">
                             <option v-for="p in people" :key="p.personId" :value="p.personId">{{ p.name }}</option>
@@ -901,7 +919,12 @@ watch(statusFilter, load);
             <label for="f-tune-q">曲を探す、または曲名を書いて新しく作る</label>
             <input id="f-tune-q" v-model="tuneQuery" type="text" placeholder="曲名で絞り込み" />
           </div>
-          <div v-if="tuneSearchResults.length > 0" class="rows">
+          <div v-if="tuneSearchError" class="panel flag">
+            <h4>曲を探せません</h4>
+            <div class="hint">{{ tuneSearchError }}</div>
+            <button class="btn" type="button" @click="searchTunes">読み直す</button>
+          </div>
+          <div v-else-if="tuneSearchResults.length > 0" class="rows">
             <button
               v-for="t in tuneSearchResults"
               :key="t.tuneId"
