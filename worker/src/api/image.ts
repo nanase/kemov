@@ -48,7 +48,17 @@ function cacheKeyFor(request: Request, size: string): Request {
   return new Request(url.toString(), { method: 'GET' });
 }
 
-function buildSuccessResponse(upstream: Response, maxAgeSeconds: number): Response {
+/**
+ * The success answer, built over the image's bytes rather than over the
+ * upstream body stream.
+ *
+ * `fetchAndCache` hands one answer to every request waiting on the same cold
+ * key, and each of those is a different invocation. A stream belongs to the
+ * invocation whose `fetch` opened it - reading it from another one fails with
+ * "Cannot perform I/O on behalf of a different request" - while bytes already
+ * in memory belong to nobody, so every waiter can clone and read them.
+ */
+function buildSuccessResponse(upstream: Response, body: ArrayBuffer, maxAgeSeconds: number): Response {
   const headers = new Headers();
   const contentType = upstream.headers.get('content-type');
   const etag = upstream.headers.get('etag');
@@ -59,7 +69,7 @@ function buildSuccessResponse(upstream: Response, maxAgeSeconds: number): Respon
   if (etag !== null) headers.set('etag', etag);
   headers.set('cache-control', `public, max-age=${maxAgeSeconds}`);
 
-  return new Response(upstream.body, { status: 200, headers });
+  return new Response(body, { status: 200, headers });
 }
 
 function buildFailureResponse(status: number, maxAgeSeconds: number): Response {
@@ -124,15 +134,30 @@ async function fetchAndCacheOnce(
     return await answerAndCache(key, buildFailureResponse(502, RELAY_FAILURE_CACHE_SECONDS), cacheImpl, ctx, 'error');
   }
 
-  return upstream.ok
-    ? await answerAndCache(key, buildSuccessResponse(upstream, successSeconds), cacheImpl, ctx, 'miss')
-    : await answerAndCache(
-        key,
-        buildFailureResponse(upstream.status, RELAY_FAILURE_CACHE_SECONDS),
-        cacheImpl,
-        ctx,
-        'error',
-      );
+  if (!upstream.ok) {
+    return await answerAndCache(
+      key,
+      buildFailureResponse(upstream.status, RELAY_FAILURE_CACHE_SECONDS),
+      cacheImpl,
+      ctx,
+      'error',
+    );
+  }
+
+  // Read in full before anything is shared: a thumbnail or an icon is tens of
+  // kilobytes, and a body that fails halfway is the same failure as a fetch
+  // that never answered.
+  let body: ArrayBuffer;
+
+  try {
+    body = await upstream.arrayBuffer();
+  } catch (error) {
+    console.error(`image: reading ${upstreamUrl} failed`, error);
+
+    return await answerAndCache(key, buildFailureResponse(502, RELAY_FAILURE_CACHE_SECONDS), cacheImpl, ctx, 'error');
+  }
+
+  return await answerAndCache(key, buildSuccessResponse(upstream, body, successSeconds), cacheImpl, ctx, 'miss');
 }
 
 /**

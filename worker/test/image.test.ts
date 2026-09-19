@@ -202,6 +202,34 @@ describe('relayVideoThumbnail', () => {
     expect(response.headers.get('x-kemov-relay')).toEqual('error');
   });
 
+  test('a body that breaks off partway is answered as 502 and cached as a failure, not as a truncated image', async () => {
+    const cache = testCache();
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1, 2]));
+          controller.error(new Error('connection reset'));
+        },
+      });
+
+      return new Response(body, { status: 200, headers: { 'content-type': 'image/jpeg' } });
+    });
+
+    const response = await relayVideoThumbnail(
+      request('/api/image/video/dQw4w9WgXcQ'),
+      cache,
+      undefined,
+      'dQw4w9WgXcQ',
+      new URLSearchParams(),
+      fetchImpl,
+    );
+
+    expect(response.status).toEqual(502);
+    expect(response.headers.get('x-kemov-relay')).toEqual('error');
+    expect(response.headers.get('cache-control')).toEqual('public, max-age=60');
+    expect(cache.size()).toEqual(1);
+  });
+
   test('several requests for the same cold id at once fetch the image host only once', async () => {
     const cache = testCache();
     const fetchImpl = vi.fn<typeof fetch>(
