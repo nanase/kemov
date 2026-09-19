@@ -376,11 +376,18 @@ export async function handleAdminRequest(
   return errorResponse(404, `no endpoint at ${pathname}`);
 }
 
-/** A path segment as a genet_tune or genet_person id, or null when it is not a plain positive integer. */
+/**
+ * A path segment as a genet_tune or genet_person id, or null when it is not a
+ * plain positive integer. `Number.isSafeInteger` guards against a segment
+ * with enough digits to round to a different integer, or to `Infinity`, once
+ * `Number` parses it - `/^[1-9]\d*$/` alone only rules out a non-digit shape.
+ */
 function readPositiveInt(segment: string): number | null {
   if (!/^[1-9]\d*$/.test(segment)) return null;
 
-  return Number(segment);
+  const value = Number(segment);
+
+  return Number.isSafeInteger(value) ? value : null;
 }
 
 /**

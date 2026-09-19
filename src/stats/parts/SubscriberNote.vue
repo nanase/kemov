@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 
-import { formatCount } from '../draw';
+import { formatCount } from '@/lib/numberFormat';
 import type { Subject } from '../model';
 
 /**

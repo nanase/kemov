@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <load
+      src="../shell/head.html"
+      title="けもV メンバー"
+      description="けもVのメンバーごとの記録と配信のふるまいを表示する非公式のファンサイトです。"
+      page-path="members/"
+    />
+  </head>
+
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp } from 'vue';
+
+      import '../shell/tokens.css';
+      import '../shell/base.css';
+      import './panel.css';
+      import MembersPage from './MembersPage.vue';
+
+      createApp(MembersPage).mount('#app');
+    </script>
+  </body>
+</html>

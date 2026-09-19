@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-import { changeSign, formatChange, formatCount, memberColor } from '../draw';
+import { memberColor } from '@/lib/memberColor';
+import { formatCount } from '@/lib/numberFormat';
+import { changeSign, formatChange } from '../draw';
 import {
   deltaOf,
   metricDef,
@@ -13,8 +15,8 @@ import {
   type Subject,
 } from '../model';
 import type { AnnouncementKind } from '../model';
-import MemberAvatar from './MemberAvatar.vue';
-import SparkLine from './SparkLine.vue';
+import MemberAvatar from '@/parts/MemberAvatar.vue';
+import SparkLine from '@/parts/SparkLine.vue';
 
 /**
  * The eleven members and their sum, in the order the API sends them.

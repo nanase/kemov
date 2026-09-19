@@ -2,6 +2,8 @@ import dayjs, { type Dayjs } from '@nanase/alnilam/dayjs';
 
 import {
   field,
+  readArray,
+  readCount,
   readDate,
   readEach,
   readInstant,
@@ -372,8 +374,16 @@ export interface MonthsSeries {
   total: MonthTotals;
 }
 
+/**
+ * A month-by-month series, every entry a tally or a hole.
+ *
+ * Read as counts rather than as plain numbers: every one of these is a number
+ * of things - streams, seconds, chat lines, subscribers - and the page adds
+ * them up. A negative or fractional entry would be carried into a total that
+ * nobody could explain.
+ */
 function readCounts(value: unknown, path: string, name: string): (number | null)[] {
-  return readEach(field(value, name, path), `${path}.${name}`, (v, p) => readOrNull(v, p, readNumber));
+  return readEach(field(value, name, path), `${path}.${name}`, (v, p) => readOrNull(v, p, readCount));
 }
 
 function readChannelMonths(value: unknown, path: string): ChannelMonths {
@@ -390,7 +400,7 @@ function readChannelMonths(value: unknown, path: string): ChannelMonths {
 function readMonthTotals(value: unknown, path: string): MonthTotals {
   return {
     ...(Object.fromEntries(
-      MONTH_SERIES.map((name) => [name, readEach(field(value, name, path), `${path}.${name}`, readNumber)]),
+      MONTH_SERIES.map((name) => [name, readEach(field(value, name, path), `${path}.${name}`, readCount)]),
     ) as Record<MonthSeriesName, number[]>),
     subscribers: readCounts(value, path, 'subscribers'),
   };
@@ -457,5 +467,85 @@ export function readStreamList(body: unknown): StreamList {
       spans: readEach(field(value, 'spans', path), `${path}.spans`, readNumber),
       recent: readEach(field(value, 'recent', path), `${path}.recent`, readRecentStream),
     })),
+  };
+}
+
+/**
+ * `GET /api/videos/table`'s body, one array per field rather than one object
+ * per video.
+ *
+ * #144 chose this shape so #135 and #136 can sort, search and window the
+ * whole archive in the browser: at 6,450 rows the columnar body is smaller
+ * than the equivalent list, and every array here is the same length as every
+ * other. `@/lib/ranking.ts` reads this into one `VideoTableRow` per video.
+ */
+export interface VideoTable {
+  /** The newest fetch among the rows returned, or null when there are none. */
+  fetchedAt: Dayjs | null;
+  columns: {
+    videoId: string[];
+    channelId: string[];
+    title: string[];
+    type: (VideoType | null)[];
+    publishedAt: string[];
+    durationSeconds: (number | null)[];
+    viewCount: (number | null)[];
+    likeCount: (number | null)[];
+    commentCount: (number | null)[];
+    chatMessageCount: (number | null)[];
+    chatUniqueUserCount: (number | null)[];
+    actualStartTime: (string | null)[];
+    actualEndTime: (string | null)[];
+  };
+}
+
+type TableColumnName = keyof VideoTable['columns'];
+
+export function readVideoTable(body: unknown): VideoTable {
+  const columns = field(body, 'columns', 'body');
+  const length = readArray(field(columns, 'videoId', 'body.columns'), 'body.columns.videoId').length;
+
+  /**
+   * One column, checked to have the same length as every other.
+   *
+   * A column short by one would otherwise misalign every field after it in
+   * `@/lib/ranking.ts`'s `VideoTableRow`, and do so silently: JavaScript reads
+   * past the end of a short array as `undefined`, not as a thrown error.
+   */
+  function column<T>(name: TableColumnName, read: (value: unknown, path: string) => T): T[] {
+    const path = `body.columns.${name}`;
+    const values = readEach(field(columns, name, 'body.columns'), path, read);
+
+    if (values.length !== length) {
+      throw new ShapeError(path, `an array of ${length}, the length of body.columns.videoId`, values);
+    }
+
+    return values;
+  }
+
+  const nullable =
+    <T>(read: (value: unknown, path: string) => T) =>
+    (value: unknown, path: string): T | null =>
+      readOrNull(value, path, read);
+  const type = (value: unknown, path: string): VideoType | null =>
+    readOrNull(value, path, (v, p) => readOneOf(v, p, VIDEO_TYPES));
+
+  return {
+    fetchedAt: readOrNull(field(body, 'fetchedAt', 'body'), 'body.fetchedAt', (v, p) => dayjs(readInstant(v, p))),
+    columns: {
+      videoId: column('videoId', readString),
+      channelId: column('channelId', readString),
+      title: column('title', readString),
+      type: column('type', type),
+      publishedAt: column('publishedAt', (v, p) => readInstant(v, p)),
+      durationSeconds: column('durationSeconds', nullable(readCount)),
+      viewCount: column('viewCount', nullable(readCount)),
+      likeCount: column('likeCount', nullable(readCount)),
+      commentCount: column('commentCount', nullable(readCount)),
+      chatMessageCount: column('chatMessageCount', nullable(readCount)),
+      chatUniqueUserCount: column('chatUniqueUserCount', nullable(readCount)),
+      actualStartTime: column('actualStartTime', nullable(readInstant)),
+      actualEndTime: column('actualEndTime', nullable(readInstant)),
+    },
   };
 }

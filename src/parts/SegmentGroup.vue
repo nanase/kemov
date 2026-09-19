@@ -53,14 +53,17 @@ button {
   cursor: pointer;
 }
 
+/* The chosen one is filled with whatever the page is choosing in. A page that
+   sets `--seg-on` - the member page, where the colour is the member's own -
+   gets that; every other page falls through to the site's accent. */
 button:hover {
-  background: var(--k-accent-soft);
-  color: var(--k-accent);
+  background: var(--seg-on-soft, var(--k-accent-soft));
+  color: var(--seg-on, var(--k-accent));
 }
 
 button[aria-pressed='true'] {
-  background: var(--k-accent);
-  color: var(--k-on-accent);
+  background: var(--seg-on, var(--k-accent));
+  color: var(--seg-on-ink, var(--k-on-accent));
   font-weight: 600;
 }
 </style>

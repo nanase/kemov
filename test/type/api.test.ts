@@ -1,5 +1,5 @@
 import { ShapeError } from '@/lib/read';
-import { readChannelList, readLiveList, readVideoPage, readVideoRanking } from '@/type/api';
+import { readChannelList, readLiveList, readVideoPage, readVideoRanking, readVideoTable } from '@/type/api';
 
 /**
  * Reading the API's answers.
@@ -222,6 +222,88 @@ describe('readVideoRanking', () => {
   // short list is the ordinary case rather than a failure.
   test('an empty ranking is an answer', () => {
     expect(readVideoRanking('viewCountPerSecond', 'shorts')(body({ kind: 'shorts', videos: [] })).videos).toEqual([]);
+  });
+});
+
+describe('readVideoTable', () => {
+  const TABLE = {
+    fetchedAt: '2026-09-07T12:00:00Z',
+    columns: {
+      videoId: ['v1'],
+      channelId: ['UCaaa'],
+      title: ['ある配信'],
+      type: ['streaming'],
+      publishedAt: ['2026-01-01T00:00:00Z'],
+      durationSeconds: [3723],
+      viewCount: [1234],
+      likeCount: [56],
+      commentCount: [7],
+      chatMessageCount: [890],
+      chatUniqueUserCount: [12],
+      actualStartTime: ['2026-01-01T00:01:00Z'],
+      actualEndTime: ['2026-01-01T01:02:03Z'],
+    },
+  };
+
+  test('reads a row, denormalized from its column', () => {
+    const table = readVideoTable(TABLE);
+
+    expect(table.fetchedAt?.toISOString()).toEqual('2026-09-07T12:00:00.000Z');
+    expect(table.columns.videoId).toEqual(['v1']);
+    expect(table.columns.title).toEqual(['ある配信']);
+    expect(table.columns.viewCount).toEqual([1234]);
+    expect(table.columns.actualEndTime).toEqual(['2026-01-01T01:02:03Z']);
+  });
+
+  test('an empty table has no fetchedAt', () => {
+    const table = readVideoTable({
+      fetchedAt: null,
+      columns: Object.fromEntries(Object.keys(TABLE.columns).map((name) => [name, []])),
+    });
+
+    expect(table.fetchedAt).toBeNull();
+    expect(table.columns.videoId).toEqual([]);
+  });
+
+  // A row #67's migration wrote and video-update has not reached yet: its
+  // type and every count are null, not zero.
+  test('a row not yet classified reads its columns as null', () => {
+    const table = readVideoTable({
+      ...TABLE,
+      columns: { ...TABLE.columns, type: [null], durationSeconds: [null], viewCount: [null] },
+    });
+
+    expect(table.columns.type).toEqual([null]);
+    expect(table.columns.durationSeconds).toEqual([null]);
+    expect(table.columns.viewCount).toEqual([null]);
+  });
+
+  // A column short by one would otherwise misalign every field after it once
+  // @/lib/ranking.ts zips the columns back into one row per video, silently:
+  // JavaScript reads past the end of a short array as undefined, not as a
+  // thrown error.
+  test('refuses a column shorter than videoId', () => {
+    expect(() => readVideoTable({ ...TABLE, columns: { ...TABLE.columns, title: [] } })).toThrow(ShapeError);
+  });
+
+  // These columns are tallies and the member page adds them up. A negative or
+  // fractional one is not a small error to carry into a total - it is a body
+  // that means something other than what would be read from it.
+  test('refuses a count below zero or with a fraction', () => {
+    expect(() => readVideoTable({ ...TABLE, columns: { ...TABLE.columns, viewCount: [-1] } })).toThrow(ShapeError);
+    expect(() => readVideoTable({ ...TABLE, columns: { ...TABLE.columns, durationSeconds: [1.5] } })).toThrow(
+      ShapeError,
+    );
+  });
+
+  test('refuses a type it does not know', () => {
+    expect(() => readVideoTable({ ...TABLE, columns: { ...TABLE.columns, type: ['podcast'] } })).toThrow(ShapeError);
+  });
+
+  test('refuses a body that is not a video table at all', () => {
+    expect(() => readVideoTable('<html>Service Unavailable</html>')).toThrow(ShapeError);
+    expect(() => readVideoTable({ columns: {} })).toThrow(ShapeError);
+    expect(() => readVideoTable(null)).toThrow(ShapeError);
   });
 });
 

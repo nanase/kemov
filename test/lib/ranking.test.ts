@@ -105,7 +105,7 @@ describe('rankByMetric', () => {
       ['p90', daysBefore(NOW, 90)],
       ['p30', daysBefore(NOW, 30)],
       // 2026-01-01T00:00:00+09:00, the Japan-time year NOW falls in.
-      ['calendarYear', new Date('2025-12-31T15:00:00Z')],
+      [{ year: 2026 }, new Date('2025-12-31T15:00:00Z')],
     ] as const)('%s admits the boundary instant and excludes one millisecond before it', (period, boundary) => {
       const rows = [
         row({ videoId: 'at-boundary', publishedAt: boundary.toISOString() }),
@@ -141,6 +141,59 @@ describe('rankByMetric', () => {
       const rows = [row({ videoId: 'after-now', publishedAt: new Date(NOW.getTime() + 1).toISOString() })];
 
       expect(rankByMetric(rows, 'viewCount', null, 'all', NOW).map((r) => r.videoId)).toEqual(['after-now']);
+    });
+
+    describe('a calendar year', () => {
+      // A past year has no `now` to cap it at, unlike the rolling windows -
+      // this is the case that regressed when a year other than NOW's own
+      // became selectable. Without an explicit end of its own, "2021" would
+      // silently admit everything published since, all the way up to NOW.
+      test('a past year excludes a video published in the following year', () => {
+        const rows = [
+          row({ videoId: 'in-2021', publishedAt: '2021-06-15T00:00:00Z' }),
+          row({ videoId: 'in-2022', publishedAt: '2022-01-01T00:00:00Z' }),
+        ];
+        const ids = rankByMetric(rows, 'viewCount', null, { year: 2021 }, NOW).map((r) => r.videoId);
+
+        expect(ids).toEqual(['in-2021']);
+      });
+
+      // 2025-12-31T23:59:59.999+09:00, the last instant of 2025 in Japan time.
+      test('a past year admits its last instant and excludes one millisecond after it', () => {
+        const boundary = new Date('2025-12-31T14:59:59.999Z');
+        const rows = [
+          row({ videoId: 'at-boundary', publishedAt: boundary.toISOString() }),
+          row({ videoId: 'after-boundary', publishedAt: new Date(boundary.getTime() + 1).toISOString() }),
+        ];
+        const ids = rankByMetric(rows, 'viewCount', null, { year: 2025 }, NOW).map((r) => r.videoId);
+
+        expect(ids).toContain('at-boundary');
+        expect(ids).not.toContain('after-boundary');
+      });
+
+      // The year NOW falls in is not over yet, so its end is still NOW - the
+      // same rule a rolling window follows - rather than this December 31st,
+      // which has not happened.
+      test('the current year admits a video published at NOW and excludes one published after it', () => {
+        const rows = [
+          row({ videoId: 'at-now', publishedAt: NOW.toISOString() }),
+          row({ videoId: 'after-now', publishedAt: new Date(NOW.getTime() + 1).toISOString() }),
+        ];
+        const ids = rankByMetric(rows, 'viewCount', null, { year: 2026 }, NOW).map((r) => r.videoId);
+
+        expect(ids).toContain('at-now');
+        expect(ids).not.toContain('after-now');
+      });
+
+      // 2024-02-29T00:00:00+09:00, a date that does not exist outside a leap
+      // year - `Date.UTC` normalising it silently would put the boundary on
+      // March 1st instead.
+      test('a leap year admits a video published on its February 29th', () => {
+        const rows = [row({ videoId: 'leap-day', publishedAt: '2024-02-28T15:00:00Z' })];
+        const ids = rankByMetric(rows, 'viewCount', null, { year: 2024 }, NOW).map((r) => r.videoId);
+
+        expect(ids).toEqual(['leap-day']);
+      });
     });
   });
 });
