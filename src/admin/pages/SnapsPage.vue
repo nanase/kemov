@@ -38,6 +38,7 @@ const detail = ref(false);
 
 const loading = ref(false);
 const loadError = ref<string | null>(null);
+const memberLoadError = ref<string | null>(null);
 const saving = ref(false);
 
 const reasonDraft = ref('');
@@ -50,6 +51,8 @@ watch(selectedTick, (tick) => {
 });
 
 async function loadMembers(): Promise<void> {
+  memberLoadError.value = null;
+
   try {
     const body = await getJson<{ members: Member[] }>('/members');
 
@@ -58,11 +61,17 @@ async function loadMembers(): Promise<void> {
     if (channelId.value === null && members.value.length > 0) {
       channelId.value = members.value[0]!.channelId;
     }
-  } catch {
-    // The channel <select> is empty when this fails; loadDays below still
-    // runs, just with no channelId to narrow by.
+  } catch (error) {
+    // loadDays below never runs without a channelId, so a silent failure
+    // here left the whole screen blank with nothing saying why.
+    memberLoadError.value = error instanceof AdminApiError ? error.message : String(error);
   }
 }
+
+// Switching channels mid-request starts a second, overlapping GET
+// /snapshots - without this, a slower earlier response can resolve after a
+// faster later one and overwrite the day list with another channel's rows.
+let daysRequestId = 0;
 
 async function loadDays(): Promise<void> {
   if (channelId.value === null) return;
@@ -70,17 +79,27 @@ async function loadDays(): Promise<void> {
   loading.value = true;
   loadError.value = null;
 
+  const requestId = ++daysRequestId;
+
   try {
     const { from, to } = defaultDayRange(todayJst());
     const body = await getJson<{ days: SnapshotDay[] }>(`/snapshots${snapshotsQuery(channelId.value, from, to)}`);
 
+    if (requestId !== daysRequestId) return;
+
     days.value = [...body.days].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   } catch (error) {
+    if (requestId !== daysRequestId) return;
+
     loadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
-    loading.value = false;
+    if (requestId === daysRequestId) loading.value = false;
   }
 }
+
+// Same race as loadDays above, for opening a different day before the first
+// one's ticks have come back.
+let ticksRequestId = 0;
 
 async function openDayView(date: string): Promise<void> {
   if (channelId.value === null) return;
@@ -88,17 +107,23 @@ async function openDayView(date: string): Promise<void> {
   loading.value = true;
   loadError.value = null;
 
+  const requestId = ++ticksRequestId;
+
   try {
     const body = await getJson<{ ticks: SnapshotTick[] }>(`/snapshots${snapshotsQuery(channelId.value, date, date)}`);
+
+    if (requestId !== ticksRequestId) return;
 
     ticks.value = [...body.ticks].sort((a, b) => (a.fetchedAt < b.fetchedAt ? 1 : -1));
     openDay.value = date;
     selectedFetchedAt.value = null;
     detail.value = false;
   } catch (error) {
+    if (requestId !== ticksRequestId) return;
+
     loadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
-    loading.value = false;
+    if (requestId === ticksRequestId) loading.value = false;
   }
 }
 
@@ -174,11 +199,11 @@ onMounted(async () => {
         <span v-if="troubleDays > 0" class="chip alarm">処置が必要な日 {{ troubleDays }} 日</span>
       </div>
       <div class="scroller">
-        <div v-if="loadError" class="empty">
+        <div v-if="loadError || memberLoadError" class="empty">
           <b>読み込めません</b>
-          <div class="sub">{{ loadError }}</div>
+          <div class="sub">{{ loadError ?? memberLoadError }}</div>
         </div>
-        <table v-else class="grid">
+        <table v-if="!memberLoadError" class="grid">
           <thead>
             <tr>
               <th>扱い</th>
@@ -187,7 +212,14 @@ onMounted(async () => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="d in days" :key="d.date" @click="openDayView(d.date)">
+            <tr
+              v-for="d in days"
+              :key="d.date"
+              tabindex="0"
+              @click="openDayView(d.date)"
+              @keydown.enter="openDayView(d.date)"
+              @keydown.space.prevent="openDayView(d.date)"
+            >
               <td>
                 <span v-if="d.excluded > 0" class="chip alarm">除く {{ d.excluded }}</span>
                 <span v-else class="chip published">使う</span>
@@ -222,7 +254,10 @@ onMounted(async () => {
               v-for="t in ticks"
               :key="t.fetchedAt"
               :aria-selected="t.fetchedAt === selectedFetchedAt"
+              tabindex="0"
               @click="selectTick(t.fetchedAt)"
+              @keydown.enter="selectTick(t.fetchedAt)"
+              @keydown.space.prevent="selectTick(t.fetchedAt)"
             >
               <td>
                 <span v-if="t.excluded" class="chip alarm">集計から除く</span>
