@@ -115,6 +115,36 @@ describe('useFootprintsData', () => {
     expect(data.rows.value).toHaveLength(1);
   });
 
+  // The page keeps whatever it last had rather than emptying itself the
+  // moment a later, periodic refetch fails - see FootprintsPage.vue's own
+  // `failed`, which only blanks the page when there is nothing left to show
+  // at all. 1,800,000ms is the archive's own refetch rhythm (ARCHIVE_SECONDS
+  // in the source), advanced with fake timers rather than waited for real.
+  test('keeps the previous rows and events when a later refetch fails after a successful one', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const data = useFootprintsData();
+
+      await data.start();
+
+      expect(data.rows.value).toHaveLength(1);
+      expect(data.events.value).toHaveLength(1);
+      expect(data.failure.value).toBeNull();
+
+      vi.mocked(getVideosTable).mockRejectedValue(refused(500));
+      await vi.advanceTimersByTimeAsync(1_800_000);
+
+      expect(data.rows.value).toHaveLength(1);
+      expect(data.events.value).toHaveLength(1);
+      expect(data.failure.value).not.toBeNull();
+
+      data.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // Without this a first failure leaves "読み込んでいます" on screen until a
   // retry succeeds, which is ten minutes away.
   test('stops loading when the channel list fails, not only when it arrives', async () => {
