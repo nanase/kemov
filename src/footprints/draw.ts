@@ -88,6 +88,18 @@ export function formatLength(seconds: number | null): string {
   return seconds === null ? '' : formatDuration(Math.max(0, Math.round(seconds)));
 }
 
+/**
+ * How long a run of streams takes to open or close, in milliseconds.
+ *
+ * Long enough to be seen as the box growing rather than as the page jumping,
+ * and a little longer the more there is to grow - but capped, because past a
+ * third of a second a reader who has pressed twice is waiting rather than
+ * watching (#140).
+ */
+export function openMs(height: number): number {
+  return Math.min(340, 120 + Math.max(0, height) * 0.25);
+}
+
 /** The host a source is on, which is what the page shows instead of the URL. */
 export function hostOf(url: string): string {
   try {

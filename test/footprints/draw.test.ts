@@ -1,4 +1,4 @@
-import { formatDate, formatLength, formatSince, formatTime, hostOf } from '@/footprints/draw';
+import { formatDate, formatLength, formatSince, formatTime, hostOf, openMs } from '@/footprints/draw';
 import { formatDuration } from '@/type/video';
 
 /**
@@ -72,5 +72,21 @@ describe('hostOf', () => {
 
   test('gives back whatever it was handed when that is not an address', () => {
     expect(hostOf('出典なし')).toEqual('出典なし');
+  });
+});
+
+describe('openMs', () => {
+  // Long enough to be read as the box growing, longer the more there is to
+  // grow, and capped: past a third of a second somebody who pressed twice is
+  // waiting rather than watching (#140).
+  test('takes longer for a taller run, up to a third of a second', () => {
+    expect(openMs(0)).toEqual(120);
+    expect(openMs(400)).toEqual(220);
+    expect(openMs(2000)).toEqual(340);
+    expect(openMs(20_000)).toEqual(340);
+  });
+
+  test('never asks for a negative wait', () => {
+    expect(openMs(-100)).toEqual(120);
   });
 });

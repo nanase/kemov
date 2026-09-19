@@ -241,6 +241,7 @@ function membersOf(channelIds: readonly string[]): Channel[] {
             :data-at="row.item.at"
             :data-end="row.item.kind === 'event' && row.item.endAt !== null ? row.item.endAt : undefined"
             :data-title="row.item.kind === 'event' ? row.item.event.title : undefined"
+            :data-kind="row.item.kind === 'event' ? row.item.event.kind : undefined"
             :class="{
               event: row.item.kind === 'event',
               large: row.item.kind === 'event' && row.item.event.emphasized,
@@ -539,31 +540,83 @@ function membersOf(channelIds: readonly string[]): Channel[] {
   background: var(--k-accent);
 }
 
-/* The same size for every kind, told apart by what is drawn inside it (#140). */
+/*
+ * The same size for every kind, told apart by what is drawn inside it (#140).
+ *
+ * The drawing is a mask rather than a picture, so one shape serves both
+ * states: filled in the ink that reads on the node, and in the accent when
+ * the node is hollow because the day has not come yet. A white picture on a
+ * hollow node would be a node with nothing in it.
+ */
+.node::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--k-on-accent);
+  mask: var(--fp-stamp) center / 18px 18px no-repeat;
+}
+
 .row.event .node {
-  background: var(--k-accent)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M2.9 7.1 15.1 3.2v11.6L2.9 10.9Z' fill='%23fff' stroke='%23fff' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M5.6 10.6 6.5 15.2h2.2L7.8 11.6' fill='%23fff' stroke='%23fff' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E")
-    center / 18px 18px no-repeat;
+  --fp-stamp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M2.9 7.1 15.1 3.2v11.6L2.9 10.9Z' fill='%23000' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M5.6 10.6 6.5 15.2h2.2L7.8 11.6' fill='%23000' stroke='%23000' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  background: var(--k-accent);
 }
 
 .row.bundle .node {
-  background: var(--k-text-3)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M6 3.4 14.6 9 6 14.6Z' fill='%23fff' stroke='%23fff' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E")
-    center / 15px 15px no-repeat;
+  --fp-stamp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M6 3.4 14.6 9 6 14.6Z' fill='%23000' stroke='%23000' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  background: var(--k-text-3);
+}
+
+.row.bundle .node::after {
+  mask-size: 15px 15px;
+}
+
+/*
+ * A day the page draws large gets a stamp of its own kind.
+ *
+ * #140 singles these out because they are the days the line-up or the look
+ * changed, and the project's own turning points. One megaphone for all of
+ * them would say only "something happened" on exactly the rows where what
+ * happened is the point.
+ */
+.row.large[data-kind='debut'] .node {
+  --fp-stamp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M9 2.4 11.1 6.9 16 7.5 12.4 10.9 13.3 15.7 9 13.3 4.7 15.7 5.6 10.9 2 7.5 6.9 6.9Z' fill='%23000'/%3E%3C/svg%3E");
+}
+
+.row.large[data-kind='graduation'] .node {
+  --fp-stamp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M9 3.2 16 6.6 9 10 2 6.6Z' fill='%23000'/%3E%3Cpath d='M5.4 8.4v3.4c0 1 1.6 1.9 3.6 1.9s3.6-.9 3.6-1.9V8.4' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+.row.large[data-kind='3d'] .node {
+  --fp-stamp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M9 2.6 15.2 6.1v5.8L9 15.4 2.8 11.9V6.1Z' fill='none' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M2.8 6.1 9 9.6l6.2-3.5M9 9.6v5.8' fill='none' stroke='%23000' stroke-width='1.4' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.row.large[data-kind='outfit'] .node {
+  --fp-stamp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M6.4 2.8 9 4.6l2.6-1.8 3.6 2.1-1.7 2.9-1.4-.8v8.2H5.9V7l-1.4.8L2.8 4.9Z' fill='%23000' stroke='%23000' stroke-width='1.1' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.row.large[data-kind='project'] .node {
+  --fp-stamp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M9 15.4V7.6' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3Cpath d='M9 7.8C9 7.8 5.6 7.1 4.7 4.6 7.2 3.9 9 5.9 9 7.8Z' fill='%23000'/%3E%3Cpath d='M9 7.8c0-1.9 1.8-3.9 4.3-3.2-.9 2.5-4.3 3.2-4.3 3.2Z' fill='%23000'/%3E%3C/svg%3E");
 }
 
 .row.now .node {
+  --fp-stamp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M5.4 2V16' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M6.8 2.8 15.6 6 6.8 9.2Z' fill='%23000' stroke='%23000' stroke-width='1.4' stroke-linejoin='round'/%3E%3C/svg%3E");
+
   top: 50%;
   margin-top: calc(var(--fp-node) / -2);
-  background: var(--k-accent)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M5.4 2V16' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M6.8 2.8 15.6 6 6.8 9.2Z' fill='%23fff' stroke='%23fff' stroke-width='1.4' stroke-linejoin='round'/%3E%3C/svg%3E")
-    center / 18px 18px no-repeat;
+  background: var(--k-accent);
 }
 
-/* What has not happened yet is hollow, with a dashed edge. */
+/* What has not happened yet is hollow, with a dashed edge. The stamp turns
+   to the accent so that a hollow node still has something in it. */
 .row.future .node {
   border: 2px dashed var(--k-accent);
   background-color: var(--k-bg);
+}
+
+.row.future .node::after {
+  background: var(--k-accent);
 }
 
 .date {

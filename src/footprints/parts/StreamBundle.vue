@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 
 import MemberAvatar from '@/parts/MemberAvatar.vue';
 import { formatCount } from '@/lib/numberFormat';
 
-import { formatDate, formatTime } from '../draw';
+import { formatDate, formatTime, openMs } from '../draw';
 import { isKeyStream, jstDay, rowAt, VIDEO_LABELS, type BundleItem } from '../model';
 import type { Channel } from '@/type/api';
 
@@ -71,11 +71,64 @@ function thumbnail(videoId: string): string {
 function nameOf(channelId: string): string {
   return channels.get(channelId)?.name ?? '';
 }
+
+/**
+ * Opening and closing, shown as the box growing rather than as a jump.
+ *
+ * The head does not stick while the height is moving: held inside a box that
+ * is still changing size it bounces, which reads as the page fighting the
+ * reader. Somebody who has asked for less movement gets the two states and
+ * nothing between them.
+ */
+const moving = ref(false);
+let timer: ReturnType<typeof setTimeout> | undefined;
+
+function reduced(): boolean {
+  return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+}
+
+function animate(element: Element, from: number, to: number, done: () => void) {
+  const box = element as HTMLElement;
+
+  if (reduced()) return done();
+
+  const ms = openMs(Math.max(from, to));
+
+  moving.value = true;
+  box.style.overflow = 'hidden';
+  box.style.height = `${from}px`;
+  box.getBoundingClientRect();
+  box.style.transition = `height ${Math.round(ms)}ms ease`;
+  box.style.height = `${to}px`;
+
+  clearTimeout(timer);
+  timer = setTimeout(done, ms);
+}
+
+function grow(element: Element, done: () => void) {
+  animate(element, 0, (element as HTMLElement).scrollHeight, done);
+}
+
+function shrink(element: Element, done: () => void) {
+  animate(element, (element as HTMLElement).scrollHeight, 0, done);
+}
+
+function settle(element: Element) {
+  const box = element as HTMLElement;
+
+  clearTimeout(timer);
+  moving.value = false;
+  box.style.height = '';
+  box.style.overflow = '';
+  box.style.transition = '';
+}
+
+onBeforeUnmount(() => clearTimeout(timer));
 </script>
 
 <template>
   <article class="bundle" :class="{ foldable }" @click="foldable && emit('toggle', item.key)">
-    <div class="head">
+    <div class="head" :class="{ open: shown && !moving }">
       <span class="fp-tag">{{ label }}</span>
       <span class="count fp-n"
         ><b>{{ formatCount(count) }}</b> 本</span
@@ -132,26 +185,28 @@ function nameOf(channelId: string): string {
       </span>
     </div>
 
-    <div v-if="shown" class="all">
-      <template v-for="group in days" :key="group.day">
-        <h4 v-if="days.length > 1" class="day fp-n">{{ formatDate(rowAt(group.rows[0]!)) }}</h4>
-        <ul class="rows">
-          <li v-for="row in group.rows" :key="row.videoId">
-            <button type="button" class="row" @click.stop="emit('open', `v:${row.videoId}`)">
-              <span class="at fp-n">{{ formatTime(rowAt(row)) }}</span>
-              <img class="pic" :src="thumbnail(row.videoId)" alt="" loading="lazy" decoding="async" />
-              <span class="about">
-                <span class="meta fp-n">
-                  <span class="fp-tag">{{ row.type === null ? '配信' : VIDEO_LABELS[row.type] }}</span>
-                  <span class="who">{{ nameOf(row.channelId) }}</span>
+    <Transition @enter="grow" @after-enter="settle" @enter-cancelled="settle" @leave="shrink" @after-leave="settle">
+      <div v-if="shown" class="all">
+        <template v-for="group in days" :key="group.day">
+          <h4 v-if="days.length > 1" class="day fp-n">{{ formatDate(rowAt(group.rows[0]!)) }}</h4>
+          <ul class="rows">
+            <li v-for="row in group.rows" :key="row.videoId">
+              <button type="button" class="row" @click.stop="emit('open', `v:${row.videoId}`)">
+                <span class="at fp-n">{{ formatTime(rowAt(row)) }}</span>
+                <img class="pic" :src="thumbnail(row.videoId)" alt="" loading="lazy" decoding="async" />
+                <span class="about">
+                  <span class="meta fp-n">
+                    <span class="fp-tag">{{ row.type === null ? '配信' : VIDEO_LABELS[row.type] }}</span>
+                    <span class="who">{{ nameOf(row.channelId) }}</span>
+                  </span>
+                  <span class="row-title">{{ row.title }}</span>
                 </span>
-                <span class="row-title">{{ row.title }}</span>
-              </span>
-            </button>
-          </li>
-        </ul>
-      </template>
-    </div>
+              </button>
+            </li>
+          </ul>
+        </template>
+      </div>
+    </Transition>
   </article>
 </template>
 
@@ -176,6 +231,20 @@ function nameOf(channelId: string): string {
   align-items: center;
   min-width: 0;
   min-height: 28px;
+}
+
+/* While the run is open its head stays on screen. A run can be forty streams
+   long, and without this a reader scrolling through them has nothing left
+   saying whose run this is or how to close it again (#140). */
+.head.open {
+  position: sticky;
+  z-index: 2;
+  top: calc(var(--shell-nav-height, 44px) + 6px);
+  margin: -8px -10px 0;
+  padding: 8px 10px 0;
+  border-radius: 8px 8px 0 0;
+  background: var(--k-sunken);
+  box-shadow: 0 1px 0 var(--k-line);
 }
 
 .count b {
