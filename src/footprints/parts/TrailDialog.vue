@@ -546,7 +546,11 @@ onBeforeUnmount(() => {
                   :stroke-width="dot.large ? 1.4 : 1"
                   :stroke-dasharray="dot.recurring ? '2 2' : undefined"
                   :class="{ station: dot.key !== undefined }"
+                  :tabindex="dot.key !== undefined ? 0 : undefined"
+                  :role="dot.key !== undefined ? 'button' : undefined"
+                  :aria-label="dot.key !== undefined ? 'この記録を開く' : undefined"
                   @click.stop="dot.key !== undefined && tapped() && emit('open', dot.key)"
+                  @keydown.enter.space.stop.prevent="dot.key !== undefined && emit('open', dot.key)"
                 />
               </g>
 

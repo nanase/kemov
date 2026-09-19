@@ -75,6 +75,13 @@ const x = (lane: number) => trailX(layout.value, lane);
 const stroke = computed(() => (layout.value.laneWidth >= 14 ? 2.2 : layout.value.laneWidth >= 10 ? 1.6 : 1.2));
 const dotScale = computed(() => (layout.value.laneWidth >= 14 ? 1 : layout.value.laneWidth >= 10 ? 0.8 : 0.65));
 
+/** "YYYY-MM" said as "YYYY年M月", for a month band's accessible name. */
+function monthLabel(month: string): string {
+  const [year, monthOfYear] = month.split('-').map(Number) as [number, number];
+
+  return `${year}年${monthOfYear}月`;
+}
+
 /** The `YYYY-MM` each month band stands for, for pressing one. */
 const monthBands = computed(() =>
   Array.from({ length: map.value.months }, (_, index) => {
@@ -211,7 +218,11 @@ onBeforeUnmount(() => {
           :stroke-width="dot.large ? 1.2 : 1"
           :stroke-dasharray="dot.recurring ? '2 2' : undefined"
           :class="{ station: stations === true && dot.key !== undefined }"
+          :tabindex="stations === true && dot.key !== undefined ? 0 : undefined"
+          :role="stations === true && dot.key !== undefined ? 'button' : undefined"
+          :aria-label="stations === true && dot.key !== undefined ? 'この記録を開く' : undefined"
           @click="stations === true && dot.key !== undefined && emit('open', dot.key)"
+          @keydown.enter.space.prevent="stations === true && dot.key !== undefined && emit('open', dot.key)"
         />
       </g>
 
@@ -234,7 +245,11 @@ onBeforeUnmount(() => {
         :width="layout.width"
         :height="band.height"
         fill="transparent"
+        tabindex="0"
+        role="button"
+        :aria-label="`${monthLabel(band.month)}へ移動`"
         @click="emit('month', band.month)"
+        @keydown.enter.space.prevent="emit('month', band.month)"
       />
     </svg>
 
