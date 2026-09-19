@@ -107,6 +107,47 @@ describe('createStream', () => {
     expect(response.status).toEqual(409);
   });
 
+  // The SELECT check and the INSERT are two round trips, not one batch, so a
+  // concurrent create can pass the same check in between. Rigs env.DB.prepare
+  // to insert the same videoId right after that one SELECT resolves, the same
+  // moment a real race would land in - genet_stream.video_id's own primary
+  // key is what actually stops the second row, not the check.
+  test('refuses a videoId created concurrently, between the check and the insert', async () => {
+    const realPrepare = env.DB.prepare.bind(env.DB);
+
+    const riggedDB = {
+      batch: env.DB.batch.bind(env.DB),
+      prepare: (sql: string) => {
+        const stmt = realPrepare(sql);
+
+        if (!sql.startsWith('SELECT 1 FROM genet_stream WHERE video_id')) return stmt;
+
+        return {
+          bind: (...args: unknown[]) => {
+            const bound = stmt.bind(...args);
+
+            return {
+              first: async <T = unknown>() => {
+                const result = await bound.first<T>();
+
+                await createValidStream();
+
+                return result;
+              },
+              all: bound.all.bind(bound),
+              run: bound.run.bind(bound),
+              raw: bound.raw.bind(bound),
+            };
+          },
+        };
+      },
+    };
+
+    const response = await createStream({ ...env, DB: riggedDB } as typeof env, validBody());
+
+    expect(response.status).toEqual(409);
+  });
+
   test('refuses platform youtube with a non-null url', async () => {
     const response = await createStream(env, validBody({ url: 'https://example.com' }));
 
@@ -251,6 +292,65 @@ describe('deleteStream', () => {
       await env.DB.prepare('SELECT 1 FROM genet_performance WHERE video_id = ?1').bind(videoId).first(),
     ).toBeNull();
     expect(await env.DB.prepare('SELECT 1 FROM genet_scene WHERE video_id = ?1').bind(videoId).first()).toBeNull();
+  });
+
+  // The readStream check and this function's own batch are two round trips,
+  // so a concurrent publishStream can land in between - rigs
+  // env.DB.prepare to publish the stream right after that read resolves,
+  // the same moment a real race would land in. Without each DELETE
+  // re-checking status for itself, this would delete a stream that is
+  // published by the time the batch actually runs.
+  test('leaves the stream in place when it is published concurrently, between the check and the delete', async () => {
+    const tuneId = await insertTune();
+    const videoId = await createValidStream({
+      performances: [
+        { tuneId, description: null, scenes: [{ style: 'play', videoId: 'abcdefghijk', startSeconds: 0 }] },
+      ],
+    });
+    const realPrepare = env.DB.prepare.bind(env.DB);
+
+    const riggedDB = {
+      batch: env.DB.batch.bind(env.DB),
+      prepare: (sql: string) => {
+        const stmt = realPrepare(sql);
+
+        if (!sql.startsWith('SELECT video_id, platform, url, video_type, title, short_title, published_at')) {
+          return stmt;
+        }
+
+        return {
+          bind: (...args: unknown[]) => {
+            const bound = stmt.bind(...args);
+
+            return {
+              first: async <T = unknown>() => {
+                const result = await bound.first<T>();
+
+                await env.DB.prepare(`UPDATE genet_stream SET status = 'published' WHERE video_id = ?1`)
+                  .bind(videoId)
+                  .run();
+
+                return result;
+              },
+              all: bound.all.bind(bound),
+              run: bound.run.bind(bound),
+              raw: bound.raw.bind(bound),
+            };
+          },
+        };
+      },
+    };
+
+    const response = await deleteStream({ ...env, DB: riggedDB } as typeof env, videoId);
+
+    expect(response.status).toEqual(200);
+    expect(await env.DB.prepare('SELECT status FROM genet_stream WHERE video_id = ?1').bind(videoId).first()).toEqual({
+      status: 'published',
+    });
+    expect(
+      await env.DB.prepare('SELECT 1 FROM genet_performance WHERE video_id = ?1').bind(videoId).first(),
+    ).not.toBeNull();
+    expect(await env.DB.prepare('SELECT 1 FROM genet_scene WHERE video_id = ?1').bind(videoId).first()).not.toBeNull();
   });
 
   test('refuses with 409 when the stream is published', async () => {
