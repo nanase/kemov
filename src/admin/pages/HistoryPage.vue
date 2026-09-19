@@ -27,6 +27,7 @@ const revisions = ref<RevisionListItem[]>([]);
 const publications = ref<Publication[]>([]);
 const loading = ref(false);
 const loadError = ref<string | null>(null);
+const publicationsLoadError = ref<string | null>(null);
 
 const entityFilter = ref('');
 const actionFilter = ref('');
@@ -60,12 +61,17 @@ async function loadRevisions(): Promise<void> {
 }
 
 async function loadPublications(): Promise<void> {
+  publicationsLoadError.value = null;
+
   try {
     const body = await getJson<{ publications: Publication[] }>('/publications');
 
     publications.value = body.publications;
-  } catch {
-    publications.value = [];
+  } catch (error) {
+    // Leaves `publications` as it was rather than clearing it to [] - an
+    // empty table here reads as "nothing has ever been published", when the
+    // truth is this request failed.
+    publicationsLoadError.value = error instanceof AdminApiError ? error.message : String(error);
   }
 }
 
@@ -165,9 +171,14 @@ onMounted(async () => {
         <div class="toolbar" style="margin-top: 18px">
           <h2>公開の記録</h2>
           <span class="grow"></span>
-          <span class="sub num">{{ publications.length }} 件</span>
+          <span v-if="!publicationsLoadError" class="sub num">{{ publications.length }} 件</span>
         </div>
-        <table class="grid">
+        <div v-if="publicationsLoadError" class="panel flag">
+          <h4>公開の記録を取得できません</h4>
+          <div class="hint">{{ publicationsLoadError }}</div>
+          <button class="btn" type="button" @click="loadPublications">読み直す</button>
+        </div>
+        <table v-else class="grid">
           <thead>
             <tr>
               <th>公開日時 (JST)</th>
