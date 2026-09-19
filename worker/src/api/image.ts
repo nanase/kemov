@@ -106,7 +106,7 @@ async function answerAndCache(
  * refusing to try again would turn one rate-limited request into a day of
  * them.
  */
-async function fetchAndCache(
+async function fetchAndCacheOnce(
   key: Request,
   upstreamUrl: string,
   cacheImpl: Cache,
@@ -133,6 +133,53 @@ async function fetchAndCache(
         ctx,
         'error',
       );
+}
+
+/**
+ * One cold key's fetch-and-cache work in flight, shared by every request
+ * this isolate is answering for it right now.
+ *
+ * A page opens with a screenful of thumbnails at once, so a cold cache is
+ * normally cold for several requests to the same id at the same moment, not
+ * one - without this, each asked YouTube separately, multiplying exactly the
+ * request volume #144 exists to cut, and whichever of them wrote the cache
+ * last decided the answer everyone else gets. A slow failure finishing after
+ * a fast success could overwrite a good, already-cached image with a cached
+ * error for the next `RELAY_FAILURE_CACHE_SECONDS`. Coalescing them into one
+ * shared fetch removes both problems: one fetch, one write, one outcome for
+ * everyone waiting on it.
+ *
+ * This only coalesces within the isolate that happens to answer these
+ * requests - two edge locations asked for the same cold id at the same
+ * moment still each fetch and store on their own, since Cloudflare's Cache
+ * API has no cross-isolate lock to coordinate that. `RELAY_FAILURE_CACHE_SECONDS`
+ * bounds how long a failure from that narrower race can leave a good image
+ * looking broken.
+ */
+const inFlight = new Map<string, Promise<Response>>();
+
+async function fetchAndCache(
+  key: Request,
+  upstreamUrl: string,
+  cacheImpl: Cache,
+  ctx: ExecutionContext | undefined,
+  fetchImpl: typeof fetch,
+  successSeconds: number,
+): Promise<Response> {
+  const dedupeKey = key.url;
+  const existing = inFlight.get(dedupeKey);
+
+  if (existing !== undefined) return (await existing).clone();
+
+  const promise = fetchAndCacheOnce(key, upstreamUrl, cacheImpl, ctx, fetchImpl, successSeconds);
+
+  inFlight.set(dedupeKey, promise);
+
+  try {
+    return (await promise).clone();
+  } finally {
+    inFlight.delete(dedupeKey);
+  }
 }
 
 // --- channel icon ---------------------------------------------------------

@@ -201,6 +201,85 @@ describe('relayVideoThumbnail', () => {
     expect(response.status).toEqual(502);
     expect(response.headers.get('x-kemov-relay')).toEqual('error');
   });
+
+  test('several requests for the same cold id at once fetch the image host only once', async () => {
+    const cache = testCache();
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () => new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'image/jpeg' } }),
+    );
+
+    const answers = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        relayVideoThumbnail(
+          request('/api/image/video/dQw4w9WgXcQ'),
+          cache,
+          undefined,
+          'dQw4w9WgXcQ',
+          new URLSearchParams(),
+          fetchImpl,
+        ),
+      ),
+    );
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(cache.size()).toEqual(1);
+
+    for (const answer of answers) {
+      expect(answer.status).toEqual(200);
+      expect(new Uint8Array(await answer.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    }
+  });
+
+  test('a slow request already in flight is what a second, later request for the same id shares - not a fetch of its own', async () => {
+    const cache = testCache();
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'image/jpeg' } });
+    });
+
+    const firstCall = relayVideoThumbnail(
+      request('/api/image/video/dQw4w9WgXcQ'),
+      cache,
+      undefined,
+      'dQw4w9WgXcQ',
+      new URLSearchParams(),
+      fetchImpl,
+    );
+
+    // Started once the first call is under way but before its (slow) fetch
+    // has resolved - a cold-cache request arriving while another is already
+    // in flight, not two requests that merely happen to start together.
+    await Promise.resolve();
+    const secondCall = relayVideoThumbnail(
+      request('/api/image/video/dQw4w9WgXcQ'),
+      cache,
+      undefined,
+      'dQw4w9WgXcQ',
+      new URLSearchParams(),
+      fetchImpl,
+    );
+
+    const [first, second] = await Promise.all([firstCall, secondCall]);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(first.status).toEqual(200);
+    expect(second.status).toEqual(200);
+    expect(new Uint8Array(await second.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+
+    const third = await relayVideoThumbnail(
+      request('/api/image/video/dQw4w9WgXcQ'),
+      cache,
+      undefined,
+      'dQw4w9WgXcQ',
+      new URLSearchParams(),
+      fetchImpl,
+    );
+
+    expect(third.status).toEqual(200);
+    expect(third.headers.get('x-kemov-relay')).toEqual('hit');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('relayChannelIcon', () => {
