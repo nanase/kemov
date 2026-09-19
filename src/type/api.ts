@@ -2,6 +2,7 @@ import dayjs, { type Dayjs } from '@nanase/alnilam/dayjs';
 
 import {
   field,
+  readArray,
   readDate,
   readEach,
   readInstant,
@@ -321,6 +322,86 @@ export function readLiveList(body: unknown): LiveList {
   return {
     streams: readEach(field(body, 'streams', 'body'), 'body.streams', readLiveStream),
     excludedFreeChats: readNumber(field(body, 'excludedFreeChats', 'body'), 'body.excludedFreeChats'),
+  };
+}
+
+/**
+ * `GET /api/videos/table`'s body, one array per field rather than one object
+ * per video.
+ *
+ * #144 chose this shape so #135 and #136 can sort, search and window the
+ * whole archive in the browser: at 6,450 rows the columnar body is smaller
+ * than the equivalent list, and every array here is the same length as every
+ * other. `@/lib/ranking.ts` reads this into one `VideoTableRow` per video.
+ */
+export interface VideoTable {
+  /** The newest fetch among the rows returned, or null when there are none. */
+  fetchedAt: Dayjs | null;
+  columns: {
+    videoId: string[];
+    channelId: string[];
+    title: string[];
+    type: (VideoType | null)[];
+    publishedAt: string[];
+    durationSeconds: (number | null)[];
+    viewCount: (number | null)[];
+    likeCount: (number | null)[];
+    commentCount: (number | null)[];
+    chatMessageCount: (number | null)[];
+    chatUniqueUserCount: (number | null)[];
+    actualStartTime: (string | null)[];
+    actualEndTime: (string | null)[];
+  };
+}
+
+type TableColumnName = keyof VideoTable['columns'];
+
+export function readVideoTable(body: unknown): VideoTable {
+  const columns = field(body, 'columns', 'body');
+  const length = readArray(field(columns, 'videoId', 'body.columns'), 'body.columns.videoId').length;
+
+  /**
+   * One column, checked to have the same length as every other.
+   *
+   * A column short by one would otherwise misalign every field after it in
+   * `@/lib/ranking.ts`'s `VideoTableRow`, and do so silently: JavaScript reads
+   * past the end of a short array as `undefined`, not as a thrown error.
+   */
+  function column<T>(name: TableColumnName, read: (value: unknown, path: string) => T): T[] {
+    const path = `body.columns.${name}`;
+    const values = readEach(field(columns, name, 'body.columns'), path, read);
+
+    if (values.length !== length) {
+      throw new ShapeError(path, `an array of ${length}, the length of body.columns.videoId`, values);
+    }
+
+    return values;
+  }
+
+  const nullable =
+    <T>(read: (value: unknown, path: string) => T) =>
+    (value: unknown, path: string): T | null =>
+      readOrNull(value, path, read);
+  const type = (value: unknown, path: string): VideoType | null =>
+    readOrNull(value, path, (v, p) => readOneOf(v, p, VIDEO_TYPES));
+
+  return {
+    fetchedAt: readOrNull(field(body, 'fetchedAt', 'body'), 'body.fetchedAt', (v, p) => dayjs(readInstant(v, p))),
+    columns: {
+      videoId: column('videoId', readString),
+      channelId: column('channelId', readString),
+      title: column('title', readString),
+      type: column('type', type),
+      publishedAt: column('publishedAt', (v, p) => readInstant(v, p)),
+      durationSeconds: column('durationSeconds', nullable(readNumber)),
+      viewCount: column('viewCount', nullable(readNumber)),
+      likeCount: column('likeCount', nullable(readNumber)),
+      commentCount: column('commentCount', nullable(readNumber)),
+      chatMessageCount: column('chatMessageCount', nullable(readNumber)),
+      chatUniqueUserCount: column('chatUniqueUserCount', nullable(readNumber)),
+      actualStartTime: column('actualStartTime', nullable(readInstant)),
+      actualEndTime: column('actualEndTime', nullable(readInstant)),
+    },
   };
 }
 
