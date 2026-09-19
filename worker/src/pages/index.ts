@@ -1,7 +1,11 @@
-import { unescapeHtml } from '@nanase/alnilam/string';
-
 import type { Env } from '../lib/env';
 import { VIDEO_EFFECTIVE } from '../lib/overrides';
+// A relative import across the worker/frontend boundary, not a path alias -
+// worker/tsconfig.json's "no lib, no global, no path alias" note still holds.
+// src/lib/pageTitle.ts needs neither: it is plain string handling, and its
+// own doc comment explains why picking these two functions is the one
+// definition of this title shared by both sides, rather than a second copy.
+import { memberPageTitle, videoPageTitle } from '../../../src/lib/pageTitle';
 
 /**
  * `/members/<channel id>` and `/videos/<video id>`: a permalink to one member
@@ -63,11 +67,10 @@ interface Titled {
  * `title`/`og:title` and `og:url` for a route, or null when the id is not in
  * D1.
  *
- * The stored name or title is unescaped before use. Some rows carry `&quot;`,
- * `&amp;` and `&#39;` as literal text rather than the characters they stand
- * for - src/components/genet/MarkDown.vue already unescapes the same way
- * before showing a title on screen, and this reuses that exact function
- * rather than a second copy of the same rule. `HTMLRewriter`'s
+ * `memberPageTitle`/`videoPageTitle` unescape the stored name or title before
+ * use. Some rows carry `&quot;`, `&amp;` and `&#39;` as literal text rather
+ * than the characters they stand for, the same as `src/components/genet/MarkDown.vue`
+ * already handles before showing a title on screen. `HTMLRewriter`'s
  * `setInnerContent`/`setAttribute` (see `rewrite` below) escape whatever
  * string they are handed, so unescaping first is what keeps that the only
  * escaping the text goes through - skipping it would show `&amp;quot;`
@@ -86,7 +89,7 @@ async function titleFor(env: Env, route: Route): Promise<Titled | null> {
     if (row === null) return null;
 
     return {
-      title: `${unescapeHtml(row.name)} - けもV メンバー`,
+      title: memberPageTitle(row.name),
       ogUrl: `https://kemov.nanase.cc/members/${route.id}`,
     };
   }
@@ -98,7 +101,7 @@ async function titleFor(env: Env, route: Route): Promise<Titled | null> {
   if (row === null) return null;
 
   return {
-    title: `${unescapeHtml(row.title)} - けもV 配信・動画`,
+    title: videoPageTitle(row.title),
     ogUrl: `https://kemov.nanase.cc/videos/${route.id}`,
   };
 }
