@@ -16,7 +16,10 @@ import { showToast } from '../lib/toast';
 const tasks = ref<CollectTask[]>([]);
 const loading = ref(false);
 const loadError = ref<string | null>(null);
-const busyKey = ref<string | null>(null);
+// One row's own action in flight must not re-enable another row's buttons -
+// a single busyKey did exactly that, since a second row starting its own
+// action stops matching the first row's own comparison.
+const busyKeys = ref<Set<string>>(new Set());
 
 function rowKey(task: CollectTask): string {
   return `${task.kind}/${task.targetId}`;
@@ -24,6 +27,10 @@ function rowKey(task: CollectTask): string {
 
 async function load(): Promise<void> {
   loading.value = true;
+  // Leaves `tasks` as it was rather than clearing it - a reload after a
+  // successful action (see `act` below) failing must not hide the list the
+  // page already showed; the error panel below reports the failure on top
+  // of it instead.
   loadError.value = null;
 
   try {
@@ -40,7 +47,7 @@ async function load(): Promise<void> {
 async function act(task: CollectTask, action: 'retry' | 'ack' | 'unavailable', doneMessage: string): Promise<void> {
   const key = rowKey(task);
 
-  busyKey.value = key;
+  busyKeys.value.add(key);
 
   try {
     await postJson(
@@ -52,7 +59,7 @@ async function act(task: CollectTask, action: 'retry' | 'ack' | 'unavailable', d
   } catch (error) {
     showToast(error instanceof AdminApiError ? error.message : String(error));
   } finally {
-    busyKey.value = null;
+    busyKeys.value.delete(key);
   }
 }
 
@@ -79,7 +86,7 @@ onMounted(load);
         <div v-else-if="!loading && tasks.length === 0" class="empty">
           <b>失敗している収集はありません</b>
         </div>
-        <table v-else class="grid">
+        <table v-if="tasks.length > 0" class="grid">
           <thead>
             <tr>
               <th>種別</th>
@@ -102,17 +109,17 @@ onMounted(load);
               <td class="num sub">{{ jstClock(task.updatedAt) }}</td>
               <td>
                 <div class="stack">
-                  <button class="btn quiet" type="button" :disabled="busyKey === rowKey(task)" @click="retry(task)">
+                  <button class="btn quiet" type="button" :disabled="busyKeys.has(rowKey(task))" @click="retry(task)">
                     いま取り直す
                   </button>
-                  <button class="btn quiet" type="button" :disabled="busyKey === rowKey(task)" @click="ack(task)">
+                  <button class="btn quiet" type="button" :disabled="busyKeys.has(rowKey(task))" @click="ack(task)">
                     確認済みにする
                   </button>
                   <button
                     v-if="!task.isChannelFailure"
                     class="btn danger"
                     type="button"
-                    :disabled="busyKey === rowKey(task)"
+                    :disabled="busyKeys.has(rowKey(task))"
                     @click="markUnavailable(task)"
                   >
                     動画が消えている
