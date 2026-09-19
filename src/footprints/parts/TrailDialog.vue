@@ -16,6 +16,7 @@ import {
 } from '../chart';
 import { buildTrailMap, monthIndex } from '../map';
 import TrailMap from './TrailMap.vue';
+import { useDialogFocus } from '../useDialogFocus';
 import type { AsideItem, EventItem, Filters } from '../model';
 import type { VideoTableRow } from '@/lib/ranking';
 import type { Channel } from '@/type/api';
@@ -322,11 +323,12 @@ function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') emit('close');
 }
 
+useDialogFocus(card);
+
 onMounted(() => {
   measure();
   globalThis.addEventListener('resize', measure);
   globalThis.addEventListener('keydown', onKeydown);
-  card.value?.focus();
 });
 
 onBeforeUnmount(() => {

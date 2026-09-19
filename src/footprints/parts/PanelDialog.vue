@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, useTemplateRef } from 'vue';
 
+import { useDialogFocus } from '../useDialogFocus';
+
 /**
  * One of the side panels, shown as a dialog where there is no room beside the
  * timeline.
@@ -19,11 +21,9 @@ function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') emit('close');
 }
 
-onMounted(() => {
-  globalThis.addEventListener('keydown', onKeydown);
-  card.value?.focus();
-});
+useDialogFocus(card);
 
+onMounted(() => globalThis.addEventListener('keydown', onKeydown));
 onBeforeUnmount(() => globalThis.removeEventListener('keydown', onKeydown));
 </script>
 

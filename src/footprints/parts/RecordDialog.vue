@@ -5,6 +5,7 @@ import MemberAvatar from '@/parts/MemberAvatar.vue';
 
 import { formatDate, formatLength, formatSince, formatTime, hostOf } from '../draw';
 import { jstDay, rowAt, KIND_LABELS, VIDEO_LABELS, type EventItem } from '../model';
+import { useDialogFocus } from '../useDialogFocus';
 import type { VideoTableRow } from '@/lib/ranking';
 import type { Channel } from '@/type/api';
 
@@ -176,11 +177,9 @@ function onKeydown(event: KeyboardEvent) {
   if (event.key === 'ArrowRight' && steps.value.next !== null) emit('open', steps.value.next);
 }
 
-onMounted(() => {
-  globalThis.addEventListener('keydown', onKeydown);
-  card.value?.focus();
-});
+useDialogFocus(card);
 
+onMounted(() => globalThis.addEventListener('keydown', onKeydown));
 onBeforeUnmount(() => globalThis.removeEventListener('keydown', onKeydown));
 </script>
 
