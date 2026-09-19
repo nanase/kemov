@@ -93,6 +93,61 @@ describe('publishStream', () => {
     expect((await publishStream(env, 'nope')).status).toEqual(404);
   });
 
+  // The reads at the top of publishStream and its own batch are separate
+  // round trips, so a concurrent deleteStream can land in between - rigs
+  // env.DB.prepare to delete the stream (the same three DELETEs
+  // deleteStream itself runs) right after one of those reads resolves, the
+  // same moment a real race would land in. The batch's UPDATE still runs
+  // (SET on a gone row changes nothing) and the response still reports
+  // success from the `saved` this call already read, but no `publish`
+  // revision is logged for a stream no longer there to publish.
+  test('logs no revision for a stream deleted concurrently, between the reads and the batch', async () => {
+    const { videoId } = await createPerformableStream();
+    const realPrepare = env.DB.prepare.bind(env.DB);
+
+    const riggedDB = {
+      batch: env.DB.batch.bind(env.DB),
+      prepare: (sql: string) => {
+        const stmt = realPrepare(sql);
+
+        if (!sql.startsWith('SELECT r.entity_key, r.revision_id, r.action, r.body')) return stmt;
+
+        return {
+          bind: (...args: unknown[]) => {
+            const bound = stmt.bind(...args);
+
+            return {
+              all: async <T = unknown>() => {
+                const result = await bound.all<T>();
+
+                await env.DB.batch([
+                  env.DB.prepare('DELETE FROM genet_scene WHERE video_id = ?1').bind(videoId),
+                  env.DB.prepare('DELETE FROM genet_performance WHERE video_id = ?1').bind(videoId),
+                  env.DB.prepare('DELETE FROM genet_stream WHERE video_id = ?1').bind(videoId),
+                ]);
+
+                return result;
+              },
+              first: bound.first.bind(bound),
+              run: bound.run.bind(bound),
+              raw: bound.raw.bind(bound),
+            };
+          },
+        };
+      },
+    };
+
+    const response = await publishStream({ ...env, DB: riggedDB } as typeof env, videoId);
+    const body = (await response.json()) as { revisionId?: number };
+
+    expect(response.status).toEqual(200);
+    expect(await revisionRows('genet_stream')).toEqual([]);
+    // No revision was actually logged (the row was gone by the time the
+    // guarded INSERT ran), so revisionId must not name one that was never
+    // written - not even the last_row_id an unguarded read would still see.
+    expect(body.revisionId).toBeUndefined();
+  });
+
   test('publishes a ready stream and logs publish revisions for the stream, its tune and its person', async () => {
     const { videoId, tuneId, personId } = await createPerformableStream();
 

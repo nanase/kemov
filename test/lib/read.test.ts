@@ -3,6 +3,7 @@ import {
   readDate,
   readEach,
   readInstant,
+  readCount,
   readNumber,
   readObject,
   readOneOf,
@@ -154,5 +155,33 @@ describe('the message', () => {
   test('describes the value without repeating it', () => {
     expect(() => readNumber('secret', 'body.n')).toThrow('got a string of 6');
     expect(() => readNumber([1, 2, 3], 'body.n')).toThrow('got an array of 3');
+  });
+});
+
+// A measured value may be anything finite. A tally may not: this site adds
+// these up, and a fractional or negative one is not a small error to carry
+// into a total, it is a body that means something other than what would be
+// read from it.
+describe('readCount', () => {
+  test('takes zero and whole numbers above it', () => {
+    expect(readCount(0, 'body.n')).toEqual(0);
+    expect(readCount(4321, 'body.n')).toEqual(4321);
+  });
+
+  test('refuses a negative count', () => {
+    expect(() => readCount(-1, 'body.n')).toThrow(ShapeError);
+  });
+
+  test('refuses a fraction', () => {
+    expect(() => readCount(1.5, 'body.n')).toThrow(ShapeError);
+  });
+
+  test('refuses what readNumber refuses', () => {
+    expect(() => readCount(Number.NaN, 'body.n')).toThrow(ShapeError);
+    expect(() => readCount('12', 'body.n')).toThrow(ShapeError);
+  });
+
+  test('says what it wanted', () => {
+    expect(() => readCount(-1, 'body.n')).toThrow('a count of zero or more');
   });
 });

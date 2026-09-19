@@ -522,6 +522,10 @@ describe('handleAdminRequest routing to genet', () => {
     expect((await call('/admin/api/genet/people/not-a-number')).status).toEqual(404);
   });
 
+  test('answers 404 for a personId outside the safe integer range', async () => {
+    expect((await call('/admin/api/genet/people/99999999999999999999')).status).toEqual(404);
+  });
+
   const minimalTuneBody = {
     title: 'x',
     originalTitle: null,

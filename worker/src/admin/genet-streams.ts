@@ -538,25 +538,39 @@ export async function createStream(env: Env, body: Record<string, unknown>): Pro
 
   if ('error' in fields) return fields.error;
 
-  await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO genet_stream
-         (video_id, platform, url, video_type, title, short_title, published_at, categories, keywords, status, memo, created_via)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'draft', ?10, 'admin')`,
-    ).bind(
-      videoId,
-      fields.platform,
-      fields.url,
-      fields.videoType,
-      fields.title,
-      fields.shortTitle,
-      fields.publishedAt,
-      JSON.stringify(fields.categories),
-      JSON.stringify(fields.keywords),
-      fields.memo,
-    ),
-    ...childStatements(env, videoId, fields),
-  ]);
+  // The SELECT above and this INSERT are two round trips, not one batch, so a
+  // concurrent createStream for the same videoId can pass that same check in
+  // between: video_id is genet_stream's own primary key, so the later INSERT
+  // fails on the constraint rather than silently succeeding. Caught here and
+  // turned into the same 409 the check above already gives a slower caller,
+  // rather than surfacing as an unhandled exception.
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO genet_stream
+           (video_id, platform, url, video_type, title, short_title, published_at, categories, keywords, status, memo, created_via)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'draft', ?10, 'admin')`,
+      ).bind(
+        videoId,
+        fields.platform,
+        fields.url,
+        fields.videoType,
+        fields.title,
+        fields.shortTitle,
+        fields.publishedAt,
+        JSON.stringify(fields.categories),
+        JSON.stringify(fields.keywords),
+        fields.memo,
+      ),
+      ...childStatements(env, videoId, fields),
+    ]);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) {
+      return errorResponse(409, `stream ${videoId} already exists`);
+    }
+
+    throw error;
+  }
 
   const saved = await readStream(env, videoId);
 
@@ -616,10 +630,26 @@ export async function deleteStream(env: Env, videoId: string): Promise<Response>
     return errorResponse(409, 'withdraw this stream before deleting it');
   }
 
+  // The check above and this batch are two round trips, not one, so a
+  // concurrent publishStream can land in between and this would otherwise
+  // delete a stream that is published by the time the batch actually runs -
+  // genet_stream has no ON DELETE CASCADE, so each DELETE needs its own
+  // guard, not just the parent row's. Every statement re-checks the current
+  // status itself rather than trusting `existing`, the same way
+  // footprints-publish.ts's own publish/withdraw gate a revision INSERT on
+  // the row EXISTS finds at batch time.
   await env.DB.batch([
-    env.DB.prepare('DELETE FROM genet_scene WHERE video_id = ?1').bind(videoId),
-    env.DB.prepare('DELETE FROM genet_performance WHERE video_id = ?1').bind(videoId),
-    env.DB.prepare('DELETE FROM genet_stream WHERE video_id = ?1').bind(videoId),
+    env.DB.prepare(
+      `DELETE FROM genet_scene
+        WHERE video_id = ?1
+          AND EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1 AND status <> 'published')`,
+    ).bind(videoId),
+    env.DB.prepare(
+      `DELETE FROM genet_performance
+        WHERE video_id = ?1
+          AND EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1 AND status <> 'published')`,
+    ).bind(videoId),
+    env.DB.prepare(`DELETE FROM genet_stream WHERE video_id = ?1 AND status <> 'published'`).bind(videoId),
   ]);
 
   return jsonResponse({});
