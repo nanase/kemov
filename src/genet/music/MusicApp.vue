@@ -489,7 +489,7 @@ function snippetText(text: string): string {
             "
           >
             <option value="all">すべての年</option>
-            <option v-for="y in years" :key="y" :value="y">{{ y }} 年</option>
+            <option v-for="y in years" :key="y" :value="y">{{ y }}年</option>
           </select>
           <select
             class="pick"
@@ -595,7 +595,7 @@ function snippetText(text: string): string {
                   class="yh"
                   v-if="i === 0 || yearOf(s.stream.published_at) !== yearOf(result.streams[i - 1]!.stream.published_at)"
                 >
-                  <b>{{ yearOf(s.stream.published_at) }} 年</b>
+                  <b>{{ yearOf(s.stream.published_at) }}年</b>
                   <span>{{
                     countText(
                       result.streams.filter((x) => yearOf(x.stream.published_at) === yearOf(s.stream.published_at))
@@ -965,7 +965,7 @@ function snippetText(text: string): string {
                     </div>
 
                     <div class="sec">
-                      <div class="sech">演奏した回 {{ occurrences.length }}</div>
+                      <div class="sech">演奏した回数: {{ occurrences.length }}</div>
                       <div v-for="o in occurrences" :key="o.stream.video_id" class="orow" :class="{ cur: o.isCurrent }">
                         <span class="od">{{ publishedDateText(o.stream.published_at) }}</span>
                         <button
@@ -1031,7 +1031,7 @@ function snippetText(text: string): string {
     <template #notes>
       <li>
         掲載内容についてのお問い合わせは
-        <a href="https://github.com/nanase/kemov/issues" target="_blank" rel="noopener">issue</a> までご連絡ください
+        <a href="https://github.com/nanase/kemov/issues" target="_blank" rel="noopener">issue</a> にご連絡ください
       </li>
       <li>このサイトは非公式のファンサイトです</li>
     </template>

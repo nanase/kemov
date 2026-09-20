@@ -66,7 +66,7 @@ function onRowKeydown(event: KeyboardEvent, videoId: string) {
         <th class="r">順位</th>
         <th class="r val">{{ getPropertyName(metric) }}</th>
         <th></th>
-        <th v-if="wide">配信者</th>
+        <th v-if="wide">メンバー</th>
         <th>タイトル</th>
         <th v-if="wide" class="date">公開</th>
       </tr>

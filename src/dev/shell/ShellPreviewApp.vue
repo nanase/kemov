@@ -29,7 +29,7 @@ const PAGES: Record<PageId, PreviewPage> = {
     title: 'けもV あしあと',
     notes: [
       { text: '配信・動画の記録は 10 分ごとに更新しています' },
-      { text: 'できごとは運営やメンバーの発表をもとに記録しています' },
+      { text: 'できごとはパークスタッフさんやメンバーの発表をもとに記録しています' },
       { text: '周年と日数は、できごとに記録したデビューの日から数えています' },
       { text: '日時はすべて日本時間です' },
       NON_OFFICIAL,
@@ -56,7 +56,7 @@ const PAGES: Record<PageId, PreviewPage> = {
   },
   videos: {
     title: 'けもV 配信・動画',
-    notes: [{ text: '指標を計算できる動画のみ表示しています' }, NON_OFFICIAL],
+    notes: [{ text: '指標を計算できる動画だけ表示しています' }, NON_OFFICIAL],
     rows: [{ panels: [128] }, { layout: 'videos', panels: [990, 990] }, { panels: [360] }],
   },
   genet: {
@@ -68,7 +68,7 @@ const PAGES: Record<PageId, PreviewPage> = {
           before: '掲載内容についてのお問い合わせは ',
           label: 'issue',
           href: 'https://github.com/nanase/kemov/issues',
-          after: ' までご連絡ください',
+          after: ' にご連絡ください',
         },
       },
       NON_OFFICIAL,

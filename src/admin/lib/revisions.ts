@@ -36,7 +36,7 @@ const ENTITY_LABEL: Record<string, string> = {
 };
 
 const ACTION_LABEL: Record<string, string> = {
-  import: '収集',
+  import: '取り込み',
   publish: '公開',
   withdraw: '取り下げ',
   save: '保存',

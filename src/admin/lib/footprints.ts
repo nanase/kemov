@@ -96,14 +96,14 @@ export function fieldForSaveError(message: string): EventFieldKey | null {
 
 /** The edit panel's primary status button and whether 削除 is disabled - a published event only withdraws or gets a fresh publish; deleting one is refused (409) until it is withdrawn. */
 export interface FootprintsButtons {
-  primaryLabel: '公開にする' | '下書きに戻す';
+  primaryLabel: '公開する' | '下書きに戻す';
   deleteDisabled: boolean;
 }
 
 export function footprintsButtonsFor(status: string): FootprintsButtons {
   return status === 'published'
     ? { primaryLabel: '下書きに戻す', deleteDisabled: true }
-    : { primaryLabel: '公開にする', deleteDisabled: false };
+    : { primaryLabel: '公開する', deleteDisabled: false };
 }
 
 export interface FootprintsSource {

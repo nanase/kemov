@@ -147,7 +147,7 @@ function clearQuery() {
         </div>
       </div>
       <div class="rail">
-        <span class="tag">配信者</span>
+        <span class="tag">メンバー</span>
         <div class="chips">
           <button
             v-for="channel in channels"
@@ -170,7 +170,6 @@ function clearQuery() {
         </div>
       </div>
       <div class="shelffoot">
-        <span class="note">再生時間と配信者は行を隠すだけです。順位は種別と期間で決まります。</span>
         <button
           type="button"
           class="reset"
@@ -230,10 +229,10 @@ function clearQuery() {
             class="yearsel"
             :data-on="yearSelectValue ? '1' : '0'"
             :value="yearSelectValue"
-            aria-label="年で選ぶ"
+            aria-label="年を選ぶ"
             @change="onYearSelect"
           >
-            <option value="">年で選ぶ</option>
+            <option value="">年を選ぶ</option>
             <option v-for="y in years" :key="y.year" :value="`y${y.year}`">{{ y.name }}</option>
           </select>
         </div>
@@ -368,11 +367,6 @@ function clearQuery() {
   margin-top: 7px;
   padding-top: 6px;
   border-top: 1px solid var(--k-line-2);
-}
-
-.shelffoot .note {
-  font-size: 11px;
-  color: var(--k-text-3);
 }
 
 .reset {

@@ -165,7 +165,7 @@ const suggestions = computed<Suggestion[]>(() => {
   if (filters.value.channelIds.size > 0) {
     tries.push({
       key: 'channel',
-      label: '配信者の絞り込みを外す',
+      label: 'メンバーの絞り込みを外す',
       count: filterUniverse(universe.value, { ...filters.value, channelIds: new Set() }).rows.length,
     });
   }
@@ -455,7 +455,7 @@ onBeforeUnmount(() => {
     </div>
 
     <template #notes>
-      <li>指標を計算できる動画のみ表示しています</li>
+      <li>指標を計算できる動画だけ表示しています</li>
       <li>このサイトは非公式のファンサイトです</li>
     </template>
   </SiteShell>

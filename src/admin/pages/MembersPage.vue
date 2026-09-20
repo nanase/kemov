@@ -65,7 +65,7 @@ function back(): void {
 }
 
 function addMember(): void {
-  showToast('メンバーの追加は seed で行います');
+  showToast('メンバーの追加は seed で行なわれます');
 }
 
 async function save(): Promise<void> {

@@ -76,7 +76,7 @@ const chosenSeries = computed(() => seriesDef(series));
 const seriesItems = SERIES.map((s) => ({
   id: s.id,
   label: s.label,
-  title: s.id === 'views' ? 'その月に出した動画が、今までに集めた再生数' : undefined,
+  title: s.id === 'views' ? 'その月に公開した動画・配信の累計' : undefined,
 }));
 </script>
 
@@ -161,11 +161,11 @@ const seriesItems = SERIES.map((s) => ({
     <div class="block">
       <div class="block-head">
         <div class="lead">
-          <h3>配信時刻ヒートマップ</h3>
+          <h3>配信時間帯ヒートマップ</h3>
           <SegmentGroup
             :items="STEPS"
             :value="String(step)"
-            label="刻み"
+            label="刻み方"
             @pick="emit('step', knownId(HEAT_STEPS, Number($event), 60))"
           />
         </div>

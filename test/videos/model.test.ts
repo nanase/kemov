@@ -164,7 +164,7 @@ describe('yearsIn', () => {
 describe('periodLabel', () => {
   test.each([
     ['all', '全期間'],
-    ['p365', '1 年'],
+    ['p365', '直近 1 年'],
     ['p90', '90 日'],
     ['p30', '30 日'],
   ] as const)('%s reads as %s', (period, label) => {

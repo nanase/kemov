@@ -157,9 +157,9 @@ describe('emptyFormFields', () => {
 });
 
 describe('footprintsButtonsFor', () => {
-  test('a draft or review event offers 公開にする, with 削除 enabled', () => {
-    expect(footprintsButtonsFor('draft')).toEqual({ primaryLabel: '公開にする', deleteDisabled: false });
-    expect(footprintsButtonsFor('review')).toEqual({ primaryLabel: '公開にする', deleteDisabled: false });
+  test('a draft or review event offers 公開する, with 削除 enabled', () => {
+    expect(footprintsButtonsFor('draft')).toEqual({ primaryLabel: '公開する', deleteDisabled: false });
+    expect(footprintsButtonsFor('review')).toEqual({ primaryLabel: '公開する', deleteDisabled: false });
   });
 
   test('a published event offers 下書きに戻す, with 削除 disabled', () => {

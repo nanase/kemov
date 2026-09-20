@@ -315,10 +315,10 @@ onBeforeUnmount(() => {
 <template>
   <div class="mv-panel">
     <div class="mv-head">
-      <b>配信時間帯のヒートマップ</b>
+      <b>配信時間帯ヒートマップ</b>
       <span class="mv-grow"></span>
-      <span>解像度</span>
-      <SegmentGroup :items="stepItems" :value="String(step)" label="解像度" @pick="emit('step', Number($event))" />
+      <span>刻み方</span>
+      <SegmentGroup :items="stepItems" :value="String(step)" label="刻み方" @pick="emit('step', Number($event))" />
     </div>
     <div class="mv-read mv-n">
       <template v-if="readout">
