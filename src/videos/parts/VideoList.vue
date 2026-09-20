@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { withCommas } from '@nanase/alnilam/number';
+import { formatCount } from '@/lib/numberFormat';
 
 import type { Channel } from '@/type/api';
 import { formatDate } from '@/lib/timeFormat';
@@ -83,7 +83,7 @@ function onRowKeydown(event: KeyboardEvent, videoId: string) {
       >
         <td class="rank">
           <span class="mark" aria-hidden="true"></span>
-          {{ withCommas(entry.rank) }}
+          {{ formatCount(entry.rank) }}
         </td>
         <td class="val">
           <div class="num">{{ formatProperty(metric, entry.value) }}</div>
@@ -116,11 +116,11 @@ function onRowKeydown(event: KeyboardEvent, videoId: string) {
   </table>
 
   <button v-if="remainingCount > 0" type="button" class="more" @click="emit('more')">
-    もっと見る（残り {{ withCommas(remainingCount) }} 本）
+    もっと見る（残り {{ formatCount(remainingCount) }} 本）
   </button>
 
   <button v-if="pinned" type="button" class="pinned" @click="emit('select', selectedId!)">
-    <span class="rk">{{ pinned.rank === null ? '選択中 —' : `選択中 ${withCommas(pinned.rank)} 位` }}</span>
+    <span class="rk">{{ pinned.rank === null ? '選択中 —' : `選択中 ${formatCount(pinned.rank)} 位` }}</span>
     <span class="tx">{{ pinned.title }}{{ pinned.rank === null ? '（この指標では順位が付きません）' : '' }}</span>
   </button>
 </template>

@@ -25,7 +25,6 @@
   },
   "resolutions": {
     "vue": "^3",
-    "vuetify": "^3",
     "dayjs": "^1"
   },
   "dependencies": {
@@ -38,7 +37,6 @@
     "@cloudflare/vitest-plugin": "^1.1.11",
     "@cloudflare/workers-types": "^5.20260910.1",
     "@eslint/js": "^10.0.1",
-    "@mdi/font": "^7.4.47",
     "@nanase/alnilam": "github:nanase/alnilam#2c6e072cdb4b6124d98484de033238e46710a502",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.20.2",
@@ -55,7 +53,6 @@
     "eslint-plugin-vue": "^10.11.0",
     "floating-vue": "^5.4.0",
     "marked": "^15.0.12",
-    "pinia": "^3.0.4",
     "playwright": "^1.63.0",
     "postcss": "^8.5.28",
     "postcss-html": "^2.0.0",
@@ -73,7 +70,6 @@
     "vitest": "^4.1.11",
     "vue-router": "^4.6.4",
     "vue-tsc": "^3.3.11",
-    "vuetify": "^3.13.4",
     "wrangler": "^4.131.0"
   }
 }

@@ -1,12 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import {
-  LEGACY_VUETIFY_THEME_KEY,
-  THEME_STORAGE_KEY,
-  nextThemeSetting,
-  parseThemeSetting,
-  type ThemeSetting,
-} from './theme';
+import { THEME_STORAGE_KEY, nextThemeSetting, parseThemeSetting, type ThemeSetting } from './theme';
 
 // head.html has already applied any stored setting to <html> before this
 // mounts, so the attribute is the one source to start from.
@@ -38,11 +32,8 @@ function cycle() {
   try {
     if (next === 'system') {
       localStorage.removeItem(THEME_STORAGE_KEY);
-      // Bridge to the older pages - see LEGACY_VUETIFY_THEME_KEY's own comment.
-      localStorage.removeItem(LEGACY_VUETIFY_THEME_KEY);
     } else {
       localStorage.setItem(THEME_STORAGE_KEY, next);
-      localStorage.setItem(LEGACY_VUETIFY_THEME_KEY, next);
     }
   } catch {
     // Without storage the choice lasts until the page is left.

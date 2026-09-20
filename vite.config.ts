@@ -161,8 +161,9 @@ export default defineConfig({
         footprints: resolve(srcDir, 'index.html'),
         stats: resolve(srcDir, 'stats', 'index.html'),
         members: resolve(srcDir, 'members', 'index.html'),
+        // Only sends readers of the old member page's addresses on. Its
+        // index.html says when it can go (#144).
         statsDetail: resolve(srcDir, 'stats', 'detail', 'index.html'),
-        statsRanking: resolve(srcDir, 'stats', 'ranking', 'index.html'),
         genetMusic: resolve(srcDir, 'genet', 'music', 'index.html'),
         admin: resolve(srcDir, 'admin', 'index.html'),
         videos: resolve(srcDir, 'videos', 'index.html'),

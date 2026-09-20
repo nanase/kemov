@@ -1,47 +1,55 @@
 <!doctype html>
+<!--
+  The old member page's address, kept only to send readers on (#144).
+
+  Links to `/stats/detail/#/<channel id>` were shared and bookmarked. The
+  member is in the fragment, which a request never carries, so the worker
+  cannot redirect these and this page does it in the browser instead.
+
+  Remove after 2027-09-30, a year after the redirects went in: by then a link
+  nobody has opened in a year is not worth a page. To remove it, delete this
+  directory and its `statsDetail` entry in vite.config.ts, and in the same
+  change add `'/stats/detail/': '/members/'` to LANDING in
+  worker/src/lib/site.ts. The file has to go and the rule has to come in
+  together: with only the rule the file still answers first, and with only the
+  deletion the address is a 404.
+-->
 <html lang="ja">
   <head>
-    <load
-      src="../../header.html"
-      title="けもV いろいろ統計"
-      description="けもVの配信についてのいろいろな統計を閲覧できる非公式ファンサイトです。"
-      page-id="stats/detail"
-    />
-    <link rel="manifest" href="/stats/manifest.json" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>移動しています - けもVファンサイト</title>
+    <style>
+      /*
+       * Only the background, so the page does not flash white on its way out.
+       * The values repeat --k-bg from src/shell/tokens.css;
+       * test/stats/detail/destination.test.ts keeps them the same.
+       */
+      html {
+        background-color: #e9eeec;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        html {
+          background-color: #0e0f10;
+        }
+      }
+
+      body {
+        font-family: sans-serif;
+        margin: 2rem 1rem;
+        text-align: center;
+      }
+    </style>
   </head>
 
   <body>
-    <div id="app"></div>
+    <p>このページは移動しました。切り替わらないときは、<a href="/members/">メンバーのページ</a>を開いてください。</p>
     <script type="module">
-      import { createApp } from 'vue';
-      import router from './router';
+      import { destinationOf } from './destination';
 
-      import 'vuetify/styles';
-      import '@mdi/font/css/materialdesignicons.css';
-      import { createVuetify } from 'vuetify';
-      import { theme } from './theme';
-      import colors from 'vuetify/lib/util/colors';
-      import * as components from 'vuetify/components';
-      import * as directives from 'vuetify/directives';
-      import { createPinia } from 'pinia';
-
-      import DetailApp from './DetailApp.vue';
-      import '../main.scss';
-
-      const vuetify = createVuetify({
-        components,
-        directives,
-        icons: {
-          defaultSet: 'mdi',
-        },
-        theme,
-      });
-      const app = createApp(DetailApp);
-      const pinia = createPinia();
-      app.use(router);
-      app.use(vuetify);
-      app.use(pinia);
-      app.mount('#app');
+      location.replace(destinationOf(location.hash));
     </script>
   </body>
 </html>

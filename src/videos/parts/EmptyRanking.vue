@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { withCommas } from '@nanase/alnilam/number';
+import { formatCount } from '@/lib/numberFormat';
 
 import type { RankingPeriod } from '@/lib/ranking';
 import type { VideoType } from '@/type/api';
@@ -62,7 +62,7 @@ const firstZeroKey = () => steps.find((s) => s.count === 0)?.key ?? null;
         class="way"
         @click="emit('pickAlternative', { kind: a.kind, period: a.period })"
       >
-        {{ a.label }}（{{ withCommas(a.count) }} 本）
+        {{ a.label }}（{{ formatCount(a.count) }} 本）
       </button>
       <div v-if="alternatives.length === 0" class="b">この指標は、ほかの種別・期間でも 0 本です。</div>
     </div>
@@ -76,12 +76,12 @@ const firstZeroKey = () => steps.find((s) => s.count === 0)?.key ?? null;
           >{{ step.words[0] }}<em>{{ step.words[1] }}</em
           >{{ step.words[2] }}</span
         >
-        <span class="num">{{ withCommas(step.count) }} 本</span>
+        <span class="num">{{ formatCount(step.count) }} 本</span>
       </div>
     </div>
     <div class="ways">
       <button v-for="s in suggestions" :key="s.key" type="button" class="way" @click="emit('drop', s.key)">
-        {{ s.label }}（{{ withCommas(s.count) }} 本）
+        {{ s.label }}（{{ formatCount(s.count) }} 本）
       </button>
     </div>
   </div>

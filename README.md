@@ -97,7 +97,7 @@ bunx playwright install chromium
 Then, with the pages served by `bun run preview` (port 4173) or `bun run dev` (port 5173):
 
 ```sh
-bun run screenshot screenshots stats=http://localhost:4173/stats/ ranking=http://localhost:4173/stats/ranking/
+bun run screenshot screenshots stats=http://localhost:4173/stats/ videos=http://localhost:4173/videos/
 ```
 
 Each `<name>=<url>` pair becomes `screenshots/<name>-<light|dark>-<390|768|1280>.png`, one file per width and colour scheme. `screenshots/` is gitignored: nothing this script writes is committed.
