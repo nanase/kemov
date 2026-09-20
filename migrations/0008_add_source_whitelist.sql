@@ -27,8 +27,8 @@ CREATE TABLE source_whitelist (
 -- The 13 entries the constant held, decided by the project owner on
 -- 2026-09-15 (#141) and confirmed against the source each one names at that
 -- time, in the constant's own order. Nothing added, nothing dropped. `note`
--- carries the category the constant's comments grouped them under, which is
--- the only record of why each is here.
+-- carries the category the constant's comments grouped them under, so the
+-- grouping survives the move.
 INSERT INTO source_whitelist (prefix, note) VALUES
   ('https://kemov-project.com/', '公式'),
   ('https://www.kemov-project.com/', '公式'),
