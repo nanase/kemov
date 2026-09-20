@@ -299,6 +299,10 @@ function withStatus(saved: GenetStream, status: string): GenetStream {
  * whose working row no longer matches its own latest revision - a tune or
  * person has no `status` of its own, so "has a revision at all" stands in
  * for "is currently live" the way `status = 'published'` does for a stream.
+ *
+ * `shapeOutdated`: the stored JSON is in an older shape than this code builds
+ * (`shapeIsOutdated`), so "いま公開する" would build it again even when
+ * nothing above is waiting.
  */
 export async function pendingGenetMusic(env: Env): Promise<Response> {
   const [lastRevisionId, streamRevisions, tuneRevisions, personRevisions] = await Promise.all([
@@ -388,7 +392,9 @@ export async function pendingGenetMusic(env: Env): Promise<Response> {
     if (current !== publishedBody) changed.push({ entity: 'genet_person', key: String(personId), title: person.name });
   }
 
-  return jsonResponse({ pending, changed });
+  const shapeOutdated = await shapeIsOutdated(env, newestRevisionIdOf(streamRevisions, tuneRevisions, personRevisions));
+
+  return jsonResponse({ pending, changed, shapeOutdated });
 }
 
 interface PublicStream {
@@ -445,6 +451,28 @@ async function storedShapeVersion(env: Env): Promise<number> {
   } catch {
     return 1;
   }
+}
+
+/** The newest `revision_id` across every row given, or 0 when there is none. */
+function newestRevisionIdOf(...lists: readonly LatestRevisionRow[][]): number {
+  return lists.flat().reduce((max, row) => Math.max(max, row.revision_id), 0);
+}
+
+/**
+ * Whether the stored JSON is in an older shape than this code builds, so that
+ * a run should build it again with no revision newer than the last one.
+ *
+ * `publishGenetMusicNow` decides to build with this, and `pendingGenetMusic`
+ * reports it to the admin screen so that the screen lets the run be asked for.
+ * The two must never disagree - a screen that refuses what the run would do
+ * leaves an older JSON in place with no way to replace it - so both call this
+ * one function.
+ *
+ * With no revision at all there is nothing to build from, so that is not "an
+ * older shape": the publication row a run writes could not name a revision.
+ */
+async function shapeIsOutdated(env: Env, newestRevisionId: number): Promise<boolean> {
+  return newestRevisionId > 0 && (await storedShapeVersion(env)) < GENET_MUSIC_SHAPE_VERSION;
 }
 
 /**
@@ -525,16 +553,10 @@ export async function publishGenetMusicNow(env: Env, now: Date): Promise<Respons
     latestRevisions(env, 'genet_person'),
   ]);
 
-  const newestRevisionId = [...streamRevisions, ...tuneRevisions, ...personRevisions].reduce(
-    (max, row) => Math.max(max, row.revision_id),
-    0,
-  );
-
-  // With no revision at all there is nothing to build from, so that is not
-  // "an older shape": the publication row below could not name a revision.
+  const newestRevisionId = newestRevisionIdOf(streamRevisions, tuneRevisions, personRevisions);
   const nothingNewer = newestRevisionId <= lastRevisionId;
 
-  if (nothingNewer && (newestRevisionId === 0 || (await storedShapeVersion(env)) >= GENET_MUSIC_SHAPE_VERSION)) {
+  if (nothingNewer && !(await shapeIsOutdated(env, newestRevisionId))) {
     return jsonResponse({ published: false });
   }
 

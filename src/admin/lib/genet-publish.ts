@@ -20,6 +20,30 @@ export interface ChangedGenetEntry {
   title: string;
 }
 
+/** `GET /admin/api/genet/pending`'s response. */
+export interface GenetPendingResponse {
+  pending: PendingGenetEntry[];
+  changed: ChangedGenetEntry[];
+  /** The stored JSON is in an older shape, so a run builds it again with nothing else waiting. */
+  shapeOutdated?: boolean;
+}
+
+/**
+ * Whether "いま公開する" can be pressed: something is waiting or changed, or the
+ * stored JSON is in an older shape. The worker builds again in exactly these
+ * cases (`publishGenetMusicNow`), so the button must not be stricter than it.
+ * Without the last one, a change of shape could not reach the public JSON
+ * until somebody edited a row.
+ */
+export function canPublishGenet(state: GenetPendingResponse): boolean {
+  return state.pending.length > 0 || state.changed.length > 0 || state.shapeOutdated === true;
+}
+
+/** Whether the only reason to publish is the shape, so the screen can say so. */
+export function publishesOnlyForShape(state: GenetPendingResponse): boolean {
+  return state.pending.length === 0 && state.changed.length === 0 && state.shapeOutdated === true;
+}
+
 export interface GenetPublishResult {
   published: boolean;
   publicationId?: number;
