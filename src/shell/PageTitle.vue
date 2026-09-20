@@ -6,6 +6,7 @@ defineProps<{
 
 <template>
   <div class="page-title">
+    <slot name="icon"></slot>
     <h1>{{ title }}</h1>
     <span class="grow"></span>
     <span class="aside">
