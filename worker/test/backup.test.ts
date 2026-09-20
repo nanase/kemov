@@ -314,6 +314,58 @@ describe('runBackup', () => {
     expect(await rowsOf('video', 'video_id')).toEqual(before);
   });
 
+  // A restore applies the migrations before the files, and migration 0008
+  // seeds the original entries. `seeded` stands in for one of them: a prefix
+  // somebody removed before the backup, which the file therefore does not
+  // name and which must not come back with the migration.
+  describe('restoring source_whitelist', () => {
+    const restoreFile = async (): Promise<void> => {
+      const sql = await (await env.BACKUP.get(backupKey('source_whitelist', '2026-09-08')))!.text();
+
+      await clearEverything();
+      await env.DB.prepare(
+        "INSERT INTO source_whitelist (prefix, note) VALUES ('https://seeded.example/', 'seed')",
+      ).run();
+      await applyFile(sql);
+    };
+
+    test('does not bring back a seeded entry that was removed before the backup', async () => {
+      await seed();
+      await runBackup(env, new Date('2026-09-08T00:20:00Z'));
+
+      await restoreFile();
+
+      expect((await rowsOf('source_whitelist', 'prefix')).map((row) => (row as { prefix: string }).prefix)).toEqual([
+        'https://partner.example/',
+      ]);
+    });
+
+    // "Everything was removed" has to make the round trip as well.
+    test('restores an emptied list as empty', async () => {
+      await seed();
+      await env.DB.prepare('DELETE FROM source_whitelist').run();
+      await runBackup(env, new Date('2026-09-08T00:20:00Z'));
+
+      await restoreFile();
+
+      expect(await rowsOf('source_whitelist', 'prefix')).toEqual([]);
+    });
+
+    test('applying the file twice leaves the same list', async () => {
+      await seed();
+      await runBackup(env, new Date('2026-09-08T00:20:00Z'));
+
+      await restoreFile();
+
+      const sql = await (await env.BACKUP.get(backupKey('source_whitelist', '2026-09-08')))!.text();
+      const once = await rowsOf('source_whitelist', 'prefix');
+
+      await applyFile(sql);
+
+      expect(await rowsOf('source_whitelist', 'prefix')).toEqual(once);
+    });
+  });
+
   // Today is still being written to. A day's file is written once and never
   // revisited, so writing today's would freeze a partial day for good.
   test('does not write the day that is still running', async () => {
@@ -585,6 +637,57 @@ describe('toSql', () => {
 
   test('writes no statement for a table with no rows', () => {
     expect(statementsOf(toSql(video, [], 'note'))).toEqual([]);
+  });
+
+  describe('for a table that replaces', () => {
+    const whitelist = BACKED_UP_TABLES.find((table) => table.name === 'source_whitelist')!;
+    const row = {
+      prefix: 'https://a.example/',
+      note: null,
+      created_at: '2026-09-15T00:00:00Z',
+      updated_at: '2026-09-15T00:00:00Z',
+    };
+
+    test('empties the table before the INSERT that fills it', () => {
+      const [first, second] = statementsOf(toSql(whitelist, [row], 'note'));
+
+      expect(first).toEqual('DELETE FROM source_whitelist');
+      expect(second).toMatch(/^INSERT INTO source_whitelist /);
+    });
+
+    // "Everything was removed" is a state, and a file with no statement would
+    // leave a restore keeping what the migrations seeded.
+    test('still empties it when there are no rows', () => {
+      expect(statementsOf(toSql(whitelist, [], 'note'))).toEqual(['DELETE FROM source_whitelist']);
+    });
+
+    test('empties it once, ahead of every INSERT when the rows split across statements', () => {
+      const statements = statementsOf(
+        toSql(
+          whitelist,
+          Array.from({ length: ROWS_PER_STATEMENT + 1 }, (_, index) => ({
+            ...row,
+            prefix: `https://a${index}.example/`,
+          })),
+          'note',
+        ),
+      );
+
+      expect(statements.map((statement) => statement.split(' ')[0])).toEqual(['DELETE', 'INSERT', 'INSERT']);
+    });
+
+    test('says in its header that it replaces', () => {
+      expect(toSql(whitelist, [row], 'note')).toContain('REPLACES source_whitelist');
+    });
+
+    test('adds nothing for a table that does not', () => {
+      expect(toSql(video, [videoRow(1, 10)], 'note')).not.toContain('DELETE');
+    });
+
+    // A day file of a table that gains rows would delete every other day's.
+    test('is set on no table that is backed up a day at a time', () => {
+      expect(BACKED_UP_TABLES.filter((table) => table.replace === true && table.dayColumn !== undefined)).toEqual([]);
+    });
   });
 });
 

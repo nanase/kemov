@@ -490,7 +490,7 @@ for f in migrations/*.sql; do
 done
 ```
 
-Step 1 also seeds `source_whitelist` with the 13 entries migration `0008` carries, and the backup file for that table only adds rows: an entry somebody removed after that is back once both are applied. Remove it again from the admin site.
+Step 1 also seeds `source_whitelist` with the 13 entries migration `0008` carries. Its backup file is different from the others: it starts with `DELETE FROM source_whitelist;`, so applying it leaves exactly the list that was backed up, and an entry somebody had removed does not come back with the seed. For the same reason, apply only the newest file of that table, not several in turn — the last one applied is the list you get. Only tables whose rows are one set as a whole are written this way (`replace` in `TableShape`); a table that accumulates records must not be, since it would throw away whatever was written after the backup.
 
 **2. Fetch a file and apply it, `channel` first.** `video` and `channel_snapshot` both carry a foreign key to `channel`, and the schema refuses a row whose channel is not there yet. Then `video`, then every `channel_snapshot` day. Each file repeats this in its own header, so a file found on its own is enough.
 

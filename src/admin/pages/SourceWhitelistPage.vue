@@ -32,6 +32,9 @@ const addError = ref<string | null>(null);
 // One row's note as typed, kept apart from `entries` so that saving another
 // row does not throw away a note somebody is still writing.
 const drafts = reactive<Record<string, string>>({});
+// Both the add form's inputs and a row's note input are disabled while their
+// own request is in flight: a successful answer clears or replaces what the
+// input holds, which would otherwise throw away what was typed meanwhile.
 const busyPrefixes = ref<Set<string>>(new Set());
 // The row whose 削除 was pressed once. Only one at a time: pressing another
 // row's 削除 moves the question there.
@@ -151,6 +154,7 @@ onMounted(load);
                   type="text"
                   autocomplete="off"
                   placeholder="https://"
+                  :disabled="adding"
                   :aria-invalid="addError !== null"
                 />
               </div>
@@ -162,6 +166,7 @@ onMounted(load);
                   type="text"
                   autocomplete="off"
                   placeholder="承認理由（例: 提携先の発表）"
+                  :disabled="adding"
                 />
               </div>
             </div>
@@ -202,6 +207,7 @@ onMounted(load);
                       v-model="drafts[entry.prefix]"
                       type="text"
                       autocomplete="off"
+                      :disabled="busyPrefixes.has(entry.prefix)"
                       :aria-label="`${entry.prefix} のメモ`"
                     />
                   </td>
