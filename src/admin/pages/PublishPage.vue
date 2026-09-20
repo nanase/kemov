@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import {
+  canPublishGenet,
   entityLabel,
+  publishesOnlyForShape,
   type ChangedGenetEntry,
+  type GenetPendingResponse,
   type GenetPublishResult,
   type PendingGenetEntry,
 } from '../lib/genet-publish';
@@ -35,9 +38,16 @@ const publishing = ref(false);
 
 const genetPending = ref<PendingGenetEntry[]>([]);
 const genetChanged = ref<ChangedGenetEntry[]>([]);
+const genetShapeOutdated = ref(false);
 const genetLoading = ref(false);
 const genetLoadError = ref<string | null>(null);
 const genetPublishing = ref(false);
+
+const genetState = computed<GenetPendingResponse>(() => ({
+  pending: genetPending.value,
+  changed: genetChanged.value,
+  shapeOutdated: genetShapeOutdated.value,
+}));
 
 async function load(): Promise<void> {
   loading.value = true;
@@ -82,10 +92,11 @@ async function loadGenet(): Promise<void> {
   genetLoadError.value = null;
 
   try {
-    const body = await getJson<{ pending: PendingGenetEntry[]; changed: ChangedGenetEntry[] }>('/genet/pending');
+    const body = await getJson<GenetPendingResponse>('/genet/pending');
 
     genetPending.value = body.pending;
     genetChanged.value = body.changed;
+    genetShapeOutdated.value = body.shapeOutdated === true;
   } catch (error) {
     genetLoadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
@@ -181,11 +192,14 @@ onMounted(async () => {
                 </li>
               </ul>
             </div>
+            <div v-if="publishesOnlyForShape(genetState)" class="hint">
+              公開中のデータは古い形のままです。押すと新しい形で作り直します（中身は変わりません）。
+            </div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap">
               <button
                 class="btn primary"
                 type="button"
-                :disabled="genetPublishing || genetLoading || (genetPending.length === 0 && genetChanged.length === 0)"
+                :disabled="genetPublishing || genetLoading || !canPublishGenet(genetState)"
                 @click="publishGenetNow"
               >
                 ジェネット楽曲一覧をいま公開する

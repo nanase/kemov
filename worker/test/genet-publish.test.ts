@@ -798,5 +798,74 @@ describe('publishGenetMusicNow: channel_id and shape_version', () => {
 
       expect(await response.json()).toEqual({ published: false });
     });
+
+    describe('reported by pendingGenetMusic', () => {
+      async function pending(): Promise<{ pending: unknown[]; changed: unknown[]; shapeOutdated: boolean }> {
+        return (await pendingGenetMusic(env).then((r) => r.json())) as never;
+      }
+
+      // The screen enables "いま公開する" from this value, so it has to say
+      // yes exactly when a run would build again: each state below is
+      // checked both ways.
+      const OLD_SHAPES: [string, () => Promise<unknown>][] = [
+        [
+          'a JSON with no shape_version',
+          () =>
+            env.PUBLIC_DATA.put(
+              'genet/music.json',
+              JSON.stringify({ published_at: 'x', streams: [], tunes: [], people: [] }),
+            ),
+        ],
+        [
+          'a JSON that names version 1',
+          () =>
+            env.PUBLIC_DATA.put(
+              'genet/music.json',
+              JSON.stringify({ shape_version: 1, published_at: 'x', streams: [], tunes: [], people: [] }),
+            ),
+        ],
+        ['a JSON that cannot be read', () => env.PUBLIC_DATA.put('genet/music.json', 'not json {')],
+        ['no stored JSON at all', () => env.PUBLIC_DATA.delete('genet/music.json')],
+      ];
+
+      test('is false when the stored JSON has the current shape', async () => {
+        await publishOneStream();
+
+        expect(await pending()).toEqual({ pending: [], changed: [], shapeOutdated: false });
+      });
+
+      test.each(OLD_SHAPES)('is true, with nothing else waiting, for %s', async (_name, arrange) => {
+        await publishOneStream();
+        await arrange();
+
+        expect(await pending()).toEqual({ pending: [], changed: [], shapeOutdated: true });
+      });
+
+      test.each(OLD_SHAPES)('agrees with what a run does, for %s', async (_name, arrange) => {
+        await publishOneStream();
+        await arrange();
+
+        const { shapeOutdated } = await pending();
+        const response = await publishGenetMusicNow(env, NOW);
+
+        expect(((await response.json()) as { published: boolean }).published).toEqual(shapeOutdated);
+      });
+
+      test('agrees with what a run does when the shape is current', async () => {
+        await publishOneStream();
+
+        const { shapeOutdated } = await pending();
+        const response = await publishGenetMusicNow(env, NOW);
+
+        expect(((await response.json()) as { published: boolean }).published).toEqual(shapeOutdated);
+      });
+
+      test('is false when there is no revision at all, whatever is stored', async () => {
+        await env.PUBLIC_DATA.put('genet/music.json', JSON.stringify({ streams: [], tunes: [], people: [] }));
+
+        expect((await pending()).shapeOutdated).toBe(false);
+        expect(await (await publishGenetMusicNow(env, NOW)).json()).toEqual({ published: false });
+      });
+    });
   });
 });
