@@ -18,6 +18,17 @@
  *
  * `/genet/` has exactly one page beneath it, so there is nothing to choose.
  *
+ * `/stats/ranking/` was the old ranking page's address (#144). The videos page
+ * replaced it and the page's file is no longer built, so the worker is woken
+ * for it and sends the reader on. The file has to stay gone for this to work:
+ * Cloudflare answers from a built file before it asks the worker, so a file
+ * left in the build would leave this rule dead.
+ *
+ * `/stats/detail/` is not here. Its old addresses carried the channel in the
+ * fragment (`#/<id>`), which a request never sends, so no rule here could pick
+ * the member's page. A small page of its own reads the fragment in the browser
+ * instead (`src/stats/detail/index.html`).
+ *
  * `/` used to be here, sending the site root to the statistics page. It has its
  * own page now - the footprints page is the site's top page (#140) and builds
  * to `index.html` at the root - so Cloudflare serves it from the file and the
@@ -32,6 +43,7 @@
 const LANDING: Readonly<Record<string, string>> = {
   '/genet': '/genet/music/',
   '/genet/': '/genet/music/',
+  '/stats/ranking/': '/videos/',
 };
 
 /**
