@@ -13,6 +13,12 @@ import { listMembers, updateMember } from './members';
 import { listPublications } from './publications';
 import { getRevision, listRevisions, readRevisionId } from './revisions';
 import { listSnapshots } from './snapshots';
+import {
+  addSourceWhitelist,
+  deleteSourceWhitelist,
+  listSourceWhitelist,
+  updateSourceWhitelist,
+} from './source-whitelist';
 import { deleteSnapshotExclusion, listSnapshotExclusions, saveSnapshotExclusion } from './snapshot-exclusions';
 import { deleteVideoOverride, listVideoOverrides, saveVideoOverride } from './video-overrides';
 import { listVideos } from './videos';
@@ -318,6 +324,31 @@ export async function handleAdminRequest(
       searchParams.get('to'),
       instant,
     );
+  }
+
+  if (segments.length === 3 && name === 'source-whitelist') {
+    if (request.method === 'POST') {
+      const body = await readJsonObject(request);
+
+      return 'error' in body ? body.error : await addSourceWhitelist(env, body.value);
+    }
+
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET, POST');
+
+    return await listSourceWhitelist(env);
+  }
+
+  // The prefix is a URL, so it arrives percent-encoded in one segment and
+  // `id` is it decoded - the same reading snapshot-exclusions gives a
+  // fetched_at.
+  if (segments.length === 4 && name === 'source-whitelist' && id !== undefined) {
+    if (request.method === 'DELETE') return await deleteSourceWhitelist(env, id);
+
+    if (request.method !== 'PUT') return methodNotAllowed(request, 'PUT, DELETE');
+
+    const body = await readJsonObject(request);
+
+    return 'error' in body ? body.error : await updateSourceWhitelist(env, id, body.value);
   }
 
   if (segments.length === 3 && name === 'collect-tasks') {

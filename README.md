@@ -227,7 +227,22 @@ A PUT replaces every column at once rather than patching one: a column its endpo
 
 `GET /admin/api/footprints/events` takes `status` and `q` (a substring of `title`) as query parameters, narrowing the list.
 
-An event passes through a publish gate rather than taking effect on save, the same as the table above already draws the line for `footprints_event` and `genet_stream`. Creating, updating and deleting an event logs no `revision` at all; only `publish` and `withdraw` do, in the same `db.batch` as the `status` change. `POST .../publish` refuses with 400 and every failing condition together when the event is not ready — an empty `title`, `sourcePending: false` with no source in the whitelist (`worker/src/lib/source-whitelist.ts`), or a `videoId` that is not 11 characters. Publishing an already-published event is allowed, and is how an event `GET .../pending` reports as changed gets a fresh `publish` revision matching its current row.
+An event passes through a publish gate rather than taking effect on save, the same as the table above already draws the line for `footprints_event` and `genet_stream`. Creating, updating and deleting an event logs no `revision` at all; only `publish` and `withdraw` do, in the same `db.batch` as the `status` change. `POST .../publish` refuses with 400 and every failing condition together when the event is not ready — an empty `title`, `sourcePending: false` with no source that counts (see [The Source Whitelist](#the-source-whitelist) below), or a `videoId` that is not 11 characters. Publishing an already-published event is allowed, and is how an event `GET .../pending` reports as changed gets a fresh `publish` revision matching its current row.
+
+### The Source Whitelist
+
+`sourcePending: false` needs either one source on the whitelist, or sources on two different hosts. The whitelist is the URL prefixes of a source strong enough to stand alone — the project's own domains and accounts, partners' announcements, an event's organizer, two fan wikis. It is the `source_whitelist` table (`migrations/0008_add_source_whitelist.sql`, #175), seeded with the 13 entries the code once held as a constant, and read by `worker/src/lib/source-whitelist.ts` on every publish. The check itself, `isWhitelistedSource`, is a prefix match with a boundary check on what follows it, so `https://x.com/KEMOVP_staff_fake` does not count as `https://x.com/KEMOVP_staff`; it takes the list as an argument, and nothing else decides what counts.
+
+Two sources on different hosts are enough without either being listed: two URLs on the same host, such as two YouTube videos, only repeat one another. A host is what `new URL(url).hostname` reads, so `x.com` and `twitter.com` are two hosts.
+
+| Method | Path                                   | Answers with                                                  |
+| ------ | -------------------------------------- | ------------------------------------------------------------- |
+| GET    | `/admin/api/source-whitelist`          | Every entry, in the order it was added                        |
+| POST   | `/admin/api/source-whitelist`          | The entry after adding it - 409 if the prefix is on it        |
+| PUT    | `/admin/api/source-whitelist/<prefix>` | The entry after changing its `note`, the only editable column |
+| DELETE | `/admin/api/source-whitelist/<prefix>` | `{}`                                                          |
+
+`<prefix>` is the URL, percent-encoded into one path segment. Saving takes effect at once and logs no `revision`: the list is a setting of the publish gate, not something published. Removing an entry changes what the next publish accepts and nothing already published — an event that is live stays live, and one whose only source that entry covered is refused when somebody next publishes it. Nothing refuses a removal because an event still uses the entry.
 
 `POST /admin/api/footprints/publish` builds `footprints/events.json` from the latest `revision` of every event whose latest action is not `withdraw`, writes it to `PUBLIC_DATA`, and appends one `publication` row recording the newest `revision_id` it saw. Nothing is written when there is nothing newer than the last run.
 
@@ -475,6 +490,8 @@ for f in migrations/*.sql; do
 done
 ```
 
+Step 1 also seeds `source_whitelist` with the 13 entries migration `0008` carries, and the backup file for that table only adds rows: an entry somebody removed after that is back once both are applied. Remove it again from the admin site.
+
 **2. Fetch a file and apply it, `channel` first.** `video` and `channel_snapshot` both carry a foreign key to `channel`, and the schema refuses a row whose channel is not there yet. Then `video`, then every `channel_snapshot` day. Each file repeats this in its own header, so a file found on its own is enough.
 
 ```sh
@@ -513,6 +530,7 @@ DELETE FROM genet_person;
 DELETE FROM footprints_event_source;
 DELETE FROM footprints_event_member;
 DELETE FROM footprints_event;
+DELETE FROM source_whitelist;
 DELETE FROM channel_snapshot_exclusion;
 DELETE FROM video_override;
 DELETE FROM publication;
@@ -545,10 +563,10 @@ Applying the files directly, as step 1 does, leaves `d1_migrations` empty. That 
 
 **Prefix-specific lifecycle rules are set on `kemov-backup`, in addition to its existing Default Multipart Abort Rule, because one rule covering the whole bucket would be wrong.**
 
-| Prefix                                                                                                                                                                                                                                                                                                                                                                                | Retention    | Why                                                                                                                                  |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `video/`                                                                                                                                                                                                                                                                                                                                                                              | 30 days      | Each file is a complete copy, collected fresh from the YouTube API. The newest one is all that is needed; older ones are duplicates. |
-| `channel/`, `channel_snapshot/`, `channel_snapshot_exclusion/`, `video_override/`, `footprints_event/`, `footprints_event_member/`, `footprints_event_source/`, `genet_person/`, `genet_tune/`, `genet_tune_attribute/`, `genet_tune_attribute_person/`, `genet_tune_video/`, `genet_tune_score/`, `genet_stream/`, `genet_performance/`, `genet_scene/`, `revision/`, `publication/` | **365 days** | See below.                                                                                                                           |
+| Prefix                                                                                                                                                                                                                                                                                                                                                                                                     | Retention    | Why                                                                                                                                  |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `video/`                                                                                                                                                                                                                                                                                                                                                                                                   | 30 days      | Each file is a complete copy, collected fresh from the YouTube API. The newest one is all that is needed; older ones are duplicates. |
+| `channel/`, `channel_snapshot/`, `channel_snapshot_exclusion/`, `video_override/`, `footprints_event/`, `footprints_event_member/`, `footprints_event_source/`, `source_whitelist/`, `genet_person/`, `genet_tune/`, `genet_tune_attribute/`, `genet_tune_attribute_person/`, `genet_tune_video/`, `genet_tune_score/`, `genet_stream/`, `genet_performance/`, `genet_scene/`, `revision/`, `publication/` | **365 days** | See below.                                                                                                                           |
 
 `channel_snapshot/` and `revision/` hold one file per day and no other file holds that day: deleting one leaves a hole in the history that nothing can fill. That hole is a hole in R2, not in the history itself — both tables only ever gain rows in D1 (see [Backups](#backups) above), so D1 already holds every day of either forever. R2's copy exists to restore D1 if D1 is what breaks, and that need shows up right after an incident, not a year later — 365 days bounds how long the copy waits around for that, not how long the history survives.
 
@@ -565,7 +583,7 @@ bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-365d channel/ -
 bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-365d channel_snapshot/ --expire-days 365 -y
 
 for t in channel_snapshot_exclusion video_override footprints_event footprints_event_member footprints_event_source \
-         genet_person genet_tune genet_tune_attribute genet_tune_attribute_person genet_tune_video genet_tune_score \
+         source_whitelist genet_person genet_tune genet_tune_attribute genet_tune_attribute_person genet_tune_video genet_tune_score \
          genet_stream genet_performance genet_scene revision publication; do
   bun wrangler r2 bucket lifecycle add kemov-backup "expire-${t//_/-}-365d" "$t/" --expire-days 365 -y
 done
@@ -575,7 +593,7 @@ Not `lifecycle set --file <json>`: `set` replaces the bucket's whole ruleset, an
 
 **The trailing slash matters.** `genet_tune` as a prefix also matches `genet_tune_attribute/`, and `video` matches `video_override/`, which would expire either at the wrong retention. Every prefix above ends in `/` for this reason.
 
-Check with `bun wrangler r2 bucket lifecycle list kemov-backup`; it should list 20 rules — the 19 above plus the Default Multipart Abort Rule that was already there.
+Check with `bun wrangler r2 bucket lifecycle list kemov-backup`; it should list 21 rules — the 20 above plus the Default Multipart Abort Rule that was already there.
 
 ### Public Data
 

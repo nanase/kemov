@@ -36,6 +36,7 @@ export async function clearEverything(): Promise<void> {
     'footprints_event_source',
     'footprints_event_member',
     'footprints_event',
+    'source_whitelist',
     'channel_snapshot_exclusion',
     'video_override',
     'publication',

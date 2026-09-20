@@ -119,6 +119,9 @@ async function seedAdminTables(): Promise<void> {
     `INSERT INTO channel_snapshot_exclusion (channel_id, fetched_at, reason) VALUES ('UCaaa', '2026-09-06T00:00:00Z', 'test')`,
   ).run();
   await env.DB.prepare(`INSERT INTO video_override (video_id, title) VALUES ('vid1', 'overridden title')`).run();
+  await env.DB.prepare(
+    `INSERT INTO source_whitelist (prefix, note) VALUES ('https://partner.example/', '提携先')`,
+  ).run();
 
   await env.DB.prepare(
     `INSERT INTO footprints_event (date_precision, start_date, kind, title)
@@ -249,6 +252,7 @@ describe('runBackup', () => {
       backupKey('publication', '2026-09-08'),
       backupKey('revision', '2026-09-06'),
       backupKey('revision', '2026-09-07'),
+      backupKey('source_whitelist', '2026-09-08'),
       backupKey('video', '2026-09-08'),
       backupKey('video_override', '2026-09-08'),
     ]);

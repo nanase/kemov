@@ -172,6 +172,15 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
     conflict: ['video_id'],
   },
   {
+    // A list a person edits by hand (#175), so nothing but this file can bring
+    // it back. A restore applies the migrations first, and migration 0008
+    // seeds the original 13 rows: one a person removed since is back after a
+    // restore, because DO NOTHING adds rows and cannot take one away.
+    name: 'source_whitelist',
+    columns: ['prefix', 'note', 'created_at', 'updated_at'],
+    conflict: ['prefix'],
+  },
+  {
     name: 'footprints_event',
     columns: [
       'event_id',

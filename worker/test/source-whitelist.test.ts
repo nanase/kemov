@@ -1,4 +1,50 @@
-import { isWhitelistedSource } from '../src/lib/source-whitelist';
+import { env } from 'cloudflare:test';
+
+import { hasTwoHosts, isWhitelistedSource, readSourceWhitelist } from '../src/lib/source-whitelist';
+
+// What SOURCE_WHITELIST held when #175 moved it into D1, in its own order.
+// Written out here rather than imported: it is the record that migration 0008
+// added nothing and dropped nothing, so it must not be able to follow the
+// migration if the migration is edited.
+const SEEDED = [
+  'https://kemov-project.com/',
+  'https://www.kemov-project.com/',
+  'https://kemono-friends.jp/',
+  'https://x.com/KEMOVP_staff',
+  'https://twitter.com/KEMOVP_staff',
+  'https://kemovproject.stores.jp/',
+  'https://prtimes.jp/',
+  'https://kyodonewsprwire.jp/',
+  'https://shop.joysound.com/',
+  'https://vtube.tokyo/',
+  'https://wikiwiki.jp/kemo_v/',
+  'https://dic.nicovideo.jp/a/%E3%81%91%E3%82%82%E3%81%AE%E3%83%95%E3%83%AC%E3%83%B3%E3%82%BAv%E3%81%B7%E3%82%8D%E3%81%98%E3%81%87%E3%81%8F%E3%81%A8',
+  'https://virtualyoutuber.fandom.com/wiki/KemoV',
+];
+
+// This file never empties the table, so what it reads is what the migration
+// left.
+describe('the seeded source_whitelist', () => {
+  test('holds the 13 entries the constant held, and nothing else', async () => {
+    const { results } = await env.DB.prepare('SELECT prefix FROM source_whitelist ORDER BY rowid').all<{
+      prefix: string;
+    }>();
+
+    expect(results.map((row) => row.prefix)).toEqual(SEEDED);
+  });
+
+  test('gives every entry a note naming why it is there', async () => {
+    const { results } = await env.DB.prepare('SELECT prefix FROM source_whitelist WHERE note IS NULL').all();
+
+    expect(results).toEqual([]);
+  });
+});
+
+describe('readSourceWhitelist', () => {
+  test('reads every prefix in the table', async () => {
+    expect([...(await readSourceWhitelist(env))].sort()).toEqual([...SEEDED].sort());
+  });
+});
 
 describe('isWhitelistedSource', () => {
   test.each([
@@ -18,8 +64,8 @@ describe('isWhitelistedSource', () => {
     'https://x.com/KEMOVP_staff',
     'https://x.com/KEMOVP_staff?ref=share',
     'https://x.com/KEMOVP_staff#pinned',
-  ])('accepts %s', (url) => {
-    expect(isWhitelistedSource(url)).toEqual(true);
+  ])('accepts %s', async (url) => {
+    expect(isWhitelistedSource(url, await readSourceWhitelist(env))).toEqual(true);
   });
 
   test.each([
@@ -32,7 +78,41 @@ describe('isWhitelistedSource', () => {
     'https://dic.nicovideo.jp/a/some-other-article',
     // Same prefix text, but the account handle it names is not this one.
     'https://x.com/KEMOVP_staff_fake',
-  ])('refuses %s', (url) => {
-    expect(isWhitelistedSource(url)).toEqual(false);
+    // #175: neither is on the list, and no host is on it by being a big one.
+    'https://www.youtube.com/watch?v=aaaaaaaaaaa',
+    'https://x.com/Junglecat_KEMOV/status/1',
+  ])('refuses %s', async (url) => {
+    expect(isWhitelistedSource(url, await readSourceWhitelist(env))).toEqual(false);
+  });
+
+  // The list is an argument, so the answer follows it and nothing else.
+  test('accepts only what the list it is given names', () => {
+    expect(isWhitelistedSource('https://www.youtube.com/watch?v=a', [])).toEqual(false);
+    expect(isWhitelistedSource('https://www.youtube.com/watch?v=a', ['https://www.youtube.com/'])).toEqual(true);
+  });
+});
+
+describe('hasTwoHosts', () => {
+  test('is true for two URLs on different hosts', () => {
+    expect(hasTwoHosts(['https://www.youtube.com/watch?v=a', 'https://x.com/someone/status/1'])).toEqual(true);
+  });
+
+  test('is false for two URLs on the same host', () => {
+    expect(hasTwoHosts(['https://www.youtube.com/watch?v=a', 'https://www.youtube.com/watch?v=b'])).toEqual(false);
+  });
+
+  test('is false for one URL, and for none', () => {
+    expect(hasTwoHosts(['https://x.com/someone'])).toEqual(false);
+    expect(hasTwoHosts([])).toEqual(false);
+  });
+
+  // A host is compared as `URL` reads it, so the same host written with a
+  // different case, or with a port the default already implies, is one host.
+  test('reads the host the way URL does', () => {
+    expect(hasTwoHosts(['https://X.com/a', 'https://x.com:443/b'])).toEqual(false);
+  });
+
+  test('counts a URL that names no host as none', () => {
+    expect(hasTwoHosts(['https://', 'https://x.com/a'])).toEqual(false);
   });
 });

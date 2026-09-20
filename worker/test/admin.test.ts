@@ -389,6 +389,37 @@ describe("handleAdminRequest routing to task 12's resources", () => {
     expect(saved.status).toEqual(200);
   });
 
+  test('routes GET/POST /admin/api/source-whitelist and PUT/DELETE .../:prefix', async () => {
+    expect((await call('/admin/api/source-whitelist')).status).toEqual(200);
+
+    const added = await call('/admin/api/source-whitelist', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prefix: 'https://partner.example/news/' }),
+    });
+
+    expect(added.status).toEqual(201);
+
+    const wrongMethod = await call('/admin/api/source-whitelist', { method: 'DELETE' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('GET, POST');
+
+    // A prefix is a URL, so it is one percent-encoded path segment: the
+    // slashes inside it must not be read as more segments.
+    const path = `/admin/api/source-whitelist/${encodeURIComponent('https://partner.example/news/')}`;
+
+    expect((await put(path, { note: 'x' })).status).toEqual(200);
+
+    const refused = await call(path, { method: 'PATCH' });
+
+    expect(refused.status).toEqual(405);
+    expect(refused.headers.get('Allow')).toEqual('PUT, DELETE');
+
+    expect((await call(path, { method: 'DELETE' })).status).toEqual(200);
+    expect((await call(path, { method: 'DELETE' })).status).toEqual(404);
+  });
+
   test('routes GET /admin/api/videos, and refuses other methods', async () => {
     await insertChannel('UCaaa');
     await env.DB.prepare(
