@@ -3,8 +3,8 @@
  *
  * HQ's decision (2026-09-19): a stream matches only when one of its own
  * performances satisfies every search term on its own (that performance's
- * text, or the stream's shared text) - not the old `src/components/genet/
- * search.ts`'s per-word filter over the whole stream, where two different
+ * text, or the stream's shared text) - not the old page's per-word filter over
+ * the whole stream (removed in #144), where two different
  * words each hitting a different tune still passed the stream through. This
  * file's `computeResults` mirrors the confirmed mock's own `compute()`.
  */
