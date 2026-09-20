@@ -22,7 +22,10 @@
  * replaced it and the page's file is no longer built, so the worker is woken
  * for it and sends the reader on. The file has to stay gone for this to work:
  * Cloudflare answers from a built file before it asks the worker, so a file
- * left in the build would leave this rule dead.
+ * left in the build would leave this rule dead. The other spellings are here
+ * because the file's absence takes them from Cloudflare too: it used to send
+ * `/stats/ranking` and `/stats/ranking/index.html` on to `/stats/ranking/`
+ * itself, and with no file to send them to they would be a 404.
  *
  * `/stats/detail/` is not here. Its old addresses carried the channel in the
  * fragment (`#/<id>`), which a request never sends, so no rule here could pick
@@ -43,7 +46,9 @@
 const LANDING: Readonly<Record<string, string>> = {
   '/genet': '/genet/music/',
   '/genet/': '/genet/music/',
+  '/stats/ranking': '/videos/',
   '/stats/ranking/': '/videos/',
+  '/stats/ranking/index.html': '/videos/',
 };
 
 /**

@@ -49,6 +49,13 @@ describe('siteRedirect', () => {
     expect(to('/stats/ranking/')?.status).toEqual(302);
   });
 
+  // Cloudflare used to normalise these two to the address above while the
+  // page's file existed; without it they reach the worker as they are.
+  test('sends the old ranking page under its other spellings to the same place', () => {
+    expect(to('/stats/ranking')?.headers.get('location')).toEqual('https://kemov.nanase.cc/videos/');
+    expect(to('/stats/ranking/index.html')?.headers.get('location')).toEqual('https://kemov.nanase.cc/videos/');
+  });
+
   // The old detail page's addresses carry the member in the fragment, which
   // never reaches the server, so a rule here would send every one of them to
   // the same page. The page's own file answers and reads the fragment in the
