@@ -85,12 +85,30 @@ describe('readChannelList', () => {
     expect(channels[0].latest.subscriberCount).toBeNull();
   });
 
+  // The page draws the icon from the image relay (#144), by channel id - not
+  // from the address the collector stored, which is YouTube's and is what the
+  // relay itself reads. A URL that named YouTube here would put the browser
+  // back in front of its 429.
+  test('an icon the collector has is read as the relay address for that channel, not the stored one', () => {
+    const { channels } = readChannelList(list());
+
+    expect(channels[0].thumbnailUrl).toEqual('/api/image/channel/UCaaa?size=88');
+    expect(channels[0].thumbnailUrl).not.toContain('yt3.example');
+  });
+
+  test('the channel id is escaped into the relay address', () => {
+    const { channels } = readChannelList(list({ ...CHANNEL, channelId: 'UC a/b' }));
+
+    expect(channels[0].thumbnailUrl).toEqual('/api/image/channel/UC%20a%2Fb?size=88');
+  });
+
   test('a channel the collector has never read has no avatar and no reading', () => {
     const { channels } = readChannelList(
       list({ ...CHANNEL, customUrl: null, thumbnailUrl: null, globalname: null, fetchedAt: null }),
     );
 
     expect(channels[0].customUrl).toBeNull();
+    // No icon is no address, rather than an address the relay would answer 404 for.
     expect(channels[0].thumbnailUrl).toBeNull();
     expect(channels[0].fetchedAt).toBeNull();
   });

@@ -4,7 +4,8 @@ import { unescapeHtml } from '@nanase/alnilam/string';
 
 import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt, { type UpdatedAtState } from '@/shell/UpdatedAt.vue';
-import { getEmbedURL, getThumbnailURL } from '@/lib/youtube';
+import { relayVideoThumbnailURL } from '@/lib/relay';
+import { getEmbedURL } from '@/lib/youtube';
 import { expandLink, lexMarkdown, parseYoutubeHref, plainText } from '@/lib/genet/musicMarkdown';
 import {
   countText,
@@ -346,7 +347,7 @@ function onMarkdownClick(event: MouseEvent): void {
 /* ---- サムネイル -------------------------------------------------------- */
 
 function thumbSrc(videoId: string, size: 'mq' | 'hq' | 'max' = 'mq'): string {
-  return getThumbnailURL(videoId, { size });
+  return relayVideoThumbnailURL(videoId, size);
 }
 
 function onThumbError(event: Event): void {

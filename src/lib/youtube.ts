@@ -1,7 +1,8 @@
 export type ThumbnailSize = 'default' | 'mq' | 'hq' | 'sd' | 'max';
 export type ThumbnailServer = 'main' | 'i' | 'i1' | 'i2' | 'i3' | 'i4';
 
-function getThumbnailSizeName(size: ThumbnailSize) {
+/** The file name i.ytimg.com serves this size under, which is also what the image relay's `size` is called. */
+export function getThumbnailSizeName(size: ThumbnailSize) {
   switch (size) {
     case 'default':
       return 'default';

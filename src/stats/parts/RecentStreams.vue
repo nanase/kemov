@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 
-import { getThumbnailURL } from '@/lib/youtube';
+import { relayVideoThumbnailURL } from '@/lib/relay';
 
 import { memberColor } from '@/lib/memberColor';
 import { DASH, formatCount } from '@/lib/numberFormat';
@@ -39,8 +39,8 @@ const { rows, showOwner, dark } = defineProps<{
 /**
  * Which thumbnails did not arrive.
  *
- * YouTube's image host refuses some of these when a page asks for a dozen at
- * once, so a row has to be able to stand without its picture: the member's
+ * YouTube refuses some of these when a page asks for a dozen at once, and the
+ * image relay (`@/lib/relay`) passes that on, so a row has to be able to stand without its picture: the member's
  * own panel takes its place, at the same size, and the row keeps its line.
  */
 const missing = ref(new Set<string>());
@@ -48,7 +48,7 @@ const missing = ref(new Set<string>());
 function thumbnail(row: StreamRow): string | null {
   if (row.videoId === null || missing.value.has(row.key)) return null;
 
-  return getThumbnailURL(row.videoId, { size: 'mq' });
+  return relayVideoThumbnailURL(row.videoId, 'mq');
 }
 
 function onThumbnailError(row: StreamRow) {

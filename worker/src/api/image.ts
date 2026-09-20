@@ -16,10 +16,8 @@ import { errorWithCacheHeaders } from './cache';
  * whatever URL it is handed is an open proxy for someone else's bandwidth;
  * this one decides the fetch target itself from an id it has validated.
  *
- * The screens do not read this yet - `MemberAvatar.vue` and the pages' own
- * thumbnails still go straight to YouTube. That switch is the next stage,
- * once the pages built alongside this one have landed, so it does not
- * conflict with their own work in progress.
+ * The pages ask for their pictures here through `src/lib/relay.ts`, which is
+ * where an address for this relay is built.
  */
 
 const RELAY_FAILURE_CACHE_SECONDS = 60;
@@ -346,8 +344,17 @@ export async function relayChannelIcon(
 
 // --- video thumbnail -------------------------------------------------------
 
-/** The sizes a video thumbnail may be asked for - i.ytimg.com's own file names. */
-export const VIDEO_THUMBNAIL_SIZES = ['default', 'mqdefault', 'hqdefault'] as const;
+/**
+ * The sizes a video thumbnail may be asked for - i.ytimg.com's own file names.
+ *
+ * All five the site asks for. The relay passes an image through and does not
+ * pick its quality: a page that opens a thumbnail large (`maxresdefault`) is
+ * choosing that on purpose, and lowering it here would lower what the viewer
+ * sees. `sddefault` and `maxresdefault` do not exist for every video; the host
+ * answers 404 for those and the relay passes that on, as it does any other
+ * refusal.
+ */
+export const VIDEO_THUMBNAIL_SIZES = ['default', 'mqdefault', 'hqdefault', 'sddefault', 'maxresdefault'] as const;
 export type VideoThumbnailSize = (typeof VIDEO_THUMBNAIL_SIZES)[number];
 
 const DEFAULT_VIDEO_THUMBNAIL_SIZE: VideoThumbnailSize = 'mqdefault';
