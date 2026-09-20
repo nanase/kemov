@@ -320,7 +320,7 @@ describe('upcoming', () => {
   });
 
   test('carries a recorded event that is still to come, as a plan', () => {
-    const soon = event({ eventId: 2, startDate: '2026-10-01', kind: 'live-event', title: '会場イベント' });
+    const soon = event({ eventId: 2, startDate: '2026-10-01', kind: 'real_event', title: '会場イベント' });
     const list = upcoming(items([soon]), [], [], filters(), NOW);
 
     expect(list.map((entry) => [entry.title, entry.label, entry.planned])).toEqual([

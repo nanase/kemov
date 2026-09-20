@@ -559,11 +559,11 @@ export function readVideoTable(body: unknown): VideoTable {
  */
 export const EVENT_KINDS = [
   'project',
-  'reveal',
+  'announcement',
   'debut',
   '3d',
-  'outfit',
-  'live-event',
+  'new_outfit',
+  'real_event',
   'goods',
   'music',
   'collab',
