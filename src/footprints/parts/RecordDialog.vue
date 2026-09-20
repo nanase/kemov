@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, useTemplateRef } from 'vue';
 
+import { relayVideoThumbnailURL } from '@/lib/relay';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
 
 import { formatDate, formatLength, formatSince, formatTime, hostOf } from '../draw';
@@ -116,7 +117,7 @@ const linked = computed(() => (item.value === null ? null : item.value.row));
 const thumbnail = computed(() => {
   const video = row.value ?? linked.value;
 
-  return video === null ? null : `https://i.ytimg.com/vi/${video.videoId}/mqdefault.jpg`;
+  return video === null ? null : relayVideoThumbnailURL(video.videoId, 'mq');
 });
 
 /** Everything else recorded on the same day, which is how a day is read. */
@@ -290,7 +291,7 @@ onBeforeUnmount(() => globalThis.removeEventListener('keydown', onKeydown));
           <p v-if="item?.event.supplement" class="supplement">{{ item.event.supplement }}</p>
 
           <a v-if="linked" class="linked" :href="watchUrl(linked.videoId)" target="_blank" rel="noopener noreferrer">
-            <img :src="`https://i.ytimg.com/vi/${linked.videoId}/mqdefault.jpg`" alt="" loading="lazy" />
+            <img :src="relayVideoThumbnailURL(linked.videoId, 'mq')" alt="" loading="lazy" />
             <span>
               <small class="fp-n"
                 >このできごとの{{ linked.type === null ? '配信' : VIDEO_LABELS[linked.type] }} ・
@@ -320,12 +321,7 @@ onBeforeUnmount(() => globalThis.removeEventListener('keydown', onKeydown));
               @click="emit('open', entry.key)"
             >
               <span class="shot">
-                <img
-                  v-if="entry.videoId"
-                  :src="`https://i.ytimg.com/vi/${entry.videoId}/mqdefault.jpg`"
-                  alt=""
-                  loading="lazy"
-                />
+                <img v-if="entry.videoId" :src="relayVideoThumbnailURL(entry.videoId, 'mq')" alt="" loading="lazy" />
                 <!-- Nothing was filmed, so the kind stands in for a picture
                      rather than leaving an empty box that reads as broken. -->
                 <span v-else class="shot-kind">{{ entry.kind }}</span>

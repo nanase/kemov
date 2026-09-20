@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
+import { relayVideoThumbnailURL } from '@/lib/relay';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
 
 import { formatDate, formatLength } from '../draw';
@@ -39,7 +40,7 @@ const caption = computed(() => {
   return length === null ? kind : `${kind} ・ ${formatLength(length)}`;
 });
 const thumbnail = computed(() =>
-  event.value.videoId === null ? null : `https://i.ytimg.com/vi/${event.value.videoId}/mqdefault.jpg`,
+  event.value.videoId === null ? null : relayVideoThumbnailURL(event.value.videoId, 'mq'),
 );
 </script>
 

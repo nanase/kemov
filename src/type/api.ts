@@ -15,6 +15,7 @@ import {
   readString,
   ShapeError,
 } from '@/lib/read';
+import { relayChannelIconURL } from '@/lib/relay';
 
 /**
  * What the API answers with, and the readers that turn a body into it.
@@ -96,6 +97,11 @@ export interface Channel {
   activityEndDate: string | null;
   /** Both null until the collector has read the channel once. */
   customUrl: string | null;
+  /**
+   * Where to draw the channel's icon from: the image relay's address for it,
+   * not YouTube's. Null is "the collector has not read an icon for this
+   * channel", which is a different thing from an icon that fails to load.
+   */
   thumbnailUrl: string | null;
   /** When this channel's numbers were read. Null when they never have been. */
   fetchedAt: Dayjs | null;
@@ -112,8 +118,11 @@ export function readChannel(value: unknown, path: string): Channel {
 
   readObject(latest, `${path}.latest`);
 
+  const channelId = readString(field(value, 'channelId', path), `${path}.channelId`);
+  const storedIcon = readOrNull(field(value, 'thumbnailUrl', path), `${path}.thumbnailUrl`, readString);
+
   return {
-    channelId: readString(field(value, 'channelId', path), `${path}.channelId`),
+    channelId,
     name: readString(field(value, 'name', path), `${path}.name`),
     fullname: readString(field(value, 'fullname', path), `${path}.fullname`),
     globalname: readOrNull(field(value, 'globalname', path), `${path}.globalname`, readString),
@@ -127,7 +136,9 @@ export function readChannel(value: unknown, path: string): Channel {
     activityStartDate: readDate(field(value, 'activityStartDate', path), `${path}.activityStartDate`),
     activityEndDate: readOrNull(field(value, 'activityEndDate', path), `${path}.activityEndDate`, readDate),
     customUrl: readOrNull(field(value, 'customUrl', path), `${path}.customUrl`, readString),
-    thumbnailUrl: readOrNull(field(value, 'thumbnailUrl', path), `${path}.thumbnailUrl`, readString),
+    // Only a channel the collector has an icon for gets an address: null stays
+    // null, so a page draws its stand-in without asking the relay for a 404.
+    thumbnailUrl: storedIcon === null ? null : relayChannelIconURL(channelId),
     fetchedAt: readOrNull(field(value, 'fetchedAt', path), `${path}.fetchedAt`, (v, p) => dayjs(readInstant(v, p))),
     latest: Object.fromEntries(
       COUNT_NAMES.map((name) => [

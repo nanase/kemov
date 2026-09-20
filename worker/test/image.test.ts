@@ -65,7 +65,7 @@ describe('pure functions', () => {
   test('readVideoThumbnailSize defaults to mqdefault and refuses anything not offered', () => {
     expect(readVideoThumbnailSize(null)).toEqual('mqdefault');
     expect(readVideoThumbnailSize('hqdefault')).toEqual('hqdefault');
-    expect(readVideoThumbnailSize('maxresdefault')).toBeNull();
+    expect(readVideoThumbnailSize('hq720')).toBeNull();
   });
 
   test('readChannelIconSize defaults to 88 and refuses anything not offered', () => {
@@ -107,14 +107,64 @@ describe('relayVideoThumbnail', () => {
 
   test('refuses a size this endpoint does not offer', async () => {
     const response = await relayVideoThumbnail(
-      request('/api/image/video/dQw4w9WgXcQ?size=maxresdefault'),
+      request('/api/image/video/dQw4w9WgXcQ?size=hq720'),
       testCache(),
       undefined,
       'dQw4w9WgXcQ',
-      new URLSearchParams('size=maxresdefault'),
+      new URLSearchParams('size=hq720'),
     );
 
     expect(response.status).toEqual(400);
+  });
+
+  // The record panel asks for sddefault and the lightbox for maxresdefault, on
+  // purpose. A size the relay refused would be a 400 on every one of them.
+  test.each([
+    ['default', 'default'],
+    ['mqdefault', 'mqdefault'],
+    ['hqdefault', 'hqdefault'],
+    ['sddefault', 'sddefault'],
+    ['maxresdefault', 'maxresdefault'],
+  ])('size=%s is fetched from %s.jpg', async (size, file) => {
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-type': 'image/jpeg' } }),
+    );
+
+    const response = await relayVideoThumbnail(
+      request(`/api/image/video/dQw4w9WgXcQ?size=${size}`),
+      testCache(),
+      undefined,
+      'dQw4w9WgXcQ',
+      new URLSearchParams(`size=${size}`),
+      fetchImpl,
+    );
+
+    expect(response.status).toEqual(200);
+    expect(fetchImpl.mock.calls[0]?.[0]).toEqual(`https://i.ytimg.com/vi/dQw4w9WgXcQ/${file}.jpg`);
+  });
+
+  test('a size the video has no file for is answered 404 and cached as a failure, as the host said it', async () => {
+    const cache = testCache();
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response('not found', { status: 404 }));
+    const ask = () =>
+      relayVideoThumbnail(
+        request('/api/image/video/dQw4w9WgXcQ?size=maxresdefault'),
+        cache,
+        undefined,
+        'dQw4w9WgXcQ',
+        new URLSearchParams('size=maxresdefault'),
+        fetchImpl,
+      );
+
+    const first = await ask();
+    const second = await ask();
+
+    expect(first.status).toEqual(404);
+    expect(first.headers.get('x-kemov-relay')).toEqual('error');
+    expect(first.headers.get('cache-control')).toEqual('public, max-age=60');
+    expect(second.status).toEqual(404);
+    expect(second.headers.get('x-kemov-relay')).toEqual('hit');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   test('fetches once, answers the image, and serves the second request from cache', async () => {

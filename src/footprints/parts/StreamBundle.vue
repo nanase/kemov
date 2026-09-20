@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref } from 'vue';
 
 import MemberAvatar from '@/parts/MemberAvatar.vue';
 import { formatCount } from '@/lib/numberFormat';
+import { relayVideoThumbnailURL } from '@/lib/relay';
 
 import { formatDate, formatTime, openMs } from '../draw';
 import { isKeyStream, jstDay, rowAt, VIDEO_LABELS, type BundleItem } from '../model';
@@ -65,7 +66,7 @@ const days = computed(() => {
 });
 
 function thumbnail(videoId: string): string {
-  return `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+  return relayVideoThumbnailURL(videoId, 'mq');
 }
 
 function nameOf(channelId: string): string {

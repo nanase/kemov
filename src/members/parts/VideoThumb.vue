@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 
+import { relayVideoThumbnailURL } from '@/lib/relay';
+
 /**
  * One video's picture, with something to show when it does not arrive.
  *
- * YouTube's image host answers some of these with 429 when a page asks for a
- * screenful at once, and the browser blocks the response as a non-image. The
- * same one retry and stand-in as `/stats/`'s member pictures, drawn here as
+ * The image relay (`@/lib/relay`) answers with YouTube's refusal - a 429 when a
+ * page asks for a screenful at once, a 404 for a video with no such file - and
+ * the browser then has no image to draw. The same one retry and stand-in as
+ * `/stats/`'s member pictures, drawn here as
  * the dotted frame the mock uses: every row on this page is the same member,
  * so a coloured initial would be eleven copies of one letter.
  */
@@ -16,7 +19,11 @@ const { videoId, width, height } = defineProps<{
   height: number;
 }>();
 
-/** How long to wait before the one retry. Long enough for a rate limit to pass. */
+/**
+ * How long to wait before the one retry. It covers a dropped connection. A
+ * refusal from YouTube is kept by the relay for a while, so asking again this
+ * soon meets the same answer.
+ */
 const RETRY_MS = 1500;
 
 const errors = ref(0);
@@ -62,7 +69,7 @@ const style = computed(() => ({ width: `${width}px`, height: `${height}px`, minW
     v-else
     :key="token"
     class="thumb"
-    :src="`https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`"
+    :src="relayVideoThumbnailURL(videoId, 'mq')"
     :style="style"
     alt=""
     :width="width"

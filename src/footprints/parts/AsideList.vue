@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
+import { relayVideoThumbnailURL } from '@/lib/relay';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
 
 import { formatDate, formatTime } from '../draw';
@@ -46,7 +47,7 @@ function wait(item: AsideItem): string {
 }
 
 function thumbnail(item: AsideItem): string | null {
-  return item.row === null ? null : `https://i.ytimg.com/vi/${item.row.videoId}/mqdefault.jpg`;
+  return item.row === null ? null : relayVideoThumbnailURL(item.row.videoId, 'mq');
 }
 </script>
 

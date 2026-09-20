@@ -6,10 +6,12 @@ import { memberColor } from '@/lib/memberColor';
 /**
  * One member's picture, with something to show when it does not arrive.
  *
- * YouTube's image host answers some of these with 429 when a page asks for
- * eleven of them at once, and the browser then blocks the response as a
- * non-image. Which ones fail changes from load to load, so the page cannot
- * know in advance and has to be able to draw a member without their picture.
+ * The picture may not arrive: YouTube answers some of these with 429 when
+ * asked for eleven at once, and the image relay (`@/lib/relay`, which the
+ * channel's `thumbnailUrl` already points at) passes such a refusal on and
+ * keeps it for a while. Which ones fail changes from load to load, so the
+ * page cannot know in advance and has to be able to draw a member without
+ * their picture.
  *
  * What it draws instead is the member's own colour and the first character of
  * their name, at the same size and full strength. A member who has finished
@@ -25,7 +27,11 @@ const { src, name, color, size, dark } = defineProps<{
   dark: boolean;
 }>();
 
-/** How long to wait before the one retry. Long enough for a rate limit to pass. */
+/**
+ * How long to wait before the one retry. It covers a dropped connection. A
+ * refusal from YouTube is kept by the relay for a while, so asking again this
+ * soon meets the same answer.
+ */
 const RETRY_MS = 1500;
 
 const errors = ref(0);

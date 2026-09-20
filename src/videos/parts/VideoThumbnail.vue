@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 
-import { getThumbnailURL, type ThumbnailSize } from '@/lib/youtube';
+import { relayVideoThumbnailURL } from '@/lib/relay';
+import type { ThumbnailSize } from '@/lib/youtube';
 
 /**
  * One video's thumbnail, with something to show when it does not arrive.
@@ -9,9 +10,9 @@ import { getThumbnailURL, type ThumbnailSize } from '@/lib/youtube';
  * Two different failures share this component, and are told apart by how
  * they are retried:
  *
- * - YouTube's image host answers some requests with 429 when a page asks for
- *   many thumbnails at once - the same failure `@/stats/parts/MemberAvatar.vue` retries
- *   once, after a wait long enough for the rate limit to pass.
+ * - YouTube answers some requests with 429 when a page asks for many
+ *   thumbnails at once, and the image relay (`@/lib/relay`) passes that on -
+ *   the same failure `@/parts/MemberAvatar.vue` retries once.
  * - `maxresdefault` (`size="max"`) simply does not exist for every video.
  *   That failure is not a rate limit and waiting does not fix it, so it steps
  *   down to `hqdefault` immediately and without a retry of its own - the one
@@ -33,7 +34,11 @@ const {
   fit?: 'cover' | 'contain';
 }>();
 
-/** How long to wait before the one 429 retry. Long enough for a rate limit to pass. */
+/**
+ * How long to wait before the one retry. It covers a dropped connection. A
+ * refusal from YouTube is kept by the relay for a while, so asking again this
+ * soon meets the same answer.
+ */
 const RETRY_MS = 1500;
 
 const errors = ref(0);
@@ -54,7 +59,7 @@ watch(
 );
 
 const effectiveSize = computed<ThumbnailSize>(() => (size === 'max' && steppedDown.value ? 'hq' : size));
-const shown = computed(() => (failed.value ? null : getThumbnailURL(videoId, { size: effectiveSize.value })));
+const shown = computed(() => (failed.value ? null : relayVideoThumbnailURL(videoId, effectiveSize.value)));
 
 function onError() {
   if (size === 'max' && !steppedDown.value) {
