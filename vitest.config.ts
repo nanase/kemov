@@ -42,7 +42,7 @@ export default mergeConfig(
                 // node cannot load .css. Only that entry needs vite to process
                 // it, but inline does not match subpaths - '@nanase/alnilam/components'
                 // alone was measured not to work - so the package is listed whole.
-                inline: ['vuetify', '@nanase/alnilam'],
+                inline: ['@nanase/alnilam'],
               },
             },
           },
