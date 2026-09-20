@@ -363,7 +363,7 @@ function firstAvailablePerson(): GenetPerson | null {
 
   if (person !== undefined) return person;
 
-  showToast('人がいません。先に「＋ 新しい人を登録」で登録してください');
+  showToast('人がいません。先に「＋ 新しい人物を登録」で登録してください');
 
   return null;
 }
