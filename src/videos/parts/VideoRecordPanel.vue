@@ -158,9 +158,7 @@ function avatarStyle() {
       </div>
     </div>
 
-    <div v-if="hidden" class="offlist">
-      この 1 本は、いまの絞り込みには当てはまりません。順位はそのまま残しています。
-    </div>
+    <div v-if="hidden" class="offlist">配信または動画は一覧には表示されていません。</div>
 
     <div class="sheetlabel">
       <span class="tag">この 1 本の 11 指標</span>

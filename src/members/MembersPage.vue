@@ -462,7 +462,7 @@ onBeforeUnmount(() => {
             @change="pickYear(($event.target as HTMLSelectElement).value)"
           >
             <option value="">年を選ぶ</option>
-            <option v-for="year in behavior.years" :key="year" :value="String(year)">{{ year }} 年</option>
+            <option v-for="year in behavior.years" :key="year" :value="String(year)">{{ year }}年</option>
           </select>
           <span class="mv-grow"></span>
           <!-- Which days the panels below resolved to, always on show: a

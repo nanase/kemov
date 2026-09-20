@@ -127,7 +127,7 @@ const heading = computed(() => {
   const s = subject.value;
   const today = formatDate(now.value);
 
-  if (s.members !== undefined) return `${s.activityStartDate} → ${today} ・ ${s.members.length} 名`;
+  if (s.members !== undefined) return `${s.activityStartDate} → ${today} ・ ${s.members.length} 人`;
 
   return `${s.activityStartDate} → ${s.activityEndDate ?? today}`;
 });
@@ -289,7 +289,7 @@ onBeforeUnmount(() => {
         </div>
         <label class="active-only">
           <input v-model="activeOnly" type="checkbox" />
-          活動中の配信者のみ表示
+          活動中のメンバーだけ表示
         </label>
       </div>
 

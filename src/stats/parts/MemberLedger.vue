@@ -83,7 +83,7 @@ function press(id: string) {
       </colgroup>
       <thead>
         <tr>
-          <th class="h-name" scope="col">配信者</th>
+          <th class="h-name" scope="col">メンバー</th>
           <th scope="col">{{ headings.value }}</th>
           <th scope="col">{{ headings.change }}</th>
           <th class="h-spark" scope="col"></th>

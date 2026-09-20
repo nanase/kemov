@@ -307,7 +307,7 @@ onMounted(async () => {
 
         <div class="field">
           <label for="f-reason">除く理由（公開されません）</label>
-          <textarea id="f-reason" v-model="reasonDraft" placeholder="あとで読んで分かるように書きます"></textarea>
+          <textarea id="f-reason" v-model="reasonDraft"></textarea>
         </div>
       </div>
 

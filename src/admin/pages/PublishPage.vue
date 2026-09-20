@@ -66,7 +66,7 @@ async function publishNow(): Promise<void> {
 
     showToast(
       body.published
-        ? `公開しました。footprints/events.json、${body.eventCount} 件、${body.byteLength} バイト`
+        ? `公開しました。footprints/events.json（${body.eventCount} 件、${body.byteLength} バイト）`
         : '公開を待っているものがありません',
     );
     await load();
@@ -123,7 +123,7 @@ onMounted(async () => {
       <div class="toolbar">
         <h2>公開</h2>
         <span class="grow"></span>
-        <span class="sub">公開すると、公開用の JSON を作り直します</span>
+        <span class="sub">公開すると公開用の JSON が作り直されます</span>
       </div>
       <div class="scroller">
         <div style="padding: 16px; display: grid; gap: 13px; max-width: 760px">

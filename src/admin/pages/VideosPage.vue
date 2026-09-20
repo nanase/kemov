@@ -255,7 +255,7 @@ onMounted(load);
           <div class="hint">{{ errorMessage }}</div>
         </div>
 
-        <div v-if="!overridesNothing(fields)" class="hint">3つとも外して保存すると、上書きを消します</div>
+        <div v-if="!overridesNothing(fields)" class="hint">3つとも外して保存すると、上書きが消されます</div>
 
         <div
           class="panel"

@@ -129,7 +129,7 @@ export function periodLabel(period: RankingPeriod): string {
     case 'all':
       return '全期間';
     case 'p365':
-      return '1 年';
+      return '直近 1 年';
     case 'p90':
       return '90 日';
     case 'p30':
@@ -137,7 +137,7 @@ export function periodLabel(period: RankingPeriod): string {
   }
 }
 
-/** The four period chips #135 places beside "年で選ぶ", in the order shown. */
+/** The four period chips #135 places beside "年を選ぶ", in the order shown. */
 export const PERIOD_CHIPS = RANKING_PERIODS;
 
 export function scopeName(kind: VideoType, period: RankingPeriod): string {
@@ -411,7 +411,7 @@ export function funnelSteps(
     steps.push({ key: 'length', words: ['再生時間「', band.name, '」'], count: view.afterLength });
   }
   if (filters.channelIds.size > 0) {
-    steps.push({ key: 'channel', words: ['配信者 ', `${filters.channelIds.size} 人`, ''], count: view.afterChannel });
+    steps.push({ key: 'channel', words: ['メンバー ', `${filters.channelIds.size} 人`, ''], count: view.afterChannel });
   }
   if (filters.query !== '') {
     steps.push({ key: 'query', words: ['タイトル「', filters.query, '」'], count: view.rows.length });

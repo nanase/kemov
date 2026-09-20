@@ -120,7 +120,7 @@ async function loadPeople(): Promise<void> {
   } catch (error) {
     // Leaves `people` as it was rather than clearing it to [] - an empty
     // picker here reads as "nobody is registered yet" and invites a
-    // duplicate via 新しい人を登録, when the truth is this request failed.
+    // duplicate via 新しい人物を登録, when the truth is this request failed.
     peopleLoadError.value = error instanceof AdminApiError ? error.message : String(error);
   }
 }
@@ -582,7 +582,7 @@ watch(statusFilter, load);
         <span class="grow"></span>
         <button class="btn primary" type="button" :disabled="streamSaving" @click="saveStream">保存</button>
         <button v-if="selected.status !== 'published'" class="btn" type="button" @click="publishStream">
-          公開にする
+          公開する
         </button>
         <button v-else class="btn" type="button" @click="withdrawStream">下書きに戻す</button>
       </div>
@@ -870,11 +870,11 @@ watch(statusFilter, load);
                           class="toggle"
                           type="button"
                           :aria-pressed="attributeMode(attr) === 'people'"
-                          aria-label="人を選んで書く"
+                          aria-label="人物を選んで書く"
                           @click="toggleAttributeMode(attr)"
                         ></button>
                         <span class="sub">{{
-                          attributeMode(attr) === 'people' ? '人を選んで書く' : '文章で書く'
+                          attributeMode(attr) === 'people' ? '人物を選んで書く' : '文章で書く'
                         }}</span>
                       </div>
                       <input
@@ -912,7 +912,7 @@ watch(statusFilter, load);
                         </div>
                         <div style="display: flex; gap: 6px">
                           <button class="md-ins" type="button" @click="addAttributePerson(attr)">＋ 人を足す</button>
-                          <button class="md-ins" type="button" @click="addNewPerson">＋ 新しい人を登録</button>
+                          <button class="md-ins" type="button" @click="addNewPerson">＋ 新しい人物を登録</button>
                         </div>
                       </template>
                     </div>

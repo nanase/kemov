@@ -349,7 +349,7 @@ onBeforeUnmount(() => {
         <h2>軌跡</h2>
         <span v-if="!narrow" class="shown fp-n" aria-live="polite">{{ shown }}</span>
 
-        <span v-if="!narrow" class="segments" role="group" aria-label="寄り方">
+        <span v-if="!narrow" class="segments" role="group" aria-label="軌跡図の期間の幅">
           <button
             v-for="step in ZOOMS"
             :key="step.id"

@@ -122,7 +122,7 @@ watch(
       <b>月ごと</b>
       <!-- Views are collected by the month a video went up, not by the month
            they were watched in, and the two are easy to confuse (#136). -->
-      <span v-if="series === 'views'">その月に公開した分の累計</span>
+      <span v-if="series === 'views'">その月に公開した動画・配信の累計</span>
       <span class="mv-grow"></span>
       <SegmentGroup
         :items="seriesItems"
