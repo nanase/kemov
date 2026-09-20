@@ -27,6 +27,41 @@ const RELAY_FAILURE_CACHE_SECONDS = 60;
 /** The relay's own verdict on how an answer was produced, for measurement. */
 type RelayState = 'hit' | 'miss' | 'error';
 
+/**
+ * An answer as plain data: status, headers and bytes, and no `Response`.
+ *
+ * `fetchAndCache` hands one outcome to every request waiting on the same cold
+ * key, and each of those is a different invocation. A `Response` - and the
+ * stream inside it - belongs to the invocation that made it, and reading it
+ * from another fails with "Cannot perform I/O on behalf of a different
+ * request". Bytes and header pairs belong to nobody, so what is shared is
+ * this, and every invocation builds a `Response` of its own from it.
+ */
+interface Relayed {
+  status: number;
+  headers: [string, string][];
+  body: ArrayBuffer;
+  state: 'miss' | 'error';
+}
+
+async function freeze(response: Response, state: Relayed['state']): Promise<Relayed> {
+  return {
+    status: response.status,
+    headers: [...response.headers.entries()],
+    body: await response.arrayBuffer(),
+    state,
+  };
+}
+
+/** A new `Response` of this invocation's own, from the shared data. `state` is what the answer's header says, when it should say one. */
+function thaw(relayed: Relayed, state?: RelayState): Response {
+  const headers = new Headers(relayed.headers);
+
+  if (state !== undefined) headers.set('x-kemov-relay', state);
+
+  return new Response(relayed.body.slice(0), { status: relayed.status, headers });
+}
+
 function withRelayState(response: Response, state: RelayState): Response {
   const headers = new Headers(response.headers);
 
@@ -51,12 +86,6 @@ function cacheKeyFor(request: Request, size: string): Request {
 /**
  * The success answer, built over the image's bytes rather than over the
  * upstream body stream.
- *
- * `fetchAndCache` hands one answer to every request waiting on the same cold
- * key, and each of those is a different invocation. A stream belongs to the
- * invocation whose `fetch` opened it - reading it from another one fails with
- * "Cannot perform I/O on behalf of a different request" - while bytes already
- * in memory belong to nobody, so every waiter can clone and read them.
  */
 function buildSuccessResponse(upstream: Response, body: ArrayBuffer, maxAgeSeconds: number): Response {
   const headers = new Headers();
@@ -80,7 +109,7 @@ function buildFailureResponse(status: number, maxAgeSeconds: number): Response {
 }
 
 /**
- * Answers with `built`, and stores it under `key` for the next request.
+ * Freezes `built` into the answer, and stores it under `key` for the next request.
  *
  * `ctx` is undefined in the tests that call the relay functions directly
  * without going through the worker entry point - there the store is awaited
@@ -93,9 +122,10 @@ async function answerAndCache(
   built: Response,
   cacheImpl: Cache,
   ctx: ExecutionContext | undefined,
-  state: 'miss' | 'error',
-): Promise<Response> {
-  const store = () => cacheImpl.put(key, built.clone());
+  state: Relayed['state'],
+): Promise<Relayed> {
+  const relayed = await freeze(built, state);
+  const store = () => cacheImpl.put(key, thaw(relayed));
 
   if (ctx !== undefined) {
     ctx.waitUntil(store());
@@ -103,7 +133,7 @@ async function answerAndCache(
     await store();
   }
 
-  return withRelayState(built, state);
+  return relayed;
 }
 
 /**
@@ -123,7 +153,7 @@ async function fetchAndCacheOnce(
   ctx: ExecutionContext | undefined,
   fetchImpl: typeof fetch,
   successSeconds: number,
-): Promise<Response> {
+): Promise<Relayed> {
   let upstream: Response;
 
   try {
@@ -181,7 +211,11 @@ async function fetchAndCacheOnce(
  * bounds how long a failure from that narrower race can leave a good image
  * looking broken.
  */
-const inFlight = new Map<string, Promise<Response>>();
+const inFlight = new Map<string, Promise<Relayed>>();
+
+function answered(relayed: Relayed): Response {
+  return thaw(relayed, relayed.state);
+}
 
 async function fetchAndCache(
   key: Request,
@@ -194,14 +228,14 @@ async function fetchAndCache(
   const dedupeKey = key.url;
   const existing = inFlight.get(dedupeKey);
 
-  if (existing !== undefined) return (await existing).clone();
+  if (existing !== undefined) return answered(await existing);
 
   const promise = fetchAndCacheOnce(key, upstreamUrl, cacheImpl, ctx, fetchImpl, successSeconds);
 
   inFlight.set(dedupeKey, promise);
 
   try {
-    return (await promise).clone();
+    return answered(await promise);
   } finally {
     inFlight.delete(dedupeKey);
   }

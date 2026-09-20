@@ -254,8 +254,12 @@ describe('relayVideoThumbnail', () => {
 
     for (const answer of answers) {
       expect(answer.status).toEqual(200);
+      expect(answer.headers.get('x-kemov-relay')).toEqual('miss');
       expect(new Uint8Array(await answer.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
     }
+
+    // Each waiter has a Response of its own, not one shared between requests.
+    expect(new Set(answers).size).toEqual(answers.length);
   });
 
   test('a slow request already in flight is what a second, later request for the same id shares - not a fetch of its own', async () => {
