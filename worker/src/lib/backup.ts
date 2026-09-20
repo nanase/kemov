@@ -89,6 +89,17 @@ export interface TableShape {
    * `revision`.
    */
   readonly dayColumn?: string;
+  /**
+   * The file empties the table before it inserts, instead of only adding what
+   * is missing. For a table whose rows are one set as a whole - a list a
+   * person edits, where a row's absence is itself part of the answer - and
+   * not for one that only accumulates: with this set, restoring a file
+   * removes every row it does not name, so on a table of records it would
+   * throw away whatever was written since. Written even when the table has no
+   * rows, since "everything was removed" has to survive a restore too.
+   * Meaningful only for a table replaced whole, never one with a `dayColumn`.
+   */
+  readonly replace?: boolean;
 }
 
 /**
@@ -170,6 +181,18 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
     name: 'video_override',
     columns: ['video_id', 'title', 'type', 'availability', 'memo', 'updated_at'],
     conflict: ['video_id'],
+  },
+  {
+    // A list a person edits by hand (#175), so nothing but this file can bring
+    // it back. A restore applies the migrations first, and migration 0008
+    // seeds the original 13 rows. A prefix somebody removed since is not in
+    // the file, so DO NOTHING alone would leave the seeded copy in place and
+    // the restored list would accept a source the backed-up one refused: it
+    // is a gate on what gets published. `replace` empties the table first.
+    name: 'source_whitelist',
+    columns: ['prefix', 'note', 'created_at', 'updated_at'],
+    conflict: ['prefix'],
+    replace: true,
   },
   {
     name: 'footprints_event',
@@ -292,7 +315,9 @@ export function toSql(table: TableShape, rows: readonly Record<string, unknown>[
   const closing = `\nON CONFLICT (${table.conflict.join(', ')}) DO NOTHING;`;
   const fixed = byteLength(opening) + byteLength(closing);
 
-  const statements: string[] = [];
+  // Ahead of every INSERT of this table, so that whichever statement a
+  // restore reaches first, the rows it adds land in an emptied table.
+  const statements: string[] = table.replace === true ? [`DELETE FROM ${table.name};`] : [];
   let batch: string[] = [];
   let bytes = fixed;
 
@@ -342,6 +367,13 @@ export function toSql(table: TableShape, rows: readonly Record<string, unknown>[
     '-- Apply tables in the order BACKED_UP_TABLES lists them: a table with a',
     '-- foreign key to another must be applied after it. Applying a file more',
     '-- than once changes nothing.',
+    ...(table.replace === true
+      ? [
+          '--',
+          `-- This file REPLACES ${table.name}: it deletes every row there first, so apply`,
+          '-- only the newest file of the table, not one after another.',
+        ]
+      : []),
     '',
     ...statements,
     '',

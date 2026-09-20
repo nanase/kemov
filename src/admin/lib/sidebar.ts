@@ -45,6 +45,7 @@ export const SIDEBAR_GROUPS: readonly NavGroup[] = [
     items: [
       { page: 'publish', name: '公開' },
       { page: 'history', name: '版の履歴' },
+      { page: 'source-whitelist', name: '出典ホワイトリスト' },
     ],
   },
 ];

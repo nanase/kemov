@@ -10,13 +10,23 @@ async function clearPublicData(): Promise<void> {
   await Promise.all(listed.objects.map((object) => env.PUBLIC_DATA.delete(object.key)));
 }
 
+// clearEverything empties source_whitelist along with the rest, so the one
+// entry the fixtures' source needs is put back here.
 beforeEach(async () => {
   await clearEverything();
   await clearPublicData();
+  await env.DB.prepare('INSERT INTO source_whitelist (prefix) VALUES (?1)').bind(WHITELISTED_PREFIX).run();
 });
 
 const NOW = new Date('2026-09-18T00:00:00Z');
-const WHITELISTED_SOURCE = 'https://kemono-friends.jp/some-article';
+const WHITELISTED_PREFIX = 'https://kemono-friends.jp/';
+const WHITELISTED_SOURCE = `${WHITELISTED_PREFIX}some-article`;
+const SOURCES_NOT_ENOUGH =
+  'sourcePending is false but no source is in the whitelist and the sources are not on two hosts';
+
+function source(url: string) {
+  return { url, title: null };
+}
 
 function validBody(overrides: Record<string, unknown> = {}) {
   return {
@@ -101,12 +111,92 @@ describe('publishEvent', () => {
   });
 
   test('refuses sourcePending=false when no source is in the whitelist', async () => {
-    const eventId = await createValidEvent({ sources: [{ url: 'https://ameblo.jp/someone/entry-1', title: null }] });
+    const eventId = await createValidEvent({ sources: [source('https://ameblo.jp/someone/entry-1')] });
 
     const response = await publishEvent(env, eventId);
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ errors: ['sourcePending is false but no source is in the whitelist'] });
+    expect(await response.json()).toEqual({ errors: [SOURCES_NOT_ENOUGH] });
+  });
+
+  // #175: a source the whitelist does not name is enough when another one, on
+  // a different host, backs it.
+  test('allows sourcePending=false when the sources are on two different hosts, though none is in the whitelist', async () => {
+    const eventId = await createValidEvent({
+      sources: [source('https://www.youtube.com/watch?v=aaaaaaaaaaa'), source('https://x.com/Partner_KEMOV/status/1')],
+    });
+
+    expect((await publishEvent(env, eventId)).status).toEqual(200);
+  });
+
+  test('refuses two sources on the same host, though none is in the whitelist', async () => {
+    const eventId = await createValidEvent({
+      sources: [
+        source('https://www.youtube.com/watch?v=aaaaaaaaaaa'),
+        source('https://www.youtube.com/watch?v=bbbbbbbbbbb'),
+      ],
+    });
+
+    const response = await publishEvent(env, eventId);
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ errors: [SOURCES_NOT_ENOUGH] });
+  });
+
+  test.each([
+    ['x.com and twitter.com', 'https://x.com/Partner_KEMOV/status/1', 'https://twitter.com/Partner_KEMOV/status/1'],
+    ['x.com and www.x.com', 'https://x.com/Partner_KEMOV/status/1', 'https://www.x.com/Partner_KEMOV/status/1'],
+    ['youtu.be and www.youtube.com', 'https://youtu.be/aaaaaaaaaaa', 'https://www.youtube.com/watch?v=aaaaaaaaaaa'],
+    [
+      'm.youtube.com and youtube.com',
+      'https://m.youtube.com/watch?v=aaaaaaaaaaa',
+      'https://youtube.com/watch?v=aaaaaaaaaaa',
+    ],
+  ])('refuses %s, which are one host', async (_name, first, second) => {
+    const eventId = await createValidEvent({ sources: [source(first), source(second)] });
+
+    const response = await publishEvent(env, eventId);
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ errors: [SOURCES_NOT_ENOUGH] });
+  });
+
+  test.each(['https://youtube.com/watch?v=aaaaaaaaaaa', 'https://youtu.be/aaaaaaaaaaa'])(
+    'allows x.com with %s, which are two hosts',
+    async (video) => {
+      const eventId = await createValidEvent({
+        sources: [source('https://x.com/Partner_KEMOV/status/1'), source(video)],
+      });
+
+      expect((await publishEvent(env, eventId)).status).toEqual(200);
+    },
+  );
+
+  test('refuses one source outside the whitelist, however many hosts it might have', async () => {
+    const eventId = await createValidEvent({ sources: [source('https://www.youtube.com/watch?v=aaaaaaaaaaa')] });
+
+    expect((await publishEvent(env, eventId)).status).toEqual(400);
+  });
+
+  // The whitelist is read from D1 at the moment of publishing, so an edit
+  // made from the admin site is in effect for the next publish and no other.
+  test('follows the whitelist table: an entry removed refuses, an entry added allows', async () => {
+    const eventId = await createValidEvent();
+
+    await env.DB.prepare('DELETE FROM source_whitelist').run();
+    expect((await publishEvent(env, eventId)).status).toEqual(400);
+
+    await env.DB.prepare('INSERT INTO source_whitelist (prefix) VALUES (?1)').bind(WHITELISTED_PREFIX).run();
+    expect((await publishEvent(env, eventId)).status).toEqual(200);
+  });
+
+  test('does not look at the sources of an event whose sourcePending is true', async () => {
+    const eventId = await createValidEvent({
+      sourcePending: true,
+      sources: [source('https://ameblo.jp/someone/entry-1')],
+    });
+
+    expect((await publishEvent(env, eventId)).status).toEqual(200);
   });
 
   test('allows sourcePending=true with no sources', async () => {

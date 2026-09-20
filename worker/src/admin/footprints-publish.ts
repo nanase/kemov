@@ -2,7 +2,7 @@ import { byteLength } from '../lib/backup';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 import { revisionStatement } from '../lib/revision';
-import { isWhitelistedSource } from '../lib/source-whitelist';
+import { hasTwoHosts, isWhitelistedSource, readSourceWhitelist } from '../lib/source-whitelist';
 import { formatTimestamp } from '../lib/time';
 import { present, publicShapeOf, readEvent, readEvents, type FootprintsEvent } from './footprints';
 
@@ -27,18 +27,26 @@ const VIDEO_ID_LENGTH = 11;
  * for a draft exactly as much as for a published event, so nothing that
  * exists in the table can fail those. What is left is what only publishing
  * asks for.
+ *
+ * A source is enough when it is on `whitelist`, or when the sources together
+ * come from two different hosts (#175): the whitelist lists what one source
+ * can vouch for alone, and a source it does not list can still be backed by
+ * another on a different host. `whitelist` is read by the caller, so this
+ * stays a function of what it is given.
  */
-function publishProblems(saved: FootprintsEvent): string[] {
+function publishProblems(saved: FootprintsEvent, whitelist: readonly string[]): string[] {
   const { event, sources } = saved;
   const problems: string[] = [];
 
   if (event.title === '') problems.push('title must not be empty');
 
   if (event.source_pending === 0) {
-    if (sources.length === 0) {
+    const urls = sources.map((source) => source.url);
+
+    if (urls.length === 0) {
       problems.push('sourcePending is false but there are no sources');
-    } else if (!sources.some((source) => isWhitelistedSource(source.url))) {
-      problems.push('sourcePending is false but no source is in the whitelist');
+    } else if (!urls.some((url) => isWhitelistedSource(url, whitelist)) && !hasTwoHosts(urls)) {
+      problems.push('sourcePending is false but no source is in the whitelist and the sources are not on two hosts');
     }
   }
 
@@ -64,7 +72,7 @@ export async function publishEvent(env: Env, eventId: number): Promise<Response>
 
   if (saved === null) return errorResponse(404, `no footprints event ${eventId}`);
 
-  const problems = publishProblems(saved);
+  const problems = publishProblems(saved, await readSourceWhitelist(env));
 
   if (problems.length > 0) return jsonResponse({ errors: problems }, { status: 400 });
 
