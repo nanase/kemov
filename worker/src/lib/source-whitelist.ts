@@ -51,23 +51,48 @@ export function isWhitelistedSource(url: string, prefixes: readonly string[]): b
 }
 
 /**
+ * Hosts that are one place under two names, each mapped to the name it is
+ * counted under. Only for `hasTwoHosts`: the whitelist match above compares
+ * the URL's own text and does not read this.
+ *
+ * Small on purpose. `twitter.com` is here because the whitelist already
+ * lists `x.com/KEMOVP_staff` and `twitter.com/KEMOVP_staff` side by side, so
+ * the project already treats the two as one. A pair belongs here when two
+ * URLs on it can be the same page, which is what makes a second one no
+ * confirmation of the first; it does not belong here because two hosts look
+ * related. Add one only when that is known.
+ */
+const HOST_ALIASES: ReadonlyMap<string, string> = new Map([['twitter.com', 'x.com']]);
+
+/** The name `url`'s host is counted under, or null when `url` names none. `www.` is dropped: it is the same site written with a prefix. */
+function countedHost(url: string): string | null {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '');
+
+    return HOST_ALIASES.get(host) ?? host;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Whether `urls` are backed by at least two different hosts.
  *
  * What a source outside the whitelist can still count for: one YouTube video
  * says something and a second URL on the same host - another video, or the
  * same one written another way - only repeats it, so it is the number of
- * hosts and not of URLs that says the claim was checked somewhere else. A URL
- * `new URL` cannot parse names no host, and adds none.
+ * hosts and not of URLs that says the claim was checked somewhere else. A
+ * host is counted as `countedHost` reads it, so `x.com`, `www.x.com` and
+ * `twitter.com` are one. A URL `new URL` cannot parse names no host, and adds
+ * none.
  */
 export function hasTwoHosts(urls: readonly string[]): boolean {
   const hosts = new Set<string>();
 
   for (const url of urls) {
-    try {
-      hosts.add(new URL(url).hostname);
-    } catch {
-      continue;
-    }
+    const host = countedHost(url);
+
+    if (host !== null) hosts.add(host);
   }
 
   return hosts.size >= 2;

@@ -112,6 +112,24 @@ describe('hasTwoHosts', () => {
     expect(hasTwoHosts(['https://X.com/a', 'https://x.com:443/b'])).toEqual(false);
   });
 
+  // The same post reached as x.com and as twitter.com is one source seen
+  // twice, which is what counting hosts is there to refuse.
+  test('counts x.com, www.x.com and twitter.com as one host', () => {
+    expect(hasTwoHosts(['https://x.com/someone/status/1', 'https://twitter.com/someone/status/1'])).toEqual(false);
+    expect(hasTwoHosts(['https://x.com/someone/status/1', 'https://www.x.com/someone/status/1'])).toEqual(false);
+    expect(hasTwoHosts(['https://twitter.com/a', 'https://www.twitter.com/b'])).toEqual(false);
+  });
+
+  test('still counts x.com and youtube.com as two hosts', () => {
+    expect(hasTwoHosts(['https://x.com/someone/status/1', 'https://www.youtube.com/watch?v=a'])).toEqual(true);
+    expect(hasTwoHosts(['https://twitter.com/someone/status/1', 'https://youtube.com/watch?v=a'])).toEqual(true);
+  });
+
+  // Not a suffix match: a host that merely ends the same way is another site.
+  test('does not fold a host that only ends in the alias', () => {
+    expect(hasTwoHosts(['https://x.com/a', 'https://nottwitter.com/b'])).toEqual(true);
+  });
+
   test('counts a URL that names no host as none', () => {
     expect(hasTwoHosts(['https://', 'https://x.com/a'])).toEqual(false);
   });

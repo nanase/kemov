@@ -143,6 +143,26 @@ describe('publishEvent', () => {
     expect(await response.json()).toEqual({ errors: [SOURCES_NOT_ENOUGH] });
   });
 
+  test.each([
+    ['x.com and twitter.com', 'https://x.com/Partner_KEMOV/status/1', 'https://twitter.com/Partner_KEMOV/status/1'],
+    ['x.com and www.x.com', 'https://x.com/Partner_KEMOV/status/1', 'https://www.x.com/Partner_KEMOV/status/1'],
+  ])('refuses %s, which are one host', async (_name, first, second) => {
+    const eventId = await createValidEvent({ sources: [source(first), source(second)] });
+
+    const response = await publishEvent(env, eventId);
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ errors: [SOURCES_NOT_ENOUGH] });
+  });
+
+  test('allows x.com with youtube.com, which are two hosts', async () => {
+    const eventId = await createValidEvent({
+      sources: [source('https://x.com/Partner_KEMOV/status/1'), source('https://youtube.com/watch?v=aaaaaaaaaaa')],
+    });
+
+    expect((await publishEvent(env, eventId)).status).toEqual(200);
+  });
+
   test('refuses one source outside the whitelist, however many hosts it might have', async () => {
     const eventId = await createValidEvent({ sources: [source('https://www.youtube.com/watch?v=aaaaaaaaaaa')] });
 

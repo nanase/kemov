@@ -25,21 +25,36 @@ CREATE TABLE source_whitelist (
 ) STRICT;
 
 -- The 13 entries the constant held, decided by the project owner on
--- 2026-09-15 (#141) and confirmed against the source each one names at that
--- time, in the constant's own order. Nothing added, nothing dropped. `note`
--- carries the category the constant's comments grouped them under, so the
--- grouping survives the move.
+-- 2026-09-15 (#141). Every entry was confirmed against the source it names
+-- at that time - a domain moving or a page being renamed is not something
+-- this list tracks on its own. In the constant's own order. Nothing added,
+-- nothing dropped.
+--
+-- `note` carries the category the constant's comments grouped them under.
+-- What did not fit in a category is kept below as those comments were
+-- written, since the constant is deleted with this change and this is the
+-- only place left to read why each group is here.
 INSERT INTO source_whitelist (prefix, note) VALUES
+  -- 公式 - the project's own domains and its official social accounts.
   ('https://kemov-project.com/', '公式'),
   ('https://www.kemov-project.com/', '公式'),
   ('https://kemono-friends.jp/', '公式'),
   ('https://x.com/KEMOVP_staff', '公式'),
   ('https://twitter.com/KEMOVP_staff', '公式'),
   ('https://kemovproject.stores.jp/', '公式'),
+
+  -- 運営会社・提携先の発表 - press releases and partner pages for a
+  -- collaboration. "など" in the decision means this category is expected to
+  -- grow as new partners appear; the three named here are what was decided.
   ('https://prtimes.jp/', '運営会社・提携先の発表'),
   ('https://kyodonewsprwire.jp/', '運営会社・提携先の発表'),
   ('https://shop.joysound.com/', '運営会社・提携先の発表'),
+
+  -- 出演イベントの主催者
   ('https://vtube.tokyo/', '出演イベントの主催者'),
+
+  -- ファンの Wiki・大百科 - unofficial, but treated as a source because #141
+  -- named these two specifically rather than fan wikis in general.
   ('https://wikiwiki.jp/kemo_v/', 'ファンの Wiki・大百科'),
   ('https://dic.nicovideo.jp/a/%E3%81%91%E3%82%82%E3%81%AE%E3%83%95%E3%83%AC%E3%83%B3%E3%82%BAv%E3%81%B7%E3%82%8D%E3%81%98%E3%81%87%E3%81%8F%E3%81%A8', 'ファンの Wiki・大百科'),
   ('https://virtualyoutuber.fandom.com/wiki/KemoV', 'ファンの Wiki・大百科');
