@@ -1,11 +1,9 @@
 /// <reference types="node" />
 import { readFileSync } from 'node:fs';
-import { relative, resolve } from 'node:path';
-import viteConfig from '../vite.config';
+import { resolve } from 'node:path';
 import { THEMED_PAGE_PATHS } from '../worker/src/lib/themed-pages';
 
 const root = resolve(import.meta.dirname, '..');
-const srcDir = resolve(root, 'src');
 
 /** The paths `run_worker_first` in wrangler.toml lists. */
 function runWorkerFirst(): string[] {
@@ -17,17 +15,28 @@ function runWorkerFirst(): string[] {
   return [...list[1]!.matchAll(/"([^"]*)"/g)].map((m) => m[1]!);
 }
 
-/** The address each page vite builds is served at, by the page's `input` name. */
+/**
+ * The address each page vite builds is served at, by the page's `input` name.
+ *
+ * Read from the config's text rather than by importing it: a test that imports
+ * vite.config.ts puts the file into vue-tsc's program, and its Sass options
+ * do not type-check against the installed vite.
+ */
 function builtPages(): Map<string, string> {
-  const input = viteConfig.build!.rollupOptions!.input as Record<string, string>;
+  const config = readFileSync(resolve(root, 'vite.config.ts'), 'utf8');
+  const entries = [...config.matchAll(/(\w+):\s*resolve\(srcDir,\s*([^)]*)\)/g)];
 
   return new Map(
-    Object.entries(input).map(([name, file]) => {
-      const directory = relative(srcDir, file)
-        .replaceAll('\\', '/')
-        .replace(/index\.html$/, '');
+    entries.map(([, name, args]) => {
+      const segments = [...args!.matchAll(/'([^']*)'/g)].map((m) => m[1]!);
 
-      return [name, `/${directory}`];
+      return [
+        name!,
+        `/${segments
+          .slice(0, -1)
+          .map((segment) => `${segment}/`)
+          .join('')}`,
+      ];
     }),
   );
 }
