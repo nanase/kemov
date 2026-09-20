@@ -89,6 +89,15 @@ ACCESS_TEAM_DOMAIN = "nanase.cloudflareaccess.com"
 [assets]
 directory = "./dist"
 binding = "ASSETS"
+# The pages that carry the reader's colour theme (#182). The worker answers
+# these itself, from the same files, with the theme written in, because the
+# browser picks a page's canvas colour before any script in it can run. Only
+# HTML is listed: the hashed scripts, stylesheets, fonts and images are still
+# served without waking the worker, and every path added here is one more
+# invocation per page view. worker/src/lib/themed-pages.ts holds the same
+# list, and test/worker-config.test.ts holds the two together and to the pages
+# vite builds. /admin/ is not one of them: it is light only.
+run_worker_first = ["/", "/stats/", "/stats/detail/", "/members/", "/videos/", "/genet/music/"]
 
 # The site's own hostname. A custom domain rather than a route pattern:
 # Cloudflare creates and keeps the DNS record for it, which is what makes this

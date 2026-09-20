@@ -51,9 +51,9 @@ describe("the redirect page's background before the script runs", () => {
 
   // The page skips head.html, so nothing else keeps these in step with the
   // rest of the site.
-  test('matches the site background for light and for a dark OS', () => {
-    const [light, darkByOs] = backgrounds(tokens, /--k-bg:\s*(#[0-9a-f]+);/gi);
+  test('matches the site background for light, a dark OS and a chosen dark', () => {
+    const [light, darkByOs, darkByChoice] = backgrounds(tokens, /--k-bg:\s*(#[0-9a-f]+);/gi);
 
-    expect(backgrounds(page, /background-color:\s*(#[0-9a-f]+);/gi)).toEqual([light, darkByOs]);
+    expect(backgrounds(page, /background-color:\s*(#[0-9a-f]+);/gi)).toEqual([light, darkByOs, darkByChoice]);
   });
 });

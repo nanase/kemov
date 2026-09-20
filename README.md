@@ -306,6 +306,17 @@ The screen-side logic worth testing without a browser — the table's own query 
 
 A request's id is checked against the shape YouTube gives it — `UC` followed by 22 characters for a channel, 11 characters for a video — before D1 is asked, and answered 404 without a query if it does not match. A well-shaped id D1 has no row for is also 404. Once a row is found, the page's `<title>`, `og:title` and `og:url` are rewritten with `HTMLRewriter`, and its `ETag` is dropped: the header would otherwise still name the unrewritten body, and a conditional request against it could get a `304` carrying the wrong title.
 
+### The Colour Theme and Its Cookie
+
+A reader's choice of `light` or `dark` (`ThemeToggle`) is kept in two places: `localStorage`, which the page's own script reads, and a cookie of the same name, `kemov-theme`, which the worker reads (#182). The cookie exists because the browser paints a page's canvas before it has parsed any of it, from the `color-scheme` meta. That meta says `light dark`, so a reader who chose light under a dark OS saw a dark frame between one page and the next, and no script in the page can run early enough to prevent it.
+
+`worker/src/lib/theme.ts` answers the built HTML pages with `HTMLRewriter`: for a `light` or `dark` cookie it sets `data-theme` on `<html>` and narrows the `color-scheme` meta to that value. A missing cookie, `system`, or any value that is not `light` or `dark` is answered untouched — `themeFromCookieHeader` in `src/shell/theme.ts` is the one place that decides that, and the frontend and the worker both call it.
+
+- The cookie holds `light` or `dark` and nothing else, so it identifies no one. `Path=/; SameSite=Lax; Secure; Max-Age=` one year. It is not `HttpOnly`, because a script writes it. `system` is the absence of a cookie. Nothing logs it.
+- `head.html`'s inline script copies a stored setting into the cookie when the cookie is missing or disagrees. Without it the readers who chose before the cookie existed would never get one, and a reader whose cookie expired would flash until they pressed the toggle again. Those readers see one dark frame on their first visit after the deploy; the second is right.
+- `run_worker_first` in `wrangler.toml` lists exactly the HTML paths, `worker/src/lib/themed-pages.ts` lists the same, and `test/worker-config.test.ts` holds the two to each other and to the pages `vite.config.ts` builds. A path listed there costs one worker invocation per page view; the hashed scripts, stylesheets, fonts and images are not listed and are still served without the worker. `/admin/` is not listed: it is light only.
+- The answers are `Cache-Control: private, no-cache` and `Vary: Cookie`, with no `ETag`: the body depends on the cookie, so it must not sit in a shared cache, and a `304` against the file's own ETag would keep a page written for another setting. `no-cache` rather than `no-store`, which stops some browsers restoring a page on back and forward. A new page that carries the `color-scheme` meta has to be added to both lists.
+
 ## Database
 
 The collected data lives in a Cloudflare D1 database named `kemov`, running in the APAC region. Everything the site publishes can be rebuilt from it. The commands below need wrangler, which comes with the Worker setup.

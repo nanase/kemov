@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { THEME_STORAGE_KEY, nextThemeSetting, parseThemeSetting, type ThemeSetting } from './theme';
+import { THEME_STORAGE_KEY, nextThemeSetting, parseThemeSetting, themeCookie, type ThemeSetting } from './theme';
 
 // head.html has already applied any stored setting to <html> before this
 // mounts, so the attribute is the one source to start from.
@@ -37,6 +37,14 @@ function cycle() {
     }
   } catch {
     // Without storage the choice lasts until the page is left.
+  }
+
+  // The worker reads this to send the next page in the right scheme from its
+  // first byte; see themeCookie for what it holds.
+  try {
+    document.cookie = themeCookie(next);
+  } catch {
+    // Cookies can be refused too; the next page then starts in the OS's scheme.
   }
 }
 </script>

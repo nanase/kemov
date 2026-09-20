@@ -24,16 +24,22 @@
       /*
        * Only the background, so the page does not flash white on its way out.
        * The values repeat --k-bg from src/shell/tokens.css;
-       * test/stats/detail/destination.test.ts keeps them the same.
+       * test/stats/detail/destination.test.ts keeps them the same. The worker
+       * writes the reader's data-theme into this page as it does into the
+       * others (#182), so a reader who chose a theme is not shown the OS's.
        */
       html {
         background-color: #e9eeec;
       }
 
       @media (prefers-color-scheme: dark) {
-        html {
+        html:not([data-theme='light']) {
           background-color: #0e0f10;
         }
+      }
+
+      html[data-theme='dark'] {
+        background-color: #0e0f10;
       }
 
       body {
