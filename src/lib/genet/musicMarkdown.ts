@@ -61,7 +61,7 @@ export function lexMarkdown(source: string): MdToken[] {
           tokens.push({
             type: 'link',
             text: plainText(source.slice(i + 1, closeBracket)),
-            href: source.slice(closeBracket + 2, k - 1),
+            href: unescapeHtml(source.slice(closeBracket + 2, k - 1)),
           });
           i = k;
           continue;
@@ -106,7 +106,7 @@ export function expandLink(href: string): string | null {
 
 /** A `yt:<videoId>` or `yt:<videoId>?t=<seconds>` href, split back into its parts - the read side of what a 配信の時刻 insert writes. */
 export function parseYoutubeHref(href: string): { videoId: string; seconds: number } | null {
-  const m = /^yt:([^?]+)(?:\?t=(\d+))?/.exec(href);
+  const m = /^yt:([^?]+)(?:\?t=(\d+))?$/.exec(href);
 
   if (!m) return null;
 

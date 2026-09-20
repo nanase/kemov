@@ -12,6 +12,12 @@ describe('lexMarkdown', () => {
     ]);
   });
 
+  test('a href is entity-decoded once, like the text, so the renderer does not escape it twice', () => {
+    expect(lexMarkdown('[検索](https://example.com/?a=1&amp;b=2)')).toEqual([
+      { type: 'link', text: '検索', href: 'https://example.com/?a=1&b=2' },
+    ]);
+  });
+
   test('a newline becomes its own token', () => {
     expect(lexMarkdown('一行目\n二行目')).toEqual([
       { type: 'text', text: '一行目' },
@@ -62,6 +68,11 @@ describe('parseYoutubeHref', () => {
 
   test('reads a video id with an offset', () => {
     expect(parseYoutubeHref('yt:abcdefghijk?t=90')).toEqual({ videoId: 'abcdefghijk', seconds: 90 });
+  });
+
+  test('answers null when anything other than ?t=<seconds> follows the id', () => {
+    expect(parseYoutubeHref('yt:abcdefghijk?list=x')).toBeNull();
+    expect(parseYoutubeHref('yt:abcdefghijk?t=90&x=1')).toBeNull();
   });
 
   test('answers null for a non-yt href', () => {
