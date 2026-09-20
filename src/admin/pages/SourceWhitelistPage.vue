@@ -34,7 +34,9 @@ const addError = ref<string | null>(null);
 const drafts = reactive<Record<string, string>>({});
 // Both the add form's inputs and a row's note input are disabled while their
 // own request is in flight: a successful answer clears or replaces what the
-// input holds, which would otherwise throw away what was typed meanwhile.
+// input holds, which would otherwise throw away what was typed meanwhile. The
+// add form waits for the list load as well, since a list that arrives after
+// an add would replace the row just added.
 const busyPrefixes = ref<Set<string>>(new Set());
 // The row whose 削除 was pressed once. Only one at a time: pressing another
 // row's 削除 moves the question there.
@@ -154,7 +156,7 @@ onMounted(load);
                   type="text"
                   autocomplete="off"
                   placeholder="https://"
-                  :disabled="adding"
+                  :disabled="loading || adding"
                   :aria-invalid="addError !== null"
                 />
               </div>
@@ -166,7 +168,7 @@ onMounted(load);
                   type="text"
                   autocomplete="off"
                   placeholder="承認理由（例: 提携先の発表）"
-                  :disabled="adding"
+                  :disabled="loading || adding"
                 />
               </div>
             </div>
@@ -175,7 +177,9 @@ onMounted(load);
               にし、単一のページや記事だけならフルパスで書いてください。
             </div>
             <div>
-              <button class="btn primary" type="submit" :disabled="adding || newPrefix.trim() === ''">足す</button>
+              <button class="btn primary" type="submit" :disabled="loading || adding || newPrefix.trim() === ''">
+                足す
+              </button>
             </div>
           </form>
 
