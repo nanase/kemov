@@ -47,6 +47,13 @@
   // Applies the reader's colour theme before the first paint, so a page in a
   // theme other than the OS's does not flash the OS's first. ThemeToggle
   // writes the key; anything but `light` or `dark` means following the OS.
+  //
+  // The worker does the same from the cookie before this runs, and gets the
+  // canvas colour right, which nothing in the page can (see theme.ts). This
+  // stays for the visits it cannot cover: a reader whose setting predates the
+  // cookie, and one whose cookie has gone. It hands the setting to the cookie
+  // so that the next page is served right. test/shell/head.test.ts holds the
+  // cookie written here to what themeCookie writes.
   (function applyStoredTheme() {
     try {
       const theme = localStorage.getItem('kemov-theme');
@@ -54,6 +61,9 @@
         document.documentElement.dataset.theme = theme;
         // The meta tag above allows both schemes until tokens.css narrows it.
         document.documentElement.style.colorScheme = theme;
+        if (!document.cookie.split('; ').includes('kemov-theme=' + theme)) {
+          document.cookie = 'kemov-theme=' + theme + '; Max-Age=31536000; Path=/; SameSite=Lax; Secure';
+        }
       }
     } catch {
       // Storage can be unavailable; following the OS is the fallback.
