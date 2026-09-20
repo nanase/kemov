@@ -177,6 +177,7 @@ onMounted(load);
 /* ---- 選ぶ --------------------------------------------------------- */
 
 function selectStream(videoId: string): void {
+  play.value = null;
   selectedVideoId.value = videoId;
   selectedTuneId.value = null;
   ensureSelection();
@@ -185,6 +186,7 @@ function selectStream(videoId: string): void {
 }
 
 function selectTune(tuneId: number): void {
+  play.value = null;
   selectedTuneId.value = tuneId;
   pair.value = 'song';
   sheet.value = 'song';
@@ -239,6 +241,19 @@ function goToStream(stream: PreparedStream | null): void {
   selectStream(stream.stream.video_id);
 }
 
+/** Opens a stream the 演奏した回 list names, dropping the conditions first when they would hide it - otherwise `ensureSelection` falls back to the first match of an unrelated stream. */
+function goToOccurrence(videoId: string, tuneId: number): void {
+  if (!result.value.streams.some((s) => s.stream.video_id === videoId)) {
+    query.value = '';
+    form.value = null;
+    year.value = null;
+    category.value = null;
+  }
+
+  selectStream(videoId);
+  selectTune(tuneId);
+}
+
 /* ---- 曲を演奏した回 --------------------------------------------------- */
 
 interface Occurrence {
@@ -252,7 +267,7 @@ const occurrences = computed<Occurrence[]>(() => {
   if (tuneId === undefined || !data.value) return [];
 
   const seen = new Map<string, Occurrence>();
-  const source = ascending.value ? data.value.streams : [...data.value.streams].reverse();
+  const source = ascending.value ? [...data.value.streams].reverse() : data.value.streams;
 
   for (const stream of source) {
     for (const perf of stream.performances) {
@@ -765,7 +780,10 @@ function snippetText(text: string): string {
                             class="tbtn"
                             :aria-pressed="play?.videoId === sc.video_id && play?.seconds === sc.start_seconds"
                             :aria-label="`${videoTimeText(sc.start_seconds)} から聴く`"
-                            @click="play = { videoId: sc.video_id, seconds: sc.start_seconds }"
+                            @click="
+                              selectTune(perf.tune.tune_id);
+                              play = { videoId: sc.video_id, seconds: sc.start_seconds };
+                            "
                           >
                             {{ videoTimeText(sc.start_seconds) }}
                           </button>
@@ -952,9 +970,7 @@ function snippetText(text: string): string {
                         <button
                           class="ot"
                           type="button"
-                          @click="
-                            goToStream(preparedStreams.find((p) => p.stream.video_id === o.stream.video_id) ?? null)
-                          "
+                          @click="goToOccurrence(o.stream.video_id, selectedPerformance.tune.tune_id)"
                         >
                           {{ unesc(o.stream.short_title || o.stream.title) }}
                         </button>
