@@ -688,6 +688,17 @@ describe('toSql', () => {
     test('is set on no table that is backed up a day at a time', () => {
       expect(BACKED_UP_TABLES.filter((table) => table.replace === true && table.dayColumn !== undefined)).toEqual([]);
     });
+
+    // Named outright, not derived from a rule: a table that accumulates
+    // (`footprints_event`, say) has no `dayColumn` either, so a rule about
+    // `dayColumn` cannot see it. With `replace` on such a table, a restore
+    // silently deletes every row written after the backup. Whoever adds
+    // another table here has to come and change this line on purpose.
+    test('is set on exactly the tables named here', () => {
+      expect(BACKED_UP_TABLES.filter((table) => table.replace === true).map((table) => table.name)).toEqual([
+        'source_whitelist',
+      ]);
+    });
   });
 });
 
