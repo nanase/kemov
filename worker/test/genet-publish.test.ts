@@ -248,6 +248,41 @@ describe('publishStream', () => {
     });
   });
 
+  test('refuses a scene videoId that is not 11 characters only for a youtube stream', async () => {
+    const tuneId = await createValidTune();
+    const videoId = await createValidStream({
+      platform: 'youtube',
+      performances: [
+        { tuneId, description: null, scenes: [{ style: 'play', videoId: 'a'.repeat(19), startSeconds: 0 }] },
+      ],
+    });
+
+    const response = await publishStream(env, videoId);
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toMatchObject({
+      errors: expect.arrayContaining(['performances[0].scenes[0].videoId must be 11 characters']),
+    });
+  });
+
+  test('publishes a tiktok stream whose stream and scene ids are 19 digits', async () => {
+    const tiktokId = '7300000000000000001';
+    const tuneId = await createValidTune();
+    const videoId = await createValidStream({
+      videoId: tiktokId,
+      platform: 'tiktok',
+      url: `https://www.tiktok.com/@example/video/${tiktokId}`,
+      performances: [{ tuneId, description: null, scenes: [{ style: 'play', videoId: tiktokId, startSeconds: 0 }] }],
+    });
+
+    const response = await publishStream(env, videoId);
+
+    expect(response.status).toEqual(200);
+    expect(await revisionRows('genet_stream')).toEqual([
+      { entity_key: tiktokId, action: 'publish', body: expect.any(String) },
+    ]);
+  });
+
   test('refuses a tune attribute with both text and people', async () => {
     const personId = await createValidPerson();
     const tuneId = await createValidTune({
