@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
-import { withCommas } from '@nanase/alnilam/number';
+import { formatCount } from '@/lib/numberFormat';
 
 import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt from '@/shell/UpdatedAt.vue';
@@ -200,14 +200,14 @@ const countSentence = computed(() => {
   const scope = scopeName(kind.value, period.value);
 
   if (phase.value === 'noUniverse') return `${scope} 0 本`;
-  if (phase.value === 'funnel') return `${scope} ${withCommas(universe.value.total)} 本`;
+  if (phase.value === 'funnel') return `${scope} ${formatCount(universe.value.total)} 本`;
 
   const active =
     filters.value.query !== '' || filters.value.lengthBandId !== 'any' || filters.value.channelIds.size > 0;
-  const parts = [`${scope} ${withCommas(universe.value.total)} 本`];
+  const parts = [`${scope} ${formatCount(universe.value.total)} 本`];
 
-  if (active) parts.push(`→ 絞り込んだ ${withCommas(view.value.rows.length)} 本`);
-  parts.push(`のうち ${withCommas(shownCount.value)} 本を表示`);
+  if (active) parts.push(`→ 絞り込んだ ${formatCount(view.value.rows.length)} 本`);
+  parts.push(`のうち ${formatCount(shownCount.value)} 本を表示`);
 
   return parts.join(' ');
 });

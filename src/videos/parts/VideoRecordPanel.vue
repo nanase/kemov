@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { withCommas } from '@nanase/alnilam/number';
+import { formatCount } from '@/lib/numberFormat';
 
 import type { Channel, VideoType } from '@/type/api';
 import { formatDateTime } from '@/lib/timeFormat';
@@ -142,7 +142,7 @@ function avatarStyle() {
         <span class="v">{{ entry ? formatProperty(metric, entry.value) : EM_DASH }}</span>
         <span class="pos">
           <template v-if="entry">
-            <b>{{ withCommas(entry.rank) }}</b> 位 / {{ withCommas(universe.total) }} 本
+            <b>{{ formatCount(entry.rank) }}</b> 位 / {{ formatCount(universe.total) }} 本
           </template>
           <template v-else>順位が付きません</template>
         </span>
@@ -152,7 +152,7 @@ function avatarStyle() {
       <div v-if="period !== 'all'" class="alltime">
         {{ kindName(kind) }}・全期間のうち
         <template v-if="allTimeEntry">
-          <b>{{ withCommas(allTimeEntry.rank) }} 位</b> / {{ withCommas(allTimeUniverse?.total ?? 0) }} 本
+          <b>{{ formatCount(allTimeEntry.rank) }} 位</b> / {{ formatCount(allTimeUniverse?.total ?? 0) }} 本
         </template>
         <template v-else>順位が付きません</template>
       </div>
@@ -180,7 +180,9 @@ function avatarStyle() {
             <td class="v">{{ ledgerRank(m.id) ? formatProperty(m.id, ledgerRank(m.id)!.value) : EM_DASH }}</td>
             <td class="p">
               {{
-                ledgerRank(m.id) ? `${withCommas(ledgerRank(m.id)!.rank)} / ${withCommas(ledgerTotal(m.id))}` : EM_DASH
+                ledgerRank(m.id)
+                  ? `${formatCount(ledgerRank(m.id)!.rank)} / ${formatCount(ledgerTotal(m.id))}`
+                  : EM_DASH
               }}
             </td>
           </tr>

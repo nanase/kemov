@@ -173,6 +173,12 @@ describe('formatProperty', () => {
     expect(formatProperty('viewCount', 1234567)).toEqual('1,234,567');
   });
 
+  // The same dash every other number on the site is missing as, rather than a
+  // blank that reads as nothing having been measured.
+  test('a count that is absent is a dash', () => {
+    expect(formatProperty('viewCount', undefined)).toEqual('—');
+  });
+
   test('ratios get one decimal place', () => {
     expect(formatProperty('viewCountPerSecond', 2.06)).toEqual('2.1');
     expect(formatProperty('viewCountPerSecond', 2.04)).toEqual('2.0');

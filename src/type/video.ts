@@ -1,4 +1,4 @@
-import { withCommas } from '@nanase/alnilam/number';
+import { formatCount } from '@/lib/numberFormat';
 import dayjs from '@nanase/alnilam/dayjs';
 
 import type { Video } from '@/type/api';
@@ -242,7 +242,7 @@ export function formatProperty(property: VideoProperty, value: number | undefine
     case 'commentCount':
     case 'chatMessageCount':
     case 'chatUniqueUserCount':
-      return withCommas(value);
+      return formatCount(value);
 
     case 'duration':
       return formatDuration(value);
