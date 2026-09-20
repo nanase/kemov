@@ -78,6 +78,14 @@ export interface GenetStream {
 
 export interface GenetMusicData {
   published_at: string;
+  /**
+   * The channel whose icon the page draws beside its title. `null` when the
+   * published streams do not point clearly at one; absent from a JSON
+   * published before the field existed (`shape_version` 1). The page treats
+   * the two the same.
+   */
+  channel_id?: string | null;
+  shape_version?: number;
   streams: GenetStream[];
   tunes: GenetTune[];
   people: GenetPerson[];

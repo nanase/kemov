@@ -5,6 +5,7 @@ import { unescapeHtml } from '@nanase/alnilam/string';
 import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt, { type UpdatedAtState } from '@/shell/UpdatedAt.vue';
 import { relayVideoThumbnailURL } from '@/lib/relay';
+import { channelIconURL } from '@/lib/genet/musicChannelIcon';
 import { getEmbedURL } from '@/lib/youtube';
 import { expandLink, lexMarkdown, parseYoutubeHref, plainText } from '@/lib/genet/musicMarkdown';
 import {
@@ -65,6 +66,13 @@ const FORM_ICON: Record<FormId, string> = {
 const loadState = ref<UpdatedAtState>('loading');
 const updatedAt = ref<number | null>(null);
 const data = ref<GenetMusicData | null>(null);
+
+// The title icon is the channel's own picture when the JSON names a channel and
+// the relay has it; otherwise, and when the picture fails to load, it stays the
+// plain coloured circle the icon's box already draws (the same fallback #180
+// gives thumbnails).
+const iconSrc = computed(() => channelIconURL(data.value));
+const iconFailed = ref(false);
 const preparedStreams = ref<PreparedStream[]>([]);
 
 const query = ref('');
@@ -418,7 +426,18 @@ function snippetText(text: string): string {
 <template>
   <SiteShell page="genet" title="ジェネット楽曲一覧">
     <template #title-icon>
-      <span class="gm-icon" aria-hidden="true"></span>
+      <!-- The title already says what this icon would, so it stays out of what a screen reader reads. -->
+      <img
+        v-if="iconSrc && !iconFailed"
+        class="gm-icon"
+        :src="iconSrc"
+        alt=""
+        width="30"
+        height="30"
+        aria-hidden="true"
+        @error="iconFailed = true"
+      />
+      <span v-else class="gm-icon" aria-hidden="true"></span>
     </template>
     <template #title-aside>
       <UpdatedAt :at="updatedAt" :state="loadState" :pulse="false" date-only age="calendar" />
@@ -1058,6 +1077,7 @@ function snippetText(text: string): string {
   flex: none;
   background: var(--k-accent-soft);
   box-shadow: 0 0 0 2px #dd7278;
+  object-fit: cover;
 }
 
 .gm {

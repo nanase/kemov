@@ -261,6 +261,8 @@ An event passes through a publish gate rather than taking effect on save, the sa
 
 `POST /admin/api/genet/publish` builds `genet/music.json` from the latest `revision` of every stream whose latest action is not `withdraw`, together with every tune and person those streams' own published bodies name - not a fresh read of the working tables, so a tune dropped from a stream after it was published cannot leak back into the JSON. Streams, tunes and people share one `publication` row (`target = 'genet_music'`).
 
+The JSON also carries `shape_version` (`GENET_MUSIC_SHAPE_VERSION` in `genet-publish.ts`) and `channel_id`, the channel whose icon the page draws beside its title. `channel_id` is the channel that at least half of the published YouTube streams found in `video` belong to, and that leads every other; it is `null` when no channel does, and the page then keeps its coloured circle. A run finds the version by reading the stored JSON itself, not the `publication` row, and builds again when it is older than the one in the code (a JSON with no `shape_version` is version 1) even though no revision is newer. Raise the constant whenever the shape changes, and the change reaches the public JSON on the next "いま公開する".
+
 ### Read-Only Admin Endpoints
 
 A few of the data screens have nothing to save through - they only pick a row to act on elsewhere, or read a record no other endpoint exposes. None of these log a `revision`.

@@ -1,7 +1,13 @@
 import { env } from 'cloudflare:test';
 
 import { createPerson } from '../src/admin/genet-people';
-import { pendingGenetMusic, publishGenetMusicNow, publishStream, withdrawStream } from '../src/admin/genet-publish';
+import {
+  GENET_MUSIC_SHAPE_VERSION,
+  pendingGenetMusic,
+  publishGenetMusicNow,
+  publishStream,
+  withdrawStream,
+} from '../src/admin/genet-publish';
 import { createStream, updateStream } from '../src/admin/genet-streams';
 import { createTune } from '../src/admin/genet-tunes';
 import { clearEverything } from './reset-db';
@@ -561,5 +567,236 @@ describe('publishGenetMusicNow', () => {
     expect(published!.streams.map((s) => s.video_id)).toEqual([later, earlier]);
     expect(published!.tunes.map((t) => t.tune_id)).toEqual([tuneA, tuneB].sort((a, b) => a - b));
     expect(published!.people.map((p) => p.person_id)).toEqual([personA, personB].sort((a, b) => a - b));
+  });
+});
+
+describe('publishGenetMusicNow: channel_id and shape_version', () => {
+  const GENET = 'UCgenet00000000000000000';
+  const GUEST = 'UCguest00000000000000000';
+  const OTHER = 'UCother00000000000000000';
+
+  async function insertVideo(videoId: string, channelId: string): Promise<void> {
+    await env.DB.prepare(
+      `INSERT INTO channel (channel_id, name, fullname, color_key, color_sub, color_light, color_back, activity_start_date)
+       VALUES (?1, ?1, ?1, '#000000', '#000000', '#000000', '#000000', '2021-01-01')
+       ON CONFLICT (channel_id) DO NOTHING`,
+    )
+      .bind(channelId)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO video (video_id, channel_id, title, published_at, availability, live_broadcast_content, type, fetched_at)
+       VALUES (?1, ?2, 't', '2026-01-01T00:00:00Z', 'public', 'none', 'streaming', '2026-01-01T00:00:00Z')`,
+    )
+      .bind(videoId, channelId)
+      .run();
+  }
+
+  /** Eleven characters, the length a YouTube id has. */
+  const youtubeId = (index: number) => `yt${String(index).padStart(9, '0')}`;
+
+  /**
+   * Publishes one stream per entry. A `channelId` also records, in `video`,
+   * which channel that stream belongs to; a stream without one has no `video` row.
+   */
+  async function publishStreams(
+    streams: { videoId: string; channelId?: string; platform?: 'youtube' | 'tiktok'; publishedAt?: string }[],
+  ): Promise<void> {
+    const tuneId = await createValidTune();
+
+    for (const { videoId, channelId, platform, publishedAt } of streams) {
+      if (channelId !== undefined) await insertVideo(videoId, channelId);
+
+      await createValidStream({
+        videoId,
+        publishedAt: publishedAt ?? '2026-01-01T00:00:00Z',
+        ...(platform === 'tiktok' ? { platform, url: `https://www.tiktok.com/@example/video/${videoId}` } : {}),
+        performances: [{ tuneId, description: null, scenes: [] }],
+      });
+      await publishStream(env, videoId);
+    }
+  }
+
+  async function published(): Promise<{
+    shape_version?: number;
+    channel_id?: string | null;
+    streams: { video_id: string }[];
+  }> {
+    const object = await env.PUBLIC_DATA.get('genet/music.json');
+
+    return JSON.parse(await object!.text());
+  }
+
+  describe('channel_id', () => {
+    test('is the channel most of the streams belong to, even when the first one is a collaboration', async () => {
+      await publishStreams([
+        // The newest stream comes first in the JSON, and it is the guest's.
+        { videoId: youtubeId(4), channelId: GUEST, publishedAt: '2026-04-01T00:00:00Z' },
+        { videoId: youtubeId(1), channelId: GENET, publishedAt: '2026-01-01T00:00:00Z' },
+        { videoId: youtubeId(2), channelId: GENET, publishedAt: '2026-02-01T00:00:00Z' },
+        { videoId: youtubeId(3), channelId: GENET, publishedAt: '2026-03-01T00:00:00Z' },
+      ]);
+      await publishGenetMusicNow(env, NOW);
+
+      const json = await published();
+
+      expect(json.streams[0]!.video_id).toEqual(youtubeId(4));
+      expect(json.channel_id).toEqual(GENET);
+    });
+
+    test('adds up the counts of every chunk the lookup is split into', async () => {
+      // 60 streams are read in two chunks of at most 50: 40 belong to one channel and 20 to another.
+      const streams = Array.from({ length: 60 }, (_, index) => ({
+        videoId: youtubeId(index),
+        channelId: index < 40 ? GENET : GUEST,
+      }));
+
+      await publishStreams(streams);
+      await publishGenetMusicNow(env, NOW);
+
+      expect((await published()).channel_id).toEqual(GENET);
+    }, 30000);
+
+    test('leaves out TikTok streams and streams with no video row from the count', async () => {
+      await publishStreams([
+        { videoId: youtubeId(1), channelId: GENET },
+        { videoId: youtubeId(2), channelId: GENET },
+        { videoId: youtubeId(3), channelId: GUEST },
+        // Not in `video` yet: cannot be matched, so it is not counted against anyone.
+        { videoId: youtubeId(4) },
+        { videoId: youtubeId(5) },
+        { videoId: '7300000000000000001', platform: 'tiktok' },
+        { videoId: '7300000000000000002', platform: 'tiktok' },
+        { videoId: '7300000000000000003', platform: 'tiktok' },
+      ]);
+      await publishGenetMusicNow(env, NOW);
+
+      expect((await published()).channel_id).toEqual(GENET);
+    });
+
+    test('is null when no stream can be matched to a video', async () => {
+      await publishStreams([{ videoId: youtubeId(1) }, { videoId: youtubeId(2) }]);
+      await publishGenetMusicNow(env, NOW);
+
+      expect((await published()).channel_id).toBeNull();
+    });
+
+    test('is null when only TikTok streams are published', async () => {
+      await publishStreams([{ videoId: '7300000000000000001', platform: 'tiktok' }]);
+      await publishGenetMusicNow(env, NOW);
+
+      expect((await published()).channel_id).toBeNull();
+    });
+
+    test('is null when two channels tie', async () => {
+      await publishStreams([
+        { videoId: youtubeId(1), channelId: GENET },
+        { videoId: youtubeId(2), channelId: GUEST },
+      ]);
+      await publishGenetMusicNow(env, NOW);
+
+      expect((await published()).channel_id).toBeNull();
+    });
+
+    test('is null when the leading channel has less than half of the matched streams', async () => {
+      // 2 of 5: ahead of every other channel, but not clearly the page's own.
+      await publishStreams([
+        { videoId: youtubeId(1), channelId: GENET },
+        { videoId: youtubeId(2), channelId: GENET },
+        { videoId: youtubeId(3), channelId: GUEST },
+        { videoId: youtubeId(4), channelId: OTHER },
+        { videoId: youtubeId(5), channelId: 'UCthird000000000000000000' },
+      ]);
+      await publishGenetMusicNow(env, NOW);
+
+      expect((await published()).channel_id).toBeNull();
+    });
+
+    test('is the leading channel when it has exactly half and every other one is behind it', async () => {
+      // 2 of 4, the rest split: half is enough, and nothing is level with it.
+      await publishStreams([
+        { videoId: youtubeId(1), channelId: GENET },
+        { videoId: youtubeId(2), channelId: GENET },
+        { videoId: youtubeId(3), channelId: GUEST },
+        { videoId: youtubeId(4), channelId: OTHER },
+      ]);
+      await publishGenetMusicNow(env, NOW);
+
+      expect((await published()).channel_id).toEqual(GENET);
+    });
+  });
+
+  describe('shape_version', () => {
+    async function publishOneStream(): Promise<void> {
+      await publishStreams([{ videoId: youtubeId(1), channelId: GENET }]);
+      await publishGenetMusicNow(env, NOW);
+    }
+
+    test('is written into the JSON', async () => {
+      await publishOneStream();
+
+      expect((await published()).shape_version).toEqual(GENET_MUSIC_SHAPE_VERSION);
+    });
+
+    test('does not build again when the stored JSON has the current shape and nothing is newer', async () => {
+      await publishOneStream();
+
+      const response = await publishGenetMusicNow(env, NOW);
+
+      expect(await response.json()).toEqual({ published: false });
+    });
+
+    test('builds again, with nothing newer, when the stored JSON has no shape_version', async () => {
+      await publishOneStream();
+      await env.PUBLIC_DATA.put(
+        'genet/music.json',
+        JSON.stringify({ published_at: '2026-01-01T00:00:00Z', streams: [], tunes: [], people: [] }),
+      );
+
+      const response = await publishGenetMusicNow(env, NOW);
+
+      expect(await response.json()).toMatchObject({ published: true, streamCount: 1 });
+      expect(await published()).toMatchObject({ shape_version: GENET_MUSIC_SHAPE_VERSION, channel_id: GENET });
+    });
+
+    test('builds again when the stored JSON says an older version', async () => {
+      await publishOneStream();
+      await env.PUBLIC_DATA.put(
+        'genet/music.json',
+        JSON.stringify({ shape_version: 1, published_at: 'x', streams: [], tunes: [], people: [] }),
+      );
+
+      const response = await publishGenetMusicNow(env, NOW);
+
+      expect(await response.json()).toMatchObject({ published: true });
+    });
+
+    test('builds again when the stored JSON cannot be read', async () => {
+      await publishOneStream();
+      await env.PUBLIC_DATA.put('genet/music.json', 'not json {');
+
+      const response = await publishGenetMusicNow(env, NOW);
+
+      expect(await response.json()).toMatchObject({ published: true });
+      expect((await published()).shape_version).toEqual(GENET_MUSIC_SHAPE_VERSION);
+    });
+
+    test('builds again when D1 says a run finished but the stored JSON is gone', async () => {
+      // D1 and R2 do not share a transaction: the publication row can exist without the object it names.
+      await publishOneStream();
+      await env.PUBLIC_DATA.delete('genet/music.json');
+
+      const response = await publishGenetMusicNow(env, NOW);
+
+      expect(await response.json()).toMatchObject({ published: true });
+      expect((await published()).shape_version).toEqual(GENET_MUSIC_SHAPE_VERSION);
+    });
+
+    test('does not build from an old shape when there is no revision at all', async () => {
+      await env.PUBLIC_DATA.put('genet/music.json', JSON.stringify({ streams: [], tunes: [], people: [] }));
+
+      const response = await publishGenetMusicNow(env, NOW);
+
+      expect(await response.json()).toEqual({ published: false });
+    });
   });
 });

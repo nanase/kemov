@@ -1,4 +1,5 @@
 import { byteLength } from '../lib/backup';
+import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 import { revisionStatement } from '../lib/revision';
@@ -392,6 +393,7 @@ export async function pendingGenetMusic(env: Env): Promise<Response> {
 
 interface PublicStream {
   video_id: string;
+  platform: string;
   published_at: string;
   performances: { tune_id: number }[];
 }
@@ -403,6 +405,96 @@ interface PublicTune {
 
 interface PublicPerson {
   person_id: number;
+}
+
+/**
+ * The shape of the JSON `publishGenetMusicNow` writes. Raise it whenever that
+ * shape changes, and a run that finds an older one already stored builds again
+ * even though no revision is newer than the last run (see
+ * `storedShapeVersion`). Without it, a new field would not reach the public
+ * JSON until somebody happened to edit a stream, and every later change of
+ * shape would need its own one-off condition for the same reason.
+ *
+ * 1: streams, tunes and people (a JSON that carries no `shape_version` at all).
+ * 2: adds `shape_version` and `channel_id`.
+ */
+export const GENET_MUSIC_SHAPE_VERSION = 2;
+
+const GENET_MUSIC_OBJECT_KEY = 'genet/music.json';
+
+/**
+ * The `shape_version` of the JSON stored in `PUBLIC_DATA`. A JSON with no such
+ * field is version 1, and so is one that is missing or cannot be read: building
+ * again gives the same result however often it runs, so when in doubt the safe
+ * side is to build.
+ *
+ * It is read from the object itself, not from the `publication` row in D1.
+ * D1 and R2 do not share a transaction (#170), so D1 can say a run finished
+ * while the R2 write beneath it failed; the row would then claim a version the
+ * stored JSON does not have, and a stale JSON would go on being served.
+ */
+async function storedShapeVersion(env: Env): Promise<number> {
+  const object = await env.PUBLIC_DATA.get(GENET_MUSIC_OBJECT_KEY);
+
+  if (object === null) return 1;
+
+  try {
+    const stored = JSON.parse(await object.text()) as { shape_version?: unknown } | null;
+
+    return typeof stored?.shape_version === 'number' ? stored.shape_version : 1;
+  } catch {
+    return 1;
+  }
+}
+
+/**
+ * The channel whose icon the page draws beside its title, or null when the
+ * published streams do not point clearly at one.
+ *
+ * A stream's channel is not part of what is published, so it is looked up from
+ * `video`, by counting which channel the YouTube streams belong to. The first
+ * stream cannot stand for the rest: a few are collaborations hosted on another
+ * member's channel, and if one of those came first (or there were only a few
+ * streams) the page would show that member's icon. A channel wins only with at
+ * least half of the streams that could be looked up, and only when it is ahead
+ * of every other; a tie or a scattering answers null, and the page keeps its
+ * plain coloured circle, which is better than a wrong face.
+ *
+ * TikTok streams are left out of the count: `video` holds no row for them, so
+ * counting them would make the half unreachable. So are YouTube streams with no
+ * `video` row yet.
+ *
+ * `streams` is read here from the revision bodies, before the public arrays
+ * are built, so the count does not depend on what the public shape carries.
+ */
+async function majorityChannelId(env: Env, streams: readonly PublicStream[]): Promise<string | null> {
+  const youtubeIds = streams.filter((s) => s.platform === 'youtube').map((s) => s.video_id);
+
+  const rows = await queryInChunks(youtubeIds, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+    const { results } = await env.DB.prepare(
+      `SELECT channel_id, COUNT(*) AS n FROM video WHERE video_id IN (${placeholders}) GROUP BY channel_id`,
+    )
+      .bind(...chunk)
+      .all<{ channel_id: string; n: number }>();
+
+    return results;
+  });
+
+  // A channel can come back once per chunk, so the counts are added up here.
+  const counts = new Map<string, number>();
+
+  for (const row of rows) counts.set(row.channel_id, (counts.get(row.channel_id) ?? 0) + row.n);
+
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const matched = ranked.reduce((sum, [, n]) => sum + n, 0);
+  const [top, second] = ranked;
+
+  if (top === undefined) return null;
+  if (top[1] * 2 < matched) return null;
+  if (second !== undefined && second[1] === top[1]) return null;
+
+  return top[0];
 }
 
 /**
@@ -420,6 +512,10 @@ interface PublicPerson {
  * "newer than last time" is asked once, across whichever of the three
  * changed, the same way #141's design describes one `target` per public JSON
  * file rather than one per table.
+ *
+ * A JSON stored in an older shape (`GENET_MUSIC_SHAPE_VERSION`) is built again
+ * even when no revision is newer, so a change of shape reaches the public
+ * JSON without anyone having to edit a stream first.
  */
 export async function publishGenetMusicNow(env: Env, now: Date): Promise<Response> {
   const [lastRevisionId, streamRevisions, tuneRevisions, personRevisions] = await Promise.all([
@@ -434,13 +530,19 @@ export async function publishGenetMusicNow(env: Env, now: Date): Promise<Respons
     0,
   );
 
-  if (newestRevisionId <= lastRevisionId) {
+  // With no revision at all there is nothing to build from, so that is not
+  // "an older shape": the publication row below could not name a revision.
+  const nothingNewer = newestRevisionId <= lastRevisionId;
+
+  if (nothingNewer && (newestRevisionId === 0 || (await storedShapeVersion(env)) >= GENET_MUSIC_SHAPE_VERSION)) {
     return jsonResponse({ published: false });
   }
 
   const streams = streamRevisions
     .filter((r) => r.action !== 'withdraw' && r.body !== null)
     .map((r) => JSON.parse(r.body!) as PublicStream);
+
+  const channelId = await majorityChannelId(env, streams);
 
   const tuneIds = new Set<number>();
 
@@ -466,8 +568,15 @@ export async function publishGenetMusicNow(env: Env, now: Date): Promise<Respons
   tunes.sort((a, b) => a.tune_id - b.tune_id);
   people.sort((a, b) => a.person_id - b.person_id);
 
-  const objectKey = 'genet/music.json';
-  const json = JSON.stringify({ published_at: formatTimestamp(now), streams, tunes, people });
+  const objectKey = GENET_MUSIC_OBJECT_KEY;
+  const json = JSON.stringify({
+    published_at: formatTimestamp(now),
+    shape_version: GENET_MUSIC_SHAPE_VERSION,
+    channel_id: channelId,
+    streams,
+    tunes,
+    people,
+  });
   const jsonByteLength = byteLength(json);
 
   await env.PUBLIC_DATA.put(objectKey, json, {
