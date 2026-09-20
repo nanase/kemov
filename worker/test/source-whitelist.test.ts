@@ -129,6 +129,25 @@ describe('hasTwoHosts', () => {
     expect(hasTwoHosts(['https://twitter.com/a', 'https://www.twitter.com/b'])).toEqual(false);
   });
 
+  // The same video written two ways, which is the likeliest thing to be added
+  // as a second source to an event that has one already.
+  test('counts youtu.be, m.youtube.com and www.youtube.com as one host', () => {
+    expect(hasTwoHosts(['https://youtu.be/aaaaaaaaaaa', 'https://www.youtube.com/watch?v=aaaaaaaaaaa'])).toEqual(false);
+    expect(
+      hasTwoHosts(['https://m.youtube.com/watch?v=aaaaaaaaaaa', 'https://youtube.com/watch?v=aaaaaaaaaaa']),
+    ).toEqual(false);
+    expect(hasTwoHosts(['https://youtu.be/aaaaaaaaaaa', 'https://m.youtube.com/watch?v=aaaaaaaaaaa'])).toEqual(false);
+  });
+
+  test('counts youtu.be and x.com as two hosts', () => {
+    expect(hasTwoHosts(['https://youtu.be/aaaaaaaaaaa', 'https://x.com/someone/status/1'])).toEqual(true);
+  });
+
+  // `m.` is YouTube's alone: another host's `m.` is not assumed to be the same page.
+  test('does not read m. as an alias on any other host', () => {
+    expect(hasTwoHosts(['https://m.example.com/a', 'https://example.com/a'])).toEqual(true);
+  });
+
   test('still counts x.com and youtube.com as two hosts', () => {
     expect(hasTwoHosts(['https://x.com/someone/status/1', 'https://www.youtube.com/watch?v=a'])).toEqual(true);
     expect(hasTwoHosts(['https://twitter.com/someone/status/1', 'https://youtube.com/watch?v=a'])).toEqual(true);

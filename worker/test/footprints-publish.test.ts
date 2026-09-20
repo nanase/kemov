@@ -146,6 +146,12 @@ describe('publishEvent', () => {
   test.each([
     ['x.com and twitter.com', 'https://x.com/Partner_KEMOV/status/1', 'https://twitter.com/Partner_KEMOV/status/1'],
     ['x.com and www.x.com', 'https://x.com/Partner_KEMOV/status/1', 'https://www.x.com/Partner_KEMOV/status/1'],
+    ['youtu.be and www.youtube.com', 'https://youtu.be/aaaaaaaaaaa', 'https://www.youtube.com/watch?v=aaaaaaaaaaa'],
+    [
+      'm.youtube.com and youtube.com',
+      'https://m.youtube.com/watch?v=aaaaaaaaaaa',
+      'https://youtube.com/watch?v=aaaaaaaaaaa',
+    ],
   ])('refuses %s, which are one host', async (_name, first, second) => {
     const eventId = await createValidEvent({ sources: [source(first), source(second)] });
 
@@ -155,13 +161,16 @@ describe('publishEvent', () => {
     expect(await response.json()).toEqual({ errors: [SOURCES_NOT_ENOUGH] });
   });
 
-  test('allows x.com with youtube.com, which are two hosts', async () => {
-    const eventId = await createValidEvent({
-      sources: [source('https://x.com/Partner_KEMOV/status/1'), source('https://youtube.com/watch?v=aaaaaaaaaaa')],
-    });
+  test.each(['https://youtube.com/watch?v=aaaaaaaaaaa', 'https://youtu.be/aaaaaaaaaaa'])(
+    'allows x.com with %s, which are two hosts',
+    async (video) => {
+      const eventId = await createValidEvent({
+        sources: [source('https://x.com/Partner_KEMOV/status/1'), source(video)],
+      });
 
-    expect((await publishEvent(env, eventId)).status).toEqual(200);
-  });
+      expect((await publishEvent(env, eventId)).status).toEqual(200);
+    },
+  );
 
   test('refuses one source outside the whitelist, however many hosts it might have', async () => {
     const eventId = await createValidEvent({ sources: [source('https://www.youtube.com/watch?v=aaaaaaaaaaa')] });

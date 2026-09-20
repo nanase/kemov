@@ -55,14 +55,28 @@ export function isWhitelistedSource(url: string, prefixes: readonly string[]): b
  * counted under. Only for `hasTwoHosts`: the whitelist match above compares
  * the URL's own text and does not read this.
  *
- * Small on purpose. `twitter.com` is here because the whitelist already
- * lists `x.com/KEMOVP_staff` and `twitter.com/KEMOVP_staff` side by side, so
- * the project already treats the two as one. A pair belongs here when two
- * URLs on it can be the same page, which is what makes a second one no
- * confirmation of the first; it does not belong here because two hosts look
- * related. Add one only when that is known.
+ * Every entry is the same resource written another way, which is what makes
+ * a second URL on it no confirmation of the first. This is not a table of
+ * domains that look related: two hosts belong to one organisation, or to one
+ * service, without that making them the same page.
+ *
+ * - `twitter.com` is `x.com`. The whitelist already lists
+ *   `x.com/KEMOVP_staff` and `twitter.com/KEMOVP_staff` side by side, so the
+ *   project already treats the two as one.
+ * - `youtu.be/<id>` and `youtube.com/watch?v=<id>` are the same video, and
+ *   `m.youtube.com` is YouTube's own mobile form of `youtube.com`.
+ *
+ * `m.` is named for YouTube alone. It is not stripped from every host: that
+ * another site's `m.` shows the same page as its main host is not something
+ * any rule here can assume.
+ *
+ * Small on purpose. Add a pair only when it is known to be the same resource.
  */
-const HOST_ALIASES: ReadonlyMap<string, string> = new Map([['twitter.com', 'x.com']]);
+const HOST_ALIASES: ReadonlyMap<string, string> = new Map([
+  ['twitter.com', 'x.com'],
+  ['youtu.be', 'youtube.com'],
+  ['m.youtube.com', 'youtube.com'],
+]);
 
 /** The name `url`'s host is counted under, or null when `url` names none. `www.` is dropped: it is the same site written with a prefix. */
 function countedHost(url: string): string | null {
