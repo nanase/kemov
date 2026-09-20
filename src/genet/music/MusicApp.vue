@@ -441,7 +441,7 @@ function snippetText(text: string): string {
       </template>
 
       <template v-else>
-        <div class="gm-ctl panel">
+        <div class="gm-ctl">
           <div class="find">
             <svg
               viewBox="0 0 16 16"
@@ -1121,8 +1121,13 @@ function snippetText(text: string): string {
   flex-flow: row wrap;
   align-items: center;
   gap: 8px 10px;
+  min-width: 0;
   padding: 8px 12px;
   margin-bottom: 10px;
+  background: var(--k-surface);
+  border: 1px solid var(--k-line);
+  border-radius: 8px;
+  box-shadow: var(--k-shadow);
 }
 
 .gm .find {
@@ -1863,14 +1868,15 @@ function snippetText(text: string): string {
   overflow-wrap: anywhere;
 }
 
-.gm :deep(.td a) {
+.gm :deep(.td a:not(.ibtn)) {
+  color: inherit;
   text-decoration: underline;
   text-decoration-style: dotted;
   text-decoration-color: var(--k-line-2);
   text-underline-offset: 3px;
 }
 
-.gm :deep(.td a:hover) {
+.gm :deep(.td a:not(.ibtn):hover) {
   color: var(--k-accent);
   text-decoration-color: var(--k-accent);
 }
