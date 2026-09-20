@@ -19,11 +19,11 @@ const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 /** What each kind of thing is called on screen (#140). */
 export const KIND_LABELS: Readonly<Record<EventKind, string>> = {
   project: 'プロジェクト',
-  reveal: '公開・発表',
+  announcement: '公開・発表',
   debut: 'デビュー',
   '3d': '3D',
-  outfit: '新衣装',
-  'live-event': 'リアルイベント',
+  new_outfit: '新衣装',
+  real_event: 'リアルイベント',
   goods: 'グッズ',
   music: '音楽',
   collab: 'コラボ',

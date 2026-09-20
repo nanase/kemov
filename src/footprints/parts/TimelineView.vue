@@ -592,7 +592,7 @@ function membersOf(channelIds: readonly string[]): Channel[] {
   --fp-stamp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M9 2.6 15.2 6.1v5.8L9 15.4 2.8 11.9V6.1Z' fill='none' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M2.8 6.1 9 9.6l6.2-3.5M9 9.6v5.8' fill='none' stroke='%23000' stroke-width='1.4' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
-.row.large[data-kind='outfit'] .node {
+.row.large[data-kind='new_outfit'] .node {
   --fp-stamp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M6.4 2.8 9 4.6l2.6-1.8 3.6 2.1-1.7 2.9-1.4-.8v8.2H5.9V7l-1.4.8L2.8 4.9Z' fill='%23000' stroke='%23000' stroke-width='1.1' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
