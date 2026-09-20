@@ -1,4 +1,5 @@
 import { AdminApiError } from './api';
+import { jstClock } from './snapshots';
 
 /**
  * Pure logic for the 出典ホワイトリスト screen (#175) - what `GET /admin/api/
@@ -18,6 +19,15 @@ export interface SourceWhitelistEntry {
 /** `/source-whitelist/<prefix>`, the prefix percent-encoded into one path segment as the worker's router reads it. */
 export function entryPath(prefix: string): string {
   return `/source-whitelist/${encodeURIComponent(prefix)}`;
+}
+
+/**
+ * The Japan-time day an entry was added, without the time of day: the 13
+ * entries migration 0008 seeded carry the day they were decided, and the hour
+ * that day is not known, so showing one would state a time nobody recorded.
+ */
+export function addedOn(instant: string): string {
+  return jstClock(instant).slice(0, 10);
 }
 
 /** What an input's text saves as: the worker refuses an empty `note`, and a note of only spaces says nothing either. */

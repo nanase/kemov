@@ -33,6 +33,15 @@ describe('the seeded source_whitelist', () => {
     expect(results.map((row) => row.prefix)).toEqual(SEEDED);
   });
 
+  // The day the owner decided them (#141), not the day migration 0008 ran.
+  test('dates every entry 2026-09-15, and has updated_at say when it was written', async () => {
+    const { results } = await env.DB.prepare(
+      `SELECT created_at, updated_at FROM source_whitelist WHERE created_at <> '2026-09-15T00:00:00Z' OR updated_at <= created_at`,
+    ).all();
+
+    expect(results).toEqual([]);
+  });
+
   test('gives every entry a note naming why it is there', async () => {
     const { results } = await env.DB.prepare('SELECT prefix FROM source_whitelist WHERE note IS NULL').all();
 

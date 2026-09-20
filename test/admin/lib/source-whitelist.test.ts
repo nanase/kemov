@@ -1,6 +1,6 @@
 import { AdminApiError } from '@/admin/lib/api';
 import { SIDEBAR_GROUPS, pageTitle } from '@/admin/lib/sidebar';
-import { addErrorMessage, entryPath, noteChanged, noteFromInput } from '@/admin/lib/source-whitelist';
+import { addedOn, addErrorMessage, entryPath, noteChanged, noteFromInput } from '@/admin/lib/source-whitelist';
 
 const ENTRY = {
   prefix: 'https://prtimes.jp/',
@@ -13,6 +13,17 @@ describe('entryPath', () => {
   // A prefix is a URL: left as it is, its slashes would read as more path segments.
   test('percent-encodes the prefix into one path segment', () => {
     expect(entryPath('https://x.com/KEMOVP_staff')).toEqual('/source-whitelist/https%3A%2F%2Fx.com%2FKEMOVP_staff');
+  });
+});
+
+describe('addedOn', () => {
+  test('gives the Japan-time day, with no time of day', () => {
+    expect(addedOn('2026-09-15T00:00:00Z')).toEqual('2026-09-15');
+  });
+
+  // 15:00 UTC is already the next day in Japan.
+  test('follows the Japan-time calendar, not UTC', () => {
+    expect(addedOn('2026-09-15T15:00:00Z')).toEqual('2026-09-16');
   });
 });
 

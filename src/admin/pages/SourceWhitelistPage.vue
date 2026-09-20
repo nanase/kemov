@@ -2,8 +2,8 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 
 import { AdminApiError, deleteJson, getJson, postJson, putJson } from '../lib/api';
-import { jstClock } from '../lib/snapshots';
 import {
+  addedOn,
   addErrorMessage,
   entryPath,
   noteChanged,
@@ -205,7 +205,7 @@ onMounted(load);
                       :aria-label="`${entry.prefix} のメモ`"
                     />
                   </td>
-                  <td class="num sub">{{ jstClock(entry.createdAt) }}</td>
+                  <td class="num sub">{{ addedOn(entry.createdAt) }}</td>
                   <td>
                     <div class="stack">
                       <button

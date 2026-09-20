@@ -58,3 +58,12 @@ INSERT INTO source_whitelist (prefix, note) VALUES
   ('https://wikiwiki.jp/kemo_v/', 'ファンの Wiki・大百科'),
   ('https://dic.nicovideo.jp/a/%E3%81%91%E3%82%82%E3%81%AE%E3%83%95%E3%83%AC%E3%83%B3%E3%82%BAv%E3%81%B7%E3%82%8D%E3%81%98%E3%81%87%E3%81%8F%E3%81%A8', 'ファンの Wiki・大百科'),
   ('https://virtualyoutuber.fandom.com/wiki/KemoV', 'ファンの Wiki・大百科');
+
+-- The date each of the 13 went onto the list is the date the owner decided
+-- them (2026-09-15, above), not the day this migration runs: moving them into
+-- a table changed where they are kept, not when they were added, and a list
+-- read later to tell what is old from what is new would otherwise show all 13
+-- as added on the day of the move. That is why `created_at` here is earlier
+-- than `updated_at`, which is when these rows were written and is left at
+-- the default. The time of day is not known; midnight UTC stands in for it.
+UPDATE source_whitelist SET created_at = '2026-09-15T00:00:00Z';
