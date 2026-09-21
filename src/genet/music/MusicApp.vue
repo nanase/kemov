@@ -28,6 +28,7 @@ import {
   type PreparedStream,
 } from '@/lib/genet/musicSearch';
 import type { GenetMusicData, GenetScene, GenetStream } from '@/lib/genet/musicTypes';
+import { useSheetDialog } from './useSheetDialog';
 
 /**
  * ジェネット楽曲一覧 (#139, #144's task 15). The confirmed mock
@@ -208,6 +209,31 @@ function backToList(): void {
 
 function backToProgram(): void {
   sheet.value = 'prog';
+}
+
+/** One step back from the front sheet: the song to the program, the program to the list. */
+function closeSheet(): void {
+  if (sheet.value === 'song') backToProgram();
+  else backToList();
+}
+
+const shell = ref<HTMLElement | null>(null);
+const progPanel = ref<HTMLElement | null>(null);
+const songPanel = ref<HTMLElement | null>(null);
+
+const { modal } = useSheetDialog({
+  sheet,
+  root: shell,
+  panels: { prog: progPanel, song: songPanel },
+  close: closeSheet,
+  suspended: () => zoom.value !== null,
+});
+
+/** What makes the front sheet a dialog, while the sheets stack over the list. */
+function dialogAttrs(name: 'prog' | 'song'): Record<string, string> {
+  if (modal.value !== name) return {};
+
+  return { role: 'dialog', 'aria-modal': 'true', 'aria-label': name === 'prog' ? '曲目' : '楽曲' };
 }
 
 /* ---- おまかせ ------------------------------------------------------- */
@@ -443,7 +469,7 @@ function snippetText(text: string): string {
       <UpdatedAt :at="updatedAt" :state="loadState" :pulse="false" date-only age="calendar" />
     </template>
 
-    <section class="gm" :data-pair="pair" :data-sheet="sheet">
+    <section ref="shell" class="gm" :data-pair="pair" :data-sheet="sheet">
       <template v-if="loadState === 'error'">
         <div class="gm-err">
           <div class="x1">楽曲の情報を取得できませんでした</div>
@@ -679,7 +705,7 @@ function snippetText(text: string): string {
           </div>
 
           <div class="sheet s1">
-            <div class="panel prog">
+            <div ref="progPanel" class="panel prog" tabindex="-1" v-bind="dialogAttrs('prog')">
               <div class="ph">
                 <b>曲目</b>
                 <span class="pcount n">{{
@@ -689,7 +715,7 @@ function snippetText(text: string): string {
                   v-if="sheet !== ''"
                   class="ibtn shut"
                   type="button"
-                  aria-label="配信の一覧を開く"
+                  aria-label="曲目を閉じる"
                   @click="backToList"
                 >
                   <svg
@@ -700,7 +726,7 @@ function snippetText(text: string): string {
                     stroke="currentColor"
                     stroke-width="1.3"
                   >
-                    <path d="M10 3.2 5.2 8l4.8 4.8" />
+                    <path d="M4 4l8 8M12 4l-8 8" />
                   </svg>
                 </button>
               </div>
@@ -843,7 +869,7 @@ function snippetText(text: string): string {
             </div>
 
             <div class="sheet s2">
-              <div class="side panel">
+              <div ref="songPanel" class="side panel" tabindex="-1" v-bind="dialogAttrs('song')">
                 <div class="ph">
                   <b>楽曲</b>
                   <span class="scount n">{{ songCountText }}</span>
@@ -854,7 +880,7 @@ function snippetText(text: string): string {
                     v-if="sheet === 'song'"
                     class="ibtn shut"
                     type="button"
-                    aria-label="曲目へ戻る"
+                    aria-label="楽曲を閉じる"
                     @click="backToProgram"
                   >
                     <svg
@@ -865,7 +891,7 @@ function snippetText(text: string): string {
                       stroke="currentColor"
                       stroke-width="1.3"
                     >
-                      <path d="M10 3.2 5.2 8l4.8 4.8" />
+                      <path d="M4 4l8 8M12 4l-8 8" />
                     </svg>
                   </button>
                 </div>
@@ -1011,7 +1037,7 @@ function snippetText(text: string): string {
         aria-modal="true"
         :aria-label="zoom.title"
         @click="closeZoom"
-        @keydown.esc="closeZoom"
+        @keydown.esc.stop="closeZoom"
         @keydown="trapZoomFocus"
       >
         <div class="zoombox" @click.stop>
@@ -1046,6 +1072,12 @@ function snippetText(text: string): string {
         </div>
       </div>
     </section>
+
+    <!-- Behind the sheets and over the rest of the page but for the navigation; pressing it closes one sheet. -->
+    <template #overlay>
+      <div v-if="sheet !== ''" class="gm-scrim" aria-hidden="true" @click="backToList"></div>
+      <div v-if="sheet === 'song'" class="gm-scrim gm-scrim-front" aria-hidden="true" @click="backToProgram"></div>
+    </template>
 
     <template #notes>
       <li>
@@ -1311,6 +1343,10 @@ function snippetText(text: string): string {
 
 .gm .sheet {
   display: contents;
+}
+
+.gm-scrim {
+  display: none;
 }
 
 .gm .panel {
@@ -2376,25 +2412,50 @@ function snippetText(text: string): string {
     display: none;
   }
 
+  /*
+   * The sheets are laid out over the list, and what is dimmed and pressed to
+   * close is .gm-scrim, which reaches past .gm. Stacking, from the back:
+   * .gm-scrim, the program, .gm-scrim-front, the song - every one of them
+   * below the navigation band, which is what keeps the band from being dimmed
+   * or covered. .s1 has no z-index of its own so that the song (inside it) and
+   * the front scrim share one stacking context with the program.
+   */
   .gm[data-sheet='prog'] .s1,
   .gm[data-sheet='song'] .s1,
   .gm[data-sheet='song'] .s2 {
     display: block;
     position: absolute;
     inset: 0;
-    z-index: 35;
-    background: rgb(20 10 4 / 34%);
-    backdrop-filter: blur(1px);
+    pointer-events: none;
   }
 
   .gm[data-sheet='song'] .s2 {
-    z-index: 36;
+    z-index: 29;
+  }
+
+  .gm-scrim {
+    display: block;
+    position: absolute;
+    z-index: 26;
+    inset: var(--shell-nav-height) 0 0;
+    background: rgb(20 10 4 / 34%);
+    backdrop-filter: blur(1px);
+    cursor: pointer;
+  }
+
+  .gm-scrim-front {
+    z-index: 28;
   }
 
   .gm .sheet > .panel,
   .gm[data-sheet='song'] .s2 > .side {
     display: flex;
     position: sticky;
+    z-index: 27;
+    pointer-events: auto;
+
+    /* Focus is put here when the sheet opens, so it is no control to outline. */
+    outline: none;
     top: 92px;
     height: calc(100vh - 92px);
     margin: 0 6px;
