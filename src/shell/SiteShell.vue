@@ -57,12 +57,18 @@ watch(
         <slot name="notes"></slot>
       </PageNotes>
     </div>
+    <!-- Laid over the whole shell, the navigation band and everything beneath it. -->
+    <slot name="overlay"></slot>
   </div>
 </template>
 
 <style scoped>
 /* The container every width rule in the shell and the pages measures. */
 .site-shell {
+  /* The height of the navigation band, which an overlay starts below to leave it clear. */
+  --shell-nav-height: 44px;
+
+  position: relative;
   container-type: inline-size;
 }
 
