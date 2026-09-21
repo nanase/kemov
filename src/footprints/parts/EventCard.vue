@@ -3,6 +3,7 @@ import { computed } from 'vue';
 
 import { relayVideoThumbnailURL } from '@/lib/relay';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
+import ThumbnailImage from '@/parts/ThumbnailImage.vue';
 
 import { formatDate, formatLength } from '../draw';
 import { KIND_LABELS, VIDEO_LABELS, type EventItem } from '../model';
@@ -48,7 +49,7 @@ const thumbnail = computed(() =>
   <article class="card" :class="{ large: event.emphasized, future: item.future }">
     <button v-if="event.emphasized" type="button" class="print" @click="emit('open', item.key)">
       <span class="shot">
-        <img v-if="thumbnail" :src="thumbnail" alt="" loading="lazy" decoding="async" />
+        <ThumbnailImage v-if="thumbnail" :src="thumbnail" loading="lazy" decoding="async" />
         <span v-else class="stand-in">
           <span class="faces">
             <MemberAvatar
@@ -124,7 +125,7 @@ const thumbnail = computed(() =>
       :aria-label="`${event.title}を開く`"
       @click="emit('open', item.key)"
     >
-      <img :src="thumbnail" alt="" loading="lazy" decoding="async" />
+      <ThumbnailImage :src="thumbnail" loading="lazy" decoding="async" />
     </button>
   </article>
 </template>
@@ -300,7 +301,8 @@ const thumbnail = computed(() =>
 }
 
 .shot,
-.side-shot img {
+.side-shot img,
+.side-shot .thumb-fallback {
   display: block;
   position: relative;
   width: 100%;
@@ -311,11 +313,18 @@ const thumbnail = computed(() =>
   overflow: hidden;
 }
 
-.shot img {
+.shot img,
+.shot .thumb-fallback {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* Only the fallback takes its box's corners: `.shot img` also reaches the
+   member faces in `.stand-in`, whose own circle a radius here would square. */
+.shot .thumb-fallback {
+  border-radius: inherit;
 }
 
 .stand-in {
@@ -375,7 +384,8 @@ const thumbnail = computed(() =>
   cursor: pointer;
 }
 
-.side-shot img {
+.side-shot img,
+.side-shot .thumb-fallback {
   border: 1px solid var(--k-line);
   border-radius: 6px;
 }

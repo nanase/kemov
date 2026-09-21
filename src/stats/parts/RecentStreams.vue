@@ -1,20 +1,19 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-
 import { relayVideoThumbnailURL } from '@/lib/relay';
 
 import { memberColor } from '@/lib/memberColor';
 import { DASH, formatCount } from '@/lib/numberFormat';
 import { formatDuration } from '../draw';
 import type { Subject } from '../model';
-import MemberAvatar from '@/parts/MemberAvatar.vue';
+import ThumbnailFallback from '@/parts/ThumbnailFallback.vue';
+import ThumbnailImage from '@/parts/ThumbnailImage.vue';
 
 /**
  * The last few streams, and the ones that have not started yet.
  *
  * Every row is the same shape whether or not a thumbnail exists, so the list
- * does not jump as the images arrive. A stream with none gets the member's
- * face on a panel the same size.
+ * does not jump as the images arrive. A stream with none, or whose picture
+ * does not arrive, gets `ThumbnailFallback` on a panel the same size.
  */
 export interface StreamRow {
   key: string;
@@ -36,25 +35,6 @@ const { rows, showOwner, dark } = defineProps<{
   dark: boolean;
 }>();
 
-/**
- * Which thumbnails did not arrive.
- *
- * YouTube refuses some of these when a page asks for a dozen at once, and the
- * image relay (`@/lib/relay`) passes that on, so a row has to be able to stand without its picture: the member's
- * own panel takes its place, at the same size, and the row keeps its line.
- */
-const missing = ref(new Set<string>());
-
-function thumbnail(row: StreamRow): string | null {
-  if (row.videoId === null || missing.value.has(row.key)) return null;
-
-  return relayVideoThumbnailURL(row.videoId, 'mq');
-}
-
-function onThumbnailError(row: StreamRow) {
-  missing.value = new Set(missing.value).add(row.key);
-}
-
 function ownerStyle(owner: Subject) {
   return owner.color === null ? undefined : { '--member-color': memberColor(owner.color, dark) };
 }
@@ -63,20 +43,16 @@ function ownerStyle(owner: Subject) {
 <template>
   <ul class="streams">
     <li v-for="row in rows" :key="row.key" class="stream">
-      <img
-        v-if="thumbnail(row)"
+      <ThumbnailImage
+        v-if="row.videoId"
         class="shot"
-        :src="thumbnail(row)!"
-        alt=""
+        :src="relayVideoThumbnailURL(row.videoId, 'mq')"
         width="96"
         height="54"
         loading="lazy"
         decoding="async"
-        @error="onThumbnailError(row)"
       />
-      <span v-else class="shot none">
-        <MemberAvatar :src="row.owner.avatar" :name="row.owner.name" :color="row.owner.color" :size="28" :dark="dark" />
-      </span>
+      <ThumbnailFallback v-else class="shot" />
       <div class="body">
         <a v-if="row.videoId" class="title" :href="`/videos/${row.videoId}`">{{ row.title }}</a>
         <span v-else class="title">{{ row.title }}</span>
@@ -144,16 +120,6 @@ function ownerStyle(owner: Subject) {
   border-radius: 3px;
   background: var(--k-track);
   object-fit: cover;
-}
-
-.shot.none {
-  display: grid;
-  place-items: center;
-}
-
-.shot.none :deep(.avatar) {
-  width: 28px;
-  height: 28px;
 }
 
 .body {
