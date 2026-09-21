@@ -461,8 +461,13 @@ onBeforeUnmount(() => globalThis.removeEventListener('keydown', onKeydown));
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: inherit;
   object-fit: cover;
+}
+
+/* Only the fallback takes its box's corners: `.frame img` also reaches the
+   member faces in `.stand-in`, whose own circle a radius here would square. */
+.frame .thumb-fallback {
+  border-radius: inherit;
 }
 
 .stand-in {
@@ -709,8 +714,11 @@ onBeforeUnmount(() => globalThis.removeEventListener('keydown', onKeydown));
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: inherit;
   object-fit: cover;
+}
+
+.shot .thumb-fallback {
+  border-radius: inherit;
 }
 
 .strip .current .shot {
