@@ -40,7 +40,7 @@ const { fadeLeft, fadeRight, dragging } = useDragScroll(links);
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 44px;
+  height: var(--shell-nav-height);
   margin: calc(var(--shell-pad-top) * -1) calc(var(--shell-pad-x) * -1) 0;
   padding: 0 var(--shell-pad-x);
   background: var(--k-glass);
