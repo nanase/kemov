@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { useStorage } from '@vueuse/core';
 
 import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt from '@/shell/UpdatedAt.vue';
@@ -10,7 +9,6 @@ import {
   announcementsOf,
   freshnessOf,
   HEAT_STEPS,
-  knownId,
   METRICS,
   PERIODS,
   SERIES,
@@ -33,6 +31,7 @@ import SubscriberNote from './parts/SubscriberNote.vue';
 import TotalsGrid from './parts/TotalsGrid.vue';
 import type { StreamRow } from './parts/RecentStreams.vue';
 import { useStatsData } from './useStatsData';
+import { useStoredChoice } from './useStoredChoice';
 
 /**
  * けもV 統計.
@@ -51,18 +50,27 @@ const now = ref(Date.now());
 let clock: ReturnType<typeof setInterval> | undefined;
 
 /** What the reader chose last time. Which member is open, and minimal display, are not kept. */
-const metric = useStorage<MetricId>('kemov/stats/metric', 'subscriberCount');
-const period = useStorage<PeriodId>('kemov/stats/period', 'perDay');
-const series = useStorage<SeriesId>('kemov/stats/series', 'streams');
-const step = useStorage<HeatStep>('kemov/stats/heatStep', 60);
-const activeOnly = useStorage<boolean>('kemov/stats/activeOnly', false);
-
-// The store hands back what is in it, not what this page can draw. Anything
-// it does not recognise starts the reader off at the default instead.
-metric.value = knownId(METRICS, metric.value, 'subscriberCount');
-period.value = knownId(PERIODS, period.value, 'perDay');
-series.value = knownId(SERIES, series.value, 'streams');
-step.value = knownId(HEAT_STEPS, step.value, 60);
+const metric = useStoredChoice<MetricId>(
+  'kemov/stats/metric',
+  METRICS.map((m) => m.id),
+  'subscriberCount',
+);
+const period = useStoredChoice<PeriodId>(
+  'kemov/stats/period',
+  PERIODS.map((p) => p.id),
+  'perDay',
+);
+const series = useStoredChoice<SeriesId>(
+  'kemov/stats/series',
+  SERIES.map((s) => s.id),
+  'streams',
+);
+const step = useStoredChoice<HeatStep>(
+  'kemov/stats/heatStep',
+  HEAT_STEPS.map((s) => s.id),
+  60,
+);
+const activeOnly = useStoredChoice<boolean>('kemov/stats/activeOnly', [false, true], false);
 
 const selected = ref<string>(TOTAL_ID);
 const sheetOpen = ref(false);
