@@ -108,6 +108,8 @@ function save(): Promise<void> {
   return withErrorHandling(async () => {
     await putJson(`/footprints/events/${props.event.eventId}`, fields.value);
     emit('changed');
+    // Saving a published row's content makes it 「公開後に変更あり」, which the badge counts.
+    void refreshPublishBadge();
     showToast('保存しました');
   });
 }
