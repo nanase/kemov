@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { unescapeHtml } from '@nanase/alnilam/string';
 
+import ThumbnailFallback from '@/parts/ThumbnailFallback.vue';
 import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt, { type UpdatedAtState } from '@/shell/UpdatedAt.vue';
 import { relayVideoThumbnailURL } from '@/lib/relay';
@@ -384,12 +385,25 @@ function thumbSrc(videoId: string, size: 'mq' | 'hq' | 'max' = 'mq'): string {
   return relayVideoThumbnailURL(videoId, size);
 }
 
+/**
+ * Videos whose thumbnail did not arrive even at `hq`. Their `<img>` is
+ * replaced by `ThumbnailFallback` (#180): the step down to `hq` below is the
+ * only retry, so a failure after it is final for this page.
+ */
+const failedThumbs = ref<ReadonlySet<string>>(new Set());
+
 function onThumbError(event: Event): void {
   const img = event.target as HTMLImageElement;
+  const videoId = img.dataset.videoId ?? '';
 
-  if (img.dataset.fallback) return;
+  if (img.dataset.fallback) {
+    failedThumbs.value = new Set(failedThumbs.value).add(videoId);
+
+    return;
+  }
+
   img.dataset.fallback = '1';
-  img.src = thumbSrc(img.dataset.videoId ?? '', 'hq');
+  img.src = thumbSrc(videoId, 'hq');
 }
 
 function onZoomImgLoad(event: Event): void {
@@ -656,7 +670,7 @@ function snippetText(text: string): string {
                   @click="selectStream(s.stream.video_id)"
                 >
                   <img
-                    v-if="s.stream.platform === 'youtube'"
+                    v-if="s.stream.platform === 'youtube' && !failedThumbs.has(s.stream.video_id)"
                     class="thumb"
                     :src="thumbSrc(s.stream.video_id)"
                     :data-video-id="s.stream.video_id"
@@ -665,7 +679,7 @@ function snippetText(text: string): string {
                     alt=""
                     @error="onThumbError"
                   />
-                  <span v-else class="thumb none" aria-hidden="true"></span>
+                  <ThumbnailFallback v-else class="thumb" />
                   <div class="sbody">
                     <div class="sl1">
                       <span class="n">{{ publishedDateText(s.stream.published_at) }}</span>
@@ -749,7 +763,8 @@ function snippetText(text: string): string {
                       aria-label="サムネイルを拡大"
                     >
                       <span class="mat"
-                        ><img
+                        ><ThumbnailFallback v-if="failedThumbs.has(selectedStream.stream.video_id)" class="fimg" /><img
+                          v-else
                           class="fimg"
                           :src="thumbSrc(selectedStream.stream.video_id, 'hq')"
                           :data-video-id="selectedStream.stream.video_id"
@@ -982,7 +997,9 @@ function snippetText(text: string): string {
                     <div v-if="selectedPerformance.tune.videos.length > 0" class="sec">
                       <div class="sech">原曲などの動画</div>
                       <div v-for="v in selectedPerformance.tune.videos" :key="v.video_id" class="vrow">
+                        <ThumbnailFallback v-if="failedThumbs.has(v.video_id)" class="vthumb" />
                         <img
+                          v-else
                           class="vthumb"
                           :src="thumbSrc(v.video_id)"
                           :data-video-id="v.video_id"
@@ -1043,7 +1060,8 @@ function snippetText(text: string): string {
         <div class="zoombox" @click.stop>
           <figure class="frame">
             <span class="mat"
-              ><img
+              ><ThumbnailFallback v-if="failedThumbs.has(zoom.videoId)" class="fimg" /><img
+                v-else
                 class="fimg"
                 :src="thumbSrc(zoom.videoId, 'max')"
                 :data-video-id="zoom.videoId"
@@ -1465,11 +1483,6 @@ function snippetText(text: string): string {
   border-radius: 3px;
   border: 1px solid var(--k-line);
   background: var(--k-track);
-}
-
-.gm .thumb.none {
-  border-style: dotted;
-  background: none;
 }
 
 .gm .sbody {

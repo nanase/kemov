@@ -3,6 +3,7 @@ import { computed } from 'vue';
 
 import { relayVideoThumbnailURL } from '@/lib/relay';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
+import ThumbnailImage from '@/parts/ThumbnailImage.vue';
 
 import { formatDate, formatTime } from '../draw';
 import { daysBetween, type AsideItem } from '../model';
@@ -96,7 +97,7 @@ function thumbnail(item: AsideItem): string | null {
           </span>
 
           <span v-if="thumbnail(item)" class="thumb">
-            <img :src="thumbnail(item)!" alt="" loading="lazy" decoding="async" />
+            <ThumbnailImage :src="thumbnail(item)!" loading="lazy" decoding="async" />
           </span>
         </component>
       </li>
@@ -201,7 +202,8 @@ button.row:hover .title {
   width: 64px;
 }
 
-.thumb img {
+.thumb img,
+.thumb .thumb-fallback {
   display: block;
   width: 100%;
   border-radius: 4px;

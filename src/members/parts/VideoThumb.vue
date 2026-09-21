@@ -2,16 +2,16 @@
 import { computed, ref, watch } from 'vue';
 
 import { relayVideoThumbnailURL } from '@/lib/relay';
+import ThumbnailFallback from '@/parts/ThumbnailFallback.vue';
 
 /**
  * One video's picture, with something to show when it does not arrive.
  *
  * The image relay (`@/lib/relay`) answers with YouTube's refusal - a 429 when a
  * page asks for a screenful at once, a 404 for a video with no such file - and
- * the browser then has no image to draw. The same one retry and stand-in as
- * `/stats/`'s member pictures, drawn here as
- * the dotted frame the mock uses: every row on this page is the same member,
- * so a coloured initial would be eleven copies of one letter.
+ * the browser then has no image to draw. It asks once more after a wait, and
+ * shows `ThumbnailFallback`, the stand-in every page shares, from the first
+ * failure until the retry settles.
  */
 const { videoId, width, height } = defineProps<{
   videoId: string;
@@ -64,7 +64,7 @@ const style = computed(() => ({ width: `${width}px`, height: `${height}px`, minW
 </script>
 
 <template>
-  <span v-if="shown" class="thumb none" :style="style" aria-hidden="true">—</span>
+  <ThumbnailFallback v-if="shown" class="thumb" :style="style" />
   <img
     v-else
     :key="token"
@@ -89,15 +89,5 @@ const style = computed(() => ({ width: `${width}px`, height: `${height}px`, minW
   border-radius: 2px;
   background: var(--k-track);
   object-fit: cover;
-}
-
-.thumb.none {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-style: dotted;
-  background: none;
-  color: var(--k-text-3);
-  font-size: 10.5px;
 }
 </style>

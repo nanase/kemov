@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue';
 
 import MemberAvatar from '@/parts/MemberAvatar.vue';
+import ThumbnailImage from '@/parts/ThumbnailImage.vue';
 import { formatCount } from '@/lib/numberFormat';
 import { relayVideoThumbnailURL } from '@/lib/relay';
 
@@ -175,7 +176,7 @@ onBeforeUnmount(() => clearTimeout(timer));
         class="occasion"
         @click.stop="emit('open', `v:${row.videoId}`)"
       >
-        <img class="pic" :src="thumbnail(row.videoId)" alt="" loading="lazy" decoding="async" />
+        <ThumbnailImage class="pic" :src="thumbnail(row.videoId)" loading="lazy" decoding="async" />
         <span class="about">
           <small class="fp-n">{{ formatDate(rowAt(row)).slice(5, 10) }} {{ formatTime(rowAt(row)) }}</small>
           <span class="occasion-title">{{ row.title }}</span>
@@ -194,7 +195,7 @@ onBeforeUnmount(() => clearTimeout(timer));
             <li v-for="row in group.rows" :key="row.videoId">
               <button type="button" class="row" @click.stop="emit('open', `v:${row.videoId}`)">
                 <span class="at fp-n">{{ formatTime(rowAt(row)) }}</span>
-                <img class="pic" :src="thumbnail(row.videoId)" alt="" loading="lazy" decoding="async" />
+                <ThumbnailImage class="pic" :src="thumbnail(row.videoId)" loading="lazy" decoding="async" />
                 <span class="about">
                   <span class="meta fp-n">
                     <span class="fp-tag">{{ row.type === null ? '配信' : VIDEO_LABELS[row.type] }}</span>

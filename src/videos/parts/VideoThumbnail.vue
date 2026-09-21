@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 
 import { relayVideoThumbnailURL } from '@/lib/relay';
 import type { ThumbnailSize } from '@/lib/youtube';
+import ThumbnailFallback from '@/parts/ThumbnailFallback.vue';
 
 /**
  * One video's thumbnail, with something to show when it does not arrive.
@@ -96,7 +97,7 @@ function onError() {
     decoding="async"
     @error="onError"
   />
-  <div v-else class="thumbnail none" :class="fit" aria-hidden="true">—</div>
+  <ThumbnailFallback v-else class="thumbnail none" :class="fit" />
 </template>
 
 <style scoped>
@@ -123,16 +124,7 @@ function onError() {
   margin: auto;
 }
 
-.thumbnail.none {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-style: dotted;
-  color: var(--k-text-3);
-  font-size: 10px;
-}
-
-/* The fallback div has no intrinsic size of its own to contain within, so
+/* The fallback has no intrinsic size of its own to contain within, so
    'contain' here means a reasonable 16:9 box rather than a collapsed one. */
 .thumbnail.none.contain {
   width: 100%;

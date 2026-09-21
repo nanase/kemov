@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, useTemplateRef } from 'vue';
 
 import { relayVideoThumbnailURL } from '@/lib/relay';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
+import ThumbnailImage from '@/parts/ThumbnailImage.vue';
 
 import { formatDate, formatLength, formatSince, formatTime, hostOf } from '../draw';
 import { jstDay, rowAt, KIND_LABELS, VIDEO_LABELS, type EventItem } from '../model';
@@ -220,7 +221,7 @@ onBeforeUnmount(() => globalThis.removeEventListener('keydown', onKeydown));
       <div class="body">
         <div class="picture">
           <div class="frame">
-            <img v-if="thumbnail" :src="thumbnail" alt="" loading="lazy" decoding="async" />
+            <ThumbnailImage v-if="thumbnail" :src="thumbnail" loading="lazy" decoding="async" />
             <div v-else class="stand-in">
               <span class="faces">
                 <MemberAvatar
@@ -291,7 +292,7 @@ onBeforeUnmount(() => globalThis.removeEventListener('keydown', onKeydown));
           <p v-if="item?.event.supplement" class="supplement">{{ item.event.supplement }}</p>
 
           <a v-if="linked" class="linked" :href="watchUrl(linked.videoId)" target="_blank" rel="noopener noreferrer">
-            <img :src="relayVideoThumbnailURL(linked.videoId, 'mq')" alt="" loading="lazy" />
+            <ThumbnailImage :src="relayVideoThumbnailURL(linked.videoId, 'mq')" loading="lazy" />
             <span>
               <small class="fp-n"
                 >このできごとの{{ linked.type === null ? '配信' : VIDEO_LABELS[linked.type] }} ・
@@ -321,7 +322,11 @@ onBeforeUnmount(() => globalThis.removeEventListener('keydown', onKeydown));
               @click="emit('open', entry.key)"
             >
               <span class="shot">
-                <img v-if="entry.videoId" :src="relayVideoThumbnailURL(entry.videoId, 'mq')" alt="" loading="lazy" />
+                <ThumbnailImage
+                  v-if="entry.videoId"
+                  :src="relayVideoThumbnailURL(entry.videoId, 'mq')"
+                  loading="lazy"
+                />
                 <!-- Nothing was filmed, so the kind stands in for a picture
                      rather than leaving an empty box that reads as broken. -->
                 <span v-else class="shot-kind">{{ entry.kind }}</span>
@@ -451,10 +456,12 @@ onBeforeUnmount(() => globalThis.removeEventListener('keydown', onKeydown));
   aspect-ratio: 16 / 9;
 }
 
-.frame img {
+.frame img,
+.frame .thumb-fallback {
   display: block;
   width: 100%;
   height: 100%;
+  border-radius: inherit;
   object-fit: cover;
 }
 
@@ -591,7 +598,8 @@ onBeforeUnmount(() => globalThis.removeEventListener('keydown', onKeydown));
   border-color: var(--k-accent);
 }
 
-.linked img {
+.linked img,
+.linked .thumb-fallback {
   display: block;
   width: 100%;
   border-radius: 3px;
@@ -696,10 +704,12 @@ onBeforeUnmount(() => globalThis.removeEventListener('keydown', onKeydown));
   text-align: center;
 }
 
-.shot img {
+.shot img,
+.shot .thumb-fallback {
   display: block;
   width: 100%;
   height: 100%;
+  border-radius: inherit;
   object-fit: cover;
 }
 
