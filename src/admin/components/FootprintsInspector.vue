@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { RouterLink } from 'vue-router';
 
 import {
   fieldForSaveError,
@@ -13,6 +14,14 @@ import {
   type FootprintsMember,
 } from '../lib/footprints';
 import { AdminApiError, deleteJson, postJson, putJson } from '../lib/api';
+import {
+  footprintsMarkFor,
+  isChangedSincePublish,
+  waitingEntryFor,
+  type FootprintsPending,
+} from '../lib/footprints-publish';
+import { refreshPublishBadge } from '../lib/publish-badge';
+import { CHANGED_NOTICE, PUBLISH_QUEUED_TOAST, waitingNoticeFor, WITHDRAW_QUEUED_TOAST } from '../lib/publish-mark';
 import { showToast } from '../lib/toast';
 
 /**
@@ -25,7 +34,12 @@ import { showToast } from '../lib/toast';
  * itself - the table's own row only changes once the parent refetches after
  * a save, publish, withdraw or delete succeeds.
  */
-const props = defineProps<{ event: FootprintsEvent; members: FootprintsMember[] }>();
+const props = defineProps<{
+  event: FootprintsEvent;
+  members: FootprintsMember[];
+  /** `GET /footprints/pending`, or null when it could not be read. */
+  pending: FootprintsPending | null;
+}>();
 const emit = defineEmits<{ changed: []; back: [] }>();
 
 const fields = ref<EventFormFields>(toFormFields(props.event));
@@ -43,7 +57,12 @@ watch(
   },
 );
 
-const buttons = computed(() => footprintsButtonsFor(props.event.status));
+const waiting = computed(() => waitingEntryFor(props.pending, props.event.eventId));
+const changedSincePublish = computed(() => isChangedSincePublish(props.pending, props.event.eventId));
+const mark = computed(() => footprintsMarkFor(props.event.status, props.event.eventId, props.pending));
+const buttons = computed(() =>
+  footprintsButtonsFor(props.event.status, props.pending === null ? null : changedSincePublish.value),
+);
 const selectedMembers = computed(() =>
   fields.value.channelIds.map((channelId) => ({
     channelId,
@@ -89,18 +108,20 @@ function save(): Promise<void> {
   return withErrorHandling(async () => {
     await putJson(`/footprints/events/${props.event.eventId}`, fields.value);
     emit('changed');
+    // Saving a published row's content makes it 「公開後に変更あり」, which the badge counts.
+    void refreshPublishBadge();
     showToast('保存しました');
   });
 }
 
-function togglePublish(): Promise<void> {
+/** Saves the fields, then moves the row one step: to 公開待ち (`publish`) or back to a draft (`withdraw`). Neither writes the public JSON - that is the 公開 screen's 「いま公開する」. */
+function moveStatus(action: 'publish' | 'withdraw'): Promise<void> {
   return withErrorHandling(async () => {
-    const withdrawing = props.event.status === 'published';
-
     await putJson(`/footprints/events/${props.event.eventId}`, fields.value);
-    await postJson(`/footprints/events/${props.event.eventId}/${withdrawing ? 'withdraw' : 'publish'}`, {});
+    await postJson(`/footprints/events/${props.event.eventId}/${action}`, {});
     emit('changed');
-    showToast(withdrawing ? '下書きに戻しました。公開ページから消えます' : '公開にしました');
+    void refreshPublishBadge();
+    showToast(action === 'withdraw' ? WITHDRAW_QUEUED_TOAST : PUBLISH_QUEUED_TOAST);
   });
 }
 
@@ -119,9 +140,7 @@ function remove(): Promise<void> {
       <div style="flex: 1 1 auto; min-width: 0">
         <h3>{{ fields.title || '（無題）' }}</h3>
         <div class="stack" style="margin-top: 4px">
-          <span class="chip" :class="{ published: event.status === 'published', review: event.status === 'review' }">{{
-            event.status === 'published' ? '公開' : event.status === 'review' ? '確認中' : '下書き'
-          }}</span>
+          <span class="chip" :class="mark.tone">{{ mark.label }}</span>
           <span class="chip kind">{{ kindLabel(fields.kind) }}</span>
         </div>
       </div>
@@ -131,6 +150,19 @@ function remove(): Promise<void> {
       <div v-if="errorMessage" class="panel flag">
         <h4>保存できません</h4>
         <div class="hint">{{ errorMessage }}</div>
+      </div>
+
+      <div v-if="waiting" class="panel">
+        <h4>{{ waitingNoticeFor(event.status).title }}</h4>
+        <div class="hint">{{ waitingNoticeFor(event.status).body }}</div>
+        <div>
+          <RouterLink class="btn" to="/publish">公開画面へ</RouterLink>
+        </div>
+      </div>
+
+      <div v-if="changedSincePublish" class="panel flag">
+        <h4>{{ CHANGED_NOTICE.title }}</h4>
+        <div class="hint">{{ CHANGED_NOTICE.body }}</div>
       </div>
 
       <div v-if="fields.sourcePending" class="panel flag">
@@ -236,7 +268,12 @@ function remove(): Promise<void> {
 
     <div class="inspector-foot">
       <button class="btn primary" type="button" :disabled="saving" @click="save">保存</button>
-      <button class="btn" type="button" :disabled="saving" @click="togglePublish">{{ buttons.primaryLabel }}</button>
+      <button v-if="buttons.publishLabel" class="btn" type="button" :disabled="saving" @click="moveStatus('publish')">
+        {{ buttons.publishLabel }}
+      </button>
+      <button v-if="buttons.withdrawLabel" class="btn" type="button" :disabled="saving" @click="moveStatus('withdraw')">
+        {{ buttons.withdrawLabel }}
+      </button>
       <button class="btn back quiet" type="button" @click="emit('back')">← 一覧</button>
       <span class="grow"></span>
       <span class="foot-sep" aria-hidden="true"></span>

@@ -5,7 +5,7 @@ import {
   footprintsQuery,
   kindLabel,
   KINDS,
-  STATUS_LABEL,
+  STATUS_OPTIONS,
   toFormFields,
   type FootprintsEvent,
 } from '@/admin/lib/footprints';
@@ -30,9 +30,12 @@ describe('kindLabel', () => {
   });
 });
 
-describe('STATUS_LABEL', () => {
-  test('covers draft, review and published', () => {
-    expect(STATUS_LABEL).toEqual({ draft: '下書き', review: '確認中', published: '公開' });
+// The filter is a query on the status column, which has three values. 公開待ち
+// is not one of them (#185), so it must not become an option: the count of
+// what the filter answers and the chips shown would then disagree.
+describe('STATUS_OPTIONS', () => {
+  test('filters by the three statuses and nothing else', () => {
+    expect(STATUS_OPTIONS.map((o) => o.value)).toEqual(['all', 'draft', 'review', 'published']);
   });
 });
 
@@ -157,12 +160,34 @@ describe('emptyFormFields', () => {
 });
 
 describe('footprintsButtonsFor', () => {
-  test('a draft or review event offers 公開する, with 削除 enabled', () => {
-    expect(footprintsButtonsFor('draft')).toEqual({ primaryLabel: '公開する', deleteDisabled: false });
-    expect(footprintsButtonsFor('review')).toEqual({ primaryLabel: '公開する', deleteDisabled: false });
+  test('a draft or review event offers 公開待ちにする, with 削除 enabled', () => {
+    for (const status of ['draft', 'review']) {
+      expect(footprintsButtonsFor(status, false)).toEqual({
+        publishLabel: '公開待ちにする',
+        withdrawLabel: null,
+        deleteDisabled: false,
+      });
+    }
   });
 
-  test('a published event offers 下書きに戻す, with 削除 disabled', () => {
-    expect(footprintsButtonsFor('published')).toEqual({ primaryLabel: '下書きに戻す', deleteDisabled: true });
+  test('a published event that is unchanged only offers 下書きに戻す, with 削除 disabled', () => {
+    expect(footprintsButtonsFor('published', false)).toEqual({
+      publishLabel: null,
+      withdrawLabel: '下書きに戻す',
+      deleteDisabled: true,
+    });
+  });
+
+  // Saving never adds a version, so this is the only way a changed row gets one (#201).
+  test('a published event changed since it was published offers 公開待ちにする again', () => {
+    expect(footprintsButtonsFor('published', true)).toEqual({
+      publishLabel: '公開待ちにする',
+      withdrawLabel: '下書きに戻す',
+      deleteDisabled: true,
+    });
+  });
+
+  test('a published event whose change is unknown offers 公開待ちにする too, rather than no way forward', () => {
+    expect(footprintsButtonsFor('published', null).publishLabel).toEqual('公開待ちにする');
   });
 });
