@@ -182,7 +182,7 @@ function membersOf(channelIds: readonly string[]): Channel[] {
 </script>
 
 <template>
-  <div ref="root" class="timeline">
+  <div ref="root" class="timeline" :data-order="filters.order">
     <!-- Outside the footprint column, never inside it: the nodes and the month
          headings punch the background out to stay readable, and a band running
          under them would come out in pieces (#140). -->
@@ -509,21 +509,38 @@ function membersOf(channelIds: readonly string[]): Channel[] {
   padding: 5px 0;
 }
 
-.row.large {
+.row.large,
+.row.now {
   padding: 12px 0;
 }
 
-/* The trail: one tile of footprints per row, in the axis column. */
+/*
+ * The trail: one tile of footprints per row, in the axis column.
+ *
+ * The tile is drawn on a layer of its own so that the newest-first order can
+ * turn it over: the toes point the way the road is read, and a background
+ * image cannot be flipped.
+ */
 .axis {
   position: relative;
+}
+
+.axis::before {
+  content: '';
+  position: absolute;
+  inset: 0;
   background-image: var(--fp-trail-past);
   background-position: center top;
   background-repeat: repeat-y;
   background-size: 28px 50px;
 }
 
-.row.future .axis,
-.year:has(.row.future) .year-head .axis {
+.timeline[data-order='desc'] .axis::before {
+  transform: scaleY(-1);
+}
+
+.row.future .axis::before,
+.year:has(.row.future) .year-head .axis::before {
   background-image: var(--fp-trail-future);
 }
 
@@ -538,6 +555,14 @@ function membersOf(channelIds: readonly string[]): Channel[] {
   border-radius: 50%;
   box-shadow: 0 0 0 5px var(--k-bg);
   background: var(--k-accent);
+}
+
+/* The first row of a month sits where the month's heading is, so it shows no
+   mark (#140). Said of the row rather than left to the heading to cover: the
+   heading covers whatever is under it only when the mark happens to sit
+   inside it, and a taller or centred one peeks out. */
+.rows > .row:first-child .node {
+  visibility: hidden;
 }
 
 /*
