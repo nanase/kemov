@@ -117,15 +117,13 @@ export function useSheetDialog({ sheet, root, panels, close, suspended }: SheetD
   });
 
   // After the DOM update, so the panel about to take focus is shown, and the
-  // element that opened the first sheet is still the one that has focus.
+  // element that opened the first sheet is still the one that has focus. It
+  // watches `modal` rather than `sheet` so that a shell resized across the
+  // stacking width with a sheet open (a phone turned upright) takes focus in
+  // and gives it back the same way opening and closing does.
   watch(
-    sheet,
+    modal,
     (now, before) => {
-      if (!narrow.value) {
-        opener = null;
-        return;
-      }
-
       if (now === '') {
         opener?.focus({ preventScroll: true });
         opener = null;
