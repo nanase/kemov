@@ -610,7 +610,7 @@ function membersOf(channelIds: readonly string[]): Channel[] {
 }
 
 .row.large[data-kind='graduation'] .node {
-  --fp-stamp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M9 3.2 16 6.6 9 10 2 6.6Z' fill='%23000'/%3E%3Cpath d='M5.4 8.4v3.4c0 1 1.6 1.9 3.6 1.9s3.6-.9 3.6-1.9V8.4' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  --fp-stamp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M5.4 13.2 9.1 9.1' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3Cpath d='M5.4 13.2 6 7.8' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3Cpath d='M5.4 13.2 3.4 16.2' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3Ccircle cx='12' cy='3.1' r='2'/%3E%3Ccircle cx='14.57' cy='4.97' r='2'/%3E%3Ccircle cx='13.59' cy='7.98' r='2'/%3E%3Ccircle cx='10.41' cy='7.98' r='2'/%3E%3Ccircle cx='9.43' cy='4.97' r='2'/%3E%3Ccircle cx='5.8' cy='2.2' r='1.5'/%3E%3Ccircle cx='7.7' cy='3.58' r='1.5'/%3E%3Ccircle cx='6.98' cy='5.82' r='1.5'/%3E%3Ccircle cx='4.62' cy='5.82' r='1.5'/%3E%3Ccircle cx='3.9' cy='3.58' r='1.5'/%3E%3Crect x='3' y='11.8' width='5.6' height='2.6' rx='1.2' transform='rotate(40 5.8 13.1)'/%3E%3C/svg%3E");
 }
 
 .row.large[data-kind='3d'] .node {
@@ -622,7 +622,7 @@ function membersOf(channelIds: readonly string[]): Channel[] {
 }
 
 .row.large[data-kind='project'] .node {
-  --fp-stamp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M9 15.4V7.6' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'/%3E%3Cpath d='M9 7.8C9 7.8 5.6 7.1 4.7 4.6 7.2 3.9 9 5.9 9 7.8Z' fill='%23000'/%3E%3Cpath d='M9 7.8c0-1.9 1.8-3.9 4.3-3.2-.9 2.5-4.3 3.2-4.3 3.2Z' fill='%23000'/%3E%3C/svg%3E");
+  --fp-stamp: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'%3E%3Cpath d='M9 15.8V10.6' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round'/%3E%3Cg transform='translate(8.7 10.6) rotate(18) scale(1 0.8)'%3E%3Cpath d='M0 0C-1.7-4.2-5.4-5-7.9-2.4-8.1 1.6-4.2 4.2 0 0Z' fill='%23000' stroke='%23000' stroke-width='.6' stroke-linejoin='round'/%3E%3C/g%3E%3Cg transform='translate(9.3 10.6) scale(-1 1) rotate(18) scale(1 0.8)'%3E%3Cpath d='M0 0C-1.7-4.2-5.4-5-7.9-2.4-8.1 1.6-4.2 4.2 0 0Z' fill='%23000' stroke='%23000' stroke-width='.6' stroke-linejoin='round'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 .row.now .node {
