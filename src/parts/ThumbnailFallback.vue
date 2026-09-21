@@ -4,10 +4,10 @@
  *
  * The image relay (`@/lib/relay`) passes on YouTube's refusal - a 429 when a
  * page asks for a screenful at once, a 404 for a video with no such file - and
- * the browser then has nothing to draw. Every page that shows a thumbnail
- * shows this instead (#180), so a reader sees the same face wherever a picture
- * is missing. It does not tell "failed to load" from "never existed": either
- * way the reader cannot see the picture.
+ * the browser then has nothing to draw. This is the stand-in for that (#180),
+ * so a reader sees the same face where a picture is missing, unless a caller
+ * says otherwise where it draws one. It does not tell "failed to load" from
+ * "never existed": either way the reader cannot see the picture.
  *
  * It takes the box its caller gives it: the caller's class or style sets the
  * size, and without one it is a 16:9 box as wide as its parent. The mark is

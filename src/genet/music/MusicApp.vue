@@ -71,8 +71,7 @@ const data = ref<GenetMusicData | null>(null);
 
 // The title icon is the channel's own picture when the JSON names a channel and
 // the relay has it; otherwise, and when the picture fails to load, it stays the
-// plain coloured circle the icon's box already draws (the same fallback #180
-// gives thumbnails).
+// plain coloured circle the icon's box already draws.
 const iconSrc = computed(() => channelIconURL(data.value));
 const iconFailed = ref(false);
 const preparedStreams = ref<PreparedStream[]>([]);
@@ -1687,6 +1686,12 @@ function snippetText(text: string): string {
   aspect-ratio: 16 / 9;
   width: 100%;
   display: grid;
+
+  /* The track is the box's own size, not its content's. An `auto` track grows
+     to the picture (a 4:3 `hqdefault` is taller than this 16:9 box), so the
+     picture's `height: 100%` resolved against that taller track and `cover`
+     had nothing to crop: the picture sat at the top with its black bands. */
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
   overflow: hidden;
   background: var(--gm-mat);

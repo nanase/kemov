@@ -12,7 +12,8 @@ import ThumbnailFallback from './ThumbnailFallback.vue';
  * `@/members/parts/VideoThumb.vue`) uses `ThumbnailFallback` directly instead.
  *
  * Whatever attributes the caller gives go to the `<img>`. Its `class` and
- * `style` also go to the fallback, so the same rules size both.
+ * `style` also go to the fallback, so the same rules size both. A caller that
+ * wants another stand-in gives a `fallback` slot, and then draws its own box.
  */
 defineOptions({ inheritAttrs: false });
 
@@ -29,6 +30,8 @@ watch(
 </script>
 
 <template>
-  <ThumbnailFallback v-if="failed" :class="$attrs.class" :style="$attrs.style as StyleValue" />
+  <slot v-if="failed" name="fallback">
+    <ThumbnailFallback :class="$attrs.class" :style="$attrs.style as StyleValue" />
+  </slot>
   <img v-else v-bind="$attrs" :src="src" alt="" @error="failed = true" />
 </template>

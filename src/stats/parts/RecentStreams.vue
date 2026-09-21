@@ -5,6 +5,7 @@ import { memberColor } from '@/lib/memberColor';
 import { DASH, formatCount } from '@/lib/numberFormat';
 import { formatDuration } from '../draw';
 import type { Subject } from '../model';
+import MemberAvatar from '@/parts/MemberAvatar.vue';
 import ThumbnailFallback from '@/parts/ThumbnailFallback.vue';
 import ThumbnailImage from '@/parts/ThumbnailImage.vue';
 
@@ -12,8 +13,10 @@ import ThumbnailImage from '@/parts/ThumbnailImage.vue';
  * The last few streams, and the ones that have not started yet.
  *
  * Every row is the same shape whether or not a thumbnail exists, so the list
- * does not jump as the images arrive. A stream with none, or whose picture
- * does not arrive, gets `ThumbnailFallback` on a panel the same size.
+ * does not jump as the images arrive. A stream that has not started may have
+ * no picture yet, so where its picture does not arrive the row shows the
+ * member's face on a panel the same size. A stream that has finished gets
+ * `ThumbnailFallback` there, which `ThumbnailImage` draws in its place.
  */
 export interface StreamRow {
   key: string;
@@ -51,7 +54,19 @@ function ownerStyle(owner: Subject) {
         height="54"
         loading="lazy"
         decoding="async"
-      />
+      >
+        <template v-if="row.upcoming" #fallback>
+          <span class="shot none">
+            <MemberAvatar
+              :src="row.owner.avatar"
+              :name="row.owner.name"
+              :color="row.owner.color"
+              :size="28"
+              :dark="dark"
+            />
+          </span>
+        </template>
+      </ThumbnailImage>
       <ThumbnailFallback v-else class="shot" />
       <div class="body">
         <a v-if="row.videoId" class="title" :href="`/videos/${row.videoId}`">{{ row.title }}</a>
@@ -120,6 +135,16 @@ function ownerStyle(owner: Subject) {
   border-radius: 3px;
   background: var(--k-track);
   object-fit: cover;
+}
+
+.shot.none {
+  display: grid;
+  place-items: center;
+}
+
+.shot.none :deep(.avatar) {
+  width: 28px;
+  height: 28px;
 }
 
 .body {
