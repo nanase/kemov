@@ -23,14 +23,17 @@ export const KINDS: readonly { value: string; label: string }[] = [
   { value: 'other', label: 'その他' },
 ];
 
+/**
+ * What the table can filter by: the `status` column, which is all the query
+ * can see. 公開待ち is not in it - it comes from `GET /footprints/pending`, not
+ * from a column - so it is only ever a chip (`footprintsMarkFor`), never an option.
+ */
 export const STATUS_OPTIONS: readonly { value: string; label: string }[] = [
   { value: 'all', label: 'すべて' },
   { value: 'draft', label: '下書き' },
   { value: 'review', label: '確認中' },
   { value: 'published', label: '公開' },
 ];
-
-export const STATUS_LABEL: Readonly<Record<string, string>> = { draft: '下書き', review: '確認中', published: '公開' };
 
 export function kindLabel(kind: string): string {
   return KINDS.find((k) => k.value === kind)?.label ?? kind;
@@ -94,16 +97,34 @@ export function fieldForSaveError(message: string): EventFieldKey | null {
   return null;
 }
 
-/** The edit panel's primary status button and whether 削除 is disabled - a published event only withdraws or gets a fresh publish; deleting one is refused (409) until it is withdrawn. */
+/**
+ * The edit panel's status buttons and whether 削除 is disabled. A published
+ * event can be withdrawn, and can be sent to 公開待ち again - that second one
+ * is how a row changed since it was published gets a version matching its
+ * current content, since saving never adds one. Deleting one is refused (409)
+ * until it is withdrawn.
+ */
 export interface FootprintsButtons {
-  primaryLabel: '公開する' | '下書きに戻す';
+  publishLabel: '公開待ちにする' | null;
+  withdrawLabel: '下書きに戻す' | null;
   deleteDisabled: boolean;
 }
 
-export function footprintsButtonsFor(status: string): FootprintsButtons {
-  return status === 'published'
-    ? { primaryLabel: '下書きに戻す', deleteDisabled: true }
-    : { primaryLabel: '公開する', deleteDisabled: false };
+/**
+ * `changed` is whether the row differs from what it was published as
+ * (`isChangedSincePublish`), or null when that is unknown - a published row is
+ * then offered 公開待ちにする rather than left with no way forward.
+ */
+export function footprintsButtonsFor(status: string, changed: boolean | null): FootprintsButtons {
+  if (status !== 'published') {
+    return { publishLabel: '公開待ちにする', withdrawLabel: null, deleteDisabled: false };
+  }
+
+  return {
+    publishLabel: changed === false ? null : '公開待ちにする',
+    withdrawLabel: '下書きに戻す',
+    deleteDisabled: true,
+  };
 }
 
 export interface FootprintsSource {

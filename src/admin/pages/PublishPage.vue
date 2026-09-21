@@ -1,16 +1,27 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { RouterLink } from 'vue-router';
 
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import {
+  canPublishFootprints,
+  footprintsMarkFor,
+  type ChangedFootprintsEntry,
+  type FootprintsPending,
+  type PendingFootprintsEntry,
+} from '../lib/footprints-publish';
+import {
   canPublishGenet,
   entityLabel,
+  isWaiting,
   publishesOnlyForShape,
   type ChangedGenetEntry,
   type GenetPendingResponse,
   type GenetPublishResult,
   type PendingGenetEntry,
 } from '../lib/genet-publish';
+import { refreshPublishBadge } from '../lib/publish-badge';
+import { CHANGED_ROWS_HINT, publishMarkFor } from '../lib/publish-mark';
 import { showToast } from '../lib/toast';
 
 /**
@@ -18,23 +29,20 @@ import { showToast } from '../lib/toast';
  * Footprints and genet music each have their own publish gate and their own
  * pending/publish endpoint pair under /admin/api, so this screen loads and
  * publishes them independently - one failing does not block the other.
+ *
+ * This is the second of two steps (#185): a row's own screen moves it to
+ * 公開待ち, and 「いま公開する」 here is what writes the public JSON. The rows
+ * under 「公開後に変更があった行」 are waiting for the first step again, not for
+ * this one - each leads back to its own screen (#201).
  */
 
-interface PendingEntry {
-  eventId: number;
-  latestAction: string;
-}
-
-interface ChangedEntry {
-  eventId: number;
-  title: string;
-}
-
-const pending = ref<PendingEntry[]>([]);
-const changed = ref<ChangedEntry[]>([]);
+const pending = ref<PendingFootprintsEntry[]>([]);
+const changed = ref<ChangedFootprintsEntry[]>([]);
 const loading = ref(false);
 const loadError = ref<string | null>(null);
 const publishing = ref(false);
+
+const footprintsState = computed<FootprintsPending>(() => ({ pending: pending.value, changed: changed.value }));
 
 const genetPending = ref<PendingGenetEntry[]>([]);
 const genetChanged = ref<ChangedGenetEntry[]>([]);
@@ -49,12 +57,21 @@ const genetState = computed<GenetPendingResponse>(() => ({
   shapeOutdated: genetShapeOutdated.value,
 }));
 
+/** Where a changed genet row is edited: a stream has its own screen, a tune or a person is edited from inside the streams that perform it. */
+function genetRowLink(entry: ChangedGenetEntry): { path: string; query?: { video: string } } {
+  return entry.entity === 'genet_stream' ? { path: '/sets', query: { video: entry.key } } : { path: '/sets' };
+}
+
+function genetRowLinkLabel(entry: ChangedGenetEntry): string {
+  return entry.entity === 'genet_stream' ? '配信の画面へ' : '配信の一覧へ';
+}
+
 async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
 
   try {
-    const body = await getJson<{ pending: PendingEntry[]; changed: ChangedEntry[] }>('/footprints/pending');
+    const body = await getJson<FootprintsPending>('/footprints/pending');
 
     pending.value = body.pending;
     changed.value = body.changed;
@@ -79,7 +96,7 @@ async function publishNow(): Promise<void> {
         ? `公開しました。footprints/events.json（${body.eventCount} 件、${body.byteLength} バイト）`
         : '公開を待っているものがありません',
     );
-    await load();
+    await Promise.all([load(), refreshPublishBadge()]);
   } catch (error) {
     showToast(error instanceof AdminApiError ? error.message : String(error));
   } finally {
@@ -152,21 +169,33 @@ onMounted(async () => {
                 <dd class="num">{{ changed.length }} 件</dd>
               </div>
             </div>
-            <div v-if="changed.length > 0" class="panel">
+            <div v-if="changed.length > 0" class="panel flag">
               <h4>公開後に変更があった行</h4>
-              <ul style="margin: 0; padding-left: 1.2em">
-                <li v-for="c in changed" :key="c.eventId">{{ c.title }}</li>
+              <div class="hint">{{ CHANGED_ROWS_HINT }}</div>
+              <ul class="change-list">
+                <li v-for="c in changed" :key="c.eventId">
+                  <span class="change-title">{{ c.title }}</span>
+                  <span class="chip" :class="footprintsMarkFor('published', c.eventId, footprintsState).tone">{{
+                    footprintsMarkFor('published', c.eventId, footprintsState).label
+                  }}</span>
+                  <RouterLink class="btn" :to="{ path: '/footprints', query: { event: c.eventId } }">
+                    できごとの画面へ
+                  </RouterLink>
+                </li>
               </ul>
             </div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap">
               <button
                 class="btn primary"
                 type="button"
-                :disabled="publishing || loading || (pending.length === 0 && changed.length === 0)"
+                :disabled="publishing || loading || !canPublishFootprints(footprintsState)"
                 @click="publishNow"
               >
                 いま公開する
               </button>
+            </div>
+            <div v-if="!loading && !canPublishFootprints(footprintsState) && changed.length > 0" class="hint">
+              公開を待っているものがありません
             </div>
           </template>
 
@@ -184,11 +213,18 @@ onMounted(async () => {
                 <dd class="num">{{ genetChanged.length }} 件</dd>
               </div>
             </div>
-            <div v-if="genetChanged.length > 0" class="panel">
+            <div v-if="genetChanged.length > 0" class="panel flag">
               <h4>公開後に変更があった行</h4>
-              <ul style="margin: 0; padding-left: 1.2em">
+              <div class="hint">{{ CHANGED_ROWS_HINT }}曲や人の行は、それを使っている配信の画面で押します。</div>
+              <ul class="change-list">
                 <li v-for="c in genetChanged" :key="`${c.entity}:${c.key}`">
-                  {{ entityLabel(c.entity) }}: {{ c.title }}
+                  <span class="change-title">{{ entityLabel(c.entity) }}: {{ c.title }}</span>
+                  <span
+                    class="chip"
+                    :class="publishMarkFor('published', isWaiting(genetState, c.entity, c.key)).tone"
+                    >{{ publishMarkFor('published', isWaiting(genetState, c.entity, c.key)).label }}</span
+                  >
+                  <RouterLink class="btn" :to="genetRowLink(c)">{{ genetRowLinkLabel(c) }}</RouterLink>
                 </li>
               </ul>
             </div>
@@ -205,9 +241,39 @@ onMounted(async () => {
                 ジェネット楽曲一覧をいま公開する
               </button>
             </div>
+            <div v-if="!genetLoading && !canPublishGenet(genetState) && genetChanged.length > 0" class="hint">
+              公開を待っているものがありません
+            </div>
           </template>
         </div>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.change-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.change-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.change-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.change-list .btn {
+  text-decoration: none;
+  color: inherit;
+}
+</style>

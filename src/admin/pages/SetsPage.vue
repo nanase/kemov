@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { RouterLink, useRoute } from 'vue-router';
 
 import MarkDown from '../../components/genet/MarkDown.vue';
 import { AdminApiError, getJson, postJson, putJson } from '../lib/api';
 import { insertAt, mdSnippet, clock, type MdLinkKind } from '../lib/genet-markdown';
 import { type GenetPerson } from '../lib/genet-people';
+import {
+  canRepublishStream,
+  isChangedSincePublish,
+  isWaiting,
+  streamMarkFor,
+  type GenetPendingResponse,
+} from '../lib/genet-publish';
 import {
   attrNameOptions,
   emptyFormFields as emptyTuneFields,
@@ -27,6 +35,7 @@ import {
   type GenetStream,
   type StreamFormFields,
 } from '../lib/genet-streams';
+import { CHANGED_NOTICE, PUBLISH_QUEUED_TOAST, waitingNoticeFor, WITHDRAW_QUEUED_TOAST } from '../lib/publish-mark';
 import { showToast } from '../lib/toast';
 
 /**
@@ -54,12 +63,17 @@ const STATUS_OPTIONS = [
   { value: 'published', label: '公開' },
 ] as const;
 
-function statusLabel(status: string): string {
-  return STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status;
-}
-
 const streams = ref<GenetStream[]>([]);
 const people = ref<GenetPerson[]>([]);
+// What the 状態 chip needs that a stream's `status` cannot say: whether the
+// public JSON has caught up with it. Null when it could not be read, so a
+// failed request does not draw every published stream as already public.
+const pending = ref<GenetPendingResponse | null>(null);
+
+// `/sets?video=<videoId>` is where the 公開 screen's rows lead. Read once,
+// for the first list that arrives.
+const route = useRoute();
+let requestedVideoId = typeof route.query.video === 'string' ? route.query.video : null;
 const loading = ref(false);
 const loadError = ref<string | null>(null);
 const peopleLoadError = ref<string | null>(null);
@@ -72,6 +86,20 @@ const filteredStreams = computed(() =>
   statusFilter.value === 'all' ? streams.value : streams.value.filter((s) => s.status === statusFilter.value),
 );
 const selected = computed(() => streams.value.find((s) => s.videoId === selectedVideoId.value) ?? null);
+const selectedWaiting = computed(() =>
+  selected.value === null ? null : isWaiting(pending.value, 'genet_stream', selected.value.videoId),
+);
+const selectedChanged = computed(
+  () => selected.value !== null && isChangedSincePublish(pending.value, 'genet_stream', selected.value.videoId),
+);
+// A published stream is offered 「公開待ちにする」 again only while something
+// is changed, the same as あしあと - otherwise it would add a version that
+// matches the last one.
+const showPublish = computed(
+  () =>
+    selected.value !== null &&
+    (selected.value.status !== 'published' || canRepublishStream(pending.value, selected.value.videoId)),
+);
 
 const streamFields = ref<StreamFormFields>(emptyStreamFields());
 const streamSaving = ref(false);
@@ -90,9 +118,18 @@ watch(selected, (stream) => {
   tuneFieldsByIndex.value = new Map();
 });
 
+async function loadPending(): Promise<void> {
+  try {
+    pending.value = await getJson<GenetPendingResponse>('/genet/pending');
+  } catch {
+    pending.value = null;
+  }
+}
+
 async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
+  void loadPending();
 
   try {
     const query = statusFilter.value === 'all' ? '' : `?status=${statusFilter.value}`;
@@ -101,8 +138,15 @@ async function load(): Promise<void> {
     streams.value = body.streams;
 
     if (selectedVideoId.value === null && streams.value.length > 0) {
-      selectedVideoId.value = streams.value[0]!.videoId;
+      const requested = streams.value.find((s) => s.videoId === requestedVideoId);
+
+      selectedVideoId.value = (requested ?? streams.value[0]!).videoId;
+      // A stream asked for by name is opened, so a narrow screen lands on its
+      // editor rather than on the list.
+      if (requested !== undefined) detail.value = true;
     }
+
+    requestedVideoId = null;
   } catch (error) {
     loadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
@@ -158,7 +202,7 @@ async function publishStream(): Promise<void> {
 
   try {
     await postJson(`/genet/streams/${encodeURIComponent(selected.value.videoId)}/publish`, {});
-    showToast('公開にしました');
+    showToast(PUBLISH_QUEUED_TOAST);
     await load();
   } catch (error) {
     if (error instanceof AdminApiError && Array.isArray((error.body as { errors?: unknown })?.errors)) {
@@ -174,7 +218,7 @@ async function withdrawStream(): Promise<void> {
 
   try {
     await postJson(`/genet/streams/${encodeURIComponent(selected.value.videoId)}/withdraw`, {});
-    showToast('下書きに戻しました');
+    showToast(WITHDRAW_QUEUED_TOAST);
     await load();
   } catch (error) {
     showToast(error instanceof AdminApiError ? error.message : String(error));
@@ -560,8 +604,8 @@ watch(statusFilter, load);
           <span class="meta">
             <span class="num sub">{{ s.publishedAt.slice(0, 10) }}</span>
             <span class="sub">{{ s.performances.length }} 曲</span>
-            <span class="chip" :class="{ published: s.status === 'published', review: s.status === 'review' }">{{
-              statusLabel(s.status)
+            <span class="chip" :class="streamMarkFor(s.status, s.videoId, pending).tone">{{
+              streamMarkFor(s.status, s.videoId, pending).label
             }}</span>
           </span>
         </button>
@@ -574,20 +618,35 @@ watch(statusFilter, load);
         <h2 style="min-width: 0; overflow: hidden; text-overflow: ellipsis">
           {{ selected.shortTitle || selected.title }}
         </h2>
-        <span
-          class="chip"
-          :class="{ published: selected.status === 'published', review: selected.status === 'review' }"
-          >{{ statusLabel(selected.status) }}</span
-        >
+        <span class="chip" :class="streamMarkFor(selected.status, selected.videoId, pending).tone">{{
+          streamMarkFor(selected.status, selected.videoId, pending).label
+        }}</span>
         <span class="grow"></span>
         <button class="btn primary" type="button" :disabled="streamSaving" @click="saveStream">保存</button>
-        <button v-if="selected.status !== 'published'" class="btn" type="button" @click="publishStream">
-          公開する
+        <button v-if="showPublish" class="btn" type="button" @click="publishStream">公開待ちにする</button>
+        <button v-if="selected.status === 'published'" class="btn" type="button" @click="withdrawStream">
+          下書きに戻す
         </button>
-        <button v-else class="btn" type="button" @click="withdrawStream">下書きに戻す</button>
       </div>
 
       <div class="scroller">
+        <div v-if="selectedWaiting" style="padding: 12px 18px 0">
+          <div class="panel">
+            <h4>{{ waitingNoticeFor(selected.status).title }}</h4>
+            <div class="hint">{{ waitingNoticeFor(selected.status).body }}</div>
+            <div>
+              <RouterLink class="btn" to="/publish">公開画面へ</RouterLink>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="selectedChanged" style="padding: 12px 18px 0">
+          <div class="panel flag">
+            <h4>{{ CHANGED_NOTICE.title }}</h4>
+            <div class="hint">{{ CHANGED_NOTICE.body }}</div>
+          </div>
+        </div>
+
         <div v-if="streamError" style="padding: 12px 18px 0">
           <div class="panel flag">
             <h4>保存できません</h4>

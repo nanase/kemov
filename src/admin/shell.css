@@ -317,19 +317,23 @@ textarea {
     border-color 0.12s;
 }
 
-.btn:hover {
+/* A link styled as a button (RouterLink), not only a <button>. */
+a.btn {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Every hover rule below is scoped to :not(:disabled): a rule that only
+   resets the colours on a disabled hover is beaten by a later, equally
+   specific one, and on .btn.primary it left white text on a white ground. */
+.btn:hover:not(:disabled) {
   background: var(--k-surface-2);
   border-color: var(--k-text-3);
 }
 
 .btn:disabled {
   opacity: 0.45;
-  cursor: default;
-}
-
-.btn:disabled:hover {
-  background: var(--k-surface);
-  border-color: var(--k-line-2);
+  cursor: not-allowed;
 }
 
 .btn.primary {
@@ -340,7 +344,17 @@ textarea {
 }
 
 .btn.primary:hover:not(:disabled) {
+  background: var(--k-accent);
+  border-color: var(--k-accent);
   filter: brightness(1.08);
+}
+
+/* Faded green still reads as "primary, and pressable" - a disabled one is grey. */
+.btn.primary:disabled {
+  background: var(--k-sunken);
+  border-color: var(--k-line-2);
+  color: var(--k-text-3);
+  opacity: 1;
 }
 
 .btn.quiet {
@@ -349,15 +363,16 @@ textarea {
   color: var(--k-text-2);
 }
 
-.btn.quiet:hover {
+.btn.quiet:hover:not(:disabled) {
   background: var(--k-surface-2);
+  border-color: transparent;
 }
 
 .btn.danger {
   color: var(--a-danger);
 }
 
-.btn.danger:hover {
+.btn.danger:hover:not(:disabled) {
   background: var(--a-danger-soft);
   border-color: var(--a-danger);
 }
@@ -455,6 +470,13 @@ table.grid tbody tr[aria-selected='true'] td:first-child {
 
 .chip.published {
   background: var(--k-accent-soft);
+  color: var(--k-accent);
+}
+
+/* 公開待ち: the same green as 公開, drawn as an outline - on its way, not there yet. */
+.chip.waiting {
+  background: none;
+  border: 1px dashed var(--k-accent);
   color: var(--k-accent);
 }
 

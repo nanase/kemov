@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 
 import FootprintsInspector from '../components/FootprintsInspector.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
@@ -11,6 +12,7 @@ import {
   type FootprintsEvent,
   type FootprintsMember,
 } from '../lib/footprints';
+import { footprintsMarkFor, type FootprintsPending } from '../lib/footprints-publish';
 import { todayJst } from '../lib/snapshots';
 import { showToast } from '../lib/toast';
 
@@ -25,6 +27,15 @@ const q = ref('');
 const selectedId = ref<number | null>(null);
 const detail = ref(false);
 const adding = ref(false);
+// What the 状態 chip needs that the row's `status` cannot say: whether the
+// public JSON has caught up with it. Null when it could not be read, so a
+// failed request does not draw every published row as already public.
+const pending = ref<FootprintsPending | null>(null);
+
+// `/footprints?event=<id>` is where the 公開 screen's rows lead. Read once,
+// for the first list that arrives; later loads keep whatever is selected.
+const route = useRoute();
+let requestedId = typeof route.query.event === 'string' ? Number(route.query.event) : Number.NaN;
 
 const selected = computed(() => events.value.find((e) => e.eventId === selectedId.value) ?? null);
 
@@ -68,8 +79,15 @@ async function load(): Promise<void> {
     // inboxTable auto-selects. This does not open the narrow layout's
     // detail view; only clicking a row does that.
     if (selectedId.value === null && events.value.length > 0) {
-      selectedId.value = events.value[0]!.eventId;
+      const requested = events.value.find((e) => e.eventId === requestedId);
+
+      selectedId.value = (requested ?? events.value[0]!).eventId;
+      // Unlike the default above, a row asked for by name is opened, so a
+      // narrow screen lands on its edit panel rather than on the table.
+      if (requested !== undefined) detail.value = true;
     }
+
+    requestedId = Number.NaN;
   } catch (error) {
     if (generation !== loadGeneration) return;
 
@@ -77,6 +95,19 @@ async function load(): Promise<void> {
   } finally {
     if (generation === loadGeneration) loading.value = false;
   }
+}
+
+async function loadPending(): Promise<void> {
+  try {
+    pending.value = await getJson<FootprintsPending>('/footprints/pending');
+  } catch {
+    pending.value = null;
+  }
+}
+
+/** After a save, a move to 公開待ち, a withdraw or a delete: the rows and what is waiting both changed. */
+function reload(): Promise<unknown> {
+  return Promise.all([load(), loadPending()]);
 }
 
 function selectRow(eventId: number): void {
@@ -124,6 +155,7 @@ async function loadMembers(): Promise<void> {
 watch([status, q], load);
 onMounted(() => {
   load();
+  loadPending();
   loadMembers();
 });
 </script>
@@ -177,8 +209,8 @@ onMounted(() => {
               @keydown.space.prevent="selectRow(e.eventId)"
             >
               <td>
-                <span class="chip" :class="{ published: e.status === 'published', review: e.status === 'review' }">{{
-                  e.status === 'published' ? '公開' : e.status === 'review' ? '確認中' : '下書き'
+                <span class="chip" :class="footprintsMarkFor(e.status, e.eventId, pending).tone">{{
+                  footprintsMarkFor(e.status, e.eventId, pending).label
                 }}</span>
               </td>
               <td class="num">{{ e.startDate }}<span v-if="e.datePrecision === 'month'" class="sub"> 月のみ</span></td>
@@ -210,7 +242,8 @@ onMounted(() => {
       :key="selected.eventId"
       :event="selected"
       :members="members"
-      @changed="load"
+      :pending="pending"
+      @changed="reload"
       @back="back"
     />
   </div>

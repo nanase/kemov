@@ -3,7 +3,8 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { getJson } from './lib/api';
-import { pageTitle, publishBadgeCount, SIDEBAR_GROUPS, type FootprintsPending } from './lib/sidebar';
+import { publishBadge, refreshPublishBadge } from './lib/publish-badge';
+import { pageTitle, SIDEBAR_GROUPS } from './lib/sidebar';
 import { toastMessage } from './lib/toast';
 
 /**
@@ -17,7 +18,6 @@ import { toastMessage } from './lib/toast';
 const route = useRoute();
 const drawerOpen = ref(false);
 const email = ref<string | null>(null);
-const publishBadge = ref<number | null>(null);
 const collectFailuresBadge = ref<number | null>(null);
 
 const initial = computed(() => (email.value ? email.value.charAt(0).toUpperCase() : ''));
@@ -44,13 +44,7 @@ onMounted(async () => {
     // The topbar shows no initial when this fails - nothing else here depends on it.
   }
 
-  try {
-    const pending = await getJson<FootprintsPending>('/footprints/pending');
-
-    publishBadge.value = publishBadgeCount(pending);
-  } catch {
-    publishBadge.value = null;
-  }
+  await refreshPublishBadge();
 
   try {
     const failing = await getJson<{ count: number }>('/collect-tasks');

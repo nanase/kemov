@@ -10,6 +10,8 @@
  * alone rather than a wrong or stale number, since nothing here can count it
  * yet.
  */
+import type { FootprintsPending } from './footprints-publish';
+
 export interface NavItem {
   page: string;
   name: string;
@@ -50,12 +52,11 @@ export const SIDEBAR_GROUPS: readonly NavGroup[] = [
   },
 ];
 
-export interface FootprintsPending {
-  pending: unknown[];
-  changed: unknown[];
-}
-
-/** `公開` badge: how many footprints entities `GET /admin/api/footprints/pending` says need attention. */
+/**
+ * `公開` badge: how many footprints entities `GET /admin/api/footprints/pending` says need attention.
+ * The waiting ones, and the ones changed since they were published - each is a
+ * row with something left to do, though only the first is cleared by 「いま公開する」.
+ */
 export function publishBadgeCount(pending: FootprintsPending): number {
   return pending.pending.length + pending.changed.length;
 }
