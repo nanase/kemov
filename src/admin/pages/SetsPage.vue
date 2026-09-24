@@ -768,6 +768,7 @@ watch(statusFilter, load);
             <button class="tune-head" type="button" :aria-expanded="openIndex === pi" @click="openTune(pi)">
               <span class="no">{{ pi + 1 }}</span>
               <span class="t">{{ tuneTitleFor(pi) }}</span>
+              <span class="sub num">tune_id {{ perf.tuneId }}</span>
               <span v-if="!perf.description" class="chip alarm">時刻なし</span>
               <span class="sub" aria-hidden="true">{{ openIndex === pi ? '▲' : '▼' }}</span>
             </button>
@@ -968,6 +969,7 @@ watch(statusFilter, load);
                           >
                             &times;
                           </button>
+                          <span class="sub num" style="grid-column: 1 / -1">person_id {{ person.personId }}</span>
                         </div>
                         <div style="display: flex; gap: 6px">
                           <button class="md-ins" type="button" @click="addAttributePerson(attr)">＋ 人を足す</button>

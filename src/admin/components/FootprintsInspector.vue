@@ -189,6 +189,11 @@ function remove(): Promise<void> {
         <input id="f-title" v-model="fields.title" type="text" :aria-invalid="errorField === 'title'" />
       </div>
 
+      <div class="field">
+        <label for="f-eid">event_id</label>
+        <input id="f-eid" type="text" :value="event.eventId" readonly />
+      </div>
+
       <div class="row2">
         <div class="field">
           <label for="f-kind">種類</label>
