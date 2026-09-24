@@ -135,7 +135,9 @@ function isFilledString(value: unknown): value is string {
 function memberFieldProblem(key: NewMemberKey, value: unknown): string | null {
   switch (key) {
     case 'channelId':
-      return typeof value === 'string' && CHANNEL_ID_PATTERN.test(value) ? null : 'channelId must be a YouTube channel id';
+      return typeof value === 'string' && CHANNEL_ID_PATTERN.test(value)
+        ? null
+        : 'channelId must be a YouTube channel id';
     case 'name':
     case 'fullname':
       return isFilledString(value) ? null : `${key} must be a non-empty string`;
@@ -302,7 +304,9 @@ type NewMemberValues = Record<NewMemberKey, unknown>;
  * written and logs no revision.
  */
 async function saveMemberList(env: Env, added: NewMemberValues[], order: string[] | null): Promise<Response> {
-  const { results: existing } = await env.DB.prepare(`${SELECT_MEMBERS} ORDER BY display_order, channel_id`).all<MemberRow>();
+  const { results: existing } = await env.DB.prepare(
+    `${SELECT_MEMBERS} ORDER BY display_order, channel_id`,
+  ).all<MemberRow>();
   const known = new Set(existing.map((row) => row.channel_id));
   const addedIds = added.map((values) => values.channelId as string);
 
@@ -315,7 +319,11 @@ async function saveMemberList(env: Env, added: NewMemberValues[], order: string[
   const finalOrder = order ?? [...existing.map((row) => row.channel_id), ...addedIds];
   const expected = new Set([...known, ...addedIds]);
 
-  if (finalOrder.length !== expected.size || new Set(finalOrder).size !== expected.size || !finalOrder.every((id) => expected.has(id))) {
+  if (
+    finalOrder.length !== expected.size ||
+    new Set(finalOrder).size !== expected.size ||
+    !finalOrder.every((id) => expected.has(id))
+  ) {
     return errorResponse(409, 'order does not list exactly the current members; reload and try again');
   }
 
@@ -394,7 +402,10 @@ export async function addMember(env: Env, body: Record<string, unknown>): Promis
 
   const { members } = (await saved.json()) as { members: { channelId: string }[] };
 
-  return jsonResponse({ member: members.find((member) => member.channelId === read.values.channelId) }, { status: 201 });
+  return jsonResponse(
+    { member: members.find((member) => member.channelId === read.values.channelId) },
+    { status: 201 },
+  );
 }
 
 /**
@@ -457,7 +468,9 @@ export async function deleteMember(env: Env, channelId: string): Promise<Respons
     .bind(channelId)
     .first<Record<(typeof RECORD_TABLES)[number], number>>();
 
-  const recorded = RECORD_TABLES.filter((table) => (counts?.[table] ?? 0) > 0).map((table) => `${table}: ${counts![table]}`);
+  const recorded = RECORD_TABLES.filter((table) => (counts?.[table] ?? 0) > 0).map(
+    (table) => `${table}: ${counts![table]}`,
+  );
 
   if (recorded.length > 0) {
     return errorResponse(

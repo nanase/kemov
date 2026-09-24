@@ -69,7 +69,9 @@ const rows = computed<Row[]>(() => {
 const selected = computed(() => saved.value.find((m) => m.channelId === selectedId.value) ?? null);
 const selectedAdded = computed(() => draft.added.find((a) => a.channelId === selectedId.value) ?? null);
 const activeFields = computed<MemberFormFields | null>(() => newForm.value ?? selectedAdded.value ?? fields.value);
-const activeName = computed(() => newForm.value === null ? (selected.value?.name ?? selectedAdded.value?.name ?? '') : '');
+const activeName = computed(() =>
+  newForm.value === null ? (selected.value?.name ?? selectedAdded.value?.name ?? '') : '',
+);
 const activeEnded = computed(() => (selected.value ?? selectedAdded.value)?.activityEndDate);
 
 watch(selected, (member) => {
