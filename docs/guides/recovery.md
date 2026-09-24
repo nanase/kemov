@@ -34,8 +34,13 @@ bun wrangler d1 time-travel restore kemov --timestamp <ISO 8601>
 
 スキーマだけが誤っているときに使います。対になる rollback ファイルは、マイグレーションが作ったものを削除し、`d1_migrations` からその行を消します。そのため、直したファイルをあとで問題なく適用できます。削除した表にあったデータは、この道では戻りません。
 
+rollback ファイルは、適用済みのうち最も新しいマイグレーションのものから、1 つずつ逆の順に実行します。古いマイグレーションだけを取り消すと、後のマイグレーションが作った表や列が残り、スキーマが食い違います。
+
 ```sh
-bun wrangler d1 execute kemov --local --file migrations/rollback/0001_create_initial_schema.sql
+# 適用済みのマイグレーションを、新しい順に見る
+bun wrangler d1 execute kemov --local --command "SELECT id, name FROM d1_migrations ORDER BY id DESC"
+# 最も新しいものの rollback ファイルから実行する
+bun wrangler d1 execute kemov --local --file migrations/rollback/000N_<what-it-does>.sql
 ```
 
 手元のデータベース以外に対して実行するときは、先にそのファイルを読んでください。本番で使われてきたマイグレーションでは、スキーマが誤っていることより、表を失うことのほうが悪い結果になります。その場合の戻り道は Time Travel です。

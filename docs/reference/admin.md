@@ -24,8 +24,8 @@ flowchart TD
   site["管理サイト"] -- "/admin/api" --> rows
   rows -- "公開待ちにする<br/>（ここで検証する）" --> rev["revision<br/>publish の版"]
   rows -- "下書きに戻す" --> rev2["revision<br/>withdraw の版"]
-  rev -- "いま公開する" --> json["kemov-public の JSON"]
-  rev2 -- "いま公開する" --> json
+  rev -- "いま公開する<br/>（JSON に入れる）" --> json["kemov-public の JSON"]
+  rev2 -- "いま公開する<br/>（JSON から外す）" --> json
   json -- "/api" --> pub["公開サイト"]
   classDef write fill:#f6efe0,stroke:#c9ad6e,color:#2b2413
   classDef store fill:#e3f1ed,stroke:#7fb5aa,color:#12302a

@@ -41,6 +41,13 @@ echo 'VITE_API_PROXY=https://kemov.nanase.cc' >> .env.development.local
 
 開発サーバーは起動時に `.env.development.local` を読みます。書き換えたら開発サーバーを起動し直してください。
 
+シェルに同じ名前の環境変数があると、ファイルより先にそちらが使われます。ファイルの値を効かせたいときは、先に外してから起動します。
+
+```sh
+unset VITE_API_PROXY
+bun run dev
+```
+
 ## 開発サーバー
 
 既定の URL は http://localhost:5173/stats/ です。
