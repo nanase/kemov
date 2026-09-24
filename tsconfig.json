@@ -1,7 +1,9 @@
 {
   "extends": "@vue/tsconfig/tsconfig.json",
+  "references": [{ "path": "./tsconfig.node.json" }],
   "include": ["env.d.ts", "src/**/*", "src/**/*.vue", "test/**/*"],
   "compilerOptions": {
+    "tsBuildInfoFile": "node_modules/.tmp/tsconfig.tsbuildinfo",
     "target": "ES2022",
     "module": "ES2022",
     "paths": {
