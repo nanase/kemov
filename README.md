@@ -43,12 +43,10 @@ bun install --frozen-lockfile
 
 Do not use `.env.local` for this. Vite reads it in every mode, so a value left there also ends up in the production build and ships to visitors.
 
-| Variable                        | Used by              | Notes                           |
-| ------------------------------- | -------------------- | ------------------------------- |
-| `VITE_GENET_MUSIC_LIST_URL`     | the music list       | Where the list is fetched from  |
-| `VITE_GENET_MUSIC_LIST_SUB_URL` | the music list       | An extra list, read in dev only |
-| `VITE_API_PROXY`                | the statistics pages | `vite dev` only — see below     |
-| `VITE_API_BASE`                 | the statistics pages | `vite dev` only — see below     |
+| Variable         | Used by              | Notes                       |
+| ---------------- | -------------------- | --------------------------- |
+| `VITE_API_PROXY` | the statistics pages | `vite dev` only — see below |
+| `VITE_API_BASE`  | the statistics pages | `vite dev` only — see below |
 
 The published site leaves both unset and asks `/api` on its own origin, because the worker that answers the API also serves these pages. Under `bun run dev` the pages come from vite on port 5173 and the worker is not there at all, so tell the dev server where to send `/api`:
 
