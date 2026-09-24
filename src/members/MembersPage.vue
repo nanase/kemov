@@ -113,15 +113,27 @@ function keptDefaults(): PageState {
 
 const state = ref<PageState>(readQuery(window.location.search, keptDefaults()));
 
+/**
+ * Set while the address is being read back into `state`. What the address names
+ * is not something the reader picked, so it is not kept.
+ */
+let readingAddress = false;
+
+// Only a field the reader changed is kept: a search typed into the list must not
+// carry the other fields, which may have come from the address, along with it.
 watch(
   state,
-  (next) => {
-    kept.order.value = next.order;
-    kept.metric.value = next.metric;
-    kept.type.value = next.type;
-    kept.listPeriod.value = next.listPeriod;
-    if (next.behaviorPeriod !== 'year') kept.behaviorPeriod.value = next.behaviorPeriod;
-    kept.monthly.value = next.monthly;
+  (next, prev) => {
+    if (readingAddress) return;
+
+    if (next.order !== prev.order) kept.order.value = next.order;
+    if (next.metric !== prev.metric) kept.metric.value = next.metric;
+    if (next.type !== prev.type) kept.type.value = next.type;
+    if (next.listPeriod !== prev.listPeriod) kept.listPeriod.value = next.listPeriod;
+    if (next.behaviorPeriod !== prev.behaviorPeriod && next.behaviorPeriod !== 'year') {
+      kept.behaviorPeriod.value = next.behaviorPeriod;
+    }
+    if (next.monthly !== prev.monthly) kept.monthly.value = next.monthly;
   },
   { flush: 'sync' },
 );
@@ -424,7 +436,9 @@ onMounted(async () => {
 
 function onPopState() {
   memberId.value = readMemberId();
+  readingAddress = true;
   state.value = readQuery(window.location.search, keptDefaults());
+  readingAddress = false;
 }
 
 onBeforeUnmount(() => {
