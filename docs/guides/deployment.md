@@ -70,7 +70,7 @@ bun wrangler secret list                  # 名前だけを出し、値は出さ
 2. Deployment branches で「Selected branches and tags」を選び、`main` を足す
 3. Add environment secret で、上の 2 つの名前をそれぞれ登録する
 
-トークンは「Edit Cloudflare Workers」のテンプレートに、D1 Edit と、ゾーンへの DNS Edit を足したものにします。worker が D1 のバインディングを持つので D1 Edit を、カスタムドメインが DNS レコードなので DNS Edit を使います。
+トークンは「Edit Cloudflare Workers」のテンプレートに D1 Edit を足したものにします。worker が D1 のバインディングを持つので D1 Edit を使います。カスタムドメインの管理は、テンプレートに含まれる Workers Routes の権限で足ります（#216）。
 
 ## ブランチの保護
 
