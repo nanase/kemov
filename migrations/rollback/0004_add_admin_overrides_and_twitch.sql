@@ -1,6 +1,6 @@
 -- Undoes 0004_add_admin_overrides_and_twitch.sql.
 --
--- Read "Rolling back" in README.md first.
+-- Read docs/guides/recovery.md first.
 
 ALTER TABLE channel DROP COLUMN twitch;
 ALTER TABLE collect_task DROP COLUMN checked_at;

@@ -1,6 +1,6 @@
 -- Undoes 0005_add_revision_and_publication.sql.
 --
--- Read "Rolling back" in README.md first.
+-- Read docs/guides/recovery.md first.
 
 DROP TRIGGER publication_no_delete;
 DROP TRIGGER publication_no_update;

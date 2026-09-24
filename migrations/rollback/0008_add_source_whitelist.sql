@@ -1,6 +1,6 @@
 -- Undoes 0008_add_source_whitelist.sql.
 --
--- Read "Rolling back" in README.md first.
+-- Read docs/guides/recovery.md first.
 
 DROP TABLE source_whitelist;
 

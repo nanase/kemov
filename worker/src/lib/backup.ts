@@ -136,8 +136,8 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
       // Added by migrations 0002 and 0004, after this list was first written,
       // and missed here until it was: display_order and twitch are both data
       // a person can now edit through the admin site, with no source but D1
-      // to recover either from - see #152 and #144's "The Channel Master" in
-      // README.md.
+      // to recover either from - see #152 and #144, and
+      // docs/reference/data.md.
       'display_order',
       'twitch',
     ],
