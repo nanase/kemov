@@ -1,4 +1,5 @@
 import type { Env } from '../lib/env';
+import { LAST_AVAILABLE_AT_ON_UNAVAILABLE } from '../lib/retention';
 import { formatTimestamp, toSchemaTimestamp } from '../lib/time';
 import {
   determineAvailability,
@@ -286,9 +287,7 @@ function videoStatement(
  * `last_available_at` is set once, on the pass that first finds the video
  * gone, to the `fetched_at` it had until then: the last pass that got it,
  * which is when the values in the row were taken and so when their 30 days
- * began (#223). Later passes leave it where it is, and a NULL already on an
- * unavailable row stays NULL, since the `fetched_at` beside it is a pass that
- * found nothing.
+ * began (#223). See LAST_AVAILABLE_AT_ON_UNAVAILABLE.
  */
 function unavailableStatement(db: D1Database, videoId: string, fetchedAt: string): D1PreparedStatement {
   return db
@@ -296,7 +295,7 @@ function unavailableStatement(db: D1Database, videoId: string, fetchedAt: string
       `UPDATE video
           SET availability = 'unavailable',
               live_broadcast_content = 'none',
-              last_available_at = CASE WHEN availability = 'unavailable' THEN last_available_at ELSE fetched_at END,
+              ${LAST_AVAILABLE_AT_ON_UNAVAILABLE},
               fetched_at = ?2
         WHERE video_id = ?1`,
     )

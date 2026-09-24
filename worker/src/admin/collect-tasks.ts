@@ -1,5 +1,6 @@
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
+import { LAST_AVAILABLE_AT_ON_UNAVAILABLE } from '../lib/retention';
 import { formatTimestamp } from '../lib/time';
 
 /**
@@ -169,13 +170,12 @@ export async function markCollectTaskUnavailable(
   const timestamp = formatTimestamp(now);
 
   const results = await env.DB.batch([
-    // last_available_at as collector/video.ts's unavailableStatement sets it:
     // fetched_at has not moved since the last pass that got the video, which
-    // is what a failing row means.
+    // is what a failing row means, so it is the right start for the 30 days.
     env.DB.prepare(
       `UPDATE video
           SET availability = 'unavailable',
-              last_available_at = CASE WHEN availability = 'unavailable' THEN last_available_at ELSE fetched_at END
+              ${LAST_AVAILABLE_AT_ON_UNAVAILABLE}
         WHERE video_id = ?1`,
     ).bind(targetId),
     env.DB.prepare(

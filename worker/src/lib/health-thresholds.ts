@@ -10,7 +10,7 @@
  * given there.
  */
 
-import { RETENTION_DAYS, RETENTION_TICK_MINUTES } from './retention';
+import { RETENTION_DAYS } from './retention';
 
 /**
  * How stale `lastSuccessAt` may be, in minutes, before channel-stats,
@@ -65,14 +65,14 @@ export const BACKUP_STALE_GRACE_DAYS = 2;
  * Minutes past `RETENTION_DAYS` the oldest row ../collector/retention.ts
  * deletes may reach before `/api/health` reports the deletion as behind.
  *
- * One tick, for the cron's own jitter: an hourly run can start a few seconds
- * later than the one before it, and the oldest row then passes 30 days by
- * that much. Anything further is data held beyond the policy - one missed
+ * One ten-minute tick, for the cron's own jitter: an hourly run can start a
+ * few seconds later than the one before it, and the oldest row then passes
+ * 30 days by that much. Anything further is data held beyond the policy - one missed
  * hourly run is enough to get there - and unlike the missed runs the rest of
  * this file allows for, it is worth hearing about even though the next run
  * catches up by itself (#223).
  */
-export const RETENTION_STALE_GRACE_MINUTES = RETENTION_TICK_MINUTES;
+export const RETENTION_STALE_GRACE_MINUTES = 10;
 
 /**
  * Whether `oldest` - the oldest instant a row the retention job deletes is

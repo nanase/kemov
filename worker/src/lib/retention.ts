@@ -33,7 +33,7 @@ export const RETENTION_INTERVAL_MINUTES = 60;
  * Which ten-minute tick of the hour runs the deletion: the one whose minute
  * falls below this. The cron fires on the minute, so that is the :00 tick.
  */
-export const RETENTION_TICK_MINUTES = 10;
+const RETENTION_TICK_MINUTES = 10;
 
 /** Whether the tick running at `now` is the one each hour that deletes. */
 export function isRetentionTick(now: Date): boolean {
@@ -64,6 +64,18 @@ export function retentionCutoff(now: Date): string {
  * request by - 80 - with ten more for a tick or a run that starts late.
  */
 export const STAND_IN_REACH_MINUTES = RETENTION_INTERVAL_MINUTES + 30;
+
+/**
+ * The SQL that sets `video.last_available_at` in an UPDATE that marks a video
+ * unavailable: the `fetched_at` the row had until then, on the pass that
+ * first finds it gone, and left where it is on every pass after. A NULL on a
+ * row already unavailable stays NULL, since the `fetched_at` beside it is a
+ * pass that found nothing. Shared by the collector's own verdict
+ * (../collector/video.ts) and the admin site's (../admin/collect-tasks.ts),
+ * which must agree on when the 30 days began.
+ */
+export const LAST_AVAILABLE_AT_ON_UNAVAILABLE =
+  "last_available_at = CASE WHEN availability = 'unavailable' THEN last_available_at ELSE fetched_at END";
 
 /**
  * The lifecycle rule set on `channel_snapshot/` and `video/` in the backup

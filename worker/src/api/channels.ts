@@ -144,12 +144,12 @@ async function snapshotAfter(
 }
 
 /**
- * The periods whose older end ../collector/retention.ts deletes before a
+ * The period whose older end ../collector/retention.ts deletes before a
  * change can be read against it.
  *
  * Retention keeps nothing older than 30 days less an hour, so the snapshot
  * at or before "30 days before the newest" is gone by the time it would be
- * asked for. For these periods the oldest snapshot after that instant
+ * asked for. For this period the oldest snapshot after that instant
  * stands in, as long as it is no further in than retention explains -
  * `STAND_IN_REACH_MINUTES`. That makes the period short by up to about an
  * hour and twenty minutes (#223).
@@ -158,7 +158,7 @@ async function snapshotAfter(
  * side of 30. A channel collected for 27 days has too short a history for a
  * 30-day change, and a stand-in that far in would report its 27 days as 30.
  */
-const PERIODS_CUT_BY_RETENTION: ReadonlySet<number> = new Set([30 * DAY_SECONDS]);
+const PERIOD_CUT_BY_RETENTION = 30 * DAY_SECONDS;
 
 function shift(from: string, seconds: number): string {
   return formatTimestamp(new Date(new Date(from).getTime() - seconds * 1000));
@@ -186,7 +186,7 @@ async function changesFor(
 
     // Nothing found that close stays "history too short": the channel has
     // not been collected for long enough, which is what that says.
-    if (earlier === null && PERIODS_CUT_BY_RETENTION.has(periodSeconds)) {
+    if (earlier === null && periodSeconds === PERIOD_CUT_BY_RETENTION) {
       earlier = await snapshotAfter(db, latest.channel_id, target, shift(target, -STAND_IN_REACH_MINUTES * 60));
     }
   }
