@@ -59,11 +59,10 @@ function cycle() {
       fill="none"
       stroke="currentColor"
       stroke-width="1.4"
-      stroke-linecap="round"
       stroke-linejoin="round"
     >
-      <rect x="1.8" y="2.4" width="12.4" height="8.6" rx="1.4" />
-      <path d="M5.6 13.8h4.8M8 11v2.8" />
+      <circle cx="8" cy="8" r="5.8" />
+      <path d="M8 2.2a5.8 5.8 0 0 1 0 11.6z" fill="currentColor" />
     </svg>
     <svg
       v-else-if="setting === 'light'"
