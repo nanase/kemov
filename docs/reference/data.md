@@ -10,12 +10,12 @@ A region is chosen when the database is created and never again, so moving it me
 
 `channel` has two writers, and one that ignores the split erases the other's work.
 
-| Columns                                                                                                       | Written by                                     |
-| ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `channel_id`, `name`, `fullname`, `globalname`, `twitter`, `twitch`, `color_*`, `activity_*`, `display_order` | The deploy's initial seed, from `channels.yml` |
-| `custom_url`, `thumbnail_url`, `fetched_at`                                                                   | The collector, from `Channels.list`            |
+| Columns                                                                                                       | Written by                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `channel_id`, `name`, `fullname`, `globalname`, `twitter`, `twitch`, `color_*`, `activity_*`, `display_order` | The deploy's initial seed from `channels.yml`, once, when the row does not exist yet. After that the admin site (`PUT /admin/api/members/<channel ID>`) is the only writer |
+| `custom_url`, `thumbnail_url`, `fetched_at`                                                                   | The collector, from `Channels.list`                                                                                                                                        |
 
-Seeding from the YAML therefore names only those columns, and only for a row that does not exist yet - see "The Channel Master" below. Every other table is the collector's alone.
+Seeding from the YAML therefore names only the first group's columns, and only for a row that does not exist yet - see "The Channel Master" below. Every other table is written by the collector or by the admin site (see [Admin Site](admin.md)). The one place both write is the admin site's 収集の失敗 screen, which updates `collect_task` rows and can settle `video.availability` as `unavailable`.
 
 ## The Channel Master
 
@@ -58,9 +58,11 @@ bun run vitest run --project scripts
 
 ## Retiring a Streamer
 
-Give the entry an `activity_end_date`. Never delete one.
+Set the streamer's `activity_end_date` on the admin site's メンバー screen. Never delete the row.
 
-`channel_snapshot` and `video` reference `channel`, so D1 refuses a delete that would leave them pointing at nothing. That refusal is deliberate: a line dropped from this file must not be able to take years of collected history with it. A streamer who stops still has the history of when they did not.
+Editing `channels.yml` does not do this: the seed only adds a row, so an `activity_end_date` written there for a streamer already in `channel` changes nothing.
+
+`channel_snapshot` and `video` reference `channel`, so D1 refuses a delete that would leave them pointing at nothing. That refusal is deliberate: a row deleted by mistake must not be able to take years of collected history with it. A streamer who stops still has the history of when they did not.
 
 ## Seeding the Channel Table
 
@@ -118,4 +120,4 @@ The admin site publishes JSON to its own bucket, `kemov-public`, bound as `PUBLI
 
 It is not backed up. Every published object is built from `revision`, which is backed up, so losing `kemov-public` costs a republish rather than the data itself — the same reasoning that keeps `collect_task` and `chat_author` out of `kemov-backup` (see [Backups](#backups) above), applied to a bucket instead of a table.
 
-Nothing writes to it yet - publishing is later work - but `/api` already serves it. `GET /api/footprints/events` and `GET /api/genet/music` pass the bucket's `footprints/events.json` and `genet/music.json` straight through: the same bytes, the object's own `ETag` and `Last-Modified`, and no reparsing. Until a publish exists to write either key, both answer 404 with `{"error":"not published yet"}`. `If-None-Match` is honoured with 304, and HEAD answers with the same status and headers as GET but no body.
+The admin site's publish operations write it (see [Footprints: Editing and Publishing](admin.md#footprints-editing-and-publishing) and [Genet Music: Editing and Publishing](admin.md#genet-music-editing-and-publishing)), and `/api` serves it. `GET /api/footprints/events` and `GET /api/genet/music` pass the bucket's `footprints/events.json` and `genet/music.json` straight through: the same bytes, the object's own `ETag` and `Last-Modified`, and no reparsing. While a key has never been written, its endpoint answers 404 with `{"error":"not published yet"}`. `If-None-Match` is honoured with 304, and HEAD answers with the same status and headers as GET but no body.

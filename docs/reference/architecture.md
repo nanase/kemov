@@ -11,9 +11,10 @@ worker/src/pages/       /members/<id> and /videos/<id> (see below)
 worker/src/lib/         shared code
 worker/test/            tests
 ```
+
 ## `/members/<id>` and `/videos/<id>`
 
-`/members/<channel id>` and `/videos/<video id>` are permalinks to one member or one stream/video (#137), so that sharing one carries that name rather than the site's own title. Neither has a page of its own yet — a later PR adds them — so today `worker/src/pages/index.ts` rewrites whatever `ASSETS` serves at `/members/` or `/videos/` and answers 404, unrewritten, until that page exists. The worker reaches these requests the same way it reaches `/api/*`: no built file answers `/members/<id>` exactly, so Cloudflare wakes the worker instead of serving one directly.
+`/members/<channel id>` and `/videos/<video id>` are permalinks to one member or one stream/video (#137), so that sharing one carries that name rather than the site's own title. Each has one built page, `dist/members/index.html` and `dist/videos/index.html` (`vite.config.ts` builds both from `src/members/` and `src/videos/`), and `worker/src/pages/index.ts` rewrites whatever `ASSETS` serves at `/members/` or `/videos/` for the id asked. The worker reaches these requests the same way it reaches `/api/*`: no built file answers `/members/<id>` exactly, so Cloudflare wakes the worker instead of serving one directly.
 
 `[assets]` in `wrangler.toml` carries a `binding = "ASSETS"` for this reason — `directory` alone, which every other page already relies on, only lets Cloudflare serve a matching file itself and gives the worker no way to fetch one. `env.ASSETS.fetch()` reads the exact same built files that binding already serves.
 
@@ -42,6 +43,6 @@ Build output is not committed: `bun run build` writes to `dist/`, which is ignor
 
 ## What the workflow does
 
-It builds the site into `dist/`, applies the migrations, seeds the `channel` table from `channels.yml`, and then runs `bun wrangler deploy`. The build is first because it needs no credentials and a failure there should not leave a migration applied for code that never shipped. Migrations come before the deploy so that the code never arrives at a schema older than itself, and the `d1_migrations` table makes the step a no-op on a push that adds none. The seed follows the migrations because it needs the columns to exist, and precedes the deploy so that the worker never runs against a `channel` table older than the `channels.yml` it shipped with.
+It builds the site into `dist/`, applies the migrations, seeds the `channel` table from `channels.yml`, and then runs `bun wrangler deploy`. The build is first because it needs no credentials and a failure there should not leave a migration applied for code that never shipped. Migrations come before the deploy so that the code never arrives at a schema older than itself, and the `d1_migrations` table makes the step a no-op on a push that adds none. The seed follows the migrations because it needs the columns to exist. It only adds a row for a channel that `channel` does not have yet (see [The Channel Master](data.md#the-channel-master)), so it precedes the deploy for a streamer newly listed in `channels.yml`: the worker never runs without that streamer's row.
 
 It type checks and tests both the frontend and the worker before any of that, in a job that holds no credentials, and afterwards checks that the secrets the worker reads are registered; see [Worker Secrets](../guides/deployment.md#worker-secrets). It has no path filter: what Cloudflare runs is whatever is on `main`. The wrangler it uses comes from the lockfile, so a deploy uses the version the repository was tested against.

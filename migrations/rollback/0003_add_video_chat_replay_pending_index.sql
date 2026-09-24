@@ -1,6 +1,6 @@
 -- Undoes 0003_add_video_chat_replay_pending_index.sql.
 --
--- Read "Rolling back" in README.md first.
+-- Read docs/guides/recovery.md first.
 
 DROP INDEX video_chat_replay_pending;
 

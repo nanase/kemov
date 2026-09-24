@@ -1,6 +1,6 @@
 -- Undoes 0001_create_initial_schema.sql, and destroys everything it held.
 --
--- Read "Rolling back" in README.md first. For a database that has already
+-- Read docs/guides/recovery.md first. For a database that has already
 -- collected something, time travel is the way back; this file is for the
 -- case where the schema has to go and the data is expendable, such as a
 -- local database or a deployment that never got as far as its first tick.

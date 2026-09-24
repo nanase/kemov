@@ -17,7 +17,7 @@ Against the real database, which needs the account credentials:
 bun wrangler d1 migrations apply kemov --remote
 ```
 
-That command is not usually typed by hand. `Deploy Worker` runs it ahead of every deploy, so a migration reaches the real database on the same push as the code that expects it; see [Deployment](../reference/architecture.md#deployment).
+That command is not usually typed by hand. The `Deploy` workflow runs it ahead of every deploy, so a migration reaches the real database on the same push as the code that expects it; see [Deployment](../reference/architecture.md#deployment).
 
 ### Adding a Migration
 

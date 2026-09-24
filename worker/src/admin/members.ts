@@ -8,7 +8,7 @@ import { isSchemaDate } from '../lib/time';
  * Reading and saving `channel` (#141's "member"), which #152 made D1's own:
  * this is the only place any of it is written, and unlike video_override and
  * channel_snapshot_exclusion there is no row-creating route - a new member
- * only ever arrives through the seed (see "The Channel Master" in README.md).
+ * only ever arrives through the seed (see docs/reference/data.md).
  */
 
 /**

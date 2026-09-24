@@ -215,8 +215,8 @@ export function loadChannels(path = channelsPath) {
  * that is already there. `channel` is the source of truth for every column
  * this file used to master, so a deploy that kept upserting them would blank
  * out whatever a person had since edited through the admin site. That makes
- * this file the initial seed for a channel rather than its master - see "The
- * Channel Master" in README.md.
+ * this file the initial seed for a channel rather than its master - see
+ * docs/reference/data.md.
  *
  * `custom_url`, `thumbnail_url` and `fetched_at` are absent because they
  * belong to the collector, which writes its own first values once collection

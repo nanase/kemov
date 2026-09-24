@@ -55,7 +55,7 @@ crons = [
 #
 # Prefix-specific lifecycle rules are set on this bucket, in addition to its
 # existing Default Multipart Abort Rule, because one rule covering the whole
-# bucket would be wrong: see "What Expires and What Does Not" in the README
+# bucket would be wrong: see docs/reference/data.md
 # for the rules and why.
 [[r2_buckets]]
 binding = "BACKUP"
@@ -65,8 +65,8 @@ bucket_name = "kemov-backup"
 # rather than a prefix on `kemov-backup`: the two buckets carry opposite
 # lifecycle rules, and a rule meant for one accidentally reaching the other
 # would either expire published data or leave backup files forever. Not
-# backed up here either - see "Public Data" in the README for why not, and
-# for how to create the bucket.
+# backed up here either - see docs/reference/data.md for why not, and
+# docs/guides/deployment.md for how to create the bucket.
 [[r2_buckets]]
 binding = "PUBLIC_DATA"
 bucket_name = "kemov-public"
@@ -107,4 +107,4 @@ pattern = "kemov.nanase.cc"
 custom_domain = true
 
 # No secret is listed here. Secrets are set with `wrangler secret put` and read
-# from the environment at runtime; see "Worker secrets" in the README.
+# from the environment at runtime; see docs/guides/deployment.md.
