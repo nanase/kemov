@@ -188,7 +188,18 @@ function writeUrl(replace: boolean) {
   else window.history.pushState(null, '', url);
 }
 
-watch(state, () => writeUrl(true), { deep: true });
+// Sync, and skipped while the address is being read back: the entry the reader
+// went to is already the address, and writing it again would add whatever their
+// kept choices filled in to a history entry that did not name it.
+watch(
+  state,
+  () => {
+    if (readingAddress) return;
+
+    writeUrl(true);
+  },
+  { deep: true, flush: 'sync' },
+);
 watch(member, (current) => {
   if (current !== null) writeUrl(memberId.value === null);
 });
