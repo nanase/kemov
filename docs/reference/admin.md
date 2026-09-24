@@ -1,131 +1,109 @@
-# Admin Site
+# 管理サイト
 
-## `/admin` and Cloudflare Access
+`/admin` は、人手で作るデータを直して公開するための管理サイトです（#141）。`/admin/api` がその API で、Cloudflare Access の後ろにあります。画面は `src/admin/`、API は `worker/src/admin/` にあります。
 
-`/admin/*` is the write side of the site (#141). `/admin/api/*` is its API — the worker answers that directly, with no built file behind it. Every other `/admin/*` path answers with the admin site itself (`src/admin/`, #144): one built page, `dist/admin/index.html`, served through `ASSETS` for whatever the path is — `worker/src/admin/index.ts`'s `servePage`, the same "one file answers every path under here" shape `worker/src/pages/index.ts` already uses for `/members/<id>` and `/videos/<id>`. Which screen that one page shows is a route `src/admin/router.ts` reads client-side, not something the worker itself understands. Cloudflare Access sits in front of all of `/admin` and is what actually keeps everyone but its allowed identities out — no request lacking Access's approval reaches the worker at all.
+## 設計の方針
 
-Every `/admin/api/*` request is also checked by the worker itself, in `worker/src/lib/access.ts`: it fetches Access's own public keys from `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs` and verifies the `Cf-Access-Jwt-Assertion` header's signature, `iss`, `aud` and `exp`/`nbf` against them, the same way Access's own edge does, and refuses the request otherwise. This is not a substitute for Access — the policy in front of `/admin` is what actually authorizes a caller — it exists so that a request is still refused here, rather than reaching a route that writes to D1 or to the public bucket unchecked, if that policy is ever removed or misconfigured. An earlier version compared only the `aud` claim without checking the signature; #144's review found that too little for a route meant to write, so this checks the signature instead (2026-09-18).
+#141 で、次の 4 つを決めました。
 
-`ACCESS_AUD` is the `aud` tag of the Access application in front of `/admin`, and `ACCESS_TEAM_DOMAIN` is that Access team's domain (e.g. `nanase.cloudflareaccess.com`) — a `[vars]` entry in `wrangler.toml`, not a secret, because it is the same domain a browser is already sent to for the Access login page. With either `ACCESS_AUD` or `ACCESS_TEAM_DOMAIN` unset, or with a key set that cannot be fetched, every `/admin/api/*` request is refused, Access policy notwithstanding.
+- 読みと書きの経路を分ける
+  - 読むのは `/api` で、公開され、キャッシュされる
+  - 書くのは `/admin/api` で、Access の後ろにある
+- 公開の状態を行に持つ
+  - あしあとの `footprints_event` とジェネット楽曲一覧の `genet_stream` は、`status` の列を持つ
+- 版の履歴は追記だけにする
+  - `revision` と `publication` は、トリガーが `UPDATE` と `DELETE` を拒む
+- 公開の条件は、公開するときに確かめる
+  - 下書きのあいだは、条件を満たしていなくてよい
 
-### The Admin API's Endpoints
+書き込みの入口は 2 つあります。手元の Claude Code は D1 へ直接書き、管理サイトは `/admin/api` を通ります。どちらから書いた行も、公開という 1 つの門を通らなければ公開サイトに出ません。そのため公開の条件はその門で確かめれば足り、Claude Code の側で守ることはありません。
 
-| Method | Path                                                       | Answers with                                                        |
-| ------ | ---------------------------------------------------------- | ------------------------------------------------------------------- |
-| GET    | `/admin/api/me`                                            | The email Cloudflare Access identified the caller as                |
-| GET    | `/admin/api/members`                                       | Every `channel` row                                                 |
-| PUT    | `/admin/api/members/<channel ID>`                          | The row after replacing the columns a person may edit               |
-| GET    | `/admin/api/snapshot-exclusions`                           | Every `channel_snapshot_exclusion` row                              |
-| PUT    | `/admin/api/snapshot-exclusions/<channel ID>/<fetched_at>` | The exclusion after creating or replacing it                        |
-| DELETE | `/admin/api/snapshot-exclusions/<channel ID>/<fetched_at>` | Nothing but the revision logged for the removal                     |
-| GET    | `/admin/api/video-overrides`                               | Every `video_override` row, with the video's own title alongside it |
-| PUT    | `/admin/api/video-overrides/<video ID>`                    | The override after creating or replacing it                         |
-| DELETE | `/admin/api/video-overrides/<video ID>`                    | Nothing but the revision logged for the removal                     |
+```mermaid
+flowchart TD
+  cc["手元の Claude Code"] -- "D1 へ直接" --> rows["D1 の行<br/>footprints_event<br/>genet_stream など"]
+  site["管理サイト"] -- "/admin/api" --> rows
+  rows -- "公開待ちにする<br/>（ここで検証する）" --> rev["revision<br/>publish の版"]
+  rows -- "下書きに戻す" --> rev2["revision<br/>withdraw の版"]
+  rev -- "いま公開する" --> json["kemov-public の JSON"]
+  rev2 -- "いま公開する" --> json
+  json -- "/api" --> pub["公開サイト"]
+  classDef write fill:#f6efe0,stroke:#c9ad6e,color:#2b2413
+  classDef store fill:#e3f1ed,stroke:#7fb5aa,color:#12302a
+  classDef out fill:#eceef7,stroke:#9aa3c8,color:#1d2240
+  class cc,site write
+  class rows,rev,rev2 store
+  class json,pub out
+```
 
-`channel`, `video_override` and `channel_snapshot_exclusion` take effect the moment they are saved — #141's design decision 5 — unlike `footprints_event` and `genet_stream` below, which pass through a publish step instead. Every PUT or DELETE above logs one row to `revision` in the same `db.batch` as the row it changes, so a row and its history cannot come apart if one write in the pair fails. A PUT answers with `revisionId` alongside the saved row; a DELETE answers with `revisionId` alone.
+公開の門を通るのは、あしあととジェネット楽曲一覧だけです。メンバー・動画の上書き・統計の除外は、保存した時点で効きます。出典のホワイトリストは公開の門の設定で、保存した時点で効きます。
 
-A PUT replaces every column at once rather than patching one: a column its endpoint does not name is refused with 400, and a column left out of the body is treated as null, which is itself refused with 400 for a column that may not be null. `worker/src/lib/revision.ts` is what each save's `revision.body` goes through — the row as saved, minus columns that only say when a save happened rather than what it changed, with its JSON keys in the row's own column order.
+## `/admin` と Cloudflare Access
 
-### Footprints: Editing and Publishing
+`/admin/*` はサイトの書き込みの側です（#141）。`/admin/api/*` はその API で、worker が直接答え、背後にビルドしたファイルはありません。
 
-| Method | Path                                               | Answers with                                                                                     |
-| ------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| GET    | `/admin/api/footprints/events`                     | Every `footprints_event` row, with its members and sources                                       |
-| GET    | `/admin/api/footprints/events/<event ID>`          | One row, with its members and sources                                                            |
-| POST   | `/admin/api/footprints/events`                     | The row after creating it in `draft`                                                             |
-| PUT    | `/admin/api/footprints/events/<event ID>`          | The row after replacing it, its members and its sources - `status` unchanged                     |
-| DELETE | `/admin/api/footprints/events/<event ID>`          | `{}` - 409 instead, if the event is `published`                                                  |
-| POST   | `/admin/api/footprints/events/<event ID>/publish`  | The row after validating it and setting `status` to `published`                                  |
-| POST   | `/admin/api/footprints/events/<event ID>/withdraw` | The row after setting `status` back to `draft`                                                   |
-| GET    | `/admin/api/footprints/pending`                    | Events not yet reflected in the published JSON, and published events whose row has since changed |
-| POST   | `/admin/api/footprints/publish`                    | Whether anything was published, and how many events if so                                        |
+それ以外の `/admin/*` のパスには、管理サイトそのもの（`src/admin/`、#144）を返します。ビルドしたページは `dist/admin/index.html` の 1 つだけで、パスが何であっても `ASSETS` からそれを返します。返すのは `worker/src/admin/index.ts` の `servePage` です。「1 つのファイルがこの下のすべてのパスに答える」という形は、`worker/src/pages/index.ts` が `/members/<id>` と `/videos/<id>` で使っているものと同じです。その 1 つのページがどの画面を出すかは、ブラウザの側で `src/admin/router.ts` が決め、worker は関わりません。
 
-`GET /admin/api/footprints/events` takes `status` and `q` (a substring of `title`) as query parameters, narrowing the list.
+Cloudflare Access が `/admin` 全体の前に立ち、許可した人以外を実際に締め出します。Access の承認が無い要求は、worker に届きません。
 
-An event passes through a publish gate rather than taking effect on save, the same as the table above already draws the line for `footprints_event` and `genet_stream`. Creating, updating and deleting an event logs no `revision` at all; only `publish` and `withdraw` do, in the same `db.batch` as the `status` change. `POST .../publish` refuses with 400 and every failing condition together when the event is not ready — an empty `title`, `sourcePending: false` with no source that counts (see [The Source Whitelist](#the-source-whitelist) below), or a `videoId` that is not 11 characters. Publishing an already-published event is allowed, and is how an event `GET .../pending` reports as changed gets a fresh `publish` revision matching its current row.
+worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` で確かめます。Access の公開鍵を `https://${ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs` から取り、`Cf-Access-Jwt-Assertion` ヘッダーの署名・`iss`・`aud`・`exp`/`nbf` を、Access のエッジと同じように検証します。通らなければ要求を拒みます。
 
-### The Source Whitelist
+これは Access の代わりではありません。呼び出し元を認可するのは、あくまで `/admin` の前にある Access のポリシーです。この検証は、ポリシーが外れたり設定を誤ったりしたときに、D1 や公開用のバケットへ書く経路へ要求が素通りしないためにあります。以前の版は、署名を確かめずに `aud` だけを比べていました。#144 のレビューで、書き込みの経路には足りないとされ、署名を検証する形にしました（2026-09-18）。
 
-`sourcePending: false` needs either one source on the whitelist, or sources on two different hosts. The whitelist is the URL prefixes of a source strong enough to stand alone — the project's own domains and accounts, partners' announcements, an event's organizer, two fan wikis. It is the `source_whitelist` table (`migrations/0008_add_source_whitelist.sql`, #175), seeded with the 13 entries the code once held as a constant, and read by `worker/src/lib/source-whitelist.ts` on every publish. The check itself, `isWhitelistedSource`, is a prefix match with a boundary check on what follows it, so `https://x.com/KEMOVP_staff_fake` does not count as `https://x.com/KEMOVP_staff`; it takes the list as an argument, and nothing else decides what counts.
+`ACCESS_AUD` は、`/admin` の前にある Access のアプリケーションの `aud` タグです。`ACCESS_TEAM_DOMAIN` は Access のチームのドメイン（`<team>.cloudflareaccess.com` の形）で、シークレットではなく `wrangler.toml` の `[vars]` に置きます。Access のログイン画面でブラウザが既に向かうドメインと同じだからです。`ACCESS_AUD` か `ACCESS_TEAM_DOMAIN` のどちらかが無いとき、または鍵を取れないときは、Access のポリシーにかかわらず `/admin/api/*` への要求をすべて拒みます。
 
-Two sources on different hosts are enough without either being listed: two URLs on the same host, such as two YouTube videos, only repeat one another. A host is what `new URL(url).hostname` reads, less a leading `www.`, with `twitter.com` counted as `x.com` and `youtu.be` and `m.youtube.com` as `youtube.com` (`HOST_ALIASES` in `worker/src/lib/source-whitelist.ts`, which keeps to hosts known to be the same resource written another way): two URLs for one post, or one account, are one source. This is only for counting hosts; the whitelist match compares the URL's own text.
+## エンドポイント
 
-| Method | Path                                   | Answers with                                                  |
-| ------ | -------------------------------------- | ------------------------------------------------------------- |
-| GET    | `/admin/api/source-whitelist`          | Every entry, in the order it was added                        |
-| POST   | `/admin/api/source-whitelist`          | The entry after adding it - 409 if the prefix is on it        |
-| PUT    | `/admin/api/source-whitelist/<prefix>` | The entry after changing its `note`, the only editable column |
-| DELETE | `/admin/api/source-whitelist/<prefix>` | `{}`                                                          |
+`/admin/api` のエンドポイント、公開の条件、出典のホワイトリストの判定は [管理サイトの API](api/admin.md) にあります。
 
-`<prefix>` is the URL, percent-encoded into one path segment. Saving takes effect at once and logs no `revision`: the list is a setting of the publish gate, not something published. Removing an entry changes what the next publish accepts and nothing already published — an event that is live stays live, and one whose only source that entry covered is refused when somebody next publishes it. Nothing refuses a removal because an event still uses the entry.
+## 画面
 
-`POST /admin/api/footprints/publish` builds `footprints/events.json` from the latest `revision` of every event whose latest action is not `withdraw`, writes it to `PUBLIC_DATA`, and appends one `publication` row recording the newest `revision_id` it saw. Nothing is written when there is nothing newer than the last run.
+`src/admin/` は管理サイトのフロントエンドです（#141、#144）。素の Vue と素の HTML・CSS で書き、Vuetify を使いません。公開サイトの部品群から管理サイトを切り離すという #127 の決定を、ここにも当てはめています。
 
-### Genet Music: Editing and Publishing
+公開サイトと共有するのは、`src/shell/tokens.css` の色の変数だけです。公開サイトの外枠（`SiteNav.vue` など）とダークの配色は共有しません。#141 のデザインで管理サイトはライトだけと決まったので、`src/admin/index.html` は `<html data-theme="light">` に固定しています。これで、閲覧者の OS の設定にかかわらず、`tokens.css` の色はすべてライトの側になります。
 
-| Method | Path                                           | Answers with                                                                                                                      |
-| ------ | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/admin/api/genet/people`                      | Every `genet_person` row                                                                                                          |
-| POST   | `/admin/api/genet/people`                      | The row after creating it                                                                                                         |
-| GET    | `/admin/api/genet/people/<person ID>`          | One row                                                                                                                           |
-| PUT    | `/admin/api/genet/people/<person ID>`          | The row after replacing it                                                                                                        |
-| DELETE | `/admin/api/genet/people/<person ID>`          | `{}` - 409 instead, if a tune still credits them                                                                                  |
-| GET    | `/admin/api/genet/tunes`                       | Every `genet_tune` row, with its attributes, videos and scores                                                                    |
-| POST   | `/admin/api/genet/tunes`                       | The row after creating it                                                                                                         |
-| GET    | `/admin/api/genet/tunes/<tune ID>`             | One row, with its attributes, videos and scores                                                                                   |
-| PUT    | `/admin/api/genet/tunes/<tune ID>`             | The row after replacing it, its attributes, videos and scores                                                                     |
-| DELETE | `/admin/api/genet/tunes/<tune ID>`             | `{}` - 409 instead, if a stream still performs it                                                                                 |
-| GET    | `/admin/api/genet/streams`                     | Every `genet_stream` row, with its performances and scenes                                                                        |
-| POST   | `/admin/api/genet/streams`                     | The row after creating it in `draft`                                                                                              |
-| GET    | `/admin/api/genet/streams/<video ID>`          | One row, with its performances and scenes                                                                                         |
-| PUT    | `/admin/api/genet/streams/<video ID>`          | The row after replacing it, its performances and scenes - `status` unchanged                                                      |
-| DELETE | `/admin/api/genet/streams/<video ID>`          | `{}` - 409 instead, if the stream is `published`                                                                                  |
-| POST   | `/admin/api/genet/streams/<video ID>/publish`  | The row after validating it (and the tunes/people it performs) and setting `status` to `published`                                |
-| POST   | `/admin/api/genet/streams/<video ID>/withdraw` | The row after setting `status` back to `draft`                                                                                    |
-| GET    | `/admin/api/genet/pending`                     | Streams, tunes and people not yet reflected in the published JSON, and published streams/tunes/people whose row has since changed |
-| POST   | `/admin/api/genet/publish`                     | Whether anything was published, and how many streams/tunes/people if so                                                           |
+`src/admin/router.ts` は、`#` のフラグメントではなく、クライアント側のルーター（`vue-router` の history モード）です。再読み込みや共有したリンクでも、同じ画面に戻れます。worker はどの `/admin/*` のパスにも同じページを返し（[`/admin` と Cloudflare Access](#admin-と-cloudflare-access)）、画面を選ぶのはブラウザに任せます。
 
-`GET /admin/api/genet/tunes` takes `q` (a substring of `title`); `GET /admin/api/genet/streams` takes `status` and `q`, the same as footprints' own list endpoints.
+`src/admin/AdminShell.vue` は、すべての画面を囲む外枠です。上端のバーには、ページの名前と `GET /admin/api/me` が返すメールアドレスを出します。サイドバーには 3 つの群（やること・データ・運用）を、公開サイトのメニューと同じ順に並べます。
 
-`genet_tune` and `genet_person` carry no `status` of their own - #141's design gives only `genet_stream` a publish gate - so saving either logs no `revision`. Publishing a stream validates it together with every tune it performs and every person one of those tunes credits, and logs a `publish` revision for the stream and for whichever of those tunes/people do not already match their own latest revision, all in one `db.batch`. `POST /admin/api/genet/streams/<video ID>/publish` collects every failing condition into one 400 answer, the same as footprints' own publish endpoint - an empty `title`, a `videoId` that is not 11 characters (`youtube` streams only), an invalid `publishedAt`, no performances, a performance or scene referring to a tune/video that does not exist (this last pair cannot actually happen through this API, since the underlying foreign keys are enforced at save time already; the check stays as a second line of defense), a tune attribute with both `text` and credited people, or an empty tune title/person name.
+- 数を出す項目は 2 つ
+  - 公開は、`GET /admin/api/footprints/pending` の `pending` と `changed` を合わせた数
+  - 収集の失敗は、`GET /admin/api/collect-tasks` の `count`
+- それ以外の項目は、名前だけを出す
+- サイドバーの行き先のうち、`src/admin/router.ts` に専用のルートが無いものは、`src/admin/pages/PlaceholderPage.vue` を出す
 
-`POST /admin/api/genet/publish` builds `genet/music.json` from the latest `revision` of every stream whose latest action is not `withdraw`, together with every tune and person those streams' own published bodies name - not a fresh read of the working tables, so a tune dropped from a stream after it was published cannot leak back into the JSON. Streams, tunes and people share one `publication` row (`target = 'genet_music'`).
+表と編集の欄の分け方（`.main`/`.pane`/`.inspector`）は、2 つの幅で狭くなります。`@media` ではなく `@container` を使う理由は、`src/admin/shell.css` のコメントにあります。
 
-The JSON also carries `shape_version` (`GENET_MUSIC_SHAPE_VERSION` in `genet-publish.ts`) and `channel_id`, the channel whose icon the page draws beside its title. `channel_id` is the channel that at least half of the published YouTube streams found in `video` belong to, and that leads every other; it is `null` when no channel does, and the page then keeps its coloured circle. A run finds the version by reading the stored JSON itself, not the `publication` row, and builds again when it is older than the one in the code (a JSON with no `shape_version` is version 1) even though no revision is newer. Raise the constant whenever the shape changes, and the change reaches the public JSON on the next "いま公開する".
+外枠のほかに、次の画面に触れておきます。
 
-### Read-Only Admin Endpoints
+- あしあと（`src/admin/pages/FootprintsPage.vue`、`src/admin/components/FootprintsInspector.vue`）
+  - 表は `status` と題の部分文字列で絞る
+  - 編集の欄では、読む・保存・公開待ちにする/下書きに戻す・削除ができる
+  - 公開の画面で「いま公開する」が JSON を書くまで、状態の表示は「公開待ち」のまま（`src/admin/lib/footprints-publish.ts`）
+  - 保存の 400 は編集の欄の帯に出す。`src/admin/lib/footprints.ts` の `fieldForSaveError` が、worker のメッセージを読んで、どの欄の話かを示す。worker の検証をここにもう 1 つ写すことはしない
+- 公開（`src/admin/pages/PublishPage.vue`）
+  - あしあととジェネット楽曲一覧は、それぞれ `GET .../pending` の 2 つの一覧と「いま公開する」を持つ
+  - 2 つは互いに独立して読み込み、公開する
+- ジェネット楽曲一覧（`src/admin/pages/SetsPage.vue`）
+  - `.pane`/`.inspector` を使わない唯一の画面で、代わりに `.setlist`/`.editor` を全幅で使う。配信のデータは、他の画面が使う細い編集の欄に収まらないため（#141 のデザイン）
+  - 曲は、それを演奏するすべての配信で共有する。そのため、曲のクレジットの保存（`src/admin/lib/genet-tunes.ts`）は、配信の欄と演奏する曲・シーンの保存（`src/admin/lib/genet-streams.ts`）とは別の操作
+  - Markdown の欄（曲の題、演奏の説明）は、書く欄の真下にその場のプレビューを出す。プレビューは公開サイトと同じ描画部品（`src/components/genet/MarkDown.vue`）を使う
+  - Markdown の欄には、決まった形の Markdown のリンクをカーソルの位置に挿入するボタンがある。リンクの種類は Wikipedia・英語版 Wikipedia・配信のタイムスタンプ・URL そのもの
+- メンバー（`src/admin/pages/MembersPage.vue`）
+  - 名前・色・活動期間・表示順を直す。PUT で置き換えられるのは、`channel_id` と収集が書く 3 列を除いた列（#158）
+  - メンバーの追加はここでは行わない。`channel` の行を作るエンドポイントは無く、新しいメンバーはシードから入る（#152）。追加のボタンは、欄を開かずにその旨を 1 行の帯で知らせる
+- 配信・動画（`src/admin/pages/VideosPage.vue`）
+  - 収集した `video` の行を選び（`GET /admin/api/videos`）、`video_override` を付ける
+  - 上書きそのものの保存と削除は、`video-overrides.ts` が受け持つ
+- 統計（`src/admin/pages/SnapsPage.vue`）
+  - 1 日ぶんの tick を出す（`GET /admin/api/snapshots`）
+  - tick ごとに、tick そのものは消さずに、除外するかどうかを切り替えられる
+- 収集の失敗（`src/admin/pages/CollectPage.vue`）
+  - `failed` のまま止まった `collect_task` に、#141 が決めた 3 つの出口を用意する。いま再試行する、再試行せずに確認済みにする、動画を消えたものとして確定する、の 3 つ
+- 版の履歴（`src/admin/pages/HistoryPage.vue`）
+  - `revision` を種類・操作・日付の範囲で絞る
+  - 1 行の `body` を、生の JSON ではなく欄ごとに開く
+  - 同じ画面に `publication` の記録も並べる
+- 出典ホワイトリスト（`src/admin/pages/SourceWhitelistPage.vue`）
+  - [出典のホワイトリスト](api/admin.md#出典のホワイトリスト) の項目を足し、`note` を直し、取り除く
 
-A few of the data screens have nothing to save through - they only pick a row to act on elsewhere, or read a record no other endpoint exposes. None of these log a `revision`.
-
-| Method | Path                                                      | Answers with                                                                                                                                                  |
-| ------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/admin/api/videos`                                       | `video` rows, narrowed by `q` (a substring of `title`), `channelId` and `limit` (default 50, up to 100), for 配信・動画 to pick one to override               |
-| GET    | `/admin/api/snapshots`                                    | `channel_snapshot` ticks for `channelId` between `from`/`to` (Japan-time dates, both default to today), plus any `channel_snapshot_exclusion` over that range |
-| GET    | `/admin/api/collect-tasks`                                | Every `failed`, not yet acknowledged `collect_task` row, and how many                                                                                         |
-| POST   | `/admin/api/collect-tasks/<kind>/<target ID>/retry`       | The row after setting it back to `pending`                                                                                                                    |
-| POST   | `/admin/api/collect-tasks/<kind>/<target ID>/ack`         | The row after stamping `checked_at`, dropping it off the list above                                                                                           |
-| POST   | `/admin/api/collect-tasks/<kind>/<target ID>/unavailable` | The row after settling `video.availability` as `unavailable` - 400 for a channel failure, not a video's                                                       |
-| GET    | `/admin/api/revisions`                                    | `revision` rows, most recent first, narrowed by `entity`, `action`, `from`/`to` (Japan-time dates) and `limit` (default 50, up to 200)                        |
-| GET    | `/admin/api/revisions/<revision ID>`                      | One `revision` row, `body` included                                                                                                                           |
-| GET    | `/admin/api/publications`                                 | Every `publication` row, most recent first                                                                                                                    |
-
-### The Admin Site
-
-`src/admin/` is the admin site's own frontend (#141, #144) — plain Vue, plain HTML and CSS, no Vuetify, because #127's decision to keep the admin site apart from the public site's own component library applies here too. It shares one thing with the public site: `src/shell/tokens.css`'s colour variables. It does not share the public site's own shell (`SiteNav.vue` and friends) or its dark theme — `src/admin/index.html` fixes `<html data-theme="light">`, which pins every colour tokens.css defines to its light block regardless of the reader's own OS setting, because #141's design confirmed the admin site light-only.
-
-`src/admin/router.ts` is a client-side router (`vue-router`, history mode) rather than `#` fragments, so a reload or a shared link lands back on the same screen — the worker answers the same built page for every `/admin/*` path (see "`/admin` and Cloudflare Access" above) and leaves picking a screen to the browser.
-
-`src/admin/AdminShell.vue` is the outer frame every screen sits inside: the top bar (page name, the email `GET /admin/api/me` answers with), and the sidebar's three groups (やること, データ, 運用) in the same order as the public site's own nav. Two items carry a count: 公開, from `GET /admin/api/footprints/pending`'s `pending`/`changed` together, and 収集の失敗, from `GET /admin/api/collect-tasks`'s `count`; every other item names itself without one. A sidebar destination that `src/admin/router.ts` has no route of its own for shows `src/admin/pages/PlaceholderPage.vue`. The table/edit-panel split (`.main`/`.pane`/`.inspector`) narrows at two widths, `@container` rather than `@media`: `src/admin/shell.css`'s own comment says why.
-
-A few screens worth calling out beyond the general shell above:
-
-- あしあと (`src/admin/pages/FootprintsPage.vue`, `src/admin/components/FootprintsInspector.vue`) — the table (narrowed by `status` and a title substring) and the edit panel (read, save, 公開待ちにする/下書きに戻す, delete - the chip says 公開待ち until the 公開 screen's いま公開する has written the JSON, see `src/admin/lib/footprints-publish.ts`). A save's 400 is shown on the panel's own band, and `src/admin/lib/footprints.ts`'s `fieldForSaveError` reads the worker's own message to mark which field it is about, rather than a second copy of the worker's validation living here too.
-- 公開 (`src/admin/pages/PublishPage.vue`) — footprints and ジェネット楽曲一覧 each get their own `GET .../pending` pair of lists and their own `いま公開する`, loaded and published independently of each other.
-- ジェネット楽曲一覧 (`src/admin/pages/SetsPage.vue`) — the one screen that does not use `.pane`/`.inspector`: `.setlist`/`.editor` instead, full width, because a stream's own data does not fit the narrow inspector every other screen uses (#141's design). A tune is shared across every stream that performs it, so saving a tune's own credits (`src/admin/lib/genet-tunes.ts`) is its own action, separate from saving a stream's own fields and which tunes/scenes it performs (`src/admin/lib/genet-streams.ts`). Every Markdown field (a tune's title, a performance's description) is a write box with a live preview directly below it (`src/components/genet/MarkDown.vue`, the public site's own renderer) and 4 buttons that insert a fixed-shape Markdown link (Wikipedia / English Wikipedia / a stream timestamp / a bare URL) at the caret.
-- メンバー (`src/admin/pages/MembersPage.vue`) — name, colours, activity span and display order, the 12 columns #158 already lets a PUT replace. Adding a member is not done here: no endpoint creates a `channel` row, and a new member arrives through the seed (#152), so the button shows a one-line band saying so instead of opening a panel.
-- 配信・動画 (`src/admin/pages/VideosPage.vue`) — picks a collected `video` row (`GET /admin/api/videos`) to give it a `video_override`; saving and deleting the override itself is still video-overrides.ts's own job.
-- 統計 (`src/admin/pages/SnapsPage.vue`) — one day's ticks at a time (`GET /admin/api/snapshots`), each markable excluded or not without deleting the tick itself.
-- 収集の失敗 (`src/admin/pages/CollectPage.vue`) — the three exits #141 decided for a `collect_task` stuck `failed`: retry now, acknowledge without retrying, or settle a video as gone.
-- 版の履歴 (`src/admin/pages/HistoryPage.vue`) — `revision` narrowed by entity/action/date range, one row's `body` opened as fields rather than raw JSON, and `publication`'s own record alongside it in the same screen.
-
-The screen-side logic worth testing without a browser — the table's own query string, which field a save error names, which buttons the edit panel shows for a given `status` — is pulled out into `src/admin/lib/*.ts` and tested under `test/admin/lib/`, the same split the rest of this project's frontend already uses for its own `src/lib/*.ts`.
+ブラウザ無しで確かめたい画面側の処理は、`src/admin/lib/*.ts` へ切り出し、`test/admin/lib/` でテストします。表のクエリ文字列、保存のエラーがどの欄を指すか、ある `status` で編集の欄がどのボタンを出すか、などです。このプロジェクトのフロントエンドが `src/lib/*.ts` で既に採っている分け方と同じです。

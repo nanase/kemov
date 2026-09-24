@@ -1,25 +1,180 @@
-# Data
+# データ
 
-## Database
+サイトのデータは D1 にあり、R2 にはバックアップと公開用の JSON を置きます。この文書は、どの列を誰が書くか、`channels.yml` の役目、バックアップとその保持期間、公開用のバケットを扱います。
 
-The collected data lives in a Cloudflare D1 database named `kemov`, running in the APAC region. Everything the site publishes can be rebuilt from it. The commands below need wrangler, which comes with the Worker setup.
+## データベース
 
-A region is chosen when the database is created and never again, so moving it means creating another one and copying the data across.
+収集したデータは、Cloudflare D1 の `kemov` というデータベースにあり、APAC のリージョンで動いています。サイトが公開するものは、すべてここから作り直せます。この文書のコマンドは wrangler を使います。準備は [開発](../guides/development.md#worker-の開発) にあります。
 
-## Who Writes Which Column
+リージョンはデータベースを作るときに決まり、後から変えられません。移すには、別のデータベースを作ってデータを写すことになります。
 
-`channel` has two writers, and one that ignores the split erases the other's work.
+## 表の関係
 
-| Columns                                                                                                       | Written by                                                                                                                                                                 |
-| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `channel_id`, `name`, `fullname`, `globalname`, `twitter`, `twitch`, `color_*`, `activity_*`, `display_order` | The deploy's initial seed from `channels.yml`, once, when the row does not exist yet. After that the admin site (`PUT /admin/api/members/<channel ID>`) is the only writer |
-| `custom_url`, `thumbnail_url`, `fetched_at`                                                                   | The collector, from `Channels.list`                                                                                                                                        |
+表と外部キーは `migrations/` が決めます。次の図は、そこから主キー（PK）と外部キー（FK）の列だけを写したものです。すべての列は各マイグレーションのファイルにあります。
 
-Seeding from the YAML therefore names only the first group's columns, and only for a row that does not exist yet - see "The Channel Master" below. Every other table is written by the collector or by the admin site (see [Admin Site](admin.md)). The one place both write is the admin site's 収集の失敗 screen, which updates `collect_task` rows and can settle `video.availability` as `unavailable`.
+### 収集と、その上書き
 
-## The Channel Master
+```mermaid
+erDiagram
+  channel ||--o{ channel_snapshot : "10 分ごとの統計"
+  channel ||--o{ video : "動画"
+  video ||--o{ chat_author : "集計中のチャット"
+  video ||--o| video_override : "上書き"
+  channel_snapshot ||--o| channel_snapshot_exclusion : "除外"
+  channel {
+    TEXT channel_id PK
+  }
+  channel_snapshot {
+    TEXT channel_id PK, FK
+    TEXT fetched_at PK
+  }
+  video {
+    TEXT video_id PK
+    TEXT channel_id FK
+  }
+  chat_author {
+    TEXT video_id PK, FK
+    TEXT author_id PK
+  }
+  video_override {
+    TEXT video_id PK, FK
+  }
+  channel_snapshot_exclusion {
+    TEXT channel_id PK, FK
+    TEXT fetched_at PK, FK
+  }
+  collect_task {
+    TEXT kind PK
+    TEXT target_id PK "チャンネルか動画の ID。外部キーではない"
+  }
+```
 
-`channels.yml` at the repository root is the initial seed for that table, one entry per streamer. It only ever adds a row: a streamer already in `channel` is edited there from that point on, not by editing this file. The file's own order decides a new streamer's initial `display_order` - the order the site shows streamers in until it is changed through the admin site; see the comment at the top of the file before reordering it.
+### あしあと
+
+```mermaid
+erDiagram
+  footprints_event ||--o{ footprints_event_member : "関わったメンバー"
+  channel ||--o{ footprints_event_member : ""
+  footprints_event ||--o{ footprints_event_source : "出典"
+  footprints_event {
+    INTEGER event_id PK
+    TEXT video_id "外部キーではない"
+  }
+  footprints_event_member {
+    INTEGER event_id PK, FK
+    TEXT channel_id PK, FK
+  }
+  footprints_event_source {
+    INTEGER event_id PK, FK
+    INTEGER position PK
+  }
+  channel {
+    TEXT channel_id PK
+  }
+  source_whitelist {
+    TEXT prefix PK
+  }
+```
+
+### ジェネット楽曲一覧
+
+```mermaid
+erDiagram
+  genet_stream ||--o{ genet_performance : "演奏"
+  genet_performance ||--o{ genet_scene : "シーン"
+  genet_tune ||--o{ genet_performance : "演奏される曲"
+  genet_tune ||--o{ genet_tune_attribute : "属性"
+  genet_tune_attribute ||--o{ genet_tune_attribute_person : "クレジット"
+  genet_person ||--o{ genet_tune_attribute_person : ""
+  genet_tune ||--o{ genet_tune_video : "参考の動画"
+  genet_tune ||--o{ genet_tune_score : "楽譜"
+  genet_stream {
+    TEXT video_id PK "video への外部キーではない"
+  }
+  genet_performance {
+    TEXT video_id PK, FK
+    INTEGER position PK
+    INTEGER tune_id FK
+  }
+  genet_scene {
+    TEXT video_id PK, FK
+    INTEGER position PK, FK
+    INTEGER scene_position PK
+  }
+  genet_tune {
+    INTEGER tune_id PK
+  }
+  genet_tune_attribute {
+    INTEGER tune_id PK, FK
+    INTEGER position PK
+  }
+  genet_tune_attribute_person {
+    INTEGER tune_id PK, FK
+    INTEGER attribute_position PK, FK
+    INTEGER position PK
+    INTEGER person_id FK
+  }
+  genet_person {
+    INTEGER person_id PK
+  }
+  genet_tune_video {
+    INTEGER tune_id PK, FK
+    INTEGER position PK
+  }
+  genet_tune_score {
+    INTEGER tune_id PK, FK
+    INTEGER position PK
+  }
+```
+
+### 版の履歴
+
+```mermaid
+erDiagram
+  revision ||--o{ publication : "最後に読んだ版"
+  revision {
+    INTEGER revision_id PK
+    TEXT entity "どの表の行か"
+    TEXT entity_key "その行の鍵。外部キーではない"
+  }
+  publication {
+    INTEGER publication_id PK
+    INTEGER last_revision_id FK
+  }
+```
+
+`revision` は、`entity` と `entity_key` の組で、どの表のどの行の版かを示します。外部キーではないので、行を消しても版は残ります。
+
+## 列の書き手
+
+`channel` には書き手が 2 つあります。この分担を無視して書くと、もう一方の書いた内容を消してしまいます。
+
+```mermaid
+flowchart LR
+  seed["シード<br/>channels.yml"] -- "行がまだ無いときに 1 回だけ" --> person
+  admin["管理サイト<br/>PUT /admin/api/members/&lt;チャンネル ID&gt;"] -- "その後はここだけ" --> person
+  collector["収集<br/>Channels.list"] --> fetched
+  subgraph channel["channel の列"]
+    direction TB
+    person["channel_id・name・fullname・globalname<br/>twitter・twitch・color_*・activity_*<br/>display_order"]
+    fetched["custom_url・thumbnail_url・fetched_at"]
+  end
+  classDef writer fill:#f6efe0,stroke:#c9ad6e,color:#2b2413
+  classDef cols fill:#e3f1ed,stroke:#7fb5aa,color:#12302a
+  class seed,admin,collector writer
+  class person,fetched cols
+  style channel fill:#f3f9f7,stroke:#b5d3cc,color:#12302a
+```
+
+そのため、YAML から入れるシードは人が決める側の列だけを書き、しかも行がまだ無いときに限ります（[シード](#シード)）。
+
+それ以外の表は、収集か管理サイト（[管理サイト](admin.md)）が書きます。両方が書くのは、管理サイトの収集の失敗の画面だけです。この画面は `collect_task` の行を更新し、`video.availability` を `unavailable` に確定することもあります。
+
+## シード
+
+リポジトリのルートの `channels.yml` は、`channel` の表のシードです。1 項目が 1 人のメンバーにあたります。
+
+シードは行を足すだけです。`channel` に既にいるメンバーは、それ以降は管理サイトで直し、このファイルでは直しません。新しいメンバーの最初の `display_order` は、ファイルの中の順で決まります。これが、管理サイトで変えるまでサイトがメンバーを並べる順になります。並べ替える前に、ファイルの先頭のコメントを読んでください。
 
 ```yaml
 - channel_id: UCEcMIuGR8WO2TwL9XIpjKtw
@@ -36,88 +191,138 @@ Seeding from the YAML therefore names only the first group's columns, and only f
   activity_end_date: '2022-05-21'
 ```
 
-Field names are the column names they land in, with two exceptions. `color` groups the four values because a person edits them together, and the seed spreads them across `color_key`, `color_sub`, `color_light` and `color_back`.
+欄の名前は、書き込む先の列の名前と同じです。例外は `color` で、人が 4 つの値をまとめて直すのでまとめてあります。シードは、これを `color_key`・`color_sub`・`color_light`・`color_back` に分けて書きます。
 
-`globalname`, `twitter` and `twitch` may be left out. `activity_end_date` is always written, and `null` is how the file says a streamer is still active — leaving the key out would say the same thing without anybody having decided it.
+- `globalname`・`twitter`・`twitch` は省いてよい
+- `activity_end_date` は必ず書く
+  - まだ活動中のメンバーは `null` と書く
+  - キーを省いても同じ意味になるが、それでは誰かが決めた結果なのかが分からない
+- 日付は引用符で囲む
+  - 囲まないと、YAML は `2021-04-26` を文字列ではなく日時として読む。列は文字列を求める
 
-Quote the dates. Unquoted, YAML reads `2021-04-26` as a timestamp rather than text, and the column wants the text.
-
-The master used to be a hand-written JSON file hosted outside the repository. Editing it took no review and no check; editing this one takes a pull request, and CI reads the file on every one of them:
+以前の正データは、リポジトリの外に置いた手書きの JSON で、直してもレビューも検査も通りませんでした。このファイルは PR を通して直し、CI が PR ごとに読みます。
 
 ```sh
 bun run check-channels
 ```
 
-That reports every problem in the file at once rather than the first: an id that is not a YouTube channel id, a colour that is not `#RRGGBB`, a handle written with the `@`, a date that does not exist, a field name with a typo in it, the same channel twice.
+最初の 1 つで止まらず、ファイルの問題をすべてまとめて報告します。見つけるのは次のような問題です。
 
-What the check knows lives in `scripts/`, which is JavaScript rather than TypeScript because it runs under bare node from a CI step and from the deploy, both before anything is built. Like the worker, it is its own vitest project:
+- YouTube のチャンネル ID の形でない ID
+- `#RRGGBB` の形でない色
+- `@` を付けて書いたハンドル
+- 存在しない日付
+- 綴りを誤った欄の名前
+- 同じチャンネルの重複
+
+検査の中身は `scripts/` にあります。CI の工程とデプロイの両方から、何もビルドしないうちに素の node で動かすので、TypeScript ではなく JavaScript で書いています。worker と同じく、vitest のプロジェクトを別に持っています。
 
 ```sh
 bun run vitest run --project scripts
 ```
 
-## Retiring a Streamer
+### メンバーが活動を終えたとき
 
-Set the streamer's `activity_end_date` on the admin site's メンバー screen. Never delete the row.
+管理サイトのメンバーの画面で、そのメンバーの `activity_end_date` を書きます。行は消しません。
 
-Editing `channels.yml` does not do this: the seed only adds a row, so an `activity_end_date` written there for a streamer already in `channel` changes nothing.
+`channels.yml` を書き換えても、この変更にはなりません。シードは行を足すだけなので、`channel` に既にいるメンバーの `activity_end_date` をファイルに書いても、何も変わりません。
 
-`channel_snapshot` and `video` reference `channel`, so D1 refuses a delete that would leave them pointing at nothing. That refusal is deliberate: a row deleted by mistake must not be able to take years of collected history with it. A streamer who stops still has the history of when they did not.
+`channel_snapshot` と `video` は `channel` を参照しているので、参照先を失わせる削除を D1 が拒みます。この拒否はわざとです。誤って消した行が、何年分もの収集の履歴を道連れにしてはなりません。活動を終えたメンバーにも、活動していたころの履歴は残ります。
 
-## Seeding the Channel Table
+### シードの入れ方
 
-The deploy turns the file into one `INSERT ... ON CONFLICT DO NOTHING` and applies it. The same two commands fill a local database:
+デプロイは、ファイルを 1 つの `INSERT ... ON CONFLICT DO NOTHING` に変えて適用します。手元のデータベースにも、同じ 2 つのコマンドで入れられます。
 
 ```sh
 bun run build-channels-sql .wrangler/channels.sql
 bun wrangler d1 execute kemov --local --file .wrangler/channels.sql
 ```
 
-The generated SQL is not committed. It is whatever the file says at the moment it runs, and a copy in the repository would be one more thing that can disagree with the file. `.wrangler/` is gitignored, which is why the example writes there.
+作った SQL はコミットしません。中身は実行した時点のファイルの内容そのもので、リポジトリに写しを置くと、ファイルと食い違いうるものが 1 つ増えるだけです。`.wrangler/` は git が無視するので、例ではそこへ書いています。
 
-The statement names the deploy's columns and nothing else, so `custom_url`, `thumbnail_url` and `fetched_at` keep whatever the last collection put there. It only inserts: a channel already in the table keeps every column it has, whatever this file now says, and a channel the file no longer lists keeps its row too.
+この文は人が決める側の列だけを名指しします。`custom_url`・`thumbnail_url`・`fetched_at` は、前回の収集が書いた値のまま残ります。文は行を足すだけです。表に既にあるチャンネルは、ファイルの今の内容にかかわらず、すべての列をそのまま保ちます。ファイルから消えたチャンネルも、行は残ります。
 
-## Backups
+## バックアップ
 
-Time travel above covers the last 30 days and only inside D1. The nightly backup covers what happens after that, and what happens to D1 itself: at 00:20 UTC the worker writes what the database holds to the `kemov-backup` R2 bucket, as SQL.
+[Time Travel](../guides/recovery.md#time-travel) で戻せるのは直近 30 日で、しかも D1 の中だけです。夜間のバックアップは、それより前のことと、D1 そのものに起きたことを受け持ちます。毎日 00:20 UTC（日本時間 9:20）に、worker がデータベースの中身を SQL として R2 のバケット `kemov-backup` へ書きます。
 
+```text
+channel/2026-09-08.sql              全行。毎晩書き直す
+video/2026-09-08.sql                全行。毎晩書き直す
+channel_snapshot/2026-09-07.sql     終わった 1 日分。1 回だけ書く
+revision/2026-09-07.sql             終わった 1 日分。1 回だけ書く
+publication/2026-09-08.sql          全行。毎晩書き直す
 ```
-channel/2026-09-08.sql              every row, rewritten each night
-video/2026-09-08.sql                every row, rewritten each night
-channel_snapshot/2026-09-07.sql     one finished day, written once
-revision/2026-09-07.sql             one finished day, written once
-publication/2026-09-08.sql          every row, rewritten each night
+
+```mermaid
+flowchart LR
+  subgraph D1["D1"]
+    direction TB
+    whole["channel・video<br/>管理サイトの表など"]
+    daily["channel_snapshot<br/>revision"]
+  end
+  whole -- "毎晩、全行を書き直す" --> f1["&lt;表&gt;/&lt;今日&gt;.sql"]
+  daily -- "終わった 1 日分を 1 回だけ" --> f2["&lt;表&gt;/&lt;前日&gt;.sql"]
+  subgraph R2["R2 kemov-backup"]
+    f1
+    f2
+  end
+  classDef src fill:#e3f1ed,stroke:#7fb5aa,color:#12302a
+  classDef dst fill:#eceef7,stroke:#9aa3c8,color:#1d2240
+  class whole,daily src
+  class f1,f2 dst
+  style D1 fill:#f3f9f7,stroke:#b5d3cc,color:#12302a
+  style R2 fill:#f5f6fb,stroke:#c3c8e0,color:#1d2240
 ```
 
-Most tables are written whole each night because their current values are the whole story — every table the admin site added in [#144](https://github.com/nanase/kemov/issues/144) is one of these, alongside `channel` and `video`. `channel_snapshot` and `revision` are not: both only ever gain rows, so a finished day is written once as its own file and never touched again. That keeps a night's work the size of a day rather than the size of the table, which for `channel_snapshot` alone is 578,000 rows by the end of a year at 1,584 a day.
+ほとんどの表は、今の値がすべてなので、毎晩まるごと書きます。`channel` と `video` のほか、[#144](https://github.com/nanase/kemov/issues/144) で管理サイトが足した表はすべてこちらです。
 
-A run writes at most seven missing days, so a gap left by an outage closes over several nights rather than being attempted all at once. Which days are already written is read from the bucket, not remembered anywhere, so nothing can disagree about it.
+`channel_snapshot` と `revision` は違います。どちらも行が増える一方なので、終わった 1 日分を 1 つのファイルとして 1 回だけ書き、以後は触りません。これで 1 晩の仕事の量は、表の大きさではなく 1 日分の大きさで済みます。`channel_snapshot` の 1 日の行数は 144 × チャンネル数で、11 チャンネルなら 1 日 1,584 行、1 年で約 578,000 行になります。
 
-Inside a file, one `INSERT` names at most 200 rows and at most 80,000 bytes, whichever comes first. D1 refuses a statement over 100,000 bytes, and the row count alone does not bound the bytes: measured over the 6,433 rows of `video` in production on 2026-09-08, batches of 200 reach 73,687 bytes in the order the backup reads them and 86,890 over the same rows grouped another way. How close a batch gets is therefore a property of which rows land together, not of how many there are, and `video` only grows. A statement that D1 refuses would be found only by whoever was restoring from the file, which is the worst moment to find it.
+1 回の実行が書くのは、抜けている日のうち最大 7 日分です。止まっていた期間の穴は、一度にすべて埋めようとせず、何晩かかけて埋まります。どの日を書き終えたかは、どこにも覚えておかず、バケットから読みます。そのため食い違う記録が生まれません。
 
-`collect_task` and `chat_author` are deliberately absent. They hold where collection has got to, they rebuild themselves within a tick or two, and restoring them would send the chat job back through replays it has already read.
+ファイルの中の 1 つの `INSERT` は、最大 200 行、かつ最大 80,000 バイトで、先に達したほうで区切ります。D1 は 100,000 バイトを超える文を拒み、行数だけではバイト数が決まりません。
 
-`/api/health` covers this job too, since [#115](https://github.com/nanase/kemov/issues/115). It cannot read `collect_task` for it — this job writes none of those rows — so its `backup` field reads the bucket instead: the newest day each table has a file for, and how many days old that is. `channel_snapshot` and `revision` read one day older than the rest even when nothing is wrong, because both write yesterday's finished day rather than today's (see above). The field does not say how old is too old; that threshold is [#110](https://github.com/nanase/kemov/issues/110)'s decision.
+- 2026-09-08 に本番の `video` の 6,433 行で測ると、200 行ずつの区切りは、バックアップが読む順では最大 73,687 バイト、別の組み方では最大 86,890 バイトになった
+- 上限にどこまで近づくかは、何行あるかではなく、どの行が同じ区切りに入るかで決まる
+- `video` は増える一方
 
-## What Expires and What Does Not
+D1 が拒む文があっても、見つかるのはそのファイルから戻そうとしたときです。それは見つけるのに最も悪いタイミングです。
 
-**Prefix-specific lifecycle rules are set on `kemov-backup`, in addition to its existing Default Multipart Abort Rule, because one rule covering the whole bucket would be wrong.**
+`collect_task` と `chat_author` は、わざとバックアップから外しています。どちらも収集がどこまで進んだかを持つだけで、1〜2 回の tick で作り直されます。戻すと、チャットのジョブが読み終えたリプレイをもう一度読むことになります。
 
-| Prefix                                                                                                                                                                                                                                                                                                                                                                                                     | Retention    | Why                                                                                                                                  |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `video/`                                                                                                                                                                                                                                                                                                                                                                                                   | 30 days      | Each file is a complete copy, collected fresh from the YouTube API. The newest one is all that is needed; older ones are duplicates. |
-| `channel/`, `channel_snapshot/`, `channel_snapshot_exclusion/`, `video_override/`, `footprints_event/`, `footprints_event_member/`, `footprints_event_source/`, `source_whitelist/`, `genet_person/`, `genet_tune/`, `genet_tune_attribute/`, `genet_tune_attribute_person/`, `genet_tune_video/`, `genet_tune_score/`, `genet_stream/`, `genet_performance/`, `genet_scene/`, `revision/`, `publication/` | **365 days** | See below.                                                                                                                           |
+[#115](https://github.com/nanase/kemov/issues/115) から、`/api/health` はこのジョブも見ています。このジョブは `collect_task` の行を書かないので、`/api/health` の `backup` 欄はバケットを読みます。表ごとに、ファイルのある最新の日と、それが何日前かを返します。`channel_snapshot` と `revision` は、今日ではなく前日の終わった 1 日分を書くので、何も起きていなくても他の表より 1 日古く出ます。どれだけ古ければ異常かは、この欄は示しません。その閾値は [#110](https://github.com/nanase/kemov/issues/110) が決めます。
 
-`channel_snapshot/` and `revision/` hold one file per day and no other file holds that day: deleting one leaves a hole in the history that nothing can fill. That hole is a hole in R2, not in the history itself — both tables only ever gain rows in D1 (see [Backups](#backups) above), so D1 already holds every day of either forever. R2's copy exists to restore D1 if D1 is what breaks, and that need shows up right after an incident, not a year later — 365 days bounds how long the copy waits around for that, not how long the history survives.
+## 保持期間
 
-Every other table in the 365-day row holds data a person typed once through the admin site rather than data the collector can fetch again — `channel` joined this group for the same reason, once `channel` itself became a table people edit rather than one only the collector wrote to. `video/` is the one table this reasoning does not reach: losing 30 days of it costs nothing beyond a slower rebuild, because it can be recollected from the YouTube API.
+`kemov-backup` には、既にある Default Multipart Abort Rule に加えて、prefix ごとのライフサイクルルールを置いています。バケット全体に 1 つの規則をかけると、どこかの prefix で誤りになるためです。規則の設定の手順は [設定とデプロイ](../guides/deployment.md#バックアップのバケットの保持期間) にあります。
 
-The snapshot history began on 2026-09-07 and exists nowhere else in R2. A day of it is about 119 KiB of SQL, measured against production values on 2026-09-08, so a year of it costs some 44 MB; `video` adds roughly 70 MB more at 30 days (`channel`'s own few dozen rows barely move that figure). Both fit well inside R2's free 10 GB tier; the tables #144 added hold at most a few hundred rows each and add little beside that.
+| prefix   | 保持期間 | 理由                                                                                                  |
+| -------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| `video/` | 30 日    | ファイルはどれも完全な写しで、YouTube API から取り直せる。最新の 1 つがあれば足り、古いものは重複する |
+| 次の一覧 | 365 日   | 次を参照                                                                                              |
 
-## Public Data
+365 日の規則を置く prefix は、`channel/`・`channel_snapshot/`・`channel_snapshot_exclusion/`・`video_override/`・`footprints_event/`・`footprints_event_member/`・`footprints_event_source/`・`source_whitelist/`・`genet_person/`・`genet_tune/`・`genet_tune_attribute/`・`genet_tune_attribute_person/`・`genet_tune_video/`・`genet_tune_score/`・`genet_stream/`・`genet_performance/`・`genet_scene/`・`revision/`・`publication/` です。
 
-The admin site publishes JSON to its own bucket, `kemov-public`, bound as `PUBLIC_DATA` (#144). No lifecycle rule is set on it: a publish overwrites the same key every time, so there is never an old object for a rule to expire.
+`channel_snapshot/` と `revision/` は 1 日に 1 ファイルで、その日を持つファイルは他にありません。1 つ消えれば、何も埋められない穴になります。
 
-It is not backed up. Every published object is built from `revision`, which is backed up, so losing `kemov-public` costs a republish rather than the data itself — the same reasoning that keeps `collect_task` and `chat_author` out of `kemov-backup` (see [Backups](#backups) above), applied to a bucket instead of a table.
+ただし、それは R2 の中の穴で、履歴そのものの穴ではありません。どちらの表も D1 の中で行が増える一方なので（[バックアップ](#バックアップ)）、D1 はどの日も持ち続けています。R2 の写しは、D1 が壊れたときに D1 を戻すためにあります。その必要は障害の直後に来るもので、1 年後には来ません。365 日は、写しがその出番を待つ期間の上限であって、履歴が残る期間ではありません。
 
-The admin site's publish operations write it (see [Footprints: Editing and Publishing](admin.md#footprints-editing-and-publishing) and [Genet Music: Editing and Publishing](admin.md#genet-music-editing-and-publishing)), and `/api` serves it. `GET /api/footprints/events` and `GET /api/genet/music` pass the bucket's `footprints/events.json` and `genet/music.json` straight through: the same bytes, the object's own `ETag` and `Last-Modified`, and no reparsing. While a key has never been written, its endpoint answers 404 with `{"error":"not published yet"}`. `If-None-Match` is honoured with 304, and HEAD answers with the same status and headers as GET but no body.
+365 日の側の他の表は、収集が取り直せるデータではなく、人が管理サイトで一度だけ入力したデータを持ちます。`channel` も、人が直す表になったことで、同じ理由からこちらに入りました。この理屈が当てはまらないのは `video/` だけです。YouTube API から取り直せるので、30 日分を失っても、作り直しが遅くなる以上の損はありません。
+
+量の見積もりは次のとおりです。どれも 2026-09-08 に本番の値で測りました。
+
+- スナップショットの履歴は 2026-09-07 に始まり、R2 の他の場所には無い
+- その 1 日分は SQL で約 119 KiB なので、1 年分で約 44 MB
+- `video` は 30 日分で約 70 MB を足す。`channel` の数十行は、この数字をほとんど動かさない
+- どちらも R2 の無料枠 10 GB に十分収まる。#144 で足した表は、どれも多くて数百行で、ほとんど足さない
+
+## 公開用のデータ
+
+管理サイトは、JSON を専用のバケット `kemov-public` へ公開します。worker からは `PUBLIC_DATA` というバインディングで読み書きします（#144）。ライフサイクルルールは置きません。公開は毎回同じキーを上書きするので、規則で期限切れにする古いオブジェクトが生まれないためです。
+
+このバケットはバックアップしません。公開したオブジェクトはすべて `revision` から作り、`revision` はバックアップしています。`kemov-public` を失っても、失うのはデータではなく、公開し直す手間だけです。`collect_task` と `chat_author` を `kemov-backup` から外す（[バックアップ](#バックアップ)）のと同じ理屈を、表ではなくバケットに当てはめています。
+
+管理サイトの公開の操作がこのバケットに書き（[あしあと](api/admin.md#あしあと)、[ジェネット楽曲一覧](api/admin.md#ジェネット楽曲一覧)）、`/api` がそれを返します（[公開の API](api/public.md#公開用のバケットを返すエンドポイント)）。
+
+バケットの作り方は [設定とデプロイ](../guides/deployment.md#公開用のバケット) にあります。

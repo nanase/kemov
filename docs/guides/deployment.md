@@ -1,40 +1,106 @@
-# Deployment
+# 設定とデプロイ
 
-## The Account ID
+Cloudflare と GitHub の設定、R2 のバケットの作成、デプロイの戻し方の手順です。デプロイの工程とその順序の理由は [全体の構成](../reference/architecture.md#デプロイ) にあります。
 
-`wrangler.toml` carries the D1 `database_id` but no `account_id`. This repository is public, and that value names the account it belongs to. Anything that reaches Cloudflare — `wrangler deploy`, and any command given `--remote` — resolves the account from the session `wrangler login` leaves in your home directory instead. Actions gets it from an environment secret; see [Deployment](../reference/architecture.md#deployment).
+## アカウント ID
 
-## Worker Secrets
+`wrangler.toml` は D1 の `database_id` を持ちますが、`account_id` は持ちません。このリポジトリは公開されており、その値はアカウントを特定するためです。
 
-No secret value belongs in this repository — not in `wrangler.toml`, not in a workflow file, not in `.env`. `wrangler.toml` names bindings; it never carries their values.
+Cloudflare へ届くもの、つまり `wrangler deploy` と `--remote` を付けたコマンドは、`wrangler login` がホームディレクトリに残したセッションからアカウントを決めます。GitHub Actions は、environment のシークレットからアカウントを受け取ります（[GitHub の environment](#github-の-environment)）。
 
-Cloudflare stores the values instead, and `wrangler` is how they get there. Run these from the repository root. `wrangler` is a devDependency rather than something on your `PATH`, so it is `bun wrangler`:
+## worker のシークレット
+
+シークレットの値は、このリポジトリのどこにも置きません。`wrangler.toml` にも、ワークフローのファイルにも、`.env` にも置きません。`wrangler.toml` はバインディングの名前を書くだけで、値は持ちません。
+
+値は Cloudflare に保存し、`wrangler` で登録します。コマンドはリポジトリのルートで実行します。`wrangler` は `PATH` にあるものではなく devDependency なので、`bun wrangler` と打ちます。
 
 ```sh
-bun wrangler secret put YOUTUBE_API_KEY   # prompts, so the value misses the shell history
-bun wrangler secret list                  # names only, never values
+bun wrangler secret put YOUTUBE_API_KEY   # 値を尋ねるので、シェルの履歴に残らない
+bun wrangler secret list                  # 名前だけを出し、値は出さない
 ```
 
-Secrets belong to a Worker that already exists, so the first `bun wrangler deploy` has to come first — before it, wrangler answers `Worker "kemov" not found`. The worker is deployed, so nothing is waiting on that today.
+シークレットは既にある worker に属するので、先に 1 回 `bun wrangler deploy` を済ませておきます。worker が無いうちは、wrangler が `Worker "kemov" not found` と答えます。
 
-The dashboard is the other way in, if you would rather the value never passed through a terminal: Workers & Pages → `kemov` → Settings → Variables and Secrets → Add → type Secret.
+値を端末に通したくなければ、ダッシュボードからも登録できます。Workers & Pages → `kemov` → Settings → Variables and Secrets → Add と進み、種類に Secret を選びます。
 
-| Secret            | Read by                                   |
-| ----------------- | ----------------------------------------- |
-| `YOUTUBE_API_KEY` | the collection jobs (#62 to #65)          |
-| `ACCESS_AUD`      | the check in front of `/admin/api` (#144) |
+| シークレット      | 読むもの                        |
+| ----------------- | ------------------------------- |
+| `YOUTUBE_API_KEY` | 収集のジョブ（#62〜#65）        |
+| `ACCESS_AUD`      | `/admin/api` の前の検証（#144） |
 
-The `Deploy` workflow checks that every secret the worker reads is registered, and fails if one is not. What counts as a secret is decided by absence: a member of `Env` in `worker/src/lib/env.ts` that `wrangler.toml` does not supply as a binding or a `[vars]` entry. Adding a member to `Env` is therefore enough to put it under the check.
+`Deploy` ワークフローは、worker が読むシークレットがすべて登録されているかを確かめ、1 つでも無ければ失敗します。
 
-It runs after the deploy rather than before, and only names are involved on either side. A missing secret does not stop a deploy — wrangler resolves the bindings and never looks at the secrets — so before this existed the worker shipped and its jobs failed one at a time inside D1, which is what #89 records.
+- 何がシークレットかは、「無いこと」で決まる
+  - `worker/src/lib/env.ts` の `Env` のメンバーのうち、`wrangler.toml` がバインディングにも `[vars]` にもしていないものがシークレット
+  - `Env` にメンバーを足せば、それだけで確認の対象になる
+- 確認はデプロイの後に行う
+  - どちらの側でも、扱うのは名前だけ
+- シークレットが無くても、デプロイは止まらない
+  - wrangler はバインディングを解決するだけで、シークレットを見ないため
+  - この確認ができる前は、worker はデプロイされ、ジョブが D1 の中で 1 つずつ失敗した。その記録が #89
 
-For local runs, put the same names in `.dev.vars` at the repository root as `NAME=value` lines. `.dev.vars` and `.dev.vars.*` are gitignored.
+手元で動かすときは、同じ名前をリポジトリのルートの `.dev.vars` に `NAME=value` の行で書きます。`.dev.vars` と `.dev.vars.*` は git が無視します。
 
-`.env` is a different thing and is committed on purpose: Vite inlines it into the published bundle, so what it holds is already public. `wrangler dev` also reads it and hands the worker what it finds, which is another reason nothing secret may go there.
+`.env` はこれとは別物で、わざとコミットしています。Vite が公開するバンドルに埋め込むので、中身は既に公開されています。`wrangler dev` もこのファイルを読んで worker に渡します。これも、シークレットを置いてはならない理由です。
 
-## Setting the Lifecycle Rules of the Backup Bucket
+## ホスト名
 
-Set with `lifecycle add` calls, run from the repository root. `channel/`'s existing 30-day rule is replaced rather than added beside, since a prefix can carry only one rule. `-y` skips the confirmation `add` otherwise asks for, which would stop the loop partway through:
+`wrangler.toml` は `kemov.nanase.cc` をカスタムドメインとして宣言しています。そのため、ゾーンの DNS レコードは手ではなく Cloudflare が作成し、管理します。
+
+`workers_dev` は無効にしてあります。
+
+- Cloudflare が worker に付けるサブドメインは、アカウントのメールアドレスから作られ、ローカル部がそのまま入る
+- デプロイが成功すると、その URL を GitHub Actions のログに出す。公開リポジトリのログは誰でも読める
+- カスタムドメインがあれば、そのサブドメインを使うものは無い
+- カスタムドメインが設定される前に無効にしてはならない。それまでは、worker に届く道はこのサブドメインしか無い
+
+旧 URL の `nanase.cc/kemov/` 以下から `kemov.nanase.cc` への転送は、このリポジトリの外、`nanase.cc` のゾーンにあります（#72）。
+
+## GitHub の environment
+
+デプロイの資格情報は、リポジトリのシークレットではなく、GitHub の environment から受け取ります。environment のシークレットは、その environment を名指しするジョブしか読めません。リポジトリのシークレットは、PR のブランチから動くものを含め、リポジトリのすべてのワークフローが読めます。そのほとんどは、デプロイできるトークンを持つ必要がありません。
+
+| 設定                | 値                                              |
+| ------------------- | ----------------------------------------------- |
+| Environment         | `cloudflare`                                    |
+| Deployment branches | `main` だけ                                     |
+| Secrets             | `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID` |
+
+1. Settings → Environments → New environment と進み、名前を `cloudflare` にする
+2. Deployment branches で「Selected branches and tags」を選び、`main` を足す
+3. Add environment secret で、上の 2 つの名前をそれぞれ登録する
+
+トークンは「Edit Cloudflare Workers」のテンプレートに、D1 Edit と、ゾーンへの DNS Edit を足したものにします。worker が D1 のバインディングを持つので D1 Edit を、カスタムドメインが DNS レコードなので DNS Edit を使います。
+
+## ブランチの保護
+
+`main` のブランチの保護は、2026-09-24 の時点で次のとおりです。
+
+| 項目                        | 設定    |
+| --------------------------- | ------- |
+| PR を必須にする             | 有効    |
+| 必要な承認の数              | 0       |
+| 必須のステータスチェック    | `check` |
+| ブランチを最新に保つ        | 無効    |
+| 会話の解決を必須にする      | 有効    |
+| force push とブランチの削除 | 禁止    |
+| 管理者にも強制する          | 無効    |
+
+設定の理由は #58 にあります。
+
+- 承認の数を 0 にしているのは、自分の PR を自分で承認できないため
+- 管理者に強制しないのは、緊急時の退路を残すため
+- 必須のチェックは `check` だけ
+  - `Deploy` ワークフローのジョブは PR では動かないので、必須にすると PR では永久に満たされない
+
+## バックアップのバケットの保持期間
+
+`kemov-backup` の prefix ごとのライフサイクルルールを設定します。どの prefix を何日にするかと、その理由は [データ](../reference/data.md#保持期間) にあります。
+
+`lifecycle add` を、リポジトリのルートで実行します。
+
+- `channel/` にもとからあった 30 日の規則は、並べて足すのではなく置き換える。1 つの prefix には規則を 1 つしか置けないため
+- `-y` は、`add` が尋ねる確認を飛ばす。確認が出ると、ループが途中で止まる
 
 ```sh
 bun wrangler r2 bucket lifecycle add kemov-backup expire-video-30d video/ --expire-days 30 -y
@@ -49,36 +115,48 @@ for t in channel_snapshot_exclusion video_override footprints_event footprints_e
 done
 ```
 
-Not `lifecycle set --file <json>`: `set` replaces the bucket's whole ruleset, and the existing "Default Multipart Abort Rule" (7 days, all prefixes) would be lost if it were left out of that file. `add` and `remove` only touch the one rule named, so the calls above cannot touch it.
+`lifecycle set --file <json>` は使いません。`set` はバケットの規則をまるごと置き換えるので、そのファイルに書き忘れると、もとからある「Default Multipart Abort Rule」（7 日、すべての prefix）が消えます。`add` と `remove` は名指しした 1 つの規則にしか触れないので、上のコマンドはその規則に触れません。
 
-**The trailing slash matters.** `genet_tune` as a prefix also matches `genet_tune_attribute/`, and `video` matches `video_override/`, which would expire either at the wrong retention. Every prefix above ends in `/` for this reason.
+prefix の末尾のスラッシュは省けません。`genet_tune` を prefix にすると `genet_tune_attribute/` にも一致し、`video` は `video_override/` にも一致します。どちらも誤った保持期間で消えてしまいます。上の prefix がすべて `/` で終わるのはこのためです。
 
-Check with `bun wrangler r2 bucket lifecycle list kemov-backup`; it should list 21 rules — the 20 above plus the Default Multipart Abort Rule that was already there.
+`bun wrangler r2 bucket lifecycle list kemov-backup` で確かめます。上で足した 20 個と、もとからある Default Multipart Abort Rule の、計 21 個が並ぶはずです。
 
-## Creating the Public Bucket
+## 公開用のバケット
 
-The bucket does not exist until created once, before deploying the code that binds it:
+`kemov-public` は、一度作るまで存在しません。このバケットをバインドするコードをデプロイする前に作ります。
 
 ```sh
 bun wrangler r2 bucket create kemov-public
 ```
 
-## Rolling Back a Deploy
+## デプロイの戻し方
 
-To roll back, revert the commit and let the workflow redeploy. `bun wrangler rollback` is the faster route when what is deployed is already broken.
+戻し方は 2 つあります。デプロイしたものが既に壊れているなら、先に `wrangler rollback` ですぐ戻し、そのあとコミットを revert します。
 
-## The Hostname
+どちらの方法でも、D1 に適用したマイグレーションとデータは戻りません。スキーマを戻すときは [復旧](recovery.md#ロールバック) を見てください。
 
-`wrangler.toml` claims `kemov.nanase.cc` as a custom domain, which is why the zone's DNS record is created and kept by Cloudflare rather than by hand.
+### すぐに戻す: `wrangler rollback`
 
-`workers_dev` is off. The subdomain Cloudflare generates for a worker is built from the account's email address with the local part left in it, and a successful deploy prints that URL — into the Actions logs of a public repository, which anyone can read. Nothing needs it once the custom domain exists. Never turn it off before the domain is in place: it is the only other way to reach the worker.
+Cloudflare に残っている前の版の worker へ切り替えます。リポジトリは変わらないので、次に `main` へ push するとまたデプロイされます。
 
-Its credentials come from a GitHub **environment** rather than from repository secrets. An environment secret is only readable by a job that names the environment; a repository secret is readable by every workflow in the repository, including one running from a pull request branch, and most of them have no business holding a token that can deploy.
+```sh
+bun wrangler deployments list                               # 直近のデプロイと、その版の ID を見る
+bun wrangler rollback <version-id> --message "<戻す理由>"   # 戻す先の版を指定して戻す
+```
 
-| Setting             | Value                                           |
-| ------------------- | ----------------------------------------------- |
-| Environment         | `cloudflare`                                    |
-| Deployment branches | `main` only                                     |
-| Secrets             | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` |
+### コミットを戻す: revert
 
-Settings → Environments → New environment → name it `cloudflare` → under Deployment branches choose "Selected branches and tags" and add `main` → then Add environment secret twice, once per name above. The token needs the "Edit Cloudflare Workers" template plus D1 Edit, because the worker carries a D1 binding, and DNS Edit on the zone, because the custom domain above is a DNS record.
+`main` は PR を必須にしているので、revert も PR で入れます。マージすると `Deploy` ワークフローがデプロイし直します。
+
+```sh
+git switch -c revert-<topic> origin/main
+git revert <commit>
+git push -u origin revert-<topic>
+gh pr create --fill
+```
+
+コードを変えずに、いまの `main` をデプロイし直すだけなら、ワークフローを手で動かします。
+
+```sh
+gh workflow run Deploy --ref main
+```

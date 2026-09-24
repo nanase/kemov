@@ -1,31 +1,62 @@
-# Recovery
+# 復旧
 
-## Rolling Back
+D1 のデータやスキーマが壊れたときに戻す手順です。何が壊れたかで、戻し方を選びます。デプロイしたコードを戻す手順は [設定とデプロイ](deployment.md#デプロイの戻し方) にあります。
 
-D1 has no `migrations revert`. There are two routes, and what went wrong decides which.
+```mermaid
+flowchart TD
+  start["何が壊れたか"] --> q1{"データが消えた<br/>または壊れた"}
+  q1 -- "30 日以内のこと" --> tt["Time Travel<br/>データベースをある時点へ巻き戻す"]
+  q1 -- "30 日より前<br/>または D1 そのもの" --> backup["バックアップから戻す<br/>R2 の kemov-backup"]
+  start --> q2{"スキーマだけが<br/>誤っている"}
+  q2 --> rb["rollback ファイル<br/>マイグレーションを取り消す"]
+  classDef ask fill:#f6efe0,stroke:#c9ad6e,color:#2b2413
+  classDef route fill:#e3f1ed,stroke:#7fb5aa,color:#12302a
+  class start,q1,q2 ask
+  class tt,backup,rb route
+```
 
-**Data was lost or corrupted — time travel.** D1 keeps the last 30 days restorable on Workers Paid, which is the plan this project runs on; on the free plan the window is 7 days. This rewinds the data along with the schema, so anything collected after the chosen timestamp is rewound too.
+## ロールバック
+
+D1 には `migrations revert` がありません。戻す道は 2 つあり、何が起きたかでどちらかに決まります。
+
+### Time Travel
+
+データが消えたか壊れたときに使います。D1 は、Workers Paid のプランなら直近 30 日の任意の時点に戻せます。このプロジェクトは Workers Paid で動いています。無料のプランなら 7 日です。
+
+スキーマと一緒にデータも巻き戻ります。選んだ時刻より後に収集したものは失われます。
 
 ```sh
 bun wrangler d1 time-travel info kemov
 bun wrangler d1 time-travel restore kemov --timestamp <ISO 8601>
 ```
 
-**Only the schema is wrong — the paired rollback file.** It drops what the migration created and deletes its row from `d1_migrations`, so a corrected file applies cleanly afterwards. What was in the dropped tables does not come back this way.
+### rollback ファイル
+
+スキーマだけが誤っているときに使います。対になる rollback ファイルは、マイグレーションが作ったものを削除し、`d1_migrations` からその行を消します。そのため、直したファイルをあとで問題なく適用できます。削除した表にあったデータは、この道では戻りません。
 
 ```sh
 bun wrangler d1 execute kemov --local --file migrations/rollback/0001_create_initial_schema.sql
 ```
 
-Read that file before running it against anything but a local database. For a migration that has been live, losing a table is worse than the schema being wrong, and time travel is the route back.
+手元のデータベース以外に対して実行するときは、先にそのファイルを読んでください。本番で使われてきたマイグレーションでは、スキーマが誤っていることより、表を失うことのほうが悪い結果になります。その場合の戻り道は Time Travel です。
 
-## Restoring from a Backup
+## バックアップからの復元
 
-The steps below were run end to end on 2026-09-08, against a real remote D1 and the real bucket, and are written from the commands that were actually issued for the three tables that existed then — `channel`, `video` and `channel_snapshot`. Step 1's command has since been generalized to cover every table `BACKED_UP_TABLES` added afterward. What that generalization was and was not checked against is in [What This Has Not Been Tried On](#what-this-has-not-been-tried-on) after these steps; a restore is not the moment to find out which is which.
+R2 の `kemov-backup` にある SQL のファイルを、空のデータベースに適用して戻します。やることは次の 3 つです。
 
-The target was a database created for the test, empty and never migrated. Substitute its name for `kemov-restore` throughout.
+1. 戻す先のデータベースに、`migrations/` のすべてのファイルをファイル名の順に適用する
+2. `kemov-backup` のファイルを、`channel` → `video` → `channel_snapshot` → …と `BACKED_UP_TABLES` の順に適用する。`source_whitelist` は最新のファイルを 1 つだけ適用する
+3. 戻った行の数を数える
 
-**1. Give it the schema.** The backup files hold `INSERT` statements and nothing else, so every one of them fails on a database with no tables. Apply every file in `migrations/`, in filename order — not only `0001`: a table `BACKED_UP_TABLES` added later, such as `revision` or `publication` (from `0005_add_revision_and_publication.sql`), needs its own migration applied first, or its backup file fails the same way:
+戻す先は空のデータベースを前提にしています。`kemov` そのものへ戻すときは、先に空にする手順が必要です（[`kemov` そのものへ戻す](#kemov-そのものへ戻す)）。
+
+以下の `kemov-restore` は、戻す先のデータベースの名前に置き換えて読んでください。
+
+### 1. スキーマを与える
+
+バックアップのファイルは `INSERT` 文しか持たないので、表の無いデータベースではどれも失敗します。`migrations/` のすべてのファイルを、ファイル名の順に適用します。
+
+`0001` だけでは足りません。`BACKED_UP_TABLES` にあとから足した表、たとえば `revision` や `publication`（`0005_add_revision_and_publication.sql` が作る）は、先にそのマイグレーションを適用しないと、同じようにバックアップのファイルが失敗します。
 
 ```sh
 for f in migrations/*.sql; do
@@ -33,26 +64,48 @@ for f in migrations/*.sql; do
 done
 ```
 
-Step 1 also seeds `source_whitelist` with the 13 entries migration `0008` carries. Its backup file is different from the others: it starts with `DELETE FROM source_whitelist;`, so applying it leaves exactly the list that was backed up, and an entry somebody had removed does not come back with the seed. For the same reason, apply only the newest file of that table, not several in turn — the last one applied is the list you get. Only tables whose rows are one set as a whole are written this way (`replace` in `TableShape`); a table that accumulates records must not be, since it would throw away whatever was written after the backup.
+この手順で、`source_whitelist` にはマイグレーション `0008` が持つ 13 件の初期値も入ります。
 
-**2. Fetch a file and apply it, `channel` first.** `video` and `channel_snapshot` both carry a foreign key to `channel`, and the schema refuses a row whose channel is not there yet. Then `video`, then every `channel_snapshot` day. Each file repeats this in its own header, so a file found on its own is enough.
+`source_whitelist` のバックアップのファイルは、他と違って `DELETE FROM source_whitelist;` で始まります。適用すると、バックアップした時点の一覧がそのまま残り、誰かが取り除いた項目が初期値と一緒に戻ってくることはありません。同じ理由で、この表は最新のファイルだけを適用し、複数のファイルを順に適用しないでください。最後に適用したものが、そのまま一覧になります。
+
+この書き方をするのは、行の集まりが全体で 1 つの答えになる表だけです（`TableShape` の `replace`）。記録が積み重なる表でこれをすると、バックアップの後に書いたものを捨ててしまいます。
+
+### 2. `channel` から順にファイルを適用する
+
+`video` と `channel_snapshot` はどちらも `channel` への外部キーを持ち、スキーマはチャンネルがまだ無い行を拒みます。`channel` の次に `video`、その次に `channel_snapshot` の各日を適用します。この順序はファイルごとの見出しにも書いてあるので、ファイルが 1 つだけ見つかった場合でも分かります。
 
 ```sh
 bun wrangler r2 object get kemov-backup/channel/2026-09-08.sql --file channel.sql --remote
 bun wrangler d1 execute kemov-restore --remote --file channel.sql
 ```
 
-**3. Check.** The run this was written from put back 11 channels, 6,433 videos and 1,452 snapshots — 7,896 rows, and every column of every one of them equal to the source.
+### 3. 確かめる
 
-Every statement is `ON CONFLICT DO NOTHING`, so applying a file twice does nothing the second time: the re-run reported `rows_written: 0` and left the counts alone. A restore is not a calm operation and it should not also be a careful one.
+戻した先で、表ごとの行の数を `count(*)` で数えます。元のデータベースがまだ読めるなら、同じように数えて比べます。
 
-### What This Has Not Been Tried On
+どの文も `ON CONFLICT DO NOTHING` なので、同じファイルを 2 回適用しても 2 回目は何もしません。復元は落ち着いて行える作業ではありません。そのため、同じファイルを重ねて適用しても害が無い作りにしています。
 
-**The rest of this is reasoning, not a rehearsal against the real database or bucket.** It is the best answer available for each case; one part of it has since been checked locally, noted below where it applies.
+### この手順を確かめた範囲
 
-**Restoring into `kemov` itself.** `DO NOTHING` puts back a row that is missing and leaves a row that is present alone, whatever it now says. Against a database whose rows are wrong rather than gone — a bad migration, a job that wrote nonsense — it would change nothing and report success. Emptying it first is what would make a restore mean anything.
+この手順は、2026-09-08 に Cloudflare 上の D1 と本番のバケットを使って、最後まで実行しました。当時あった 3 つの表 `channel`・`video`・`channel_snapshot` に対して、実際に打ったコマンドをもとに書いています。戻す先は、試験のために作った、空でマイグレーションもしていないデータベースでした。
 
-`revision` and `publication` each refuse a DELETE by trigger (see [Backups](../reference/data.md#backups) above): append-only holds here the same way it holds in `worker/test/backup.test.ts`'s `clearEverything`, so the trigger has to come off for the DELETE below and go back on right after, the same way that test does it. The two `CREATE TRIGGER` statements are copied from `migrations/0005_add_revision_and_publication.sql`, so this drifts if that migration's trigger text ever changes without this being updated too:
+- 11 チャンネル・6,433 本の動画・1,452 件のスナップショット、計 7,896 行が戻った
+- どの行のどの列も、元と一致した
+- 同じファイルを再実行すると `rows_written: 0` と報告し、件数は変わらなかった
+
+その後、1 の手順のコマンドは、`BACKED_UP_TABLES` にあとから足したすべての表を含むように一般化しました。一般化した部分を何で確かめ、何で確かめていないかは、次の [まだ試していない範囲](#まだ試していない範囲) にあります。復元を始める前に読んでおいてください。
+
+## まだ試していない範囲
+
+ここから先は、本物のデータベースやバケットでの予行ではなく、推論です。どの場合も、いま出せる最善の答えを書いています。一部はその後手元で確かめたので、該当する箇所に記します。
+
+### `kemov` そのものへ戻す
+
+`DO NOTHING` は、無い行を戻し、ある行は中身が何であれそのままにします。行が消えたのではなく中身が誤っているデータベース、たとえば誤ったマイグレーションやおかしな値を書いたジョブの後では、何も変えずに成功と報告します。復元に意味を持たせるには、先に空にする必要があります。
+
+`revision` と `publication` は、どちらもトリガーで `DELETE` を拒みます（[管理サイト](../reference/admin.md#設計の方針)）。追記だけという性質は、`worker/test/backup.test.ts` の `clearEverything` と同じくここでも効きます。そのため、次の `DELETE` のあいだだけトリガーを外し、すぐに付け直します。テストも同じことをしています。
+
+2 つの `CREATE TRIGGER` の文は `migrations/0005_add_revision_and_publication.sql` から写しています。そのマイグレーションのトリガーの文を変えたのにここを直さなければ、食い違います。
 
 ```sh
 bun wrangler d1 execute kemov --remote --command "
@@ -94,10 +147,26 @@ END;
 "
 ```
 
-Children before parents throughout — this is `BACKED_UP_TABLES` in reverse, the same order [Rolling Back](#rolling-back) uses and for the same reason. `collect_task` and `chat_author` are not in the backup and would not come back; they rebuild themselves within a tick or two. Losing them is the cost of emptying, so check [time travel](#rolling-back) first: inside 30 days it returns the whole database to a moment, which is a better answer than a restore whenever it is available.
+どこでも、子の表を親の表より先に消します。これは `BACKED_UP_TABLES` の逆順で、[rollback ファイル](#rollback-ファイル) と同じ順序であり、理由も同じです。
 
-**Checked locally, not against the real database or bucket.** On 2026-09-17, against a local D1 (`--persist-to`, not the project's regular dev database): applying every migration in filename order — step 1's generalized form — created every table `BACKED_UP_TABLES` lists; applying one hand-written `INSERT ... ON CONFLICT DO NOTHING` file, one statement per table in `BACKED_UP_TABLES` order, put one row in each without a foreign-key error; and the `DROP TRIGGER` / `DELETE` / `CREATE TRIGGER` block above, run against a database already carrying those rows, emptied every table, left both triggers refusing a further `DELETE` exactly as before, and accepted the same file a second time to put the rows back. What this did not use is a real backup file: `genet_person`, `footprints_event` and the rest have none yet, because the nightly job has not run with them in `BACKED_UP_TABLES` before this PR merges, so the hand-written file above stood in for them. Neither check touched the real `kemov` database or the real `kemov-backup` bucket.
+`collect_task` と `chat_author` はバックアップに無く、戻りません。どちらも 1〜2 回の tick で作り直されます。これらを失うのは空にすることの代償なので、先に [Time Travel](#time-travel) を検討してください。30 日以内なら、データベース全体をある時点へ戻せます。使えるときは、復元よりそちらが良い答えです。
 
-**`migrations apply` against a database `wrangler.toml` does not name.** Step 1 above applies the files directly because that is what was run. `bun wrangler d1 migrations apply kemov --remote` is the documented route for the database this repository declares, and whether it resolves some other name was not established either way.
+### 手元で確かめたこと
 
-Applying the files directly, as step 1 does, leaves `d1_migrations` empty. That is right for a database read once and thrown away, and wrong for one meant to replace `kemov`, where the next `migrations apply` would retry `0001` against tables that already exist.
+本物のデータベースやバケットではなく、手元で確かめました。2026-09-17 に、手元の D1（`--persist-to` を使い、プロジェクトのふだんの開発用データベースとは別）で次を確かめました。
+
+- すべてのマイグレーションをファイル名の順に適用すると（1 の手順を一般化した形）、`BACKED_UP_TABLES` のすべての表ができた
+- 手で書いた `INSERT ... ON CONFLICT DO NOTHING` のファイルを適用すると、外部キーのエラー無しに、どの表にも 1 行ずつ入った
+  - ファイルは表 1 つにつき 1 文で、`BACKED_UP_TABLES` の順に並べた
+- それらの行があるデータベースに、上の `DROP TRIGGER` / `DELETE` / `CREATE TRIGGER` のまとまりを実行した
+  - すべての表が空になった
+  - 2 つのトリガーは、前と同じように以後の `DELETE` を拒んだ
+  - 同じファイルをもう一度適用すると、行が戻った
+
+本物のバックアップのファイルは使っていません。確かめた時点では、`genet_person` や `footprints_event` などの表は、夜間のジョブがまだ一度も書いていませんでした。そのため、手で書いたファイルで代えました。どちらの確認も、本物の `kemov` のデータベースと本物の `kemov-backup` のバケットには触れていません。
+
+### `wrangler.toml` が名指ししないデータベースへの `migrations apply`
+
+1 の手順がファイルを直接適用するのは、実際にそう実行したからです。`bun wrangler d1 migrations apply kemov --remote` は、このリポジトリが宣言するデータベースに対する文書どおりの道です。それが別の名前のデータベースにも使えるかどうかは、確かめていません。
+
+1 の手順のようにファイルを直接適用すると、`d1_migrations` は空のままになります。一度読んで捨てるデータベースならそれで構いません。`kemov` の代わりにするデータベースでは誤りで、次の `migrations apply` が、既に表があるのに `0001` をもう一度適用しようとします。
