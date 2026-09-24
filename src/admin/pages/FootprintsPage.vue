@@ -196,6 +196,7 @@ onMounted(() => {
               <th>題</th>
               <th>メンバー</th>
               <th>出典</th>
+              <th>event_id</th>
             </tr>
           </thead>
           <tbody>
@@ -232,6 +233,7 @@ onMounted(() => {
                 <span v-if="e.sourcePending" class="chip alarm">出典の確認待ち</span>
                 <span v-else class="sub">{{ e.sources.length }} 件</span>
               </td>
+              <td class="num sub">{{ e.eventId }}</td>
             </tr>
           </tbody>
         </table>
