@@ -91,7 +91,13 @@ async function load(): Promise<void> {
     saved.value = body.members;
 
     // Unsaved changes survive a reload: the order is reconciled with whoever
-    // joined or left meanwhile rather than replaced by the saved one.
+    // joined or left meanwhile rather than replaced by the saved one. A member
+    // somebody else has since added under the same id is the saved one now, so
+    // the unsaved copy goes - it would only be refused again.
+    const taken = new Set(savedIds.value);
+
+    draft.added = draft.added.filter((a) => !taken.has(a.channelId));
+
     if (draft.order !== null) {
       draft.order = reconcileOrder(draft.order, [...savedIds.value, ...draft.added.map((a) => a.channelId)]);
     }
@@ -131,6 +137,20 @@ function addToList(): void {
   if (member === null) return;
 
   member.channelId = member.channelId.trim();
+
+  // Refused here rather than at 保存: a repeated id would show twice in the
+  // list, and the server's 409 for it would read as "somebody else changed
+  // the list" and come back on every later save.
+  if (member.channelId === '') {
+    showToast(MEMBER_TEXT.channelIdEmpty);
+    return;
+  }
+
+  if (orderedIds.value.includes(member.channelId)) {
+    showToast(MEMBER_TEXT.channelIdTaken);
+    return;
+  }
+
   draft.order = [...orderedIds.value, member.channelId];
   draft.added.push(member);
   newForm.value = null;

@@ -93,6 +93,8 @@ export const MEMBER_TEXT = {
   discard: '元に戻す',
   addHeading: 'メンバーを足す',
   addToList: '一覧に足す',
+  channelIdEmpty: 'channel_id を書いてください',
+  channelIdTaken: 'この channel_id はすでに一覧にあります',
   removeAdded: '削除',
   remove: '削除',
   removeConfirm: '削除する',
