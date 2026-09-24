@@ -2,6 +2,7 @@ import type { Env } from '../lib/env';
 import { runBackup } from './backup';
 import { runChannelStats } from './channel-stats';
 import { runChatReplay } from './chat-replay';
+import { runRetention } from './retention';
 import { runVideoDiscover, runVideoUpdate } from './video';
 
 /**
@@ -13,7 +14,10 @@ import { runVideoDiscover, runVideoUpdate } from './video';
  * says so.
  */
 const jobsByCron = new Map<string, readonly string[]>([
-  ['*/10 * * * *', ['channel-stats', 'video-discover', 'video-update']],
+  // retention runs on one tick an hour and returns straight away on the
+  // other five (see isRetentionTick), rather than on a cron of its own: a
+  // trigger of its own would be one more invocation an hour (#223).
+  ['*/10 * * * *', ['channel-stats', 'video-discover', 'video-update', 'retention']],
   ['* * * * *', ['chat-replay']],
   ['20 0 * * *', ['backup']],
 ]);
@@ -38,6 +42,7 @@ const jobHandlers: JobHandlers = {
   backup: runBackup,
   'channel-stats': runChannelStats,
   'chat-replay': runChatReplay,
+  retention: runRetention,
   'video-discover': runVideoDiscover,
   'video-update': runVideoUpdate,
 };

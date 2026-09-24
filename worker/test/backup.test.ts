@@ -234,7 +234,8 @@ describe('runBackup', () => {
 
     expect(keys).toEqual([
       backupKey('channel', '2026-09-08'),
-      backupKey('channel_snapshot', '2026-09-06'),
+      // Not 2026-09-06 as well: a channel_snapshot day is written the night
+      // after or not at all (#223, lateDays). revision still catches up.
       backupKey('channel_snapshot', '2026-09-07'),
       backupKey('channel_snapshot_exclusion', '2026-09-08'),
       backupKey('footprints_event', '2026-09-08'),
@@ -273,6 +274,9 @@ describe('runBackup', () => {
       ),
     );
 
+    // Two nights, each writing the day before it, as production does: a
+    // channel_snapshot day not written the night after is never written.
+    await runBackup(env, new Date('2026-09-07T00:20:00Z'));
     await runBackup(env, new Date('2026-09-08T00:20:00Z'));
 
     const files = await Promise.all(
@@ -421,7 +425,7 @@ describe('runBackup', () => {
     const keys = (await env.BACKUP.list()).objects.map((object) => object.key);
 
     expect(keys).toContain(backupKey('channel', '2026-09-08'));
-    expect(keys).toContain(backupKey('channel_snapshot', '2026-09-06'));
+    expect(keys).toContain(backupKey('channel_snapshot', '2026-09-07'));
     expect(error).toHaveBeenCalledWith('backup: video failed', expect.any(Error));
 
     vi.restoreAllMocks();
@@ -454,6 +458,55 @@ describe('runBackup', () => {
     for (const subscriberCount of [0, 999, 1_000, total - 1]) {
       expect(sql).toContain(`, ${subscriberCount}, 200, 3)`);
     }
+  });
+
+  // #223. A day written late lives in R2 as long as one written on time,
+  // and its rows are older when it starts, so a missed night stays missed.
+  test('does not write a snapshot day older than yesterday, and still catches revision up', async () => {
+    await seed();
+
+    await runBackup(env, new Date('2026-09-09T00:20:00Z'));
+
+    const keys = (await env.BACKUP.list()).objects.map((object) => object.key);
+
+    // Yesterday alone, which had no snapshots and is written as such.
+    expect(keys.filter((key) => key.startsWith('channel_snapshot/'))).toEqual([
+      backupKey('channel_snapshot', '2026-09-08'),
+    ]);
+    expect(keys.filter((key) => key.startsWith('revision/')).sort()).toEqual([
+      backupKey('revision', '2026-09-06'),
+      backupKey('revision', '2026-09-07'),
+      backupKey('revision', '2026-09-08'),
+    ]);
+  });
+
+  // #223. An unavailable row's values are as old as its last_available_at,
+  // and a file in video/ lives 28 days, so only the first 2 days go in.
+  test('leaves out of video/ an unavailable video last fetched more than 2 days before', async () => {
+    await insertChannel('UCaaa');
+
+    for (const [videoId, lastAvailableAt] of [
+      ['old', '2026-09-06T00:19:59Z'],
+      ['edge', '2026-09-06T00:20:00Z'],
+      ['undated', null],
+    ] as const) {
+      await insertVideo(videoId, 'UCaaa');
+      await env.DB.prepare(`UPDATE video SET availability = 'unavailable', last_available_at = ?2 WHERE video_id = ?1`)
+        .bind(videoId, lastAvailableAt)
+        .run();
+    }
+
+    await insertVideo('public', 'UCaaa');
+
+    await runBackup(env, new Date('2026-09-08T00:20:00Z'));
+
+    const sql = await (await env.BACKUP.get(backupKey('video', '2026-09-08')))!.text();
+
+    expect(sql).toContain(`-- 2 rows of video.`);
+    expect(sql).toContain(`('edge',`);
+    expect(sql).toContain(`('public',`);
+    expect(sql).not.toContain(`('old',`);
+    expect(sql).not.toContain(`('undated',`);
   });
 
   test('writes nothing for a database with no snapshots', async () => {

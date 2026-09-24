@@ -7,8 +7,8 @@ import wranglerConfig from '../../wrangler.toml?raw';
 import { jobsFor, runScheduled } from '../src/collector';
 
 describe('jobsFor', () => {
-  test('runs the three ten-minute jobs', () => {
-    expect(jobsFor('*/10 * * * *')).toEqual(['channel-stats', 'video-discover', 'video-update']);
+  test('runs the three ten-minute jobs, and retention on the same tick', () => {
+    expect(jobsFor('*/10 * * * *')).toEqual(['channel-stats', 'video-discover', 'video-update', 'retention']);
   });
 
   test('runs chat-replay every minute', () => {

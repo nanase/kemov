@@ -112,7 +112,17 @@ async function backUpDayAtATime(env: Env, table: TableShape, dayColumn: string, 
   // written once and never revisited, so it may only be written when the day
   // can no longer change.
   const through = previousDay(today);
-  const first = dayOf(earliest.first);
+  let first = dayOf(earliest.first);
+
+  // A day too late to write is left unwritten rather than written late: see
+  // `lateDays` on TableShape.
+  if (table.lateDays !== undefined) {
+    let oldest = through;
+
+    for (let late = 0; late < table.lateDays; late++) oldest = previousDay(oldest);
+
+    if (first < oldest) first = oldest;
+  }
 
   if (first > through) return 0;
 
@@ -137,10 +147,19 @@ async function backUpDayAtATime(env: Env, table: TableShape, dayColumn: string, 
 }
 
 /** Writes a whole table under today's date, replacing any file already there. */
-async function backUpWholeTable(env: Env, table: TableShape, today: string): Promise<number> {
-  const rows = await readAll(env.DB, table);
+async function backUpWholeTable(env: Env, table: TableShape, today: string, now: Date): Promise<number> {
+  const rows = await readAll(env.DB, table, table.keep?.(now));
 
-  await env.BACKUP.put(backupKey(table.name, today), toSql(table, rows, `Every row, as of ${today}.`));
+  await env.BACKUP.put(
+    backupKey(table.name, today),
+    toSql(
+      table,
+      rows,
+      table.keep === undefined
+        ? `Every row, as of ${today}.`
+        : `Every row as of ${today} but the ones #223 keeps out of R2 - see keep in BACKED_UP_TABLES.`,
+    ),
+  );
   console.log(`backup: wrote ${rows.length} rows of ${table.name} for ${today}`);
 
   return rows.length;
@@ -169,7 +188,7 @@ export async function runBackup(env: Env, now: Date = new Date()): Promise<void>
       if (table.dayColumn !== undefined) {
         await backUpDayAtATime(env, table, table.dayColumn, today);
       } else {
-        await backUpWholeTable(env, table, today);
+        await backUpWholeTable(env, table, today, now);
       }
     } catch (error) {
       console.error(`backup: ${table.name} failed`, error);

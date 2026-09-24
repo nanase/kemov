@@ -17,6 +17,7 @@
  * moment that program is needed is the moment nothing else is working.
  */
 
+import { backupUnavailableCutoff } from './retention';
 import { formatTimestamp } from './time';
 
 /** A string literal with its quotes doubled, or NULL. */
@@ -100,6 +101,21 @@ export interface TableShape {
    * Meaningful only for a table replaced whole, never one with a `dayColumn`.
    */
   readonly replace?: boolean;
+  /**
+   * The rows of a table replaced whole that the file leaves out, as a SQL
+   * condition for the rows it keeps, given when the file is written. Only
+   * `video` has one: its unavailable rows are held to 30 days in R2 as well
+   * as in D1 (#223, `BACKUP_UNAVAILABLE_DAYS` in ./retention.ts).
+   */
+  readonly keep?: (now: Date) => { clause: string; bindings: unknown[] };
+  /**
+   * For a `dayColumn` table, how many days before yesterday a run may still
+   * write when it finds them missing. Unset means as many as are missing, up
+   * to `MAX_DAYS_PER_RUN` a run. `channel_snapshot` has 0 (#223): a day
+   * written late lives in R2 for as long as one written on time, and its
+   * rows are a day older when it starts.
+   */
+  readonly lateDays?: number;
 }
 
 /**
@@ -163,14 +179,20 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
       'actual_start_time',
       'actual_end_time',
       'fetched_at',
+      'last_available_at',
     ],
     conflict: ['video_id'],
+    keep: (now) => ({
+      clause: `(availability <> 'unavailable' OR last_available_at >= ?1)`,
+      bindings: [backupUnavailableCutoff(now)],
+    }),
   },
   {
     name: 'channel_snapshot',
     columns: ['channel_id', 'fetched_at', 'subscriber_count', 'view_count', 'video_count'],
     conflict: ['channel_id', 'fetched_at'],
     dayColumn: 'fetched_at',
+    lateDays: 0,
   },
   {
     name: 'channel_snapshot_exclusion',

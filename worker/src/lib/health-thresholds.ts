@@ -6,8 +6,11 @@
  * Every figure here allows a few missed runs before it fires. A single tick's
  * failure recovers on its own - the next tick, or the next night's backup -
  * and firing on that would mean a page every time YouTube refuses a request
- * once.
+ * once. The exception is `RETENTION_STALE_GRACE_MINUTES`, for the reason
+ * given there.
  */
+
+import { RETENTION_DAYS, RETENTION_TICK_MINUTES } from './retention';
 
 /**
  * How stale `lastSuccessAt` may be, in minutes, before channel-stats,
@@ -57,6 +60,30 @@ export const BACKUP_FRESH_DAYS_AGO: Readonly<Record<string, number>> = {
  * for.
  */
 export const BACKUP_STALE_GRACE_DAYS = 2;
+
+/**
+ * Minutes past `RETENTION_DAYS` the oldest row ../collector/retention.ts
+ * deletes may reach before `/api/health` reports the deletion as behind.
+ *
+ * One tick, for the cron's own jitter: an hourly run can start a few seconds
+ * later than the one before it, and the oldest row then passes 30 days by
+ * that much. Anything further is data held beyond the policy - one missed
+ * hourly run is enough to get there - and unlike the missed runs the rest of
+ * this file allows for, it is worth hearing about even though the next run
+ * catches up by itself (#223).
+ */
+export const RETENTION_STALE_GRACE_MINUTES = RETENTION_TICK_MINUTES;
+
+/**
+ * Whether `oldest` - the oldest instant a row the retention job deletes is
+ * dated by - is past the policy and the grace above. Null is a table with
+ * nothing in it, which is not behind.
+ */
+export function isRetentionStale(oldest: string | null, now: Date): boolean {
+  const elapsed = minutesSince(oldest, now);
+
+  return elapsed !== null && elapsed > RETENTION_DAYS * 24 * 60 + RETENTION_STALE_GRACE_MINUTES;
+}
 
 /** Minutes between `at` and `now`, or null when `at` is null. */
 function minutesSince(at: string | null, now: Date): number | null {

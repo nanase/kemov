@@ -204,6 +204,86 @@ describe('listChannels', () => {
     });
   });
 
+  // #223: retention keeps nothing older than 30 days less an hour, so the
+  // snapshot at or before 30 days back is gone and the oldest one after it
+  // stands in.
+  test('reads the 30-day change against the oldest snapshot retention left', async () => {
+    await insertChannel('UCaaa');
+    await insertSnapshot('UCaaa', '2026-08-08T13:00:00Z', { subscribers: 1000 });
+    await insertSnapshot('UCaaa', '2026-08-08T13:10:00Z', { subscribers: 1010 });
+    await insertSnapshot('UCaaa', '2026-09-07T12:00:00Z', { subscribers: 1200 });
+
+    const { channels } = await listChannels(env);
+
+    expect(channels[0]?.per30Days.subscriberCount).toEqual({
+      value: 200,
+      over: { from: '2026-08-08T13:00:00Z', to: '2026-09-07T12:00:00Z', seconds: 30 * 24 * 60 * 60 - 60 * 60 },
+    });
+  });
+
+  // The older snapshot still wins when it is there: the stand-in is only for
+  // one retention took away.
+  test('prefers the snapshot at or before 30 days back over a later one', async () => {
+    await insertChannel('UCaaa');
+    await insertSnapshot('UCaaa', '2026-08-08T12:00:00Z', { subscribers: 1000 });
+    await insertSnapshot('UCaaa', '2026-08-08T13:00:00Z', { subscribers: 1010 });
+    await insertSnapshot('UCaaa', '2026-09-07T12:00:00Z', { subscribers: 1200 });
+
+    const { channels } = await listChannels(env);
+
+    expect(channels[0]?.per30Days.subscriberCount).toMatchObject({ value: 200 });
+  });
+
+  // A channel collected for less than 30 days less the tolerance still has
+  // too short a history, not a gap: the stand-in reaches no further than
+  // three days in.
+  test('still reports history too short when the oldest snapshot is beyond the tolerance', async () => {
+    await insertChannel('UCaaa');
+    await insertSnapshot('UCaaa', '2026-08-11T12:00:01Z', { subscribers: 1000 });
+    await insertSnapshot('UCaaa', '2026-09-07T12:00:00Z', { subscribers: 1200 });
+
+    const { channels } = await listChannels(env);
+
+    expect(channels[0]?.per30Days.subscriberCount).toEqual({ value: null, reason: 'history too short' });
+  });
+
+  test('takes a stand-in exactly at the edge of the tolerance', async () => {
+    await insertChannel('UCaaa');
+    await insertSnapshot('UCaaa', '2026-08-11T12:00:00Z', { subscribers: 1000 });
+    await insertSnapshot('UCaaa', '2026-09-07T12:00:00Z', { subscribers: 1200 });
+
+    const { channels } = await listChannels(env);
+
+    expect(channels[0]?.per30Days.subscriberCount).toMatchObject({ value: 200 });
+  });
+
+  // Only the 30-day period has an older end retention removes. A day's
+  // change on a channel's first day stays history too short.
+  test('does not stand a later snapshot in for the day period', async () => {
+    await insertChannel('UCaaa');
+    await insertSnapshot('UCaaa', '2026-09-06T13:00:00Z', { subscribers: 1000 });
+    await insertSnapshot('UCaaa', '2026-09-07T12:00:00Z', { subscribers: 1200 });
+
+    const { channels } = await listChannels(env);
+
+    expect(channels[0]?.perDay.subscriberCount).toEqual({ value: null, reason: 'history too short' });
+  });
+
+  test('does not stand an excluded tick in', async () => {
+    await insertChannel('UCaaa');
+    await insertSnapshot('UCaaa', '2026-08-08T13:00:00Z', { subscribers: 1000 });
+    await insertSnapshot('UCaaa', '2026-08-08T13:10:00Z', { subscribers: 1010 });
+    await insertSnapshot('UCaaa', '2026-09-07T12:00:00Z', { subscribers: 1200 });
+    await insertExclusion('UCaaa', '2026-08-08T13:00:00Z');
+
+    const { channels } = await listChannels(env);
+
+    expect(channels[0]?.per30Days.subscriberCount).toMatchObject({
+      value: 190,
+      over: { from: '2026-08-08T13:10:00Z' },
+    });
+  });
+
   // The excluded tick's own value must not surface anywhere this endpoint
   // reads channel_snapshot from - not the current value, and not the change
   // computed against it.

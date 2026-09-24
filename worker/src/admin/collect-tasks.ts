@@ -169,7 +169,15 @@ export async function markCollectTaskUnavailable(
   const timestamp = formatTimestamp(now);
 
   const results = await env.DB.batch([
-    env.DB.prepare(`UPDATE video SET availability = 'unavailable' WHERE video_id = ?1`).bind(targetId),
+    // last_available_at as collector/video.ts's unavailableStatement sets it:
+    // fetched_at has not moved since the last pass that got the video, which
+    // is what a failing row means.
+    env.DB.prepare(
+      `UPDATE video
+          SET availability = 'unavailable',
+              last_available_at = CASE WHEN availability = 'unavailable' THEN last_available_at ELSE fetched_at END
+        WHERE video_id = ?1`,
+    ).bind(targetId),
     env.DB.prepare(
       `UPDATE collect_task
           SET state = 'unavailable', next_attempt_at = NULL, checked_at = NULL, updated_at = ?3

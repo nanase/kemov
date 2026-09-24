@@ -1,4 +1,4 @@
-import { changeOver, DAY_SECONDS, HOUR_SECONDS, type Delta, type Sample } from '../lib/delta';
+import { changeOver, DAY_SECONDS, HOUR_SECONDS, toleranceSeconds, type Delta, type Sample } from '../lib/delta';
 import type { Env } from '../lib/env';
 import { CHANNEL_SNAPSHOT_EFFECTIVE } from '../lib/overrides';
 import { formatTimestamp } from '../lib/time';
@@ -119,6 +119,43 @@ async function snapshotAt(db: D1Database, channelId: string, at: string): Promis
     .first<SnapshotRow>();
 }
 
+/**
+ * The oldest snapshot after `after` and no later than `until`, for one
+ * channel. Only `changesFor` asks, for a period retention has cut into.
+ */
+async function snapshotAfter(
+  db: D1Database,
+  channelId: string,
+  after: string,
+  until: string,
+): Promise<SnapshotRow | null> {
+  return await db
+    .prepare(
+      `WITH ${CHANNEL_SNAPSHOT_EFFECTIVE}
+       SELECT fetched_at, subscriber_count, view_count, video_count
+         FROM channel_snapshot_effective
+        WHERE channel_id = ?1 AND fetched_at > ?2 AND fetched_at <= ?3
+        ORDER BY fetched_at ASC
+        LIMIT 1`,
+    )
+    .bind(channelId, after, until)
+    .first<SnapshotRow>();
+}
+
+/**
+ * The periods whose older end ../collector/retention.ts deletes before a
+ * change can be read against it.
+ *
+ * Retention keeps nothing older than 30 days less an hour, so the snapshot
+ * at or before "30 days before the newest" is gone by the time it would be
+ * asked for. For these periods the oldest snapshot after that instant
+ * stands in, as long as it is inside the period's tolerance. That makes the
+ * period short by up to about an hour and twenty minutes - the hour between
+ * two retention runs, and ten minutes of tick at either end - against the
+ * three days ../lib/delta.ts allows either side of 30 (#223).
+ */
+const PERIODS_CUT_BY_RETENTION: ReadonlySet<number> = new Set([30 * DAY_SECONDS]);
+
 function shift(from: string, seconds: number): string {
   return formatTimestamp(new Date(new Date(from).getTime() - seconds * 1000));
 }
@@ -136,10 +173,21 @@ async function changesFor(
   latest: ChannelRow,
   periodSeconds: number,
 ): Promise<Record<CountName, Delta>> {
-  const earlier =
-    latest.fetched_at === null
-      ? null
-      : await snapshotAt(db, latest.channel_id, shift(latest.fetched_at, periodSeconds));
+  let earlier: SnapshotRow | null = null;
+
+  if (latest.fetched_at !== null) {
+    const target = shift(latest.fetched_at, periodSeconds);
+
+    earlier = await snapshotAt(db, latest.channel_id, target);
+
+    // Only as far as the tolerance reaches. A snapshot further in than that
+    // would turn "history too short" - a channel collected for 20 days,
+    // asked about 30 - into "gap too wide", and the page draws those two
+    // differently on purpose (src/lib/difference.ts).
+    if (earlier === null && PERIODS_CUT_BY_RETENTION.has(periodSeconds)) {
+      earlier = await snapshotAfter(db, latest.channel_id, target, shift(target, -toleranceSeconds(periodSeconds)));
+    }
+  }
 
   return Object.fromEntries(
     COUNTS.map((count) => [count, changeOver(sampleOf(latest, count), sampleOf(earlier, count), periodSeconds)]),

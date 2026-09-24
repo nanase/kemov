@@ -99,14 +99,12 @@ bun wrangler secret list                  # 名前だけを出し、値は出さ
 
 `lifecycle add` を、リポジトリのルートで実行します。
 
-- `channel/` にもとからあった 30 日の規則は、並べて足すのではなく置き換える。1 つの prefix には規則を 1 つしか置けないため
 - `-y` は、`add` が尋ねる確認を飛ばす。確認が出ると、ループが途中で止まる
 
 ```sh
-bun wrangler r2 bucket lifecycle add kemov-backup expire-video-30d video/ --expire-days 30 -y
-bun wrangler r2 bucket lifecycle remove kemov-backup --name expire-channel-30d
+bun wrangler r2 bucket lifecycle add kemov-backup expire-video-27d video/ --expire-days 27 -y
+bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-27d channel_snapshot/ --expire-days 27 -y
 bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-365d channel/ --expire-days 365 -y
-bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-365d channel_snapshot/ --expire-days 365 -y
 
 for t in channel_snapshot_exclusion video_override footprints_event footprints_event_member footprints_event_source \
          source_whitelist genet_person genet_tune genet_tune_attribute genet_tune_attribute_person genet_tune_video genet_tune_score \
@@ -120,6 +118,19 @@ done
 prefix の末尾のスラッシュは省けません。`genet_tune` を prefix にすると `genet_tune_attribute/` にも一致し、`video` は `video_override/` にも一致します。どちらも誤った保持期間で消えてしまいます。上の prefix がすべて `/` で終わるのはこのためです。
 
 `bun wrangler r2 bucket lifecycle list kemov-backup` で確かめます。上で足した 20 個と、もとからある Default Multipart Abort Rule の、計 21 個が並ぶはずです。
+
+### 規則を 27 日に変える
+
+`video/` と `channel_snapshot/` の規則は、以前は 30 日と 365 日でした（[#223](https://github.com/nanase/kemov/issues/223)）。その規則を置いたバケットでは、名指しで外してから足し直します。1 つの prefix には規則を 1 つしか置けないためです。
+
+```sh
+bun wrangler r2 bucket lifecycle remove kemov-backup --name expire-video-30d
+bun wrangler r2 bucket lifecycle add kemov-backup expire-video-27d video/ --expire-days 27 -y
+bun wrangler r2 bucket lifecycle remove kemov-backup --name expire-channel-snapshot-365d
+bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-27d channel_snapshot/ --expire-days 27 -y
+```
+
+`lifecycle list` では、`expire-video-30d` と `expire-channel-snapshot-365d` が消え、`expire-video-27d` と `expire-channel-snapshot-27d` が現れます。数は 21 個のままです。
 
 ## 公開用のバケット
 

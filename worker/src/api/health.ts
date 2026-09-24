@@ -3,6 +3,7 @@ import type { Env } from '../lib/env';
 import {
   CHAT_REPLAY_ACTIVITY_STALE_MINUTES,
   isBackupStale,
+  isRetentionStale,
   isTimestampStale,
   JOB_SUCCESS_STALE_MINUTES,
 } from '../lib/health-thresholds';
@@ -13,7 +14,9 @@ import { formatTimestamp } from '../lib/time';
  *
  * When each collection job last succeeded, which is what #71 watches, and
  * since #115 what R2 holds of the nightly backup, which `collect_task` cannot
- * answer because that job writes none of its rows.
+ * answer because that job writes none of its rows. Since #223, also whether
+ * the hourly deletion is keeping D1 inside 30 days, read the same way from
+ * what D1 holds.
  *
  * Reported per job rather than as one number for the worker. The jobs fail
  * independently - runScheduled catches each one's errors so that one failing
@@ -121,6 +124,29 @@ interface BackupHealth {
   stale: boolean;
 }
 
+/**
+ * What D1 says about the deletion ../collector/retention.ts does (#223).
+ *
+ * Read from what is left, not from whether the job ran - the same choice
+ * #115 made for the backup. The job writes no `collect_task` row, and a job
+ * that runs every hour and deletes nothing, because its WHERE clause is
+ * wrong, is the failure this has to catch as well.
+ */
+interface RetentionHealth {
+  /** The oldest `channel_snapshot` row. Null when there is none. */
+  oldestSnapshotAt: string | null;
+  /** The oldest `last_available_at` among unavailable videos. Null when there is none. */
+  oldestUnavailableVideoAt: string | null;
+  /**
+   * Unavailable videos with no `last_available_at`, restored from a backup
+   * older than the column. Nothing says they are inside 30 days, so they
+   * count as behind until the job's next run deletes them.
+   */
+  undatedUnavailableVideos: number;
+  /** Whether either oldest instant is past 30 days and a tick, or an undated video is waiting. */
+  stale: boolean;
+}
+
 interface TaskState {
   kind: string;
   state: string;
@@ -201,7 +227,7 @@ const worstAttempts = (rows: TaskState[], kind: string) =>
 export async function health(
   env: Env,
   now: Date = new Date(),
-): Promise<{ jobs: JobHealth[]; backup: BackupHealth[]; databaseReadAt: string }> {
+): Promise<{ jobs: JobHealth[]; backup: BackupHealth[]; retention: RetentionHealth; databaseReadAt: string }> {
   const today = dayOf(formatTimestamp(now));
   const backup = await Promise.all(
     BACKED_UP_TABLES.map(async (table): Promise<BackupHealth> => {
@@ -211,6 +237,22 @@ export async function health(
       return { table: table.name, latestDate, daysAgo, stale: isBackupStale(table.name, daysAgo) };
     }),
   );
+
+  const oldest = await env.DB.prepare(
+    `SELECT (SELECT min(fetched_at) FROM channel_snapshot) AS snapshot,
+            (SELECT min(last_available_at) FROM video WHERE availability = 'unavailable') AS video,
+            (SELECT count(*) FROM video WHERE availability = 'unavailable' AND last_available_at IS NULL) AS undated`,
+  ).first<{ snapshot: string | null; video: string | null; undated: number }>();
+  const undatedUnavailableVideos = oldest?.undated ?? 0;
+  const retention: RetentionHealth = {
+    oldestSnapshotAt: oldest?.snapshot ?? null,
+    oldestUnavailableVideoAt: oldest?.video ?? null,
+    undatedUnavailableVideos,
+    stale:
+      isRetentionStale(oldest?.snapshot ?? null, now) ||
+      isRetentionStale(oldest?.video ?? null, now) ||
+      undatedUnavailableVideos > 0,
+  };
 
   const { results } = await env.DB.prepare(
     `SELECT kind, state, count(*) AS n, max(updated_at) AS at, max(attempts) AS attempts
@@ -263,6 +305,7 @@ export async function health(
       };
     }),
     backup,
+    retention,
     // When these figures were read. A cached answer keeps the reading's time
     // rather than taking the reader's, which is what makes a stale answer
     // recognisable as one.
@@ -272,7 +315,8 @@ export async function health(
 
 /**
  * Whether `health`'s answer should be served as HTTP 503, per #110: true as
- * soon as one job or one backed-up table is `stale`.
+ * soon as one job or one backed-up table is `stale`, or since #223 the
+ * retention is.
  *
  * A boolean rather than a count, because the caller's only use for this is
  * choosing a status code - counting how many things are wrong is what `jobs`
@@ -291,8 +335,16 @@ export async function health(
  * stale - so the one deploy-transition window this endpoint cannot avoid errs
  * toward paging on an old answer rather than staying quiet on one.
  */
-export function isUnhealthy(result: { jobs: JobHealth[]; backup: BackupHealth[] }): boolean {
-  return result.jobs.some((job) => job.stale !== false) || result.backup.some((table) => table.stale !== false);
+export function isUnhealthy(result: {
+  jobs: JobHealth[];
+  backup: BackupHealth[];
+  retention: Pick<RetentionHealth, 'stale'>;
+}): boolean {
+  return (
+    result.jobs.some((job) => job.stale !== false) ||
+    result.backup.some((table) => table.stale !== false) ||
+    result.retention.stale !== false
+  );
 }
 
 /**
@@ -305,14 +357,14 @@ export function isUnhealthy(result: { jobs: JobHealth[]; backup: BackupHealth[] 
  * shape mostly survives that trip (booleans, strings, numbers and arrays all
  * do), but `jobs` and `backup` themselves are not guaranteed to be there: an
  * inherited cache entry can be old enough to predate `backup` entirely (#115
- * added it after #71 shipped `jobs` alone).
+ * added it after #71 shipped `jobs` alone), or `retention` (#223).
  *
  * Never throws. Two of `cachedJson`'s three call sites are outside anywhere
  * that catches - the fresh hit is above its own try, and the stale fallback
  * is itself inside a catch, where a second throw is not caught by the first.
  * A `TypeError` from `.some()` on a body shaped unlike this would surface as
  * an unrelated 500, on exactly the paths meant to answer instead of failing.
- * Whatever does not look like `{ jobs: [...], backup: [...] }` is graded
+ * Whatever does not look like `{ jobs: [...], backup: [...], retention: {...} }` is graded
  * unhealthy rather than risked - the same direction `isUnhealthy` already
  * takes for a job or a table missing `stale` alone, extended to the body
  * missing the arrays themselves.
@@ -320,9 +372,16 @@ export function isUnhealthy(result: { jobs: JobHealth[]; backup: BackupHealth[] 
 export function statusFor(body: unknown): number {
   if (typeof body !== 'object' || body === null) return 503;
 
-  const { jobs, backup } = body as { jobs?: unknown; backup?: unknown };
+  const { jobs, backup, retention } = body as { jobs?: unknown; backup?: unknown; retention?: unknown };
 
   if (!Array.isArray(jobs) || !Array.isArray(backup)) return 503;
+  if (typeof retention !== 'object' || retention === null) return 503;
 
-  return isUnhealthy({ jobs, backup } as { jobs: JobHealth[]; backup: BackupHealth[] }) ? 503 : 200;
+  return isUnhealthy({ jobs, backup, retention } as {
+    jobs: JobHealth[];
+    backup: BackupHealth[];
+    retention: RetentionHealth;
+  })
+    ? 503
+    : 200;
 }

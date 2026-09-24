@@ -246,7 +246,8 @@ function videoStatement(
          scheduled_start_time = excluded.scheduled_start_time,
          actual_start_time = excluded.actual_start_time,
          actual_end_time = excluded.actual_end_time,
-         fetched_at = excluded.fetched_at`,
+         fetched_at = excluded.fetched_at,
+         last_available_at = NULL`,
     )
     .bind(
       item.id,
@@ -281,6 +282,13 @@ function videoStatement(
  *
  * Only a row that already exists is touched. A video that was never stored and
  * cannot be fetched has nothing to say and gets a task row instead.
+ *
+ * `last_available_at` is set once, on the pass that first finds the video
+ * gone, to the `fetched_at` it had until then: the last pass that got it,
+ * which is when the values in the row were taken and so when their 30 days
+ * began (#223). Later passes leave it where it is, and a NULL already on an
+ * unavailable row stays NULL, since the `fetched_at` beside it is a pass that
+ * found nothing.
  */
 function unavailableStatement(db: D1Database, videoId: string, fetchedAt: string): D1PreparedStatement {
   return db
@@ -288,6 +296,7 @@ function unavailableStatement(db: D1Database, videoId: string, fetchedAt: string
       `UPDATE video
           SET availability = 'unavailable',
               live_broadcast_content = 'none',
+              last_available_at = CASE WHEN availability = 'unavailable' THEN last_available_at ELSE fetched_at END,
               fetched_at = ?2
         WHERE video_id = ?1`,
     )
