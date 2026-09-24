@@ -114,8 +114,9 @@ function keptDefaults(): PageState {
 const state = ref<PageState>(readQuery(window.location.search, keptDefaults()));
 
 /**
- * Set while the address is being read back into `state`. What the address names
- * is not something the reader picked, so it is not kept.
+ * Set while the address is being read back into `memberId` and `state`. What the
+ * address names is not something the reader picked, so it is neither kept nor
+ * written back to the address.
  */
 let readingAddress = false;
 
@@ -200,9 +201,17 @@ watch(
   },
   { deep: true, flush: 'sync' },
 );
-watch(member, (current) => {
-  if (current !== null) writeUrl(memberId.value === null);
-});
+// Sync for the same reason: a queued watcher would run after the address had
+// been read back, and push the entry the reader just left back on top of it.
+watch(
+  member,
+  (current) => {
+    if (readingAddress || current === null) return;
+
+    writeUrl(memberId.value === null);
+  },
+  { flush: 'sync' },
+);
 
 /** The tab's own title, distinct from the page's visible one (#136: no name on screen). */
 const tabTitle = computed(() => (member.value === null ? undefined : memberPageTitle(member.value.name)));
@@ -446,8 +455,8 @@ onMounted(async () => {
 });
 
 function onPopState() {
-  memberId.value = readMemberId();
   readingAddress = true;
+  memberId.value = readMemberId();
   state.value = readQuery(window.location.search, keptDefaults());
   readingAddress = false;
 }
