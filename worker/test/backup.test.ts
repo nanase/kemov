@@ -509,6 +509,41 @@ describe('runBackup', () => {
     expect(sql).not.toContain(`('undated',`);
   });
 
+  // #223. The rows retention keeps out of R2 still have rows pointing at
+  // them in other files. A restore skips those instead of failing the
+  // statement they share with rows that are fine.
+  test('restores around a video and a snapshot day the backup left out', async () => {
+    await seed();
+    await insertVideo('gone', 'UCaaa');
+    await env.DB.prepare(
+      `UPDATE video SET availability = 'unavailable', last_available_at = '2026-09-01T00:00:00Z' WHERE video_id = 'gone'`,
+    ).run();
+    await env.DB.prepare(`INSERT INTO video_override (video_id, title) VALUES ('gone', 'x')`).run();
+
+    // One night only, so channel_snapshot/2026-09-06 - which the seeded
+    // exclusion points into - is never written.
+    await runBackup(env, new Date('2026-09-08T00:20:00Z'));
+
+    const files = await Promise.all(
+      (await env.BACKUP.list()).objects.map(async (object) => ({
+        key: object.key,
+        sql: await (await env.BACKUP.get(object.key))!.text(),
+      })),
+    );
+
+    await clearEverything();
+
+    for (const table of BACKED_UP_TABLES) {
+      for (const file of files.filter((candidate) => candidate.key.startsWith(`${table.name}/`))) {
+        await applyFile(file.sql);
+      }
+    }
+
+    expect(await rowsOf('video_override', 'video_id')).toEqual([expect.objectContaining({ video_id: 'vid1' })]);
+    expect(await rowsOf('channel_snapshot_exclusion', 'fetched_at')).toEqual([]);
+    expect(await rowsOf('video', 'video_id')).toEqual([expect.objectContaining({ video_id: 'vid1' })]);
+  });
+
   test('writes nothing for a database with no snapshots', async () => {
     await runBackup(env, new Date('2026-09-08T00:20:00Z'));
 

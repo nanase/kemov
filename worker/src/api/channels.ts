@@ -1,6 +1,7 @@
-import { changeOver, DAY_SECONDS, HOUR_SECONDS, toleranceSeconds, type Delta, type Sample } from '../lib/delta';
+import { changeOver, DAY_SECONDS, HOUR_SECONDS, type Delta, type Sample } from '../lib/delta';
 import type { Env } from '../lib/env';
 import { CHANNEL_SNAPSHOT_EFFECTIVE } from '../lib/overrides';
+import { STAND_IN_REACH_MINUTES } from '../lib/retention';
 import { formatTimestamp } from '../lib/time';
 
 /**
@@ -149,10 +150,13 @@ async function snapshotAfter(
  * Retention keeps nothing older than 30 days less an hour, so the snapshot
  * at or before "30 days before the newest" is gone by the time it would be
  * asked for. For these periods the oldest snapshot after that instant
- * stands in, as long as it is inside the period's tolerance. That makes the
- * period short by up to about an hour and twenty minutes - the hour between
- * two retention runs, and ten minutes of tick at either end - against the
- * three days ../lib/delta.ts allows either side of 30 (#223).
+ * stands in, as long as it is no further in than retention explains -
+ * `STAND_IN_REACH_MINUTES`. That makes the period short by up to about an
+ * hour and twenty minutes (#223).
+ *
+ * Not as far as ../lib/delta.ts's tolerance, which is three days either
+ * side of 30. A channel collected for 27 days has too short a history for a
+ * 30-day change, and a stand-in that far in would report its 27 days as 30.
  */
 const PERIODS_CUT_BY_RETENTION: ReadonlySet<number> = new Set([30 * DAY_SECONDS]);
 
@@ -180,12 +184,10 @@ async function changesFor(
 
     earlier = await snapshotAt(db, latest.channel_id, target);
 
-    // Only as far as the tolerance reaches. A snapshot further in than that
-    // would turn "history too short" - a channel collected for 20 days,
-    // asked about 30 - into "gap too wide", and the page draws those two
-    // differently on purpose (src/lib/difference.ts).
+    // Nothing found that close stays "history too short": the channel has
+    // not been collected for long enough, which is what that says.
     if (earlier === null && PERIODS_CUT_BY_RETENTION.has(periodSeconds)) {
-      earlier = await snapshotAfter(db, latest.channel_id, target, shift(target, -toleranceSeconds(periodSeconds)));
+      earlier = await snapshotAfter(db, latest.channel_id, target, shift(target, -STAND_IN_REACH_MINUTES * 60));
     }
   }
 

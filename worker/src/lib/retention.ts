@@ -55,6 +55,17 @@ export function retentionCutoff(now: Date): string {
 }
 
 /**
+ * How far after "30 days before the newest snapshot" ../api/channels.ts may
+ * look for the snapshot a 30-day change is read against, in minutes.
+ *
+ * The oldest snapshot retention leaves is at most this far in: the hour
+ * between two runs, the ten minutes from a run's cutoff to the next tick
+ * that collected, and the ten minutes the newest snapshot may trail the
+ * request by - 80 - with ten more for a tick or a run that starts late.
+ */
+export const STAND_IN_REACH_MINUTES = RETENTION_INTERVAL_MINUTES + 30;
+
+/**
  * The lifecycle rule set on `channel_snapshot/` and `video/` in the backup
  * bucket, in days (see docs/reference/data.md). The rule itself lives in
  * Cloudflare; it is here because the figure below is worked out from it.

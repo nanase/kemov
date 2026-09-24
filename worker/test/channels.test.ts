@@ -234,12 +234,12 @@ describe('listChannels', () => {
     expect(channels[0]?.per30Days.subscriberCount).toMatchObject({ value: 200 });
   });
 
-  // A channel collected for less than 30 days less the tolerance still has
-  // too short a history, not a gap: the stand-in reaches no further than
-  // three days in.
-  test('still reports history too short when the oldest snapshot is beyond the tolerance', async () => {
+  // A channel collected for 27 days has too short a history for 30, though
+  // ../src/lib/delta.ts would take 27 days as 30. The stand-in reaches only
+  // as far in as retention explains: an hour and a half.
+  test('still reports history too short for a channel collected for 27 days', async () => {
     await insertChannel('UCaaa');
-    await insertSnapshot('UCaaa', '2026-08-11T12:00:01Z', { subscribers: 1000 });
+    await insertSnapshot('UCaaa', '2026-08-11T12:00:00Z', { subscribers: 1000 });
     await insertSnapshot('UCaaa', '2026-09-07T12:00:00Z', { subscribers: 1200 });
 
     const { channels } = await listChannels(env);
@@ -247,14 +247,18 @@ describe('listChannels', () => {
     expect(channels[0]?.per30Days.subscriberCount).toEqual({ value: null, reason: 'history too short' });
   });
 
-  test('takes a stand-in exactly at the edge of the tolerance', async () => {
+  test('takes a stand-in an hour and a half in, and not a second further', async () => {
     await insertChannel('UCaaa');
-    await insertSnapshot('UCaaa', '2026-08-11T12:00:00Z', { subscribers: 1000 });
+    await insertChannel('UCbbb', 1);
+    await insertSnapshot('UCaaa', '2026-08-08T13:30:00Z', { subscribers: 1000 });
     await insertSnapshot('UCaaa', '2026-09-07T12:00:00Z', { subscribers: 1200 });
+    await insertSnapshot('UCbbb', '2026-08-08T13:30:01Z', { subscribers: 1000 });
+    await insertSnapshot('UCbbb', '2026-09-07T12:00:00Z', { subscribers: 1200 });
 
     const { channels } = await listChannels(env);
 
     expect(channels[0]?.per30Days.subscriberCount).toMatchObject({ value: 200 });
+    expect(channels[1]?.per30Days.subscriberCount).toEqual({ value: null, reason: 'history too short' });
   });
 
   // Only the 30-day period has an older end retention removes. A day's

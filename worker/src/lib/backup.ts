@@ -116,6 +116,16 @@ export interface TableShape {
    * rows are a day older when it starts.
    */
   readonly lateDays?: number;
+  /**
+   * The table whose row each row here needs, by foreign key, and which of
+   * this table's columns name it. A row whose parent the restored database
+   * does not have is left out of the restore rather than failing it (#223):
+   * retention keeps some parents out of R2 - an unavailable video's copy
+   * after 2 days, a snapshot day that was never written or has expired - and
+   * the rows pointing at them are still in their tables' files. Without this,
+   * a foreign key refusing one row would refuse every row of its statement.
+   */
+  readonly parent?: { readonly table: string; readonly columns: Readonly<Record<string, string>> };
 }
 
 /**
@@ -198,11 +208,13 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
     name: 'channel_snapshot_exclusion',
     columns: ['channel_id', 'fetched_at', 'reason', 'created_at'],
     conflict: ['channel_id', 'fetched_at'],
+    parent: { table: 'channel_snapshot', columns: { channel_id: 'channel_id', fetched_at: 'fetched_at' } },
   },
   {
     name: 'video_override',
     columns: ['video_id', 'title', 'type', 'availability', 'memo', 'updated_at'],
     conflict: ['video_id'],
+    parent: { table: 'video', columns: { video_id: 'video_id' } },
   },
   {
     // A list a person edits by hand (#175), so nothing but this file can bring
@@ -333,8 +345,7 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
  * it should not have to remember which files they have already run.
  */
 export function toSql(table: TableShape, rows: readonly Record<string, unknown>[], note: string): string {
-  const opening = `INSERT INTO ${table.name} (${table.columns.join(', ')})\nVALUES\n`;
-  const closing = `\nON CONFLICT (${table.conflict.join(', ')}) DO NOTHING;`;
+  const { opening, closing } = statementEnds(table);
   const fixed = byteLength(opening) + byteLength(closing);
 
   // Ahead of every INSERT of this table, so that whichever statement a
@@ -389,6 +400,13 @@ export function toSql(table: TableShape, rows: readonly Record<string, unknown>[
     '-- Apply tables in the order BACKED_UP_TABLES lists them: a table with a',
     '-- foreign key to another must be applied after it. Applying a file more',
     '-- than once changes nothing.',
+    ...(table.parent !== undefined
+      ? [
+          '--',
+          `-- A row whose ${table.parent.table} row is not in the database is skipped, not`,
+          '-- refused: retention keeps some of those out of the backup (#223).',
+        ]
+      : []),
     ...(table.replace === true
       ? [
           '--',
@@ -400,6 +418,29 @@ export function toSql(table: TableShape, rows: readonly Record<string, unknown>[
     ...statements,
     '',
   ].join('\n');
+}
+
+/**
+ * What goes before and after the rows of one INSERT.
+ *
+ * A table with a `parent` selects its rows out of a VALUES list, so that
+ * the EXISTS can leave out the ones whose parent is not there. SQLite names
+ * the columns of a VALUES list column1, column2 and so on, in order.
+ */
+function statementEnds(table: TableShape): { opening: string; closing: string } {
+  const conflict = `ON CONFLICT (${table.conflict.join(', ')}) DO NOTHING;`;
+  const into = `INSERT INTO ${table.name} (${table.columns.join(', ')})`;
+
+  if (table.parent === undefined) return { opening: `${into}\nVALUES\n`, closing: `\n${conflict}` };
+
+  const matches = Object.entries(table.parent.columns)
+    .map(([column, parentColumn]) => `p.${parentColumn} = v.column${table.columns.indexOf(column) + 1}`)
+    .join(' AND ');
+
+  return {
+    opening: `${into}\nSELECT * FROM (VALUES\n`,
+    closing: `\n) AS v\nWHERE EXISTS (SELECT 1 FROM ${table.parent.table} p WHERE ${matches})\n${conflict}`,
+  };
 }
 
 /** The R2 key one day of one table is written to. */
