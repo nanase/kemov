@@ -387,6 +387,52 @@ describe('deleteMember', () => {
     expect(error).not.toContain('footprints_event_member');
   });
 
+  // collect_task has no foreign key: a member whose first fetch failed has a
+  // `failed` task and nothing else, and deleting the member has to take it.
+  test('takes the failed collect tasks aimed at the member, and only those', async () => {
+    await seedThree();
+    await env.DB.prepare(
+      `INSERT INTO collect_task (kind, target_id, state, attempts, next_attempt_at, updated_at)
+       VALUES ('channel_stats', ?1, 'failed', 1, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z'),
+              ('video_discover', ?1, 'failed', 1, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z'),
+              ('channel_stats', ?2, 'failed', 1, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z'),
+              ('video_update', ?1, 'failed', 1, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z')`,
+    )
+      .bind(B, C)
+      .run();
+
+    expect((await deleteMember(env, B)).status).toEqual(200);
+
+    const { results } = await env.DB.prepare('SELECT kind, target_id FROM collect_task ORDER BY kind, target_id').all();
+
+    // The other member's task stays, and so does a kind whose target is a
+    // video id that only happens to equal the channel id.
+    expect(results).toEqual([
+      { kind: 'channel_stats', target_id: C },
+      { kind: 'video_update', target_id: B },
+    ]);
+  });
+
+  test('leaves the collect tasks alone when the delete is refused', async () => {
+    await seedThree();
+    await env.DB.prepare(
+      `INSERT INTO channel_snapshot (channel_id, fetched_at, subscriber_count, view_count, video_count)
+       VALUES ('${B}', '2026-09-08T00:00:00Z', 1, 2, 3)`,
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO collect_task (kind, target_id, state, attempts, updated_at)
+       VALUES ('video_discover', ?1, 'failed', 1, '2026-09-08T00:00:00Z')`,
+    )
+      .bind(B)
+      .run();
+
+    expect((await deleteMember(env, B)).status).toEqual(409);
+
+    const stored = await env.DB.prepare('SELECT count(*) AS n FROM collect_task').first();
+
+    expect(stored).toEqual({ n: 1 });
+  });
+
   test('a member added and then deleted before anything is recorded is gone', async () => {
     await seedThree();
     await addMember(env, newMember());

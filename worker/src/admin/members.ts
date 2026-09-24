@@ -488,10 +488,21 @@ export async function deleteMember(env: Env, channelId: string): Promise<Respons
        SELECT 'channel', ?1, 'delete', NULL, 'admin'
        WHERE EXISTS (SELECT 1 FROM channel WHERE channel_id = ?1) AND ${HAS_NO_RECORDS}`,
     ).bind(channelId),
+    // collect_task has no foreign key to channel, so nothing would take its
+    // rows along: a channel whose first fetch failed leaves a `failed` task
+    // that a retry can never resolve once the channel is gone, because the
+    // collector reads its targets from `channel`. Only the two kinds whose
+    // target is a channel id; video_update and chat_replay name videos, and a
+    // member with videos is refused above.
+    env.DB.prepare(
+      `DELETE FROM collect_task
+        WHERE target_id = ?1 AND kind IN ('channel_stats', 'video_discover')
+          AND EXISTS (SELECT 1 FROM channel WHERE channel_id = ?1) AND ${HAS_NO_RECORDS}`,
+    ).bind(channelId),
     env.DB.prepare(`DELETE FROM channel WHERE channel_id = ?1 AND ${HAS_NO_RECORDS}`).bind(channelId),
   ]);
 
-  if (results[1].meta.changes === 0) {
+  if (results[2].meta.changes === 0) {
     return errorResponse(409, `member ${channelId} gained records and cannot be deleted; set activityEndDate instead`);
   }
 
