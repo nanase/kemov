@@ -327,6 +327,29 @@ describe('heatCounts', () => {
 });
 
 describe('readQuery and writeQuery', () => {
+  const kept: PageState = {
+    ...readQuery(''),
+    order: 'asc',
+    metric: 'likeCount',
+    type: 'shorts',
+    listPeriod: '90d',
+    behaviorPeriod: '1y',
+    monthly: 'hours',
+  };
+
+  test('what the reader kept stands in for the default where the query is silent', () => {
+    expect(readQuery('', kept)).toEqual(kept);
+  });
+
+  test('a key the query names wins over what the reader kept', () => {
+    expect(readQuery('?order=desc&type=video&listPeriod=all', kept)).toMatchObject({
+      order: 'desc',
+      type: 'video',
+      listPeriod: 'all',
+      metric: 'likeCount',
+    });
+  });
+
   const state = (over: Partial<PageState> = {}): PageState => ({ ...readQuery(''), ...over });
 
   test('opens on the defaults when the query says nothing', () => {

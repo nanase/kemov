@@ -17,6 +17,7 @@ import {
   videoTimeText,
 } from '@/lib/genet/musicFormat';
 import { readGenetMusicData } from '@/lib/genet/musicRead';
+import { useStoredChoice } from '@/lib/useStoredChoice';
 import {
   computeResults,
   highlightRanges,
@@ -81,7 +82,8 @@ const query = ref('');
 const form = ref<FormId | null>(null);
 const year = ref<number | null>(null);
 const category = ref<string | null>(null);
-const ascending = ref(false);
+// How the list runs is a preference the reader keeps; the four above narrow it and do not.
+const ascending = useStoredChoice<boolean>('kemov/genet/ascending', [false, true], false);
 
 const filters = computed<Filters>(() => ({
   terms: parseQuery(query.value),

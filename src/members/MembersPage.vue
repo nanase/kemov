@@ -17,13 +17,16 @@ import {
   behaviorWindow,
   BEHAVIOR_PERIODS,
   cumulativeOf,
+  DEFAULT_STATE,
   distributionOf,
   DISTRIBUTION_BINS,
   highlightParts,
   jstDay,
   KINDS,
+  LIST_PERIODS,
   matchesSearch,
   memberStreams,
+  MONTHLY_SERIES,
   readQuery,
   searchTerms,
   shapeOf,
@@ -45,6 +48,10 @@ import ShapePanel from './parts/ShapePanel.vue';
 import StreakPanel from './parts/StreakPanel.vue';
 import VideoList, { type ListRow } from './parts/VideoList.vue';
 import { useMembersData } from './useMembersData';
+import { useStoredChoice } from '@/lib/useStoredChoice';
+import { HEATMAP_STEP_MINUTES } from '@/lib/heatmap';
+import { VIDEO_TYPES } from '@/type/api';
+import { VIDEO_PROPERTIES } from '@/type/video';
 import type { VideoProperty } from '@/type/video';
 import type { VideoType } from '@/type/api';
 
@@ -64,7 +71,73 @@ import type { VideoType } from '@/type/api';
 const data = useMembersData();
 const now = ref(Date.now());
 const dark = ref(false);
-const state = ref<PageState>(readQuery(window.location.search));
+
+/**
+ * What the reader chose last time: how the list and the panels are read, not
+ * whose they are. A year picked for the lower band is left out, since it names
+ * one year rather than a window to come back to. The address wins over all of
+ * these when it names one (`readQuery`).
+ */
+const kept = {
+  order: useStoredChoice<PageState['order']>('kemov/members/order', ['desc', 'asc'], DEFAULT_STATE.order),
+  metric: useStoredChoice<VideoProperty>('kemov/members/metric', VIDEO_PROPERTIES, DEFAULT_STATE.metric),
+  type: useStoredChoice<VideoType>('kemov/members/type', VIDEO_TYPES, DEFAULT_STATE.type),
+  listPeriod: useStoredChoice<ListPeriodId>(
+    'kemov/members/listPeriod',
+    LIST_PERIODS.map((period) => period.id),
+    DEFAULT_STATE.listPeriod,
+  ),
+  behaviorPeriod: useStoredChoice<Exclude<BehaviorPeriodId, 'year'>>(
+    'kemov/members/behaviorPeriod',
+    ['all', '1y'],
+    'all',
+  ),
+  monthly: useStoredChoice<MonthlySeriesId>(
+    'kemov/members/monthly',
+    MONTHLY_SERIES.map((series) => series.id),
+    DEFAULT_STATE.monthly,
+  ),
+};
+
+function keptDefaults(): PageState {
+  return {
+    ...DEFAULT_STATE,
+    order: kept.order.value,
+    metric: kept.metric.value,
+    type: kept.type.value,
+    listPeriod: kept.listPeriod.value,
+    behaviorPeriod: kept.behaviorPeriod.value,
+    monthly: kept.monthly.value,
+  };
+}
+
+const state = ref<PageState>(readQuery(window.location.search, keptDefaults()));
+
+/**
+ * Set while the address is being read back into `memberId` and `state`. What the
+ * address names is not something the reader picked, so it is neither kept nor
+ * written back to the address.
+ */
+let readingAddress = false;
+
+// Only a field the reader changed is kept: a search typed into the list must not
+// carry the other fields, which may have come from the address, along with it.
+watch(
+  state,
+  (next, prev) => {
+    if (readingAddress) return;
+
+    if (next.order !== prev.order) kept.order.value = next.order;
+    if (next.metric !== prev.metric) kept.metric.value = next.metric;
+    if (next.type !== prev.type) kept.type.value = next.type;
+    if (next.listPeriod !== prev.listPeriod) kept.listPeriod.value = next.listPeriod;
+    if (next.behaviorPeriod !== prev.behaviorPeriod && next.behaviorPeriod !== 'year') {
+      kept.behaviorPeriod.value = next.behaviorPeriod;
+    }
+    if (next.monthly !== prev.monthly) kept.monthly.value = next.monthly;
+  },
+  { flush: 'sync' },
+);
 const memberId = ref(readMemberId());
 let clock: ReturnType<typeof setInterval> | undefined;
 let themeObserver: MutationObserver | undefined;
@@ -116,10 +189,29 @@ function writeUrl(replace: boolean) {
   else window.history.pushState(null, '', url);
 }
 
-watch(state, () => writeUrl(true), { deep: true });
-watch(member, (current) => {
-  if (current !== null) writeUrl(memberId.value === null);
-});
+// Sync, and skipped while the address is being read back: the entry the reader
+// went to is already the address, and writing it again would add whatever their
+// kept choices filled in to a history entry that did not name it.
+watch(
+  state,
+  () => {
+    if (readingAddress) return;
+
+    writeUrl(true);
+  },
+  { deep: true, flush: 'sync' },
+);
+// Sync for the same reason: a queued watcher would run after the address had
+// been read back, and push the entry the reader just left back on top of it.
+watch(
+  member,
+  (current) => {
+    if (readingAddress || current === null) return;
+
+    writeUrl(memberId.value === null);
+  },
+  { flush: 'sync' },
+);
 
 /** The tab's own title, distinct from the page's visible one (#136: no name on screen). */
 const tabTitle = computed(() => (member.value === null ? undefined : memberPageTitle(member.value.name)));
@@ -182,7 +274,7 @@ const allStreams = computed(() => memberStreams(rows.value));
 const behavior = computed(() => behaviorWindow(allStreams.value, state.value.behaviorPeriod, state.value.year));
 const shape = computed(() => shapeOf(behavior.value.streams));
 const streaks = computed(() => (shape.value === null ? [] : streaksOf(shape.value.days)));
-const step = ref(60);
+const step = useStoredChoice<number>('kemov/members/heatStep', HEATMAP_STEP_MINUTES, 60);
 
 const behaviorRange = computed(() => {
   const streams = behavior.value.streams;
@@ -363,8 +455,10 @@ onMounted(async () => {
 });
 
 function onPopState() {
+  readingAddress = true;
   memberId.value = readMemberId();
-  state.value = readQuery(window.location.search);
+  state.value = readQuery(window.location.search, keptDefaults());
+  readingAddress = false;
 }
 
 onBeforeUnmount(() => {
