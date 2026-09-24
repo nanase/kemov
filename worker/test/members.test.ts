@@ -29,6 +29,15 @@ async function revisionRows(): Promise<{ entity: string; entity_key: string; act
   return results;
 }
 
+async function orderOf(): Promise<[string, number][]> {
+  const { results } = await env.DB.prepare('SELECT channel_id, display_order FROM channel ORDER BY channel_id').all<{
+    channel_id: string;
+    display_order: number;
+  }>();
+
+  return results.map((row) => [row.channel_id, row.display_order]);
+}
+
 /** Every field updateMember requires, so a test overriding one does not also have to supply the rest. */
 function validBody(overrides: Record<string, unknown> = {}) {
   return {
@@ -43,7 +52,6 @@ function validBody(overrides: Record<string, unknown> = {}) {
     colorBack: '#456789',
     activityStartDate: '2021-04-01',
     activityEndDate: null,
-    displayOrder: 5,
     ...overrides,
   };
 }
@@ -136,7 +144,7 @@ describe('updateMember', () => {
   });
 
   test('logs one revision row, with the row minus fetched_at in table-column order', async () => {
-    await insertChannel('UCaaa');
+    await insertChannel('UCaaa', 5);
 
     await updateMember(env, 'UCaaa', validBody());
 
@@ -189,7 +197,7 @@ describe('updateMember', () => {
     await insertChannel('UCaaa');
 
     await updateMember(env, 'UCaaa', validBody());
-    await updateMember(env, 'UCaaa', validBody({ displayOrder: 6 }));
+    await updateMember(env, 'UCaaa', validBody({ name: 'べつの名前' }));
 
     expect(await revisionRows()).toHaveLength(2);
   });
@@ -234,13 +242,23 @@ describe('updateMember', () => {
     expect(await revisionRows()).toEqual([]);
   });
 
+  // The order belongs to the list (saveMembers), so a stale form's own copy of
+  // it cannot overwrite an order saved since.
+  test('refuses displayOrder, and leaves the row where it was', async () => {
+    await insertChannel('UCaaa', 3);
+
+    const response = await updateMember(env, 'UCaaa', validBody({ displayOrder: 0 }));
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ error: 'displayOrder cannot be saved' });
+    expect(await orderOf()).toEqual([['UCaaa', 3]]);
+  });
+
   test.each([
     ['colorKey', '000000'],
     ['activityStartDate', '2021-1-1'],
     ['twitter', '@tsubaki'],
     ['twitch', 'ab'],
-    ['displayOrder', -1],
-    ['displayOrder', 1.5],
   ])('refuses an invalid %s without saving anything', async (key, value) => {
     await insertChannel('UCaaa');
 

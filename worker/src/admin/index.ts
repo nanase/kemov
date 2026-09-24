@@ -9,7 +9,7 @@ import { createPerson, deletePerson, getPerson, listPeople, updatePerson } from 
 import { pendingGenetMusic, publishGenetMusicNow, publishStream, withdrawStream } from './genet-publish';
 import { createStream, deleteStream, getStream, listStreams, updateStream } from './genet-streams';
 import { createTune, deleteTune, getTune, listTunes, updateTune } from './genet-tunes';
-import { listMembers, updateMember } from './members';
+import { addMember, deleteMember, listMembers, saveMembers, updateMember } from './members';
 import { listPublications } from './publications';
 import { getRevision, listRevisions, readRevisionId } from './revisions';
 import { listSnapshots } from './snapshots';
@@ -259,13 +259,21 @@ export async function handleAdminRequest(
   }
 
   if (segments.length === 3 && name === 'members') {
-    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+    if (request.method === 'GET') return await listMembers(env);
 
-    return await listMembers(env);
+    if (request.method !== 'POST' && request.method !== 'PUT') return methodNotAllowed(request, 'GET, POST, PUT');
+
+    const body = await readJsonObject(request);
+
+    if ('error' in body) return body.error;
+
+    return request.method === 'POST' ? await addMember(env, body.value) : await saveMembers(env, body.value);
   }
 
   if (segments.length === 4 && name === 'members' && id !== undefined) {
-    if (request.method !== 'PUT') return methodNotAllowed(request, 'PUT');
+    if (request.method === 'DELETE') return await deleteMember(env, id);
+
+    if (request.method !== 'PUT') return methodNotAllowed(request, 'PUT, DELETE');
 
     const body = await readJsonObject(request);
 
