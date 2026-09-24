@@ -16,6 +16,7 @@ import {
   summaryCountText,
   videoTimeText,
 } from '@/lib/genet/musicFormat';
+import { readGenetMusicData } from '@/lib/genet/musicRead';
 import {
   computeResults,
   highlightRanges,
@@ -169,7 +170,7 @@ async function load(): Promise<void> {
 
     if (!response.ok) throw new Error(`${response.status}`);
 
-    const body = (await response.json()) as GenetMusicData;
+    const body = readGenetMusicData(await response.json());
 
     data.value = body;
     preparedStreams.value = prepareStreams(body);
