@@ -237,6 +237,21 @@ function dialogAttrs(name: 'prog' | 'song'): Record<string, string> {
   return { role: 'dialog', 'aria-modal': 'true', 'aria-label': name === 'prog' ? '曲目' : '楽曲' };
 }
 
+/**
+ * D.C.: back to the top of the list. Below 720px the list's own `.pb` does not
+ * scroll (`overflow: visible`) - the page does - so scrolling `.pb` there does
+ * nothing, and the panel is brought to the top of the page instead.
+ */
+function backToListTop(button: HTMLElement): void {
+  const body = button.closest<HTMLElement>('.pb');
+
+  if (body !== null && getComputedStyle(body).overflowY !== 'visible') {
+    body.scrollTo({ top: 0, behavior: 'smooth' });
+  } else {
+    button.closest('.panel')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+}
+
 /* ---- おまかせ ------------------------------------------------------- */
 
 function pickRandom(): void {
@@ -708,9 +723,7 @@ function snippetText(text: string): string {
                   type="button"
                   aria-label="一覧の先頭へ"
                   title="一覧の先頭へ"
-                  @click="
-                    ($event.currentTarget as HTMLElement).closest('.pb')?.scrollTo({ top: 0, behavior: 'smooth' })
-                  "
+                  @click="backToListTop($event.currentTarget as HTMLElement)"
                 >
                   D.C.
                 </button>
