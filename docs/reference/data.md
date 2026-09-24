@@ -145,6 +145,8 @@ erDiagram
 
 `revision` は、`entity` と `entity_key` の組で、どの表のどの行の版かを示します。外部キーではないので、行を消しても版は残ります。
 
+版は後から消せないので、YouTube API から取った値は本文に写しません。メンバーの版が `custom_url` と `thumbnail_url` を持たないのはこのためです（[管理 API](api/admin.md)）。
+
 ## 列の書き手
 
 `channel` には書き手が 2 つあります。この分担を無視して書くと、もう一方の書いた内容を消してしまいます。
@@ -297,18 +299,26 @@ D1 が拒む文があっても、見つかるのはそのファイルから戻�
 
 `kemov-backup` には、既にある Default Multipart Abort Rule に加えて、prefix ごとのライフサイクルルールを置いています。バケット全体に 1 つの規則をかけると、どこかの prefix で誤りになるためです。規則の設定の手順は [設定とデプロイ](../guides/deployment.md#バックアップのバケットの保持期間) にあります。
 
-| prefix   | 保持期間 | 理由                                                                                                  |
-| -------- | -------- | ----------------------------------------------------------------------------------------------------- |
-| `video/` | 30 日    | ファイルはどれも完全な写しで、YouTube API から取り直せる。最新の 1 つがあれば足り、古いものは重複する |
-| 次の一覧 | 365 日   | 次を参照                                                                                              |
+| prefix     | 保持期間 | 理由                                                                                                  |
+| ---------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| `video/`   | 30 日    | ファイルはどれも完全な写しで、YouTube API から取り直せる。最新の 1 つがあれば足り、古いものは重複する |
+| `channel/` | 27 日    | YouTube API から取った `custom_url` と `thumbnail_url` を含む。次を参照                               |
+| 次の一覧   | 365 日   | 次を参照                                                                                              |
 
-365 日の規則を置く prefix は、`channel/`・`channel_snapshot/`・`channel_snapshot_exclusion/`・`video_override/`・`footprints_event/`・`footprints_event_member/`・`footprints_event_source/`・`source_whitelist/`・`genet_person/`・`genet_tune/`・`genet_tune_attribute/`・`genet_tune_attribute_person/`・`genet_tune_video/`・`genet_tune_score/`・`genet_stream/`・`genet_performance/`・`genet_scene/`・`revision/`・`publication/` です。
+365 日の規則を置く prefix は、`channel_snapshot/`・`channel_snapshot_exclusion/`・`video_override/`・`footprints_event/`・`footprints_event_member/`・`footprints_event_source/`・`source_whitelist/`・`genet_person/`・`genet_tune/`・`genet_tune_attribute/`・`genet_tune_attribute_person/`・`genet_tune_video/`・`genet_tune_score/`・`genet_stream/`・`genet_performance/`・`genet_scene/`・`revision/`・`publication/` です。
 
 `channel_snapshot/` と `revision/` は 1 日に 1 ファイルで、その日を持つファイルは他にありません。1 つ消えれば、何も埋められない穴になります。
 
 ただし、それは R2 の中の穴で、履歴そのものの穴ではありません。どちらの表も D1 の中で行が増える一方なので（[バックアップ](#バックアップ)）、D1 はどの日も持ち続けています。R2 の写しは、D1 が壊れたときに D1 を戻すためにあります。その必要は障害の直後に来るもので、1 年後には来ません。365 日は、写しがその出番を待つ期間の上限であって、履歴が残る期間ではありません。
 
-365 日の側の他の表は、収集が取り直せるデータではなく、人が管理サイトで一度だけ入力したデータを持ちます。`channel` も、人が直す表になったことで、同じ理由からこちらに入りました。この理屈が当てはまらないのは `video/` だけです。YouTube API から取り直せるので、30 日分を失っても、作り直しが遅くなる以上の損はありません。
+365 日の側の他の表は、収集が取り直せるデータではなく、人が管理サイトで一度だけ入力したデータを持ちます。この理屈が当てはまらないのは `video/` だけです。YouTube API から取り直せるので、30 日分を失っても、作り直しが遅くなる以上の損はありません。
+
+`channel/` は 27 日です。`channel` は人が直す表ですが、YouTube API から取った `custom_url` と `thumbnail_url` も持ちます。この 2 列を持ってよいのは 30 日までです（[#222](https://github.com/nanase/kemov/issues/222)）。27 日にしたのは、次の 2 つの遅れを見込むためです（[#224](https://github.com/nanase/kemov/issues/224)）。
+
+- ファイルの中身は、書いた時点で既に少し古い。値は収集が書いたときのもので、ファイルはその後の 00:20 UTC に書く
+- R2 は、期限を過ぎたオブジェクトを最大 24 時間ほど遅れて消す
+
+短くしても、D1 を戻すのには困りません。毎晩の 1 つが表全体の写しなので、戻すには最新の 1 つで足ります。人が決める列の古い値も、別の場所に残ります。管理サイトで直した値はメンバーの版（`revision`）に、一度も直していない値は `channels.yml` にあります。
 
 量の見積もりは次のとおりです。どれも 2026-09-08 に本番の値で測りました。
 
