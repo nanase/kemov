@@ -17,13 +17,16 @@ import {
   behaviorWindow,
   BEHAVIOR_PERIODS,
   cumulativeOf,
+  DEFAULT_STATE,
   distributionOf,
   DISTRIBUTION_BINS,
   highlightParts,
   jstDay,
   KINDS,
+  LIST_PERIODS,
   matchesSearch,
   memberStreams,
+  MONTHLY_SERIES,
   readQuery,
   searchTerms,
   shapeOf,
@@ -45,6 +48,10 @@ import ShapePanel from './parts/ShapePanel.vue';
 import StreakPanel from './parts/StreakPanel.vue';
 import VideoList, { type ListRow } from './parts/VideoList.vue';
 import { useMembersData } from './useMembersData';
+import { useStoredChoice } from '@/lib/useStoredChoice';
+import { HEATMAP_STEP_MINUTES } from '@/lib/heatmap';
+import { VIDEO_TYPES } from '@/type/api';
+import { VIDEO_PROPERTIES } from '@/type/video';
 import type { VideoProperty } from '@/type/video';
 import type { VideoType } from '@/type/api';
 
@@ -64,7 +71,60 @@ import type { VideoType } from '@/type/api';
 const data = useMembersData();
 const now = ref(Date.now());
 const dark = ref(false);
-const state = ref<PageState>(readQuery(window.location.search));
+
+/**
+ * What the reader chose last time: how the list and the panels are read, not
+ * whose they are. A year picked for the lower band is left out, since it names
+ * one year rather than a window to come back to. The address wins over all of
+ * these when it names one (`readQuery`).
+ */
+const kept = {
+  order: useStoredChoice<PageState['order']>('kemov/members/order', ['desc', 'asc'], DEFAULT_STATE.order),
+  metric: useStoredChoice<VideoProperty>('kemov/members/metric', VIDEO_PROPERTIES, DEFAULT_STATE.metric),
+  type: useStoredChoice<VideoType>('kemov/members/type', VIDEO_TYPES, DEFAULT_STATE.type),
+  listPeriod: useStoredChoice<ListPeriodId>(
+    'kemov/members/listPeriod',
+    LIST_PERIODS.map((period) => period.id),
+    DEFAULT_STATE.listPeriod,
+  ),
+  behaviorPeriod: useStoredChoice<Exclude<BehaviorPeriodId, 'year'>>(
+    'kemov/members/behaviorPeriod',
+    ['all', '1y'],
+    'all',
+  ),
+  monthly: useStoredChoice<MonthlySeriesId>(
+    'kemov/members/monthly',
+    MONTHLY_SERIES.map((series) => series.id),
+    DEFAULT_STATE.monthly,
+  ),
+};
+
+function keptDefaults(): PageState {
+  return {
+    ...DEFAULT_STATE,
+    order: kept.order.value,
+    metric: kept.metric.value,
+    type: kept.type.value,
+    listPeriod: kept.listPeriod.value,
+    behaviorPeriod: kept.behaviorPeriod.value,
+    monthly: kept.monthly.value,
+  };
+}
+
+const state = ref<PageState>(readQuery(window.location.search, keptDefaults()));
+
+watch(
+  state,
+  (next) => {
+    kept.order.value = next.order;
+    kept.metric.value = next.metric;
+    kept.type.value = next.type;
+    kept.listPeriod.value = next.listPeriod;
+    if (next.behaviorPeriod !== 'year') kept.behaviorPeriod.value = next.behaviorPeriod;
+    kept.monthly.value = next.monthly;
+  },
+  { flush: 'sync' },
+);
 const memberId = ref(readMemberId());
 let clock: ReturnType<typeof setInterval> | undefined;
 let themeObserver: MutationObserver | undefined;
@@ -182,7 +242,7 @@ const allStreams = computed(() => memberStreams(rows.value));
 const behavior = computed(() => behaviorWindow(allStreams.value, state.value.behaviorPeriod, state.value.year));
 const shape = computed(() => shapeOf(behavior.value.streams));
 const streaks = computed(() => (shape.value === null ? [] : streaksOf(shape.value.days)));
-const step = ref(60);
+const step = useStoredChoice<number>('kemov/members/heatStep', HEATMAP_STEP_MINUTES, 60);
 
 const behaviorRange = computed(() => {
   const streams = behavior.value.streams;
@@ -364,7 +424,7 @@ onMounted(async () => {
 
 function onPopState() {
   memberId.value = readMemberId();
-  state.value = readQuery(window.location.search);
+  state.value = readQuery(window.location.search, keptDefaults());
 }
 
 onBeforeUnmount(() => {

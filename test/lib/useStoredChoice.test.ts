@@ -1,4 +1,4 @@
-import { useStoredChoice } from '@/stats/useStoredChoice';
+import { useStoredChoice } from '@/lib/useStoredChoice';
 
 // This project's own test environment is plain node, with no `localStorage`
 // global, so each test stands one up. Left unstubbed, the reference itself
