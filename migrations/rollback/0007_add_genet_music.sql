@@ -1,6 +1,6 @@
 -- Undoes 0007_add_genet_music.sql.
 --
--- Read "Rolling back" in README.md first.
+-- Read docs/guides/recovery.md first.
 
 DROP TABLE genet_scene;
 DROP TABLE genet_performance;

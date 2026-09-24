@@ -1,6 +1,6 @@
 -- Undoes 0006_add_footprints_event.sql.
 --
--- Read "Rolling back" in README.md first.
+-- Read docs/guides/recovery.md first.
 
 DROP TABLE footprints_event_source;
 DROP TABLE footprints_event_member;
