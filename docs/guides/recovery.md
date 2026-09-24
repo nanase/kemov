@@ -39,8 +39,8 @@ rollback ファイルは、適用済みのうち最も新しいマイグレー�
 ```sh
 # 適用済みのマイグレーションを、新しい順に見る
 bun wrangler d1 execute kemov --local --command "SELECT id, name FROM d1_migrations ORDER BY id DESC"
-# 最も新しいものの rollback ファイルから実行する
-bun wrangler d1 execute kemov --local --file migrations/rollback/000N_<what-it-does>.sql
+# 最も新しいものの rollback ファイルから実行する（例: 最も新しいものが 0008 のとき）
+bun wrangler d1 execute kemov --local --file migrations/rollback/0008_add_source_whitelist.sql
 ```
 
 手元のデータベース以外に対して実行するときは、先にそのファイルを読んでください。本番で使われてきたマイグレーションでは、スキーマが誤っていることより、表を失うことのほうが悪い結果になります。その場合の戻り道は Time Travel です。
