@@ -136,3 +136,14 @@ bun wrangler d1 execute DB --remote --command "select 1"
 ```sh
 bun wrangler d1 execute DB --local --command "select 1"
 ```
+
+### 手元の D1 にメンバーを入れる
+
+マイグレーションを適用しただけの D1 には、メンバーが 1 人もいません。リポジトリにメンバーの一覧は置かないので、`scripts/dev-members.sql` が作り物の 4 人を入れます。名前も ID も色も実在のものではなく、ID は YouTube のチャンネル ID の形をしているだけです。
+
+```sh
+bun wrangler d1 migrations apply kemov --local
+bun wrangler d1 execute kemov --local --file scripts/dev-members.sql
+```
+
+もう一度実行しても、既にいるメンバーは変わりません。管理サイトからも、同じ規則で足せます（[データ](../reference/data.md#メンバー)）。

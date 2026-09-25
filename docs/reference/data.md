@@ -1,6 +1,6 @@
 # データ
 
-サイトのデータは D1 にあり、R2 にはバックアップと公開用の JSON を置きます。この文書は、どの列を誰が書くか、`channels.yml` の役目、30 日を過ぎたデータの削除、バックアップとその保持期間、公開用のバケットを扱います。
+サイトのデータは D1 にあり、R2 にはバックアップと公開用の JSON を置きます。この文書は、どの列を誰が書くか、メンバーの足し方と消し方、30 日を過ぎたデータの削除、バックアップとその保持期間、公開用のバケットを扱います。
 
 ## データベース
 
@@ -186,8 +186,7 @@ erDiagram
 
 ```mermaid
 flowchart LR
-  seed["シード<br/>channels.yml"] -- "行がまだ無いときに 1 回だけ" --> person
-  admin["管理サイト<br/>PUT /admin/api/members/&lt;チャンネル ID&gt;"] -- "その後はここだけ" --> person
+  admin["管理サイト<br/>メンバーの画面"] -- "足す・直す・並べ替える" --> person
   collector["収集<br/>Channels.list"] --> fetched
   subgraph channel["channel の列"]
     direction TB
@@ -196,86 +195,69 @@ flowchart LR
   end
   classDef writer fill:#f6efe0,stroke:#c9ad6e,color:#2b2413
   classDef cols fill:#e3f1ed,stroke:#7fb5aa,color:#12302a
-  class seed,admin,collector writer
+  class admin,collector writer
   class person,fetched cols
   style channel fill:#f3f9f7,stroke:#b5d3cc,color:#12302a
 ```
 
-そのため、YAML から入れるシードは人が決める側の列だけを書き、しかも行がまだ無いときに限ります（[シード](#シード)）。
+そのため、管理サイトは人が決める側の列だけを書き（[メンバー](#メンバー)）、収集は `custom_url`・`thumbnail_url`・`fetched_at` だけを書きます。
 
 それ以外の表は、収集か管理サイト（[管理サイト](admin.md)）が書きます。両方が書くのは、管理サイトの収集の失敗の画面だけです。この画面は `collect_task` の行を更新し、`video.availability` を `unavailable` に確定することもあります。
 
-## シード
+## メンバー
 
-リポジトリのルートの `channels.yml` は、`channel` の表のシードです。1 項目が 1 人のメンバーにあたります。
+メンバーの正は D1 の `channel` だけです。リポジトリに一覧のファイルは置かず、デプロイも `channel` に何も書きません。足す・直す・並べ替える・消す操作は、管理サイトのメンバーの画面から行います（[管理サイト](admin.md)）。
 
-シードは行を足すだけです。`channel` に既にいるメンバーは、それ以降は管理サイトで直し、このファイルでは直しません。新しいメンバーの最初の `display_order` は、ファイルの中の順で決まります。これが、管理サイトで変えるまでサイトがメンバーを並べる順になります。並べ替える前に、ファイルの先頭のコメントを読んでください。
+### 足すときの規則
 
-```yaml
-- channel_id: UCEcMIuGR8WO2TwL9XIpjKtw
-  name: ケープペンギン
-  fullname: ケープペンギン / African Penguin
-  globalname: African Penguin
-  twitter: Cape_KEMOV
-  color:
-    key: '#F38E0A'
-    sub: '#F8C112'
-    light: '#FFEBA4'
-    back: '#FFEBA4'
-  activity_start_date: '2021-04-26'
-  activity_end_date: '2022-05-21'
-```
+メンバーを足す口は 2 つあり、同じ規則で検査します。1 人を末尾へ足す `POST /admin/api/members` と、画面の「保存」が送る `PUT /admin/api/members` です（[管理 API](api/admin.md)）。規則を満たさない値は 400 で断り、何も書きません。
 
-欄の名前は、書き込む先の列の名前と同じです。例外は `color` で、人が 4 つの値をまとめて直すのでまとめてあります。シードは、これを `color_key`・`color_sub`・`color_light`・`color_back` に分けて書きます。
+| 欄                                                | 規則                                                                                             |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `channelId`                                       | YouTube のチャンネル ID の形（`UC` と 22 文字）。既にあれば 409                                  |
+| `name`・`fullname`                                | 空でない文字列                                                                                   |
+| `globalname`                                      | 空でない文字列か null                                                                            |
+| `twitter`                                         | `@` を付けない X のハンドル（英数字と `_`、1 〜 15 文字）か null                                 |
+| `twitch`                                          | Twitch のログイン名（英数字と `_`、4 〜 25 文字）か null                                         |
+| `colorKey`・`colorSub`・`colorLight`・`colorBack` | 4 つとも `#RRGGBB`（大文字でも小文字でもよい）                                                   |
+| `activityStartDate`                               | 存在する日付（`YYYY-MM-DD`）                                                                     |
+| `activityEndDate`                                 | 存在する日付か null。`activityStartDate` より前にはできない。null は、書かずに省くことはできない |
+| 上の欄にないキー                                  | 断る                                                                                             |
 
-- `globalname`・`twitter`・`twitch` は省いてよい
-- `activity_end_date` は必ず書く
-  - まだ活動中のメンバーは `null` と書く
-  - キーを省いても同じ意味になるが、それでは誰かが決めた結果なのかが分からない
-- 日付は引用符で囲む
-  - 囲まないと、YAML は `2021-04-26` を文字列ではなく日時として読む。列は文字列を求める
+`activityEndDate` は、属性ではなく状態です。省いた場合も null と読めますが、それでは「まだ活動中」と誰かが決めた結果なのかが分かりません。
 
-以前の正データは、リポジトリの外に置いた手書きの JSON で、直してもレビューも検査も通りませんでした。このファイルは PR を通して直し、CI が PR ごとに読みます。
+`custom_url`・`thumbnail_url`・`fetched_at` は、収集が自分で書く列です。足したメンバーでは、最初の収集が書くまで NULL です。
 
-```sh
-bun run check-channels
-```
+### 表示順
 
-最初の 1 つで止まらず、ファイルの問題をすべてまとめて報告します。見つけるのは次のような問題です。
+サイトがメンバーを並べる順は `display_order` の昇順で、同じ値のときは `channel_id` の順です。公開のページも管理サイトも、同じ順を使います。
 
-- YouTube のチャンネル ID の形でない ID
-- `#RRGGBB` の形でない色
-- `@` を付けて書いたハンドル
-- 存在しない日付
-- 綴りを誤った欄の名前
-- 同じチャンネルの重複
+順番は 1 人ずつは変えません。画面の「↑」「↓」は画面の中だけで順番を動かし、足した行と合わせて「未保存」にします。「保存」を押したときに、足した行と全員の順番を、D1 の `batch` 1 回で書きます。`batch` は 1 つのトランザクションなので、途中の並びが公開されることはありません。
 
-検査の中身は `scripts/` にあります。CI の工程とデプロイの両方から、何もビルドしないうちに素の node で動かすので、TypeScript ではなく JavaScript で書いています。worker と同じく、vitest のプロジェクトを別に持っています。
+- 保存は、全員の `display_order` を 0 から連番に振り直す
+  - 順番が変わらない行は書かず、版も残さない
+- 保存の時点でメンバーの集合が、画面が読んだときと違えば、何も書かずに 409 を返す
+  - 別の人が足したか消したかしたあとの一覧で、順番を上書きしないため
+- `PUT /admin/api/members/<チャンネル ID>` は `display_order` を受けない
+  - 古い編集欄の値で、保存済みの順番を上書きしないため
 
-```sh
-bun run vitest run --project scripts
-```
+### 消せるとき
+
+`DELETE /admin/api/members/<チャンネル ID>` は、`channel_snapshot`・`video`・`footprints_event_member`・`subscriber_milestone` のどれにも行が無いメンバーだけを消します。記録が付いたあとは 409 を返し、どの表に何件あるかを伝えます。
+
+消すときは、そのメンバーあての `collect_task`（`channel_snapshot` にも `video` にも行が無いうちに、取得に失敗して残った予定）も同じ `batch` で消します。`collect_task` は `channel` への外部キーを持たないので、D1 は片づけてくれません。
+
+`channel_snapshot`・`video`・`footprints_event_member`・`subscriber_milestone` は `channel` を参照しているので、記録の付いた行の削除は D1 も拒みます。この拒否はわざとです。誤って消した行が、何年分もの収集の履歴を道連れにしてはなりません。
+
+記録は 30 日を過ぎると消えます（[30 日を過ぎたデータの削除](#30-日を過ぎたデータの削除)）。収集が 30 日以上失敗し続けたメンバーは、`channel_snapshot` の行が無くなるので、ほかの表にも行が無ければ消せるようになります。
 
 ### メンバーが活動を終えたとき
 
-管理サイトのメンバーの画面で、そのメンバーの `activity_end_date` を書きます。行は消しません。
+管理サイトのメンバーの画面で、そのメンバーの `activity_end_date` を書きます。行は消しません。活動を終えたメンバーにも、活動していたころの履歴は残ります。
 
-`channels.yml` を書き換えても、この変更にはなりません。シードは行を足すだけなので、`channel` に既にいるメンバーの `activity_end_date` をファイルに書いても、何も変わりません。
+### 手元の D1 にメンバーを入れる
 
-`channel_snapshot` と `video` は `channel` を参照しているので、参照先を失わせる削除を D1 が拒みます。この拒否はわざとです。誤って消した行が、何年分もの収集の履歴を道連れにしてはなりません。活動を終えたメンバーにも、活動していたころの履歴は残ります。
-
-### シードの入れ方
-
-デプロイは、ファイルを 1 つの `INSERT ... ON CONFLICT DO NOTHING` に変えて適用します。手元のデータベースにも、同じ 2 つのコマンドで入れられます。
-
-```sh
-bun run build-channels-sql .wrangler/channels.sql
-bun wrangler d1 execute kemov --local --file .wrangler/channels.sql
-```
-
-作った SQL はコミットしません。中身は実行した時点のファイルの内容そのもので、リポジトリに写しを置くと、ファイルと食い違いうるものが 1 つ増えるだけです。`.wrangler/` は git が無視するので、例ではそこへ書いています。
-
-この文は人が決める側の列だけを名指しします。`custom_url`・`thumbnail_url`・`fetched_at` は、前回の収集が書いた値のまま残ります。文は行を足すだけです。表に既にあるチャンネルは、ファイルの今の内容にかかわらず、すべての列をそのまま保ちます。ファイルから消えたチャンネルも、行は残ります。
+手元の D1 は、マイグレーションを適用しただけではメンバーが 1 人もいません。`scripts/dev-members.sql` が作り物の 4 人を入れます。手順は [開発](../guides/development.md#手元の-d1-にメンバーを入れる) にあります。
 
 ## 30 日を過ぎたデータの削除
 
@@ -455,7 +437,7 @@ YouTube API のデータを持つ `video/`・`channel/`・`channel_snapshot/` �
 
 D1 の `channel` の 2 列も、30 日を超えては持ちません。バックアップのジョブは、表を読む前に、取ってから 27 日を超えた 2 列を NULL にします。ジョブは 1 日 1 回なので、値は 28 日を超える前に消えます。消えたチャンネルは、公開のページで代替のアイコンになり、YouTube のチャンネルへのリンクが出なくなります。収集がまたそのチャンネルを取れば、元に戻ります。
 
-短くしても、D1 を戻すのには困りません。毎晩の 1 つが表全体の写しなので、戻すには最新の 1 つで足ります。人が決める列の古い値も、別の場所に残ります。管理サイトで直した値はメンバーの版（`revision`）に、一度も直していない値は `channels.yml` にあります。
+短くしても、D1 を戻すのには困りません。毎晩の 1 つが表全体の写しなので、戻すには最新の 1 つで足ります。人が決める列の古い値は、27 日分のバックアップに残ります。管理サイトで足した値・直した値は、メンバーの版（`revision`）にも残り、こちらは消えません。
 
 量の見積もりは次のとおりです。どれも 2026-09-08 に本番の値で測りました。
 

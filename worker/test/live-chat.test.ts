@@ -38,7 +38,7 @@ describe('chatContinuation', () => {
   //
   // Real values on purpose, and the only place in these tests with any. What
   // must not be written down is who said what in a chat - author names and
-  // ids. A continuation holds neither: it is a channel id, which channels.yml
+  // ids. A continuation holds neither: it is a channel id, which the site
   // already lists, and the id of a public video.
   test('builds the continuation the watch page used to hand out', () => {
     expect(chatContinuation('UCYa58DdXGAGMJQHqTxi-isA', 'LdoAcMRyX9s')).toEqual(
