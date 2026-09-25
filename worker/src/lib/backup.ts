@@ -286,6 +286,30 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
     columns: ['event_id', 'position', 'url', 'title'],
     conflict: ['event_id', 'position'],
   },
+  // After channel and footprints_event, which it names by foreign key (#225).
+  {
+    name: 'subscriber_milestone',
+    columns: [
+      'milestone_id',
+      'channel_id',
+      'date_precision',
+      'reached_date',
+      'subscriber_count',
+      'announced_by',
+      'event_id',
+      'status',
+      'memo',
+      'created_via',
+      'created_at',
+      'updated_at',
+    ],
+    conflict: ['milestone_id'],
+  },
+  {
+    name: 'subscriber_milestone_source',
+    columns: ['milestone_id', 'position', 'url', 'title'],
+    conflict: ['milestone_id', 'position'],
+  },
   {
     name: 'genet_person',
     columns: ['person_id', 'name', 'link', 'memo'],

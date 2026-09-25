@@ -673,3 +673,82 @@ describe('handleAdminRequest routing to genet', () => {
     expect((await post('/admin/api/genet/publish', {})).status).toEqual(200);
   });
 });
+
+// What each route actually does is subscriber-milestones.test.ts and
+// subscriber-milestones-publish.test.ts's own job. This only checks that a
+// path and a method reach the function that owns them.
+describe('handleAdminRequest routing to subscriber milestones', () => {
+  beforeEach(async () => {
+    await clearEverything();
+    await env.DB.prepare(
+      `INSERT INTO channel (channel_id, name, fullname, color_key, color_sub, color_light, color_back, activity_start_date)
+       VALUES ('UCaaa', 'a', 'a', '#000000', '#000000', '#000000', '#000000', '2021-01-01')`,
+    ).run();
+  });
+
+  const minimalMilestoneBody = {
+    channelId: 'UCaaa',
+    datePrecision: 'day',
+    reachedDate: '2024-01-30',
+    subscriberCount: 20000,
+    announcedBy: 'member',
+    eventId: null,
+    memo: null,
+    sources: [],
+  };
+
+  const post = (path: string, body: unknown) =>
+    call(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+  async function createMilestone(): Promise<number> {
+    const created = await post('/admin/api/subscribers/milestones', minimalMilestoneBody);
+    const { milestone } = (await created.json()) as { milestone: { milestoneId: number } };
+
+    return milestone.milestoneId;
+  }
+
+  test('routes GET and POST /admin/api/subscribers/milestones', async () => {
+    expect((await call('/admin/api/subscribers/milestones')).status).toEqual(200);
+    expect((await post('/admin/api/subscribers/milestones', minimalMilestoneBody)).status).toEqual(201);
+
+    const wrongMethod = await call('/admin/api/subscribers/milestones', { method: 'DELETE' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('GET, POST');
+  });
+
+  test('routes GET, PUT and DELETE /admin/api/subscribers/milestones/:milestoneId', async () => {
+    const milestoneId = await createMilestone();
+
+    expect((await call(`/admin/api/subscribers/milestones/${milestoneId}`)).status).toEqual(200);
+    expect((await put(`/admin/api/subscribers/milestones/${milestoneId}`, minimalMilestoneBody)).status).toEqual(200);
+    expect((await call(`/admin/api/subscribers/milestones/${milestoneId}`, { method: 'DELETE' })).status).toEqual(200);
+
+    const wrongMethod = await call(`/admin/api/subscribers/milestones/${milestoneId}`, { method: 'POST' });
+
+    expect(wrongMethod.status).toEqual(405);
+    expect(wrongMethod.headers.get('Allow')).toEqual('GET, PUT, DELETE');
+  });
+
+  test('answers 404 for a milestone id that is not a safe positive integer', async () => {
+    expect((await call('/admin/api/subscribers/milestones/not-a-number')).status).toEqual(404);
+    expect((await call('/admin/api/subscribers/milestones/99999999999999999999')).status).toEqual(404);
+  });
+
+  test('routes POST .../publish and .../withdraw', async () => {
+    const milestoneId = await createMilestone();
+
+    // No sources, so publish refuses with 400 - still proves the route was
+    // reached rather than falling through to a 404.
+    expect((await post(`/admin/api/subscribers/milestones/${milestoneId}/publish`, {})).status).toEqual(400);
+    expect((await post(`/admin/api/subscribers/milestones/${milestoneId}/withdraw`, {})).status).toEqual(200);
+    expect((await post(`/admin/api/subscribers/milestones/${milestoneId}/nope`, {})).status).toEqual(404);
+    expect((await call(`/admin/api/subscribers/milestones/${milestoneId}/publish`)).status).toEqual(405);
+  });
+
+  test('routes GET /admin/api/subscribers/pending and POST /admin/api/subscribers/publish', async () => {
+    expect((await call('/admin/api/subscribers/pending')).status).toEqual(200);
+    expect((await post('/admin/api/subscribers/publish', {})).status).toEqual(200);
+    expect((await call('/admin/api/subscribers/publish')).status).toEqual(405);
+  });
+});

@@ -33,6 +33,8 @@ export async function clearEverything(): Promise<void> {
     'genet_stream',
     'genet_tune',
     'genet_person',
+    'subscriber_milestone_source',
+    'subscriber_milestone',
     'footprints_event_source',
     'footprints_event_member',
     'footprints_event',

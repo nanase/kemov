@@ -8,9 +8,10 @@
  * `delete` here, and only here: `revision` is their whole history, not a
  * draft of something published later (#158).
  *
- * `footprints_event` and `genet_stream` do pass through a publish: saving one
- * logs nothing, and only `publish`/`withdraw` (and the collector's own
- * `import`) add a row - see #144's task 9/10.
+ * `footprints_event`, `genet_stream` and `subscriber_milestone` (#225) do
+ * pass through a publish: saving one logs nothing, and only
+ * `publish`/`withdraw` (and the collector's own `import`) add a row - see
+ * #144's task 9/10.
  */
 
 /**
@@ -28,6 +29,7 @@ export const REVISION_ENTITIES = [
   'channel',
   'video_override',
   'channel_snapshot_exclusion',
+  'subscriber_milestone',
 ] as const;
 
 export type RevisionEntity = (typeof REVISION_ENTITIES)[number];
