@@ -1,30 +1,32 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
 
-import { memberColor } from '@/lib/memberColor';
-import { chartSummary, monthlyEstimates } from '@/lib/milestones';
+import { memberAccent, memberColor } from '@/lib/memberColor';
+import { axisFraction, cardPlacement, chartSummary, countLabel, labelSides } from '@/lib/milestones';
+import { useMilestoneCard } from '@/lib/useMilestoneCard';
+import MilestoneCard from '@/parts/MilestoneCard.vue';
 import { axisMarks } from '../draw';
 import type { Subject } from '../model';
 import type { MilestoneStatus } from '../useStatsData';
-import MilestoneBars from './MilestoneBars.vue';
+import MilestoneLegend from './MilestoneLegend.vue';
+import MilestonePoint from './MilestonePoint.vue';
 
 /**
- * Every member's subscriber count month by month, one row each, for the sum
- * (#225).
+ * Every member's subscriber milestones, one row each, for the sum (#225).
  *
  * Milestones fall on each member's own dates, so they cannot be added up,
- * and one count axis for everyone would be a chart for comparing them
- * (#134). Each row is scaled to its own member instead, on the month axis
- * the other tabs use.
+ * and putting every member on one count axis would be a chart for comparing
+ * them (#134). Each row is a line of time only: when a milestone came, and
+ * the count written beside it, with nothing measured against anybody else.
  */
-const { members, months, status, dark, today } = defineProps<{
+const { members, months, status, dark } = defineProps<{
   members: readonly Subject[];
   months: readonly string[];
   status: MilestoneStatus;
   dark: boolean;
-  /** Today in JST, `YYYY-MM-DD`. */
-  today: string;
 }>();
+
+const { openId, cardId, toggle, close } = useMilestoneCard();
 
 const axis = useTemplateRef<HTMLElement>('axis');
 const axisWidth = ref(320);
@@ -32,23 +34,35 @@ let observer: ResizeObserver | undefined;
 
 const marks = computed(() => axisMarks(months, axisWidth.value));
 
+/** How far apart two labels must be, as a share of the row, to both sit above. */
+const labelGap = computed(() => 30 / Math.max(axisWidth.value, 1));
+
 const rows = computed(() =>
-  members.map((member) => ({
-    member,
-    style: member.color === null ? undefined : { '--member-color': memberColor(member.color, dark) },
-    summary: chartSummary(member.name, member.milestones),
-    estimates: monthlyEstimates(
-      member.milestones,
-      months,
-      member.counts.subscriberCount,
-      today,
-      member.activityEndDate,
-    ),
-  })),
+  members.map((member) => {
+    const xs = member.milestones.map((milestone) => axisFraction(milestone.reachedDate, months));
+    const sides = labelSides(xs, labelGap.value);
+
+    return {
+      member,
+      style:
+        member.color === null
+          ? undefined
+          : { '--member-color': memberColor(member.color, dark), '--member-accent': memberAccent(member.color, dark) },
+      summary: chartSummary(member.name, member.milestones),
+      points: member.milestones.map((milestone, i) => ({ milestone, x: xs[i]!, side: sides[i]! })),
+    };
+  }),
 );
 
-/** Whether any row has months after an activity ended, which the key then explains. */
-const anyAfterEnd = computed(() => rows.value.some((row) => row.estimates.some((e) => e?.afterEnd)));
+const opened = computed(() => {
+  for (const row of rows.value) {
+    const point = row.points.find((p) => p.milestone.milestoneId === openId.value);
+
+    if (point !== undefined) return { row, point };
+  }
+
+  return null;
+});
 
 onMounted(() => {
   if (axis.value === null) return;
@@ -87,15 +101,33 @@ onBeforeUnmount(() => observer?.disconnect());
           <span class="swatch" aria-hidden="true"></span>
           <span class="name">{{ row.member.name }}</span>
         </span>
-        <MilestoneBars v-if="row.summary" :estimates="row.estimates" role="img" :aria-label="row.summary" />
+        <div v-if="row.points.length > 0" class="strip" role="group" :aria-label="row.summary ?? undefined">
+          <span class="rule" aria-hidden="true"></span>
+          <template v-for="point in row.points" :key="point.milestone.milestoneId">
+            <span class="label n" :data-side="point.side" :style="{ left: `${point.x * 100}%` }" aria-hidden="true">{{
+              countLabel(point.milestone.subscriberCount)
+            }}</span>
+            <MilestonePoint
+              :milestone="point.milestone"
+              :expanded="openId === point.milestone.milestoneId"
+              :controls="cardId(point.milestone.milestoneId)"
+              :style="{ left: `${point.x * 100}%`, top: '50%' }"
+              @press="toggle(point.milestone.milestoneId, $event)"
+            />
+          </template>
+          <MilestoneCard
+            v-if="opened && opened.row === row"
+            :id="cardId(opened.point.milestone.milestoneId)"
+            :milestone="opened.point.milestone"
+            :name="row.member.name"
+            :style="cardPlacement(opened.point.x, null)"
+            @close="close(true)"
+          />
+        </div>
         <span v-else-if="status === 'ready'" class="empty">節目の記録はまだありません</span>
-        <span v-else aria-hidden="true"></span>
+        <span v-else class="strip" aria-hidden="true"><span class="rule"></span></span>
       </div>
-      <p class="key">
-        <span><i class="mark" data-recorded aria-hidden="true"></i>節目のある月・今月</span>
-        <span><i class="mark" aria-hidden="true"></i>補間した月</span>
-        <span v-if="anyAfterEnd"><i class="mark" data-after-end aria-hidden="true"></i>活動終了後の月</span>
-      </p>
+      <MilestoneLegend :now="false" />
     </template>
   </div>
 </template>
@@ -155,6 +187,41 @@ onBeforeUnmount(() => observer?.disconnect());
   white-space: nowrap;
 }
 
+.strip {
+  position: relative;
+  height: 40px;
+  margin-inline: 4px;
+}
+
+.rule {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--k-line);
+  transform: translateY(-50%);
+}
+
+.label {
+  position: absolute;
+  color: var(--k-text-2);
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.label[data-side='above'] {
+  top: 3px;
+}
+
+.label[data-side='below'] {
+  bottom: 3px;
+}
+
 .empty {
   color: var(--k-text-3);
   font-size: 11px;
@@ -163,6 +230,7 @@ onBeforeUnmount(() => observer?.disconnect());
 .axis {
   position: relative;
   height: 15px;
+  margin-inline: 4px;
   overflow: hidden;
 }
 
@@ -183,36 +251,8 @@ onBeforeUnmount(() => observer?.disconnect());
   transform: translateX(-100%);
 }
 
-.key {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  margin: 0;
+.milestone-rows > :deep(.milestone-legend) {
   padding-top: 8px;
-  color: var(--k-text-2);
-  font-size: 11px;
-}
-
-.key span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-/* The same fills the bars use, in the page's own colour: every row has a
-   colour of its own, and the key is about the fill, not the member. */
-.mark {
-  width: 9px;
-  height: 11px;
-  background: color-mix(in srgb, var(--k-text-2) 32%, transparent);
-}
-
-.mark[data-recorded] {
-  background: var(--k-text-2);
-}
-
-.mark[data-after-end] {
-  background: repeating-linear-gradient(135deg, var(--k-text-2) 0 2px, transparent 2px 4px);
 }
 
 @container (max-width: 560px) {

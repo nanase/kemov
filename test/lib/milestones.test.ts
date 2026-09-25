@@ -4,6 +4,7 @@ import {
   chartSummary,
   countLabel,
   countScale,
+  labelSides,
   milestonesByChannel,
   monthlyEstimates,
   pointName,
@@ -98,16 +99,16 @@ describe('monthlyEstimates', () => {
   test('takes a milestone month as known and the months between as interpolated', () => {
     const estimates = monthlyEstimates(two, months, 4000, '2024-05-20', null);
 
-    expect(estimates[1]).toEqual({ count: 1000, recorded: true, afterEnd: false });
+    expect(estimates[1]).toEqual({ count: 1000, recorded: true });
     // 2024-03-31 is 59 of the 60 days from 02-01 to 04-01.
-    expect(estimates[2]).toEqual({ count: Math.round(1000 + (2000 * 59) / 60), recorded: false, afterEnd: false });
-    expect(estimates[3]).toEqual({ count: 3000, recorded: true, afterEnd: false });
+    expect(estimates[2]).toEqual({ count: Math.round(1000 + (2000 * 59) / 60), recorded: false });
+    expect(estimates[3]).toEqual({ count: 3000, recorded: true });
   });
 
   test("ends on today's count, reached by a line from the last milestone", () => {
     const estimates = monthlyEstimates(two.slice(0, 1), months, 5000, '2024-05-20', null);
 
-    expect(estimates[4]).toEqual({ count: 5000, recorded: true, afterEnd: false });
+    expect(estimates[4]).toEqual({ count: 5000, recorded: true });
     expect(estimates[2]?.recorded).toBe(false);
     expect(estimates[2]!.count).toBeGreaterThan(1000);
     expect(estimates[2]!.count).toBeLessThan(5000);
@@ -121,14 +122,20 @@ describe('monthlyEstimates', () => {
     expect(estimates[4]).toBeNull();
   });
 
-  test('marks the months after an activity ended, and only those', () => {
+  test('draws nothing after an activity ended', () => {
     const estimates = monthlyEstimates(two, months, 4000, '2024-05-20', '2024-03-15');
 
-    expect(estimates.map((e) => e?.afterEnd ?? null)).toEqual([null, false, false, true, true]);
+    expect(estimates.map((e) => e?.recorded ?? null)).toEqual([null, true, false, null, null]);
   });
 
   test('is all empty without a milestone', () => {
     expect(monthlyEstimates([], months, 4000, '2024-05-20', null)).toEqual([null, null, null, null, null]);
+  });
+});
+
+describe('labelSides', () => {
+  test('puts a label that would crowd the last one above it below instead', () => {
+    expect(labelSides([0.1, 0.12, 0.5, 0.51, 0.52], 0.05)).toEqual(['above', 'below', 'above', 'below', 'below']);
   });
 });
 
@@ -139,6 +146,7 @@ describe('cardPlacement', () => {
       right: 'max(0px, calc(10.000% - 18px))',
       bottom: 'calc(20.000% + 12px)',
     });
+    expect(cardPlacement(0.9, null)).toMatchObject({ top: 'calc(50% + 12px)' });
   });
 });
 

@@ -147,7 +147,6 @@ function press(id: string) {
                     subject.activityEndDate,
                   )
                 "
-                small
                 aria-hidden="true"
               />
             </template>

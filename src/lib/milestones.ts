@@ -116,6 +116,25 @@ export function countScale(largest: number): CountScale {
   return { top, ticks: Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step) };
 }
 
+/**
+ * Which side of its point each label goes, for points on one line.
+ *
+ * Labels go above. One that would sit within `gap` of the last label above
+ * goes below instead, so two milestones a few months apart can both be read.
+ * `fractions` are in the order the points are drawn, oldest first.
+ */
+export function labelSides(fractions: readonly number[], gap: number): ('above' | 'below')[] {
+  let lastAbove = -Infinity;
+
+  return fractions.map((fraction) => {
+    if (fraction - lastAbove < gap) return 'below';
+
+    lastAbove = fraction;
+
+    return 'above';
+  });
+}
+
 /** One month's bar, estimated from the milestones. */
 export interface MonthEstimate {
   count: number;
@@ -124,8 +143,6 @@ export interface MonthEstimate {
    * count was read. The rest are interpolated between those.
    */
   recorded: boolean;
-  /** True for a month after the member's activity ended. */
-  afterEnd: boolean;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -152,8 +169,10 @@ function dayOf(date: string): number {
  * last milestone when today's count was not read, rather than a guess at
  * where it went.
  *
- * `endDate` marks the months after a member's activity ended. Their count
- * still moves, so the line still runs through them.
+ * The months after a member's activity ended are null as well. Their count
+ * still moves, and the line towards today's count still runs through them,
+ * but a bar there was hard to read apart from the rest in any form tried,
+ * and the user chose none over a hard one (2026-09-26).
  */
 export function monthlyEstimates(
   milestones: readonly SubscriberMilestone[],
@@ -175,14 +194,12 @@ export function monthlyEstimates(
 
   return months.map((month) => {
     if (month < first.reachedDate.slice(0, 7)) return null;
-
-    const afterEnd = endMonth !== null && month > endMonth;
-
-    if (month === current && now !== null) return { count: now, recorded: true, afterEnd };
+    if (endMonth !== null && month > endMonth) return null;
+    if (month === current && now !== null) return { count: now, recorded: true };
 
     const inMonth = milestones.filter((m) => m.reachedDate.slice(0, 7) === month);
 
-    if (inMonth.length > 0) return { count: inMonth.at(-1)!.subscriberCount, recorded: true, afterEnd };
+    if (inMonth.length > 0) return { count: inMonth.at(-1)!.subscriberCount, recorded: true };
 
     const day = dayOf(`${month}-${String(daysIn(month)).padStart(2, '0')}`);
     const after = anchors.findIndex((anchor) => anchor.day >= day);
@@ -192,22 +209,24 @@ export function monthlyEstimates(
     const [from, to] = [anchors[after - 1]!, anchors[after]!];
     const count = Math.round(from.count + ((to.count - from.count) * (day - from.day)) / (to.day - from.day));
 
-    return { count, recorded: false, afterEnd };
+    return { count, recorded: false };
   });
 }
 
 /**
  * Where a card opens beside the point at (`x`, `y`), both from 0 to 1 of the
  * chart: towards the middle of the chart on both axes, so it never runs off
- * the side it is nearest to.
+ * the side it is nearest to. `y` is null on a row of points, where the card
+ * always opens below.
  */
-export function cardPlacement(x: number, y: number): Record<string, string> {
+export function cardPlacement(x: number, y: number | null): Record<string, string> {
   const place: Record<string, string> = {};
 
   if (x <= 0.5) place.left = `max(0px, calc(${pct(x)} - 18px))`;
   else place.right = `max(0px, calc(${pct(1 - x)} - 18px))`;
 
-  if (y > 0.5) place.bottom = `calc(${pct(1 - y)} + 12px)`;
+  if (y === null) place.top = 'calc(50% + 12px)';
+  else if (y > 0.5) place.bottom = `calc(${pct(1 - y)} + 12px)`;
   else place.top = `calc(${pct(y)} + 12px)`;
 
   return place;
