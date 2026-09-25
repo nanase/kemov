@@ -99,7 +99,7 @@ bun wrangler secret list                  # 名前だけを出し、値は出さ
 
 `lifecycle add` を、リポジトリのルートで実行します。
 
-- `channel/` に規則が既にあるときは、並べて足すのではなく置き換える。1 つの prefix には規則を 1 つしか置けないため
+- `channel/` に規則が既にあるときは、並べて足すのではなく置き換える。同じ prefix に規則が 2 つあると、どちらの日数で消えるのかが読み取りにくいため、このリポジトリでは 1 つに保つ
   - 先に `lifecycle list` で今ある規則の名前を確かめ、その規則だけを `remove` する。無い名前を `remove` すると、エラーで止まる
   - `channel/` の規則の名前は、`expire-channel-30d`、`expire-channel-365d`、`expire-channel-27d`（#224）と変わってきた。下のコマンドは、今ある規則が `expire-channel-365d` の場合である
 - `-y` は、`add` が尋ねる確認を飛ばす。確認が出ると、ループが途中で止まる
