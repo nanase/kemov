@@ -110,6 +110,9 @@ cookie があるのは、ブラウザがページを読み解く前に、`color-
 | video-update   | 10 分ごと                       | `Videos.list`                                                |
 | chat-replay    | 1 分ごと                        | YouTube の画面が使う、チャットのリプレイの内部エンドポイント |
 | backup         | 毎日 00:20 UTC（日本時間 9:20） | D1                                                           |
+| retention      | 毎時 0 分                       | D1                                                           |
+
+retention は 30 日を過ぎたデータを消します（[データ](data.md#30-日を過ぎたデータの削除)）。cron を足さず、10 分ごとの回のうち毎時 0 分の回で動きます。
 
 channel-stats と video-discover は、回のたびに `channel` の全行を読み直します。`channel` に行が増えれば、次の回からそのチャンネルも読みます。
 

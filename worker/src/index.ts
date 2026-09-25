@@ -57,7 +57,8 @@ const handler: ExportedHandler<Env> = {
   // waitUntil rather than a plain await: collection touches D1 and the
   // YouTube API, so it can run past the point where returning would
   // otherwise let the runtime tear the invocation down.
-  scheduled: (controller, env, ctx) => ctx.waitUntil(runScheduled(controller.cron, env)),
+  scheduled: (controller, env, ctx) =>
+    ctx.waitUntil(runScheduled(controller.cron, env, new Date(controller.scheduledTime))),
 };
 
 export default handler;

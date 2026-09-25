@@ -1,6 +1,7 @@
 import { changeOver, DAY_SECONDS, HOUR_SECONDS, type Delta, type Sample } from '../lib/delta';
 import type { Env } from '../lib/env';
 import { CHANNEL_SNAPSHOT_EFFECTIVE } from '../lib/overrides';
+import { STAND_IN_REACH_MINUTES } from '../lib/retention';
 import { formatTimestamp } from '../lib/time';
 
 /**
@@ -119,6 +120,46 @@ async function snapshotAt(db: D1Database, channelId: string, at: string): Promis
     .first<SnapshotRow>();
 }
 
+/**
+ * The oldest snapshot after `after` and no later than `until`, for one
+ * channel. Only `changesFor` asks, for a period retention has cut into.
+ */
+async function snapshotAfter(
+  db: D1Database,
+  channelId: string,
+  after: string,
+  until: string,
+): Promise<SnapshotRow | null> {
+  return await db
+    .prepare(
+      `WITH ${CHANNEL_SNAPSHOT_EFFECTIVE}
+       SELECT fetched_at, subscriber_count, view_count, video_count
+         FROM channel_snapshot_effective
+        WHERE channel_id = ?1 AND fetched_at > ?2 AND fetched_at <= ?3
+        ORDER BY fetched_at ASC
+        LIMIT 1`,
+    )
+    .bind(channelId, after, until)
+    .first<SnapshotRow>();
+}
+
+/**
+ * The period whose older end ../collector/retention.ts deletes before a
+ * change can be read against it.
+ *
+ * Retention keeps nothing older than 30 days less an hour, so the snapshot
+ * at or before "30 days before the newest" is gone by the time it would be
+ * asked for. For this period the oldest snapshot after that instant
+ * stands in, as long as it is no further in than retention explains -
+ * `STAND_IN_REACH_MINUTES`. That makes the period short by up to about an
+ * hour and twenty minutes (#223).
+ *
+ * Not as far as ../lib/delta.ts's tolerance, which is three days either
+ * side of 30. A channel collected for 27 days has too short a history for a
+ * 30-day change, and a stand-in that far in would report its 27 days as 30.
+ */
+const PERIOD_CUT_BY_RETENTION = 30 * DAY_SECONDS;
+
 function shift(from: string, seconds: number): string {
   return formatTimestamp(new Date(new Date(from).getTime() - seconds * 1000));
 }
@@ -136,10 +177,19 @@ async function changesFor(
   latest: ChannelRow,
   periodSeconds: number,
 ): Promise<Record<CountName, Delta>> {
-  const earlier =
-    latest.fetched_at === null
-      ? null
-      : await snapshotAt(db, latest.channel_id, shift(latest.fetched_at, periodSeconds));
+  let earlier: SnapshotRow | null = null;
+
+  if (latest.fetched_at !== null) {
+    const target = shift(latest.fetched_at, periodSeconds);
+
+    earlier = await snapshotAt(db, latest.channel_id, target);
+
+    // Nothing found that close stays "history too short": the channel has
+    // not been collected for long enough, which is what that says.
+    if (earlier === null && periodSeconds === PERIOD_CUT_BY_RETENTION) {
+      earlier = await snapshotAfter(db, latest.channel_id, target, shift(target, -STAND_IN_REACH_MINUTES * 60));
+    }
+  }
 
   return Object.fromEntries(
     COUNTS.map((count) => [count, changeOver(sampleOf(latest, count), sampleOf(earlier, count), periodSeconds)]),
