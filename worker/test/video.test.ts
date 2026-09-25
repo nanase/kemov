@@ -168,6 +168,14 @@ async function allVideos(): Promise<VideoRow[]> {
   ).results;
 }
 
+async function lastAvailable(videoId: string): Promise<string | null | undefined> {
+  const row = await env.DB.prepare('SELECT last_available_at FROM video WHERE video_id = ?1')
+    .bind(videoId)
+    .first<{ last_available_at: string | null }>();
+
+  return row?.last_available_at;
+}
+
 async function tasks(kind: string): Promise<CollectTaskRow[]> {
   return (
     await env.DB.prepare(
@@ -551,6 +559,55 @@ describe('runVideoUpdate', () => {
     expect(await tasks('video_update')).toMatchObject([
       { target_id: 'gone', state: 'unavailable', next_attempt_at: null },
     ]);
+  });
+
+  // #223's 30 days start from the last pass that got the video, which is the
+  // fetched_at it had until the pass that found it gone - not that pass.
+  test('records when a video it no longer returns was last fetched', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('gone', 'UCaaa', { fetchedAt: '2026-09-20T00:00:00Z' });
+
+    await runVideoUpdate(env, apiStub({ videos: () => videosListResponse([]) }));
+
+    expect(await lastAvailable('gone')).toEqual('2026-09-20T00:00:00Z');
+  });
+
+  // Every later pass finds it gone again and moves fetched_at; the day the
+  // 30 days started must not move with it.
+  test('keeps that instant on every later pass that finds it gone', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('gone', 'UCaaa', { fetchedAt: '2026-09-20T00:00:00Z' });
+
+    await runVideoUpdate(env, apiStub({ videos: () => videosListResponse([]) }));
+    await env.DB.prepare(`UPDATE video SET fetched_at = '2026-09-21T00:00:00Z' WHERE video_id = 'gone'`).run();
+    await runVideoUpdate(env, apiStub({ videos: () => videosListResponse([]) }));
+
+    expect(await lastAvailable('gone')).toEqual('2026-09-20T00:00:00Z');
+  });
+
+  // A row restored from a backup older than the column. Its fetched_at is a
+  // pass that found nothing, so it must not become the start of 30 days.
+  test('leaves an unavailable video with no recorded instant without one', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('gone', 'UCaaa', { availability: 'unavailable', fetchedAt: '2026-09-21T00:00:00Z' });
+
+    await runVideoUpdate(env, apiStub({ videos: () => videosListResponse([]) }));
+
+    expect(await lastAvailable('gone')).toBeNull();
+  });
+
+  test('clears the instant once the video comes back', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('back', 'UCaaa', { fetchedAt: '2026-09-20T00:00:00Z' });
+
+    await runVideoUpdate(env, apiStub({ videos: () => videosListResponse([]) }));
+    await runVideoUpdate(
+      env,
+      apiStub({ videos: () => videosListResponse([{ id: 'back', channelId: 'UCaaa', duration: 'PT9M' }]) }),
+    );
+
+    expect(await allVideos()).toMatchObject([{ video_id: 'back', availability: 'public' }]);
+    expect(await lastAvailable('back')).toBeNull();
   });
 
   test('a call that never answered marks nothing unavailable', async () => {

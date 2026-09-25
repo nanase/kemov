@@ -32,7 +32,8 @@ export const VIDEO_EFFECTIVE = `video_effective AS (
            COALESCE(vo.type, v.type) AS type,
            v.duration_seconds, v.view_count, v.like_count, v.comment_count,
            v.chat_message_count, v.chat_unique_user_count,
-           v.scheduled_start_time, v.actual_start_time, v.actual_end_time, v.fetched_at
+           v.scheduled_start_time, v.actual_start_time, v.actual_end_time, v.fetched_at,
+           v.last_available_at
       FROM video v
       LEFT JOIN video_override vo ON vo.video_id = v.video_id
   )`;
