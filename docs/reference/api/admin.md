@@ -6,21 +6,26 @@
 
 ## 保存した時点で効くデータ
 
-| メソッド | パス                                                          | 返すもの                                               |
-| -------- | ------------------------------------------------------------- | ------------------------------------------------------ |
-| GET      | `/admin/api/me`                                               | Cloudflare Access が識別した呼び出し元のメールアドレス |
-| GET      | `/admin/api/members`                                          | `channel` の全行                                       |
-| PUT      | `/admin/api/members/<チャンネル ID>`                          | 人が直せる列を置き換えた後の行                         |
-| GET      | `/admin/api/snapshot-exclusions`                              | `channel_snapshot_exclusion` の全行                    |
-| PUT      | `/admin/api/snapshot-exclusions/<チャンネル ID>/<fetched_at>` | 作成または置き換えた後の除外                           |
-| DELETE   | `/admin/api/snapshot-exclusions/<チャンネル ID>/<fetched_at>` | 取り除いたことを記録した版だけ                         |
-| GET      | `/admin/api/video-overrides`                                  | `video_override` の全行と、動画そのものの題            |
-| PUT      | `/admin/api/video-overrides/<動画 ID>`                        | 作成または置き換えた後の上書き                         |
-| DELETE   | `/admin/api/video-overrides/<動画 ID>`                        | 取り除いたことを記録した版だけ                         |
+| メソッド | パス                                                          | 返すもの                                                                                      |
+| -------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| GET      | `/admin/api/me`                                               | Cloudflare Access が識別した呼び出し元のメールアドレス                                        |
+| GET      | `/admin/api/members`                                          | `channel` の全行                                                                              |
+| POST     | `/admin/api/members`                                          | 一覧の末尾に足したメンバーの行。ID が既にあれば 409 を返します                                |
+| PUT      | `/admin/api/members`                                          | 足した行と全員の表示順を 1 回の batch で保存した後の一覧。一覧が変わっていれば 409 を返します |
+| PUT      | `/admin/api/members/<チャンネル ID>`                          | 人が直せる列（表示順を除く）を置き換えた後の行                                                |
+| DELETE   | `/admin/api/members/<チャンネル ID>`                          | 取り除いたことを記録した版だけ。記録が付いていれば 409 を返します                             |
+| GET      | `/admin/api/snapshot-exclusions`                              | `channel_snapshot_exclusion` の全行                                                           |
+| PUT      | `/admin/api/snapshot-exclusions/<チャンネル ID>/<fetched_at>` | 作成または置き換えた後の除外                                                                  |
+| DELETE   | `/admin/api/snapshot-exclusions/<チャンネル ID>/<fetched_at>` | 取り除いたことを記録した版だけ                                                                |
+| GET      | `/admin/api/video-overrides`                                  | `video_override` の全行と、動画そのものの題                                                   |
+| PUT      | `/admin/api/video-overrides/<動画 ID>`                        | 作成または置き換えた後の上書き                                                                |
+| DELETE   | `/admin/api/video-overrides/<動画 ID>`                        | 取り除いたことを記録した版だけ                                                                |
 
 `channel`・`video_override`・`channel_snapshot_exclusion` は、保存した時点で効きます（#141 の設計の決定 5）。この点で、公開の段を通る下記の `footprints_event` と `genet_stream` とは違います。
 
 上の PUT と DELETE は、どれも変える行と同じ `db.batch` で `revision` に 1 行を記録します。組のうち片方の書き込みが失敗しても、行とその履歴が食い違いません。PUT は保存した行と一緒に `revisionId` を返し、DELETE は `revisionId` だけを返します。
+
+例外は、メンバーの一覧を扱う `POST /admin/api/members` と `PUT /admin/api/members` です。この 2 つは、足した行と順番が変わった行ごとに `revision` に 1 行を、同じ `db.batch` で記録します。順番が変わらない行には何も記録しません。`revisionId` は返さず、POST は 201 で足した行を `member` に、PUT は保存した後の一覧を `members` に入れて返します。
 
 PUT は、列を 1 つずつ直すのではなく、すべての列をまとめて置き換えます。
 

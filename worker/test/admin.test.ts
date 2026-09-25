@@ -302,15 +302,48 @@ describe("handleAdminRequest routing to task 12's resources", () => {
       colorBack: '#000000',
       activityStartDate: '2021-01-01',
       activityEndDate: null,
-      displayOrder: 0,
     });
 
     expect(response.status).toEqual(200);
 
-    const refused = await call('/admin/api/members/UCaaa', { method: 'DELETE' });
+    const refused = await call('/admin/api/members/UCaaa', { method: 'PATCH' });
 
     expect(refused.status).toEqual(405);
-    expect(refused.headers.get('Allow')).toEqual('PUT');
+    expect(refused.headers.get('Allow')).toEqual('PUT, DELETE');
+  });
+
+  test('routes POST and PUT /admin/api/members, DELETE .../:id, and refuses other methods', async () => {
+    await insertChannel('UCaaa');
+
+    const post = (path: string, body: unknown) =>
+      call(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+    const added = await post('/admin/api/members', {
+      channelId: 'UCnnnnnnnnnnnnnnnnnnnnnn',
+      name: 'x',
+      fullname: 'x',
+      colorKey: '#000000',
+      colorSub: '#000000',
+      colorLight: '#000000',
+      colorBack: '#000000',
+      activityStartDate: '2021-01-01',
+      activityEndDate: null,
+    });
+
+    expect(added.status).toEqual(201);
+
+    const reordered = await put('/admin/api/members', { order: ['UCnnnnnnnnnnnnnnnnnnnnnn', 'UCaaa'] });
+
+    expect(reordered.status).toEqual(200);
+
+    const deleted = await call('/admin/api/members/UCnnnnnnnnnnnnnnnnnnnnnn', { method: 'DELETE' });
+
+    expect(deleted.status).toEqual(200);
+
+    const refused = await call('/admin/api/members', { method: 'DELETE' });
+
+    expect(refused.status).toEqual(405);
+    expect(refused.headers.get('Allow')).toEqual('GET, POST, PUT');
   });
 
   test('refuses a PUT body that is not valid JSON', async () => {
