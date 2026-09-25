@@ -187,10 +187,20 @@ function readMemberBody(
   return read;
 }
 
-/** MEMBER_COLUMNS order, minus fetched_at: fetched_at is the collector's own
- * clock, not something a save changes, so it is the "日時の列" #141's design
- * excludes from the body of a channel/video_override/channel_snapshot_exclusion
- * revision. */
+/**
+ * MEMBER_COLUMNS order, minus fetched_at, custom_url and thumbnail_url.
+ * fetched_at is the collector's own clock, not something a save changes, so
+ * it is the "日時の列" #141's design excludes from the body of a
+ * channel/video_override/channel_snapshot_exclusion revision.
+ *
+ * custom_url and thumbnail_url come from the YouTube API, which lets this
+ * site keep what it fetched for 30 days at most (#222). `revision` is
+ * append-only and is never trimmed, so a value written here would outlive
+ * that limit with no way to remove it short of dropping the table's
+ * triggers. No save here changes either column anyway (see
+ * EDITABLE_MEMBER_KEYS), so the body would only have recorded whatever the
+ * collector last wrote (#224).
+ */
 function revisionBodyOf(row: MemberRow) {
   return {
     channel_id: row.channel_id,
@@ -204,8 +214,6 @@ function revisionBodyOf(row: MemberRow) {
     color_back: row.color_back,
     activity_start_date: row.activity_start_date,
     activity_end_date: row.activity_end_date,
-    custom_url: row.custom_url,
-    thumbnail_url: row.thumbnail_url,
     display_order: row.display_order,
     twitch: row.twitch,
   };

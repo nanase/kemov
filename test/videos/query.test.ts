@@ -75,6 +75,19 @@ describe('queryToState', () => {
     expect(queryToState(stateToQuery(state))).toEqual(state);
   });
 
+  test('what the reader kept stands in for the default where the address is silent', () => {
+    const kept: PageState = { ...defaultState(), metric: 'viewCount', kind: 'shorts', period: 'p30' };
+
+    expect(queryToState(new URLSearchParams(), kept)).toEqual(kept);
+  });
+
+  test('a key the address names wins over what the reader kept', () => {
+    const kept: PageState = { ...defaultState(), metric: 'viewCount', kind: 'shorts', period: 'p30' };
+    const read = queryToState(new URLSearchParams('metric=likeCount&type=video&period=1y'), kept);
+
+    expect(read).toMatchObject({ metric: 'likeCount', kind: 'video', period: 'p365' });
+  });
+
   test('a metric this page does not have falls back to the default rather than throwing', () => {
     expect(queryToState(new URLSearchParams('metric=notAMetric')).metric).toEqual(defaultState().metric);
   });

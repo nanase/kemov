@@ -4,6 +4,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt from '@/shell/UpdatedAt.vue';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
+import { useStoredChoice } from '@/lib/useStoredChoice';
 
 import {
   buildTimeline,
@@ -40,7 +41,19 @@ const data = useFootprintsData();
 const now = ref(Date.now());
 const dark = ref(false);
 const openBundles = ref(new Set<string>());
-const filters = ref<Filters>({ members: new Set(), kind: 'all', streams: 'all', order: 'asc' });
+// The order and the soon list's reach are how the reader likes the page laid
+// out, so they come back next time. Who, what kind and which streams are
+// narrowings, and start from the top each visit.
+const storedOrder = useStoredChoice<Filters['order']>('kemov/footprints/order', ['asc', 'desc'], 'asc');
+const filters = ref<Filters>({ members: new Set(), kind: 'all', streams: 'all', order: storedOrder.value });
+
+watch(
+  () => filters.value.order,
+  (order) => {
+    storedOrder.value = order;
+  },
+  { flush: 'sync' },
+);
 let clock: ReturnType<typeof setInterval> | undefined;
 let themeObserver: MutationObserver | undefined;
 const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -125,7 +138,7 @@ function jumpToYear(year: string) {
  * chosen above narrows them too - a reader who has picked one person is not
  * shown somebody else's anniversary in the corner.
  */
-const soonAll = ref(false);
+const soonAll = useStoredChoice<boolean>('kemov/footprints/soonAll', [false, true], false);
 const soonList = computed(() => upcoming(items.value, data.rows.value, data.channels.value, filters.value, now.value));
 const soonShown = computed(() => {
   const near = soonList.value.filter((entry) => daysBetween(now.value, entry.at) <= SOON_DAYS);

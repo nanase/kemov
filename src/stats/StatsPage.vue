@@ -31,7 +31,7 @@ import SubscriberNote from './parts/SubscriberNote.vue';
 import TotalsGrid from './parts/TotalsGrid.vue';
 import type { StreamRow } from './parts/RecentStreams.vue';
 import { useStatsData } from './useStatsData';
-import { useStoredChoice } from './useStoredChoice';
+import { useStoredChoice } from '@/lib/useStoredChoice';
 
 /**
  * けもV 統計.

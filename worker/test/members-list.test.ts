@@ -85,6 +85,33 @@ describe('addMember', () => {
     expect(JSON.parse(rows[0].body!)).toMatchObject({ channel_id: NEW, name: 'あたらしい', display_order: 3 });
   });
 
+  // #224: revision is never trimmed, and the API lets the site keep these two
+  // for 30 days. Every revision this file's routes write goes through the same
+  // body, so a moved member is checked as well as an added one.
+  test('keeps custom_url and thumbnail_url out of every revision body it writes', async () => {
+    await env.DB.prepare(
+      `INSERT INTO channel (channel_id, name, fullname, color_key, color_sub, color_light, color_back,
+                            activity_start_date, custom_url, thumbnail_url, display_order)
+       VALUES (?1, ?1, ?1, '#000000', '#111111', '#222222', '#333333', '2021-01-01',
+               '@handle', 'https://example.invalid/a.jpg', 0)`,
+    )
+      .bind(A)
+      .run();
+
+    await saveMembers(env, { add: [newMember()], order: [NEW, A] });
+
+    const rows = await revisions();
+
+    expect(rows).toHaveLength(2);
+
+    for (const row of rows) {
+      const body = JSON.parse(row.body!) as Record<string, unknown>;
+
+      expect(body).not.toHaveProperty('custom_url');
+      expect(body).not.toHaveProperty('thumbnail_url');
+    }
+  });
+
   test('puts the first member of an empty list at 0', async () => {
     await addMember(env, newMember());
 

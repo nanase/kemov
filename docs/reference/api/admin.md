@@ -32,6 +32,8 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 
 保存のたびの `revision.body` は、`worker/src/lib/revision.ts` を通して作ります。中身は保存した行から、保存の時刻だけを表す列を除いたものです。JSON のキーは、行の列の順に並びます。
 
+メンバーの版は、さらに `custom_url` と `thumbnail_url` も除きます。どちらも YouTube API から取った値で、持ってよいのは 30 日までです（[#222](https://github.com/nanase/kemov/issues/222)）。`revision` は追記だけで行を消せないので、はじめから写しません。この 2 列はメンバーの保存では変わらないので、版から読み取れることは減りません（[#224](https://github.com/nanase/kemov/issues/224)）。
+
 ## あしあと
 
 | メソッド | パス                                                  | 返すもの                                                                     |
