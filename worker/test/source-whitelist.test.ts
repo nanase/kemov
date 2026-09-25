@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 
-import { hasTwoHosts, isWhitelistedSource, readSourceWhitelist } from '../src/lib/source-whitelist';
+import { hasTwoHosts, isWhitelistedSource, readSourceWhitelist, youtubeVideoIdOf } from '../src/lib/source-whitelist';
 
 // What SOURCE_WHITELIST held when #175 moved it into D1, in its own order.
 // Written out here rather than imported: it is the record that migration 0008
@@ -160,5 +160,40 @@ describe('hasTwoHosts', () => {
 
   test('counts a URL that names no host as none', () => {
     expect(hasTwoHosts(['https://', 'https://x.com/a'])).toEqual(false);
+  });
+});
+
+describe('youtubeVideoIdOf', () => {
+  const ID = 'abcDEF_-123';
+
+  test.each([
+    `https://www.youtube.com/watch?v=${ID}`,
+    `https://www.youtube.com/watch?v=${ID}&t=90s`,
+    `https://www.youtube.com/watch?t=90s&v=${ID}`,
+    `https://youtube.com/watch?v=${ID}`,
+    `https://m.youtube.com/watch?v=${ID}`,
+    `https://youtu.be/${ID}`,
+    `https://youtu.be/${ID}?t=90`,
+    `https://www.youtube.com/live/${ID}`,
+    `https://www.youtube.com/live/${ID}?si=x`,
+  ])('reads the ID from %s', (url) => {
+    expect(youtubeVideoIdOf(url)).toEqual(ID);
+  });
+
+  test.each([
+    'https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa',
+    'https://www.youtube.com/@someone',
+    `https://www.youtube.com/playlist?list=${ID}`,
+    `https://www.youtube.com/watch?v=${ID}extra`,
+    'https://www.youtube.com/watch?v=short',
+    'https://www.youtube.com/watch',
+    `https://youtu.be/${ID}/more`,
+    `https://youtube.com/live/${ID}`,
+    `https://example.com/watch?v=${ID}`,
+    `https://notyoutube.com/watch?v=${ID}`,
+    `http://www.youtube.com/watch?v=${ID}`,
+    'not a url',
+  ])('does not read %s as a video', (url) => {
+    expect(youtubeVideoIdOf(url)).toBeNull();
   });
 });

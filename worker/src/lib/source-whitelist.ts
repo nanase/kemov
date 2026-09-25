@@ -111,3 +111,60 @@ export function hasTwoHosts(urls: readonly string[]): boolean {
 
   return hosts.size >= 2;
 }
+
+const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+
+/**
+ * The video ID `url` points at, or null when it is not a YouTube video's URL
+ * (#225). Only the forms a member's own stream is shared as are read:
+ * `youtube.com/watch?v=<ID>` on `www.`, `m.` or no prefix, `youtu.be/<ID>`
+ * and `www.youtube.com/live/<ID>`, over `https`. Other query parameters, such
+ * as a start time, are ignored. A channel page, a playlist, another host or an
+ * ID that is not 11 characters is not a video's URL.
+ */
+export function youtubeVideoIdOf(url: string): string | null {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+
+  if (parsed.protocol !== 'https:') return null;
+
+  let id: string | null = null;
+
+  if (parsed.hostname === 'youtu.be') {
+    id = parsed.pathname.slice(1);
+  } else if (['www.youtube.com', 'youtube.com', 'm.youtube.com'].includes(parsed.hostname)) {
+    if (parsed.pathname === '/watch') {
+      id = parsed.searchParams.get('v');
+    } else if (parsed.hostname === 'www.youtube.com' && parsed.pathname.startsWith('/live/')) {
+      id = parsed.pathname.slice('/live/'.length);
+    }
+  }
+
+  return id !== null && VIDEO_ID.test(id) ? id : null;
+}
+
+/**
+ * Whether one of `urls` is a video of `channelId`'s own that this site has
+ * collected. A stream the member showed their subscriber count in is their
+ * own statement, so it counts as a source by itself, as a whitelisted one
+ * does. A video missing from `video` (older than what is collected, #230) does
+ * not count: nothing says whose it is.
+ */
+export async function hasOwnVideoSource(env: Env, urls: readonly string[], channelId: string): Promise<boolean> {
+  const ids = [...new Set(urls.map(youtubeVideoIdOf).filter((id): id is string => id !== null))];
+
+  for (const id of ids) {
+    const row = await env.DB.prepare('SELECT 1 AS found FROM video WHERE video_id = ?1 AND channel_id = ?2')
+      .bind(id, channelId)
+      .first();
+
+    if (row !== null) return true;
+  }
+
+  return false;
+}

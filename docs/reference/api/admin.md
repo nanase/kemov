@@ -187,7 +187,11 @@ JSON は `shape_version` と `channel_id` も持ちます。
 
 - 出典が 1 つ以上ある
 - `announcedBy` が `member` か `official` なら、出典が足りている
-  - 足りる条件は、あしあとと同じ（[出典のホワイトリスト](#出典のホワイトリスト)）
+  - 足りる条件は、あしあとと同じ（[出典のホワイトリスト](#出典のホワイトリスト)）に、次を足したものです
+  - 節目のメンバー本人のチャンネルの動画の URL 1 つは、ホワイトリストの出典と同じに数えます。メンバーが配信の画面に登録者数を映したときの、その配信です
+    - 動画の URL として読むのは、`https://www.youtube.com/watch?v=<ID>`（`youtube.com`・`m.youtube.com` も同じ。`t=` などのクエリが付いていても構いません）、`https://youtu.be/<ID>`、`https://www.youtube.com/live/<ID>` です。`worker/src/lib/source-whitelist.ts` の `youtubeVideoIdOf` が ID を取り出します
+    - チャンネルのページ、再生リスト、`youtube.com` 以外のホストは、動画の URL ではありません
+    - `<ID>` が `video` の表にあり、その `channel_id` が節目の `channel_id` と一致することが必要です。他のメンバーの動画や、`video` の表に無い動画では通りません。収集の対象より古い動画は、表に無いので通りません（#230）
 - `announcedBy` が `listener` なら、そのリスナーの投稿 1 つで足りる
 - つないだ出来事の `kind` が、今も `milestone`
 
