@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 
 import { AdminApiError, getJson, postJson } from '../lib/api';
+import type { FootprintsMember } from '../lib/footprints';
 import {
   canPublishFootprints,
   footprintsMarkFor,
@@ -22,13 +23,21 @@ import {
 } from '../lib/genet-publish';
 import { refreshPublishBadge } from '../lib/publish-badge';
 import { CHANGED_ROWS_HINT, publishMarkFor } from '../lib/publish-mark';
+import { milestoneTitle, type SubscriberMilestone } from '../lib/subscriber-milestones';
+import {
+  canPublishMilestones,
+  milestoneMarkFor,
+  publishesOnlyForShape as milestonesPublishOnlyForShape,
+  type MilestonesPending,
+  type MilestonesPublishResult,
+} from '../lib/subscriber-milestones-publish';
 import { showToast } from '../lib/toast';
 
 /**
- * 運用 > 公開 (#144's task 9, extended by task 14 for ジェネット楽曲一覧).
- * Footprints and genet music each have their own publish gate and their own
+ * 運用 > 公開 (#144's task 9, extended by task 14 for ジェネット楽曲一覧 and by
+ * #225 for 登録者数の節目). Each has its own publish gate and its own
  * pending/publish endpoint pair under /admin/api, so this screen loads and
- * publishes them independently - one failing does not block the other.
+ * publishes them independently - one failing does not block the others.
  *
  * This is the second of two steps (#185): a row's own screen moves it to
  * 公開待ち, and 「いま公開する」 here is what writes the public JSON. The rows
@@ -64,6 +73,28 @@ function genetRowLink(entry: ChangedGenetEntry): { path: string; query?: { video
 
 function genetRowLinkLabel(entry: ChangedGenetEntry): string {
   return entry.entity === 'genet_stream' ? '配信の画面へ' : '配信の一覧へ';
+}
+
+// The whole answer in one ref rather than one per list as above: null until
+// it has been read, so the section and its button do not appear as "nothing
+// waiting" before anything is known.
+const milestonesState = ref<MilestonesPending | null>(null);
+const milestonesLoading = ref(false);
+const milestonesLoadError = ref<string | null>(null);
+const milestonesPublishing = ref(false);
+// What names a milestone in the lists below. The pending list carries ids
+// alone; a row missing here (the list failed to load) is named by its id.
+const milestoneRows = ref<SubscriberMilestone[]>([]);
+const milestoneMembers = ref<FootprintsMember[]>([]);
+
+function milestoneLabel(milestoneId: number): string {
+  const milestone = milestoneRows.value.find((m) => m.milestoneId === milestoneId);
+
+  if (milestone === undefined) return `milestone_id ${milestoneId}`;
+
+  const name = milestoneMembers.value.find((m) => m.channelId === milestone.channelId)?.name ?? milestone.channelId;
+
+  return milestoneTitle(milestone, name);
 }
 
 async function load(): Promise<void> {
@@ -140,8 +171,54 @@ async function publishGenetNow(): Promise<void> {
   }
 }
 
+async function loadMilestones(): Promise<void> {
+  milestonesLoading.value = true;
+  milestonesLoadError.value = null;
+
+  try {
+    milestonesState.value = await getJson<MilestonesPending>('/subscribers/pending');
+  } catch (error) {
+    milestonesLoadError.value = error instanceof AdminApiError ? error.message : String(error);
+  } finally {
+    milestonesLoading.value = false;
+  }
+}
+
+async function loadMilestoneNames(): Promise<void> {
+  try {
+    const [rows, members] = await Promise.all([
+      getJson<{ milestones: SubscriberMilestone[] }>('/subscribers/milestones'),
+      getJson<{ members: FootprintsMember[] }>('/members'),
+    ]);
+
+    milestoneRows.value = rows.milestones;
+    milestoneMembers.value = members.members;
+  } catch {
+    // The lists fall back to the id alone.
+  }
+}
+
+async function publishMilestonesNow(): Promise<void> {
+  milestonesPublishing.value = true;
+
+  try {
+    const body = await postJson<MilestonesPublishResult>('/subscribers/publish', {});
+
+    showToast(
+      body.published
+        ? `公開しました。subscribers/milestones.json、節目 ${body.milestoneCount} 件、${body.byteLength} バイト`
+        : '公開を待っているものがありません',
+    );
+    await loadMilestones();
+  } catch (error) {
+    showToast(error instanceof AdminApiError ? error.message : String(error));
+  } finally {
+    milestonesPublishing.value = false;
+  }
+}
+
 onMounted(async () => {
-  await Promise.all([load(), loadGenet()]);
+  await Promise.all([load(), loadGenet(), loadMilestones(), loadMilestoneNames()]);
 });
 </script>
 
@@ -242,6 +319,73 @@ onMounted(async () => {
               </button>
             </div>
             <div v-if="!genetLoading && !canPublishGenet(genetState) && genetChanged.length > 0" class="hint">
+              公開を待っているものがありません
+            </div>
+          </template>
+
+          <div v-if="milestonesLoadError" class="panel flag">
+            <h4>読み込めません</h4>
+            <div class="hint">{{ milestonesLoadError }}</div>
+          </div>
+          <template v-else-if="milestonesState">
+            <div class="panel">
+              <h4>登録者数の節目 - いま公開を待っているもの</h4>
+              <div class="kv">
+                <dt>公開を待っているもの</dt>
+                <dd class="num">{{ milestonesState.pending.length }} 件</dd>
+                <dt>公開後に変更あり</dt>
+                <dd class="num">{{ milestonesState.changed.length }} 件</dd>
+                <dt>つないだ出来事の変更</dt>
+                <dd class="num">{{ milestonesState.eventChanged.length }} 件</dd>
+              </div>
+            </div>
+            <div v-if="milestonesState.changed.length > 0" class="panel flag">
+              <h4>公開後に変更があった行</h4>
+              <div class="hint">{{ CHANGED_ROWS_HINT }}</div>
+              <ul class="change-list">
+                <li v-for="c in milestonesState.changed" :key="c.milestoneId">
+                  <span class="change-title">{{ milestoneLabel(c.milestoneId) }}</span>
+                  <span class="chip" :class="milestoneMarkFor('published', c.milestoneId, milestonesState).tone">{{
+                    milestoneMarkFor('published', c.milestoneId, milestonesState).label
+                  }}</span>
+                  <RouterLink class="btn" :to="{ path: '/subscribers', query: { milestone: c.milestoneId } }">
+                    節目の画面へ
+                  </RouterLink>
+                </li>
+              </ul>
+            </div>
+            <div v-if="milestonesState.eventChanged.length > 0" class="panel">
+              <h4>つないだ出来事が変わった節目</h4>
+              <div class="hint">
+                あしあとで出来事が公開し直されたか、年表から外れました。「いま公開する」を押すと、節目の JSON
+                の出来事を今の年表に合わせます。
+              </div>
+              <ul class="change-list">
+                <li v-for="c in milestonesState.eventChanged" :key="c.milestoneId">
+                  <span class="change-title">{{ milestoneLabel(c.milestoneId) }}</span>
+                  <RouterLink class="btn" :to="{ path: '/subscribers', query: { milestone: c.milestoneId } }">
+                    節目の画面へ
+                  </RouterLink>
+                </li>
+              </ul>
+            </div>
+            <div v-if="milestonesPublishOnlyForShape(milestonesState)" class="hint">
+              公開中のデータは古い形のままです。押すと新しい形で作り直します（中身は変わりません）。
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+              <button
+                class="btn primary"
+                type="button"
+                :disabled="milestonesPublishing || milestonesLoading || !canPublishMilestones(milestonesState)"
+                @click="publishMilestonesNow"
+              >
+                登録者数の節目をいま公開する
+              </button>
+            </div>
+            <div
+              v-if="!milestonesLoading && !canPublishMilestones(milestonesState) && milestonesState.changed.length > 0"
+              class="hint"
+            >
               公開を待っているものがありません
             </div>
           </template>

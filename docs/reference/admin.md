@@ -82,7 +82,15 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
   - 保存の 400 は編集の欄の帯に出す。`src/admin/lib/footprints.ts` の `fieldForSaveError` が、worker のメッセージを読んで、どの欄の話かを示す。worker の検証をここにもう 1 つ写すことはしない
 - 公開（`src/admin/pages/PublishPage.vue`）
   - あしあととジェネット楽曲一覧は、それぞれ `GET .../pending` の 2 つの一覧と「いま公開する」を持つ
-  - 2 つは互いに独立して読み込み、公開する
+  - 登録者数の節目も同じ形で並べます。一覧は、公開待ち・公開後の変更・つないだ出来事の変更（`eventChanged`）の 3 つです。「いま公開する」を押せるのは、worker が JSON を作り直す場合と同じく、公開待ち・`eventChanged`・古い形の JSON のどれかがあるときです（`src/admin/lib/subscriber-milestones-publish.ts`）
+  - 3 つは互いに独立して読み込み、公開する
+- 登録者数の節目（`src/admin/pages/SubscribersPage.vue`、`src/admin/components/SubscriberMilestoneInspector.vue`、#225）
+  - 表はメンバーと `status` で絞り、達成の日の古い順に並べます
+  - 編集の欄の作りは、あしあとと同じです。保存・公開待ちにする/下書きに戻す・削除ができます。公開中の節目は削除できないので、その旨を欄に出します
+  - 「＋ 足す」は、あしあとと違って、その場で行を作りません。空の欄を開き、「保存」を押したときに作ります。日付と人数を空のまま作れないうえ、仮の値を入れると、公表された数のように残るおそれがあるためです
+  - つなぐ出来事は、あしあとの `kind = 'milestone'` の出来事から選びます
+  - 日付と人数は、人が公表を見て入力します。YouTube API の値を候補として出しません（#222）
+  - リスナーの投稿の URL は、この画面にだけ出ます。公開の JSON には worker が入れません
 - ジェネット楽曲一覧（`src/admin/pages/SetsPage.vue`）
   - `.pane`/`.inspector` を使わない唯一の画面で、代わりに `.setlist`/`.editor` を全幅で使う。配信のデータは、他の画面が使う細い編集の欄に収まらないため（#141 のデザイン）
   - 曲は、それを演奏するすべての配信で共有する。そのため、曲のクレジットの保存（`src/admin/lib/genet-tunes.ts`）は、配信の欄と演奏する曲・シーンの保存（`src/admin/lib/genet-streams.ts`）とは別の操作
