@@ -301,6 +301,32 @@ function newMemberRow(values: Record<NewMemberKey, unknown>, displayOrder: numbe
 type NewMemberValues = Record<NewMemberKey, unknown>;
 
 /**
+ * The first statement of a whole-list save: fails the batch, so that D1 rolls
+ * all of it back, unless `channel` holds exactly `ids` when the batch runs.
+ *
+ * saveMemberList reads the members before it builds the batch, and somebody
+ * else may add or delete one in between. Without this a deleted member would
+ * still get a `save` revision for an UPDATE that changed no row, and an added
+ * one would be left out of the order it was saved with.
+ *
+ * It fails by inserting a NULL into a NOT NULL column - there is no way to
+ * abort a batch from SQL alone - and only when the sets differ, so a matching
+ * list changes nothing. The ids go in as one JSON text, not one bind or one
+ * SELECT each: a compound SELECT has a term limit in D1, and the list grows
+ * with the members.
+ */
+export function membershipGuard(db: D1Database, ids: string[]): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO channel (channel_id)
+       SELECT NULL
+        WHERE (SELECT count(*) FROM channel) <> json_array_length(?1)
+           OR EXISTS (SELECT 1 FROM channel WHERE channel_id NOT IN (SELECT value FROM json_each(?1)))`,
+    )
+    .bind(JSON.stringify(ids));
+}
+
+/**
  * Adds `added` and sets the display order of the whole list, in one
  * `db.batch`: D1 runs a batch as one transaction, so what the public site
  * reads is the list before it or the list after it, never a half-moved one.
@@ -336,7 +362,12 @@ async function saveMemberList(env: Env, added: NewMemberValues[], order: string[
   }
 
   const placeOf = new Map(finalOrder.map((id, index) => [id, index]));
-  const statements: D1PreparedStatement[] = [];
+  const statements: D1PreparedStatement[] = [
+    membershipGuard(
+      env.DB,
+      existing.map((row) => row.channel_id),
+    ),
+  ];
   const rows: MemberRow[] = [];
 
   for (const values of added) {
@@ -380,14 +411,15 @@ async function saveMemberList(env: Env, added: NewMemberValues[], order: string[
     );
   }
 
-  if (statements.length > 0) {
-    try {
-      await env.DB.batch(statements);
-    } catch {
-      // The one way this batch fails that a caller can act on is a member
-      // added between the read above and here; the id's PRIMARY KEY refuses it.
-      return errorResponse(409, 'the member list changed while saving; reload and try again');
-    }
+  // Always run, even when nothing above changed: the guard is what makes a
+  // save of a list somebody else changed fail rather than pass unchecked.
+  try {
+    await env.DB.batch(statements);
+  } catch {
+    // The guard, or a member added between the read above and here whose id's
+    // PRIMARY KEY refuses the INSERT: both mean the list is not the one this
+    // save was built from, and nothing was written.
+    return errorResponse(409, 'the member list changed while saving; reload and try again');
   }
 
   const byId = new Map([...existing, ...rows].map((row) => [row.channel_id, row]));

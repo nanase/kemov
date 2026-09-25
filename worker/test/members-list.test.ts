@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 
-import { addMember, deleteMember, listMembers, saveMembers } from '../src/admin/members';
+import { addMember, deleteMember, listMembers, membershipGuard, saveMembers } from '../src/admin/members';
+import { revisionStatement } from '../src/lib/revision';
 import { listChannels } from '../src/api/channels';
 import { runChannelStats } from '../src/collector/channel-stats';
 import { clearEverything } from './reset-db';
@@ -334,6 +335,61 @@ describe('saveMembers', () => {
     const body = (await (await listMembers(env)).json()) as { members: { channelId: string }[] };
 
     expect(body.members.map((member) => member.channelId)).toEqual([B, C, A]);
+  });
+});
+
+// The race itself cannot be staged from a test - the read and the batch are
+// one call - so the guard is checked on its own, and then as the first
+// statement of a batch that has something to lose.
+describe('membershipGuard', () => {
+  test('passes, and writes nothing, when the ids are exactly the members', async () => {
+    await seedThree();
+
+    await env.DB.batch([membershipGuard(env.DB, [C, A, B])]);
+
+    expect(await publicOrder()).toEqual([A, B, C]);
+  });
+
+  test.each([
+    ['a member the list does not have (somebody added one)', (): string[] => [A, B]],
+    ['an id that is no longer a member (somebody deleted one)', (): string[] => [A, B, C, NEW]],
+    ['as many ids, but not the same ones', (): string[] => [A, B, NEW]],
+  ])('fails on %s', async (_label, ids) => {
+    await seedThree();
+
+    await expect(env.DB.batch([membershipGuard(env.DB, ids())])).rejects.toThrow();
+  });
+
+  test('fails on an empty list when there are members, and passes when there are none', async () => {
+    await expect(env.DB.batch([membershipGuard(env.DB, [])])).resolves.toBeDefined();
+
+    await seedThree();
+
+    await expect(env.DB.batch([membershipGuard(env.DB, [])])).rejects.toThrow();
+  });
+
+  test('rolls back the statements after it when it fails', async () => {
+    await seedThree();
+
+    await expect(
+      env.DB.batch([
+        membershipGuard(env.DB, [A, B]),
+        env.DB.prepare('UPDATE channel SET display_order = 9 WHERE channel_id = ?1').bind(A),
+        revisionStatement(env.DB, 'channel', A, 'save', { channel_id: A }),
+      ]),
+    ).rejects.toThrow();
+
+    expect(await publicOrder()).toEqual([A, B, C]);
+    expect(await revisions()).toEqual([]);
+  });
+
+  test('lets a save of an unchanged list through, and writes nothing', async () => {
+    await seedThree();
+
+    const response = await saveMembers(env, { order: [A, B, C] });
+
+    expect(response.status).toEqual(200);
+    expect(await revisions()).toEqual([]);
   });
 });
 
