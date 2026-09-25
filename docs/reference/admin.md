@@ -89,8 +89,10 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
   - Markdown の欄（曲の題、演奏の説明）は、書く欄の真下にその場のプレビューを出す。プレビューは公開サイトと同じ描画部品（`src/components/genet/MarkDown.vue`）を使う
   - Markdown の欄には、決まった形の Markdown のリンクをカーソルの位置に挿入するボタンがある。リンクの種類は Wikipedia・英語版 Wikipedia・配信のタイムスタンプ・URL そのもの
 - メンバー（`src/admin/pages/MembersPage.vue`）
-  - 名前・色・活動期間・表示順を直す。PUT で置き換えられるのは、`channel_id` と収集が書く 3 列を除いた列（#158）
-  - メンバーの追加はここでは行わない。`channel` の行を作るエンドポイントは無く、新しいメンバーはシードから入る（#152）。追加のボタンは、欄を開かずにその旨を 1 行の帯で知らせる
+  - 名前・色・活動期間を直す。PUT で置き換えられるのは、`channel_id`・表示順・収集が書く 3 列を除いた列（#158）
+  - 「＋ メンバーを足す」で、新しいメンバーを一覧の末尾に足します。表示順は各行の「↑」「↓」で動かします（#211）
+  - 足した行と動かした順番は、「保存」を押すまで画面の中だけにあり、「未保存」と表示します。「保存」を押すと、足した行と全員の表示順を 1 回の batch で書きます。途中の並びは公開されません
+  - 削除できるのは、`channel_snapshot`・`video`・`footprints_event_member` のどれにも行が無いメンバーだけです。記録が付いたあとは消さず、活動終了日で扱います
 - 配信・動画（`src/admin/pages/VideosPage.vue`）
   - 収集した `video` の行を選び（`GET /admin/api/videos`）、`video_override` を付ける
   - 上書きそのものの保存と削除は、`video-overrides.ts` が受け持つ
