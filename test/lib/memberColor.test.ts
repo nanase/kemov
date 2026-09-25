@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
 import { memberAccent, memberColor, memberInk, toHsl } from '@/lib/memberColor';
 
 /**
@@ -41,12 +38,27 @@ describe('memberColor', () => {
   });
 });
 
-/** Every member's own colour, as channels.yml gives it. */
+/**
+ * A set of colours to test against: the 11 key colours as they stood in
+ * channels.yml in 2026-09, copied here when that file was retired (#211).
+ * They are values as of that date, not a reading of what the members' colours
+ * are now: the admin site edits the members, and nothing keeps this list in
+ * step with it. What the test needs is a spread as wide as the real one, so
+ * the list is worth changing only if a colour outside that spread is added.
+ */
 const MEMBER_COLORS = [
-  ...readFileSync(resolve(import.meta.dirname, '../../channels.yml'), 'utf8').matchAll(
-    /^\s+key: '(#[0-9A-Fa-f]{6})'/gm,
-  ),
-].map(([, hex]) => hex!);
+  '#F38E0A',
+  '#EB5B5B',
+  '#F98E7C',
+  '#FED690',
+  '#363241',
+  '#FF6833',
+  '#DD7278',
+  '#FD933F',
+  '#B0E4F9',
+  '#8FC579',
+  '#FAB6DD',
+];
 
 /** The grounds the pages draw on, from src/shell/tokens.css. */
 const GROUNDS = { light: ['#e9eeec', '#ffffff'], dark: ['#0e0f10', '#16181a'] };

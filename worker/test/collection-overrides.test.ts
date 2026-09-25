@@ -134,7 +134,7 @@ describe('channel.twitch', () => {
 });
 
 // The exact UPDATEs 0004_add_admin_overrides_and_twitch.sql runs once, to
-// carry the three handles channels.yml already had into rows that predate
+// carry the three handles the seed file once had into rows that predate
 // the migration.
 const backfillStatements = [
   "UPDATE channel SET twitch = 'coyote_kemov' WHERE channel_id = 'UCabMjG8p6G5xLkPJgEoTnDg'",

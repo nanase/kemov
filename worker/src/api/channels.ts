@@ -22,7 +22,7 @@ interface SnapshotRow {
 
 interface ChannelRow {
   channel_id: string;
-  // Mastered by channels.yml and written by the deploy.
+  // Written from the admin site.
   name: string;
   fullname: string;
   globalname: string | null;
@@ -78,7 +78,7 @@ const COLUMN: Readonly<Record<CountName, keyof SnapshotRow>> = {
  * The channel's own columns come back with the counts rather than from a
  * second endpoint. Every page that shows a number shows the streamer's name,
  * colour and avatar beside it, and `custom_url` and `thumbnail_url` exist
- * nowhere but here: channels.yml does not master them, the collector writes
+ * nowhere but here: the admin site does not edit them, the collector writes
  * them from Channels.list.
  */
 async function latestPerChannel(db: D1Database): Promise<ChannelRow[]> {
@@ -208,7 +208,7 @@ function present(
     fullname: row.fullname,
     globalname: row.globalname,
     twitter: row.twitter,
-    // Grouped the way a person edits them in channels.yml, rather than as the
+    // Grouped the way a person edits them, rather than as the
     // four flat columns the table stores.
     color: {
       key: row.color_key,

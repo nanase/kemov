@@ -15,8 +15,8 @@ import { isRetentionTick, retentionCutoff } from '../lib/retention';
  *     older than the line - with the rows that hold a foreign key to it
  *     (`video_override`, `chat_author`) and its `collect_task` rows. A NULL
  *     there on an unavailable row is a row restored from a backup older than
- *     the column, or written by scripts/legacy-videos.js; nothing says when
- *     it was last fetched, so it goes on the first run rather than never.
+ *     the column; nothing says when it was last fetched, so it goes on the
+ *     first run rather than never.
  *
  * `footprints_event.video_id` and the `genet_*` tables name videos without a
  * foreign key and are left alone, as #223 decided: they are what a

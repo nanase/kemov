@@ -30,11 +30,6 @@ export function quote(value: unknown): string {
  *
  * The tables are STRICT, so a count written as '12' is text offered to an
  * INTEGER column and 'NULL' is the four-letter word rather than the absence.
- *
- * This repeats scripts/sql.js. That one is plain JavaScript so that node can
- * run it with no build step, this one is TypeScript for workerd, and neither
- * can import the other. What they share is the SQL, which is not either
- * file's to change alone.
  */
 export function literal(value: unknown): string {
   return typeof value === 'number' ? String(value) : quote(value);
@@ -43,10 +38,9 @@ export function literal(value: unknown): string {
 /**
  * How many rows one INSERT names, at most.
  *
- * The same 200 that scripts/legacy-videos.js chose, and for the same reasons:
- * a statement per row is thousands of round trips, and a statement per file is
- * a single line of megabytes. That figure has since carried 6,433 rows into
- * this database, so it is a measured number rather than a guessed one.
+ * A statement per row is thousands of round trips, and a statement per file is
+ * a single line of megabytes. 200 is what carried the first 6,433 video rows
+ * into this database, so it is a measured number rather than a guessed one.
  */
 export const ROWS_PER_STATEMENT = 200;
 

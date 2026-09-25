@@ -6,7 +6,6 @@
       "name": "kemov",
       "dependencies": {
         "dayjs": "^1.11.23",
-        "js-yaml": "^4.3.2",
         "vue": "^3.5.42",
       },
       "devDependencies": {
@@ -14,7 +13,6 @@
         "@cloudflare/workers-types": "^5.20260910.1",
         "@eslint/js": "^10.0.1",
         "@nanase/alnilam": "github:nanase/alnilam#2c6e072cdb4b6124d98484de033238e46710a502",
-        "@types/js-yaml": "^4.0.9",
         "@types/node": "^22.20.2",
         "@vitejs/plugin-vue": "^6.0.9",
         "@vitest/coverage-v8": "^4.1.11",
@@ -384,8 +382,6 @@
     "@types/esrecurse": ["@types/esrecurse@4.3.1", "", {}, "sha512-xJBAbDifo5hpffDBuHl0Y8ywswbiAp/Wi7Y/GtAgSlZyIABppyurxVueOPE8LUQOxdlgi6Zqce7uoEpqNTeiUw=="],
 
     "@types/estree": ["@types/estree@1.0.9", "", {}, "sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg=="],
-
-    "@types/js-yaml": ["@types/js-yaml@4.0.9", "", {}, "sha512-k4MGaQl5TGo/iipqb2UDG2UwjXziSWkh0uysQelTlJpX1qGlpUZYm8PnO4DxG1qBomtJUdYJ6qR6xdIah10JLg=="],
 
     "@types/json-schema": ["@types/json-schema@7.0.15", "", {}, "sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA=="],
 

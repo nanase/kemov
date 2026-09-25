@@ -34,13 +34,6 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # channels.yml masters the columns the deploy upserts into D1. Checking it
-      # here is what makes the file reviewable: a bad id, a colour that is not a
-      # colour or a date that does not exist stops at the pull request instead of
-      # reaching the database.
-      - name: Check channels.yml
-        run: bun run check-channels
-
       # Everything prettier is willing to parse, not just what a lint rule
       # covers: .prettierrc.json applies to the whole repository, so checking
       # a subset would leave the rest declared and unenforced. --check rather
