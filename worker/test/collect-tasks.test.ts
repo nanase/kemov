@@ -168,11 +168,14 @@ describe('markCollectTaskUnavailable', () => {
 
     expect(body.collectTask).toEqual(expect.objectContaining({ state: 'unavailable', nextAttemptAt: null }));
 
-    const video = await env.DB.prepare('SELECT availability FROM video WHERE video_id = ?1')
+    const video = await env.DB.prepare('SELECT availability, last_available_at FROM video WHERE video_id = ?1')
       .bind('vid1')
-      .first<{ availability: string }>();
+      .first<{ availability: string; last_available_at: string | null }>();
 
     expect(video?.availability).toEqual('unavailable');
+    // The collector's own rule (#223): the fetched_at the failing row kept,
+    // which is the last pass that got the video.
+    expect(video?.last_available_at).toEqual('2026-09-01T00:00:00Z');
   });
 
   test('settles a chat_replay failure the same way', async () => {

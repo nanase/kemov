@@ -39,7 +39,8 @@ database_id = "ab4f1ccb-f66a-4bec-9ffb-b5dfb9753be5"
 # the schedule and the deploy verifiable on their own.
 [triggers]
 crons = [
-  # channel-stats, video-discover, video-update
+  # channel-stats, video-discover, video-update, and retention on the first
+  # tick of each hour (#223)
   "*/10 * * * *",
   # chat-replay
   "* * * * *",

@@ -6,8 +6,11 @@
  * Every figure here allows a few missed runs before it fires. A single tick's
  * failure recovers on its own - the next tick, or the next night's backup -
  * and firing on that would mean a page every time YouTube refuses a request
- * once.
+ * once. The exception is `RETENTION_STALE_GRACE_MINUTES`, for the reason
+ * given there.
  */
+
+import { RETENTION_DAYS } from './retention';
 
 /**
  * How stale `lastSuccessAt` may be, in minutes, before channel-stats,
@@ -57,6 +60,51 @@ export const BACKUP_FRESH_DAYS_AGO: Readonly<Record<string, number>> = {
  * for.
  */
 export const BACKUP_STALE_GRACE_DAYS = 2;
+
+/**
+ * Minutes past `RETENTION_DAYS` the oldest row ../collector/retention.ts
+ * deletes may reach before `/api/health` reports the deletion as behind.
+ *
+ * One ten-minute tick, for the cron's own jitter: an hourly run can start a
+ * few seconds later than the one before it, and the oldest row then passes
+ * 30 days by that much. Anything further is data held beyond the policy - one missed
+ * hourly run is enough to get there - and unlike the missed runs the rest of
+ * this file allows for, it is worth hearing about even though the next run
+ * catches up by itself (#223).
+ */
+export const RETENTION_STALE_GRACE_MINUTES = 10;
+
+/**
+ * Whether `oldest` - the oldest instant a row the retention job deletes is
+ * dated by - is past the policy and the grace above. Null is a table with
+ * nothing in it, which is not behind.
+ */
+export function isRetentionStale(oldest: string | null, now: Date): boolean {
+  const elapsed = minutesSince(oldest, now);
+
+  return elapsed !== null && elapsed > RETENTION_DAYS * 24 * 60 + RETENTION_STALE_GRACE_MINUTES;
+}
+
+/**
+ * How old, in hours, the least recently fetched available video may be before
+ * `/api/health` warns that video-update is falling behind (#223).
+ *
+ * A warning rather than `stale`: nothing is lost yet. The nightly backup
+ * leaves a video out of `video/` once its last fetch is more than
+ * `BACKUP_VIDEO_MAX_AGE_DAYS` (48 hours) old, and that is `stale`. 36 hours
+ * is the longest the sweep takes to come round at its slowest (30 videos a
+ * tick, 144 ticks a day) for the 6,460 videos there were on 2026-09-25, and
+ * leaves 12 hours before the first video would be left out. On that day the
+ * oldest was 22 hours old.
+ */
+export const VIDEO_SWEEP_WARNING_HOURS = 36;
+
+/** Whether `oldest`, the least recent fetch of an available video, is past `VIDEO_SWEEP_WARNING_HOURS`. */
+export function isVideoSweepBehind(oldest: string | null, now: Date): boolean {
+  const elapsed = minutesSince(oldest, now);
+
+  return elapsed !== null && elapsed > VIDEO_SWEEP_WARNING_HOURS * 60;
+}
 
 /** Minutes between `at` and `now`, or null when `at` is null. */
 function minutesSince(at: string | null, now: Date): number | null {

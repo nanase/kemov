@@ -278,7 +278,14 @@ describe('backup', () => {
     const { backup } = await health(env, NOW);
 
     expect(backup).toEqual(
-      BACKED_UP_TABLES.map((table) => ({ table: table.name, latestDate: null, daysAgo: null, stale: true })),
+      BACKED_UP_TABLES.map((table) => ({
+        table: table.name,
+        latestDate: null,
+        daysAgo: null,
+        expiredFiles: 0,
+        omittedAlarming: null,
+        stale: true,
+      })),
     );
   });
 
@@ -295,14 +302,84 @@ describe('backup', () => {
     const { backup } = await health(env, NOW);
     const byTable = Object.fromEntries(backup.map((table) => [table.table, table]));
 
-    expect(byTable.video).toEqual({ table: 'video', latestDate: '2026-09-10', daysAgo: 0, stale: false });
-    expect(byTable.channel).toEqual({ table: 'channel', latestDate: '2026-09-10', daysAgo: 0, stale: false });
+    // omittedAlarming is null for video's file: written here with no metadata,
+    // as a file from before #223 would be.
+    expect(byTable.video).toEqual({
+      table: 'video',
+      latestDate: '2026-09-10',
+      daysAgo: 0,
+      expiredFiles: 0,
+      omittedAlarming: null,
+      stale: false,
+    });
+    expect(byTable.channel).toEqual({
+      table: 'channel',
+      latestDate: '2026-09-10',
+      daysAgo: 0,
+      expiredFiles: 0,
+      omittedAlarming: null,
+      stale: false,
+    });
     // daysAgo 1 is channel_snapshot's own normal reading (see #110's
     // isBackupStale), not the 2 that would fire for a table replaced whole.
     expect(byTable.channel_snapshot).toEqual({
       table: 'channel_snapshot',
       latestDate: '2026-09-09',
       daysAgo: 1,
+      expiredFiles: 0,
+      omittedAlarming: null,
+      stale: false,
+    });
+  });
+
+  // #223. The job deletes a file the night it reaches expireDays, so one a
+  // day past that is one it failed to delete.
+  test('is stale when a file is a day past the age the job deletes it at', async () => {
+    await env.BACKUP.put(backupKey('video', '2026-09-10'), '');
+    await env.BACKUP.put(backupKey('video', '2026-08-14'), '');
+
+    const { backup } = await health(env, NOW);
+
+    expect(backup.find((table) => table.table === 'video')).toMatchObject({ expiredFiles: 0, stale: false });
+
+    await env.BACKUP.put(backupKey('video', '2026-08-13'), '');
+
+    expect((await health(env, NOW)).backup.find((table) => table.table === 'video')).toMatchObject({
+      expiredFiles: 1,
+      stale: true,
+    });
+  });
+
+  test('counts channel_snapshot a day later, since its key is the day before it was written', async () => {
+    await env.BACKUP.put(backupKey('channel_snapshot', '2026-09-09'), '');
+    await env.BACKUP.put(backupKey('channel_snapshot', '2026-08-13'), '');
+
+    expect((await health(env, NOW)).backup.find((table) => table.table === 'channel_snapshot')).toMatchObject({
+      expiredFiles: 0,
+      stale: false,
+    });
+  });
+
+  // #223. The newest video file says how many available videos it had to
+  // leave out; one is enough.
+  test('is stale when the newest video file left out an available video', async () => {
+    await env.BACKUP.put(backupKey('video', '2026-09-10'), '', {
+      customMetadata: { omitted: '3', 'omitted-alarming': '1' },
+    });
+
+    expect((await health(env, NOW)).backup.find((table) => table.table === 'video')).toMatchObject({
+      omittedAlarming: 1,
+      stale: true,
+    });
+  });
+
+  test('is not stale when the newest video file left out only unavailable videos', async () => {
+    await env.BACKUP.put(backupKey('video', '2026-09-10'), '', {
+      customMetadata: { omitted: '3', 'omitted-alarming': '0' },
+    });
+
+    expect((await health(env, NOW)).backup.find((table) => table.table === 'video')).toMatchObject({
+      omittedAlarming: 0,
       stale: false,
     });
   });
@@ -402,6 +479,112 @@ describe('stale jobs', () => {
   });
 });
 
+// #223. What is left in D1 is what is read, so each case seeds the oldest
+// row and nothing else.
+// #223. A warning only: it names how far behind the sweep is before the
+// backup starts leaving available videos out.
+describe('videoSweep', () => {
+  const NOW = new Date('2026-10-07T12:00:00Z');
+
+  beforeEach(async () => {
+    await insertChannel('UCaaa');
+  });
+
+  test('is not behind at 36 hours', async () => {
+    await insertVideo('v1', 'UCaaa', '2026-10-06T00:00:00Z');
+
+    expect((await health(env, NOW)).videoSweep).toEqual({ oldestFetchedAt: '2026-10-06T00:00:00Z', behind: false });
+  });
+
+  test('is behind a second past 36 hours, without making the endpoint unhealthy', async () => {
+    await insertVideo('v1', 'UCaaa', '2026-10-05T23:59:59Z');
+
+    const result = await health(env, NOW);
+
+    expect(result.videoSweep.behind).toBe(true);
+    expect(isUnhealthy({ jobs: [], backup: [], retention: result.retention })).toBe(false);
+  });
+
+  test('does not read an unavailable video', async () => {
+    await insertVideo('v1', 'UCaaa', '2026-01-01T00:00:00Z');
+    await env.DB.prepare(
+      `UPDATE video SET availability = 'unavailable', last_available_at = '2026-10-07T00:00:00Z' WHERE video_id = 'v1'`,
+    ).run();
+
+    expect((await health(env, NOW)).videoSweep).toEqual({ oldestFetchedAt: null, behind: false });
+  });
+});
+
+describe('retention', () => {
+  const NOW = new Date('2026-10-07T12:00:00Z');
+
+  async function insertUnavailable(videoId: string, lastAvailableAt: string | null): Promise<void> {
+    await insertVideo(videoId, 'UCaaa');
+    await env.DB.prepare(`UPDATE video SET availability = 'unavailable', last_available_at = ?2 WHERE video_id = ?1`)
+      .bind(videoId, lastAvailableAt)
+      .run();
+  }
+
+  beforeEach(async () => {
+    await insertChannel('UCaaa');
+  });
+
+  test('is not stale with nothing to delete', async () => {
+    expect((await health(env, NOW)).retention).toEqual({
+      oldestSnapshotAt: null,
+      oldestUnavailableVideoAt: null,
+      undatedUnavailableVideos: 0,
+      stale: false,
+    });
+  });
+
+  // 30 days and one ten-minute tick is the line; a second inside it is not
+  // behind and a second past it is.
+  test('a snapshot 30 days and 10 minutes old is not stale', async () => {
+    await insertSnapshot('UCaaa', '2026-09-07T11:50:00Z');
+
+    expect((await health(env, NOW)).retention).toMatchObject({
+      oldestSnapshotAt: '2026-09-07T11:50:00Z',
+      stale: false,
+    });
+  });
+
+  test('a snapshot a second older than that is stale', async () => {
+    await insertSnapshot('UCaaa', '2026-09-07T11:49:59Z');
+
+    expect((await health(env, NOW)).retention.stale).toBe(true);
+  });
+
+  test('an unavailable video past the line is stale', async () => {
+    await insertUnavailable('v1', '2026-09-07T11:49:59Z');
+
+    expect((await health(env, NOW)).retention).toMatchObject({
+      oldestUnavailableVideoAt: '2026-09-07T11:49:59Z',
+      stale: true,
+    });
+  });
+
+  test('an unavailable video inside the line is not stale', async () => {
+    await insertUnavailable('v1', '2026-09-20T00:00:00Z');
+
+    expect((await health(env, NOW)).retention.stale).toBe(false);
+  });
+
+  // Only an unavailable row carries last_available_at, and an available one
+  // is never behind whatever its fetched_at says.
+  test('an available video is not read', async () => {
+    await insertVideo('v1', 'UCaaa', '2026-01-01T00:00:00Z');
+
+    expect((await health(env, NOW)).retention).toMatchObject({ oldestUnavailableVideoAt: null, stale: false });
+  });
+
+  test('an unavailable video with no last_available_at is stale', async () => {
+    await insertUnavailable('v1', null);
+
+    expect((await health(env, NOW)).retention).toMatchObject({ undatedUnavailableVideos: 1, stale: true });
+  });
+});
+
 describe('isUnhealthy', () => {
   const NOW = new Date('2026-09-10T00:20:00Z');
 
@@ -451,11 +634,30 @@ describe('isUnhealthy', () => {
   // Read that as unhealthy rather than as `undefined === true` reading
   // healthy, so an inherited cache entry cannot mask a real problem.
   test('is true when a job carries no stale field at all', () => {
-    expect(isUnhealthy({ jobs: [{}] as never, backup: [{ stale: false }] as never })).toBe(true);
+    expect(isUnhealthy({ jobs: [{}] as never, backup: [{ stale: false }] as never, retention: { stale: false } })).toBe(
+      true,
+    );
   });
 
   test('is true when a backed-up table carries no stale field at all', () => {
-    expect(isUnhealthy({ jobs: [{ stale: false }] as never, backup: [{}] as never })).toBe(true);
+    expect(isUnhealthy({ jobs: [{ stale: false }] as never, backup: [{}] as never, retention: { stale: false } })).toBe(
+      true,
+    );
+  });
+
+  test('is true when retention carries no stale field at all', () => {
+    expect(
+      isUnhealthy({ jobs: [{ stale: false }] as never, backup: [{ stale: false }] as never, retention: {} as never }),
+    ).toBe(true);
+  });
+
+  // #223: the deletion falling behind is enough on its own.
+  test('is true when retention is stale and every job and table is not', async () => {
+    await seedFullyHealthy();
+    await insertChannel('UCaaa');
+    await insertSnapshot('UCaaa', '2026-08-10T00:09:59Z');
+
+    expect(isUnhealthy(await health(env, NOW))).toBe(true);
   });
 });
 
@@ -466,13 +668,17 @@ describe('isUnhealthy', () => {
 // already cover.
 describe('statusFor', () => {
   test('is 200 for a healthy body that has been through JSON', () => {
-    const body = JSON.parse(JSON.stringify({ jobs: [{ stale: false }], backup: [{ stale: false }] }));
+    const body = JSON.parse(
+      JSON.stringify({ jobs: [{ stale: false }], backup: [{ stale: false }], retention: { stale: false } }),
+    );
 
     expect(statusFor(body)).toEqual(200);
   });
 
   test('is 503 for an unhealthy body that has been through JSON', () => {
-    const body = JSON.parse(JSON.stringify({ jobs: [{ stale: true }], backup: [{ stale: false }] }));
+    const body = JSON.parse(
+      JSON.stringify({ jobs: [{ stale: true }], backup: [{ stale: false }], retention: { stale: false } }),
+    );
 
     expect(statusFor(body)).toEqual(503);
   });
@@ -506,6 +712,20 @@ describe('statusFor', () => {
   test('is 503, not a throw, for a body with no backup at all', () => {
     expect(() => statusFor({ jobs: [] })).not.toThrow();
     expect(statusFor({ jobs: [] })).toEqual(503);
+  });
+
+  // A cache entry from before #223 has no retention at all.
+  test('is 503, not a throw, for a body with no retention at all', () => {
+    const body = { jobs: [{ stale: false }], backup: [{ stale: false }] };
+
+    expect(() => statusFor(body)).not.toThrow();
+    expect(statusFor(body)).toEqual(503);
+  });
+
+  test('is 503 when retention is stale', () => {
+    expect(statusFor({ jobs: [{ stale: false }], backup: [{ stale: false }], retention: { stale: true } })).toEqual(
+      503,
+    );
   });
 
   test('is 503, not a throw, for a body whose jobs and backup are not arrays', () => {
