@@ -1,12 +1,7 @@
 import { env } from 'cloudflare:test';
 
 import { runRetention } from '../src/collector/retention';
-import {
-  BACKUP_UNAVAILABLE_DAYS,
-  backupUnavailableCutoff,
-  isRetentionTick,
-  retentionCutoff,
-} from '../src/lib/retention';
+import { BACKUP_VIDEO_MAX_AGE_DAYS, backupVideoCutoff, isRetentionTick, retentionCutoff } from '../src/lib/retention';
 import { clearEverything } from './reset-db';
 
 /**
@@ -93,10 +88,10 @@ describe('retentionCutoff', () => {
 
 // The 2 days docs/reference/data.md gives for video/, held to the figures it
 // is worked out from.
-describe('backupUnavailableCutoff', () => {
-  test('lets an unavailable video into video/ for 30 - 27 - 1 days', () => {
-    expect(BACKUP_UNAVAILABLE_DAYS).toEqual(2);
-    expect(backupUnavailableCutoff(new Date('2026-10-07T00:20:00Z'))).toEqual('2026-10-05T00:20:00Z');
+describe('backupVideoCutoff', () => {
+  test('lets a video into video/ for 30 - 27 - 1 days after its last fetch', () => {
+    expect(BACKUP_VIDEO_MAX_AGE_DAYS).toEqual(2);
+    expect(backupVideoCutoff(new Date('2026-10-07T00:20:00Z'))).toEqual('2026-10-05T00:20:00Z');
   });
 });
 

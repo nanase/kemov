@@ -95,7 +95,7 @@ bun wrangler secret list                  # 名前だけを出し、値は出さ
 
 ## バックアップのバケットの保持期間
 
-`kemov-backup` の prefix ごとのライフサイクルルールを設定します。どの prefix を何日にするかと、その理由は [データ](../reference/data.md#保持期間) にあります。
+`kemov-backup` の prefix ごとのライフサイクルルールを設定します。どの prefix を何日にするかと、その理由は [データ](../reference/data.md#保持期間) にあります。`video/`・`channel/`・`channel_snapshot/` は夜間のバックアップが自分でも消し、この規則はジョブが動かなかったときの保険です。
 
 `lifecycle add` を、リポジトリのルートで実行します。
 

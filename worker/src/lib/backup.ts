@@ -17,7 +17,7 @@
  * moment that program is needed is the moment nothing else is working.
  */
 
-import { backupUnavailableCutoff } from './retention';
+import { backupVideoCutoff, R2_RETENTION_DAYS } from './retention';
 import { formatTimestamp } from './time';
 
 /** A string literal with its quotes doubled, or NULL. */
@@ -102,12 +102,14 @@ export interface TableShape {
    */
   readonly replace?: boolean;
   /**
-   * The rows of a table replaced whole that the file leaves out, as a SQL
-   * condition for the rows it keeps, given when the file is written. Only
-   * `video` has one: its unavailable rows are held to 30 days in R2 as well
-   * as in D1 (#223, `BACKUP_UNAVAILABLE_DAYS` in ./retention.ts).
+   * Which rows of a table replaced whole go into its file, given when the
+   * file is written: `clause`, a SQL condition for the rows it keeps, and
+   * `alarming`, one picking out the rows it leaves out that it should not have
+   * had to. Only `video` has one: its values are held to 30 days in R2 as well
+   * as in D1 (#223, `BACKUP_VIDEO_MAX_AGE_DAYS` in ./retention.ts), and an
+   * available video left out means video-update has fallen behind.
    */
-  readonly keep?: (now: Date) => { clause: string; bindings: unknown[] };
+  readonly keep?: (now: Date) => { clause: string; bindings: unknown[]; alarming: string };
   /**
    * For a `dayColumn` table, how many days before yesterday a run may still
    * write when it finds them missing. Unset means as many as are missing, up
@@ -116,6 +118,15 @@ export interface TableShape {
    * rows are a day older when it starts.
    */
   readonly lateDays?: number;
+  /**
+   * How many days after the date in its key a file of this table is deleted
+   * by the backup job itself, for a table holding YouTube API data (#223).
+   * The key names the day written for a table replaced whole, and the day
+   * the rows are from for a `dayColumn` table, which is written the day
+   * after - hence a day more there. Unset keeps files for the bucket's
+   * lifecycle rule alone.
+   */
+  readonly expireDays?: number;
   /**
    * The table whose row each row here needs, by foreign key, and which of
    * this table's columns name it. A row whose parent the restored database
@@ -176,6 +187,7 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
     ],
     conflict: ['channel_id'],
     apiValues: { columns: ['custom_url', 'thumbnail_url'], fetchedAt: 'fetched_at' },
+    expireDays: R2_RETENTION_DAYS,
   },
   {
     name: 'video',
@@ -200,10 +212,14 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
       'last_available_at',
     ],
     conflict: ['video_id'],
+    // An unavailable video's values are from its last_available_at, and a
+    // NULL there is unknown, so left out.
     keep: (now) => ({
-      clause: `(availability <> 'unavailable' OR last_available_at >= ?1)`,
-      bindings: [backupUnavailableCutoff(now)],
+      clause: `(CASE WHEN availability = 'unavailable' THEN last_available_at ELSE fetched_at END) >= ?1`,
+      bindings: [backupVideoCutoff(now)],
+      alarming: `availability <> 'unavailable'`,
     }),
+    expireDays: R2_RETENTION_DAYS,
   },
   {
     name: 'channel_snapshot',
@@ -211,6 +227,7 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
     conflict: ['channel_id', 'fetched_at'],
     dayColumn: 'fetched_at',
     lateDays: 0,
+    expireDays: R2_RETENTION_DAYS + 1,
   },
   {
     name: 'channel_snapshot_exclusion',
@@ -549,6 +566,22 @@ export async function daysPresent(bucket: R2Bucket, tableName: string): Promise<
     cursor = listed.cursor;
   }
 }
+
+/**
+ * The days of `present` whose files have reached `expireDays` by `today`,
+ * oldest first: the ones the backup job deletes (#223).
+ */
+export function expiredDays(present: Iterable<string>, today: string, expireDays: number): string[] {
+  return [...present].filter((day) => daysBetween(day, today) >= expireDays).sort();
+}
+
+/**
+ * The custom metadata a file of a table with `keep` carries: how many rows
+ * the file left out, and how many of those it should not have had to.
+ * `/api/health` reads it back from the newest file rather than from a record
+ * of its own, which is the same choice #115 made for the backup's dates.
+ */
+export const OMITTED_METADATA = { omitted: 'omitted', alarming: 'omitted-alarming' } as const;
 
 /** The newest day one table has a file for in R2, or null if it has none. */
 export async function latestDay(bucket: R2Bucket, tableName: string): Promise<string | null> {

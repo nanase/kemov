@@ -85,6 +85,27 @@ export function isRetentionStale(oldest: string | null, now: Date): boolean {
   return elapsed !== null && elapsed > RETENTION_DAYS * 24 * 60 + RETENTION_STALE_GRACE_MINUTES;
 }
 
+/**
+ * How old, in hours, the least recently fetched available video may be before
+ * `/api/health` warns that video-update is falling behind (#223).
+ *
+ * A warning rather than `stale`: nothing is lost yet. The nightly backup
+ * leaves a video out of `video/` once its last fetch is more than
+ * `BACKUP_VIDEO_MAX_AGE_DAYS` (48 hours) old, and that is `stale`. 36 hours
+ * is the longest the sweep takes to come round at its slowest (30 videos a
+ * tick, 144 ticks a day) for the 6,460 videos there were on 2026-09-25, and
+ * leaves 12 hours before the first video would be left out. On that day the
+ * oldest was 22 hours old.
+ */
+export const VIDEO_SWEEP_WARNING_HOURS = 36;
+
+/** Whether `oldest`, the least recent fetch of an available video, is past `VIDEO_SWEEP_WARNING_HOURS`. */
+export function isVideoSweepBehind(oldest: string | null, now: Date): boolean {
+  const elapsed = minutesSince(oldest, now);
+
+  return elapsed !== null && elapsed > VIDEO_SWEEP_WARNING_HOURS * 60;
+}
+
 /** Minutes between `at` and `now`, or null when `at` is null. */
 function minutesSince(at: string | null, now: Date): number | null {
   if (at === null) return null;

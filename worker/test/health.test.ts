@@ -278,7 +278,14 @@ describe('backup', () => {
     const { backup } = await health(env, NOW);
 
     expect(backup).toEqual(
-      BACKED_UP_TABLES.map((table) => ({ table: table.name, latestDate: null, daysAgo: null, stale: true })),
+      BACKED_UP_TABLES.map((table) => ({
+        table: table.name,
+        latestDate: null,
+        daysAgo: null,
+        expiredFiles: 0,
+        omittedAlarming: null,
+        stale: true,
+      })),
     );
   });
 
@@ -295,14 +302,84 @@ describe('backup', () => {
     const { backup } = await health(env, NOW);
     const byTable = Object.fromEntries(backup.map((table) => [table.table, table]));
 
-    expect(byTable.video).toEqual({ table: 'video', latestDate: '2026-09-10', daysAgo: 0, stale: false });
-    expect(byTable.channel).toEqual({ table: 'channel', latestDate: '2026-09-10', daysAgo: 0, stale: false });
+    // omittedAlarming is null for video's file: written here with no metadata,
+    // as a file from before #223 would be.
+    expect(byTable.video).toEqual({
+      table: 'video',
+      latestDate: '2026-09-10',
+      daysAgo: 0,
+      expiredFiles: 0,
+      omittedAlarming: null,
+      stale: false,
+    });
+    expect(byTable.channel).toEqual({
+      table: 'channel',
+      latestDate: '2026-09-10',
+      daysAgo: 0,
+      expiredFiles: 0,
+      omittedAlarming: null,
+      stale: false,
+    });
     // daysAgo 1 is channel_snapshot's own normal reading (see #110's
     // isBackupStale), not the 2 that would fire for a table replaced whole.
     expect(byTable.channel_snapshot).toEqual({
       table: 'channel_snapshot',
       latestDate: '2026-09-09',
       daysAgo: 1,
+      expiredFiles: 0,
+      omittedAlarming: null,
+      stale: false,
+    });
+  });
+
+  // #223. The job deletes a file the night it reaches expireDays, so one a
+  // day past that is one it failed to delete.
+  test('is stale when a file is a day past the age the job deletes it at', async () => {
+    await env.BACKUP.put(backupKey('video', '2026-09-10'), '');
+    await env.BACKUP.put(backupKey('video', '2026-08-14'), '');
+
+    const { backup } = await health(env, NOW);
+
+    expect(backup.find((table) => table.table === 'video')).toMatchObject({ expiredFiles: 0, stale: false });
+
+    await env.BACKUP.put(backupKey('video', '2026-08-13'), '');
+
+    expect((await health(env, NOW)).backup.find((table) => table.table === 'video')).toMatchObject({
+      expiredFiles: 1,
+      stale: true,
+    });
+  });
+
+  test('counts channel_snapshot a day later, since its key is the day before it was written', async () => {
+    await env.BACKUP.put(backupKey('channel_snapshot', '2026-09-09'), '');
+    await env.BACKUP.put(backupKey('channel_snapshot', '2026-08-13'), '');
+
+    expect((await health(env, NOW)).backup.find((table) => table.table === 'channel_snapshot')).toMatchObject({
+      expiredFiles: 0,
+      stale: false,
+    });
+  });
+
+  // #223. The newest video file says how many available videos it had to
+  // leave out; one is enough.
+  test('is stale when the newest video file left out an available video', async () => {
+    await env.BACKUP.put(backupKey('video', '2026-09-10'), '', {
+      customMetadata: { omitted: '3', 'omitted-alarming': '1' },
+    });
+
+    expect((await health(env, NOW)).backup.find((table) => table.table === 'video')).toMatchObject({
+      omittedAlarming: 1,
+      stale: true,
+    });
+  });
+
+  test('is not stale when the newest video file left out only unavailable videos', async () => {
+    await env.BACKUP.put(backupKey('video', '2026-09-10'), '', {
+      customMetadata: { omitted: '3', 'omitted-alarming': '0' },
+    });
+
+    expect((await health(env, NOW)).backup.find((table) => table.table === 'video')).toMatchObject({
+      omittedAlarming: 0,
       stale: false,
     });
   });
@@ -404,6 +481,40 @@ describe('stale jobs', () => {
 
 // #223. What is left in D1 is what is read, so each case seeds the oldest
 // row and nothing else.
+// #223. A warning only: it names how far behind the sweep is before the
+// backup starts leaving available videos out.
+describe('videoSweep', () => {
+  const NOW = new Date('2026-10-07T12:00:00Z');
+
+  beforeEach(async () => {
+    await insertChannel('UCaaa');
+  });
+
+  test('is not behind at 36 hours', async () => {
+    await insertVideo('v1', 'UCaaa', '2026-10-06T00:00:00Z');
+
+    expect((await health(env, NOW)).videoSweep).toEqual({ oldestFetchedAt: '2026-10-06T00:00:00Z', behind: false });
+  });
+
+  test('is behind a second past 36 hours, without making the endpoint unhealthy', async () => {
+    await insertVideo('v1', 'UCaaa', '2026-10-05T23:59:59Z');
+
+    const result = await health(env, NOW);
+
+    expect(result.videoSweep.behind).toBe(true);
+    expect(isUnhealthy({ jobs: [], backup: [], retention: result.retention })).toBe(false);
+  });
+
+  test('does not read an unavailable video', async () => {
+    await insertVideo('v1', 'UCaaa', '2026-01-01T00:00:00Z');
+    await env.DB.prepare(
+      `UPDATE video SET availability = 'unavailable', last_available_at = '2026-10-07T00:00:00Z' WHERE video_id = 'v1'`,
+    ).run();
+
+    expect((await health(env, NOW)).videoSweep).toEqual({ oldestFetchedAt: null, behind: false });
+  });
+});
+
 describe('retention', () => {
   const NOW = new Date('2026-10-07T12:00:00Z');
 

@@ -78,31 +78,39 @@ export const LAST_AVAILABLE_AT_ON_UNAVAILABLE =
   "last_available_at = CASE WHEN availability = 'unavailable' THEN last_available_at ELSE fetched_at END";
 
 /**
- * The lifecycle rule set on `channel_snapshot/` and `video/` in the backup
- * bucket, in days (see docs/reference/data.md). The rule itself lives in
- * Cloudflare; it is here because the figure below is worked out from it.
+ * How many days a backup file of a table holding YouTube API data is kept,
+ * counted from the date in its key: `video/`, `channel/` and
+ * `channel_snapshot/` (see docs/reference/data.md).
+ *
+ * The nightly backup deletes a file itself once it reaches this age
+ * (`expireFiles` in ../collector/backup.ts). A lifecycle rule of the same
+ * length sits on each prefix as well, in case the job does not run: R2 only
+ * says it removes an expired object "typically within 24 hours", so the rule
+ * alone is not a deadline.
  */
 export const R2_RETENTION_DAYS = 27;
 
 /**
- * How long R2 may take to remove an object past its rule: "typically within
- * 24 hours", in Cloudflare's own documentation.
+ * How long a file may outlive `R2_RETENTION_DAYS`: the backup that deletes it
+ * runs once a day, so one night it fails to run is a day.
  */
 export const R2_REMOVAL_DELAY_DAYS = 1;
 
 /**
- * How many days an unavailable video may have been out of reach and still
- * go into the nightly copy of `video` in R2: 30 - 27 - 1 = 2.
+ * How old a video's values may be and still go into the nightly copy of
+ * `video` in R2: 30 - 27 - 1 = 2 days.
  *
  * A row written into a file under `video/` stays in R2 for as long as the
- * file does, and an unavailable row's values are already as old as its
- * `last_available_at` when it is written. A row past this is left out of the
- * copy, which means a restore does not bring it back: nothing public counts
- * an unavailable video, and the API cannot give it back either way.
+ * file does, and its values are already as old as their last fetch - its
+ * `fetched_at`, or `last_available_at` for a video the API no longer returns.
+ * A row past this is left out of the copy. For an unavailable video that is
+ * the end of it: nothing public counts one, and the API cannot give it back.
+ * An available one past this means video-update has fallen behind, and
+ * `/api/health` says so (#223).
  */
-export const BACKUP_UNAVAILABLE_DAYS = RETENTION_DAYS - R2_RETENTION_DAYS - R2_REMOVAL_DELAY_DAYS;
+export const BACKUP_VIDEO_MAX_AGE_DAYS = RETENTION_DAYS - R2_RETENTION_DAYS - R2_REMOVAL_DELAY_DAYS;
 
-/** The instant before which an unavailable video stays out of the backup written at `now`. */
-export function backupUnavailableCutoff(now: Date): string {
-  return formatTimestamp(new Date(now.getTime() - BACKUP_UNAVAILABLE_DAYS * DAY_MS));
+/** The instant before which a video's last fetch keeps it out of the backup written at `now`. */
+export function backupVideoCutoff(now: Date): string {
+  return formatTimestamp(new Date(now.getTime() - BACKUP_VIDEO_MAX_AGE_DAYS * DAY_MS));
 }

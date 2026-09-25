@@ -1036,6 +1036,7 @@ describe('runBackup with both retention filters', () => {
     await insertChannel('UCaaa');
     await env.DB.prepare(`UPDATE channel SET fetched_at = '2026-10-08T00:00:00Z' WHERE channel_id = 'UCaaa'`).run();
     await insertVideo('kept', 'UCaaa');
+    await env.DB.prepare(`UPDATE video SET fetched_at = '2026-10-09T12:00:00Z' WHERE video_id = 'kept'`).run();
     await insertVideo('gone', 'UCaaa');
     await env.DB.prepare(
       `UPDATE video SET availability = 'unavailable', last_available_at = '2026-10-01T00:00:00Z' WHERE video_id = 'gone'`,
@@ -1051,5 +1052,92 @@ describe('runBackup with both retention filters', () => {
     expect(channel).toContain(`('UCaaa',`);
     expect(channel).not.toContain('@aaa');
     expect(channel).not.toContain('example.invalid');
+  });
+
+  // An available video video-update has not reached for more than two days
+  // is left out too, and the file says so for /api/health to read.
+  test('leaves out an available video last fetched more than 2 days before, and records it', async () => {
+    await insertChannel('UCaaa');
+    await insertVideo('fresh', 'UCaaa');
+    await env.DB.prepare(`UPDATE video SET fetched_at = '2026-10-08T00:20:00Z' WHERE video_id = 'fresh'`).run();
+    await insertVideo('behind', 'UCaaa');
+    await env.DB.prepare(`UPDATE video SET fetched_at = '2026-10-08T00:19:59Z' WHERE video_id = 'behind'`).run();
+    await insertVideo('gone', 'UCaaa');
+    await env.DB.prepare(
+      `UPDATE video SET availability = 'unavailable', last_available_at = '2026-10-01T00:00:00Z' WHERE video_id = 'gone'`,
+    ).run();
+
+    await runBackup(env, NOW);
+
+    const file = await env.BACKUP.get(backupKey('video', '2026-10-10'));
+    const sql = await file!.text();
+
+    expect(sql).toContain(`('fresh',`);
+    expect(sql).not.toContain(`('behind',`);
+    expect(file!.customMetadata).toEqual({ omitted: '2', 'omitted-alarming': '1' });
+  });
+});
+
+// #223. The job deletes the files of video/, channel/ and channel_snapshot/
+// itself once they reach their age, rather than leaving it to the lifecycle
+// rule, which R2 only says it applies "typically within 24 hours".
+describe('expiring files', () => {
+  const NOW = new Date('2026-10-10T00:20:00Z');
+
+  async function keys(prefix: string): Promise<string[]> {
+    return (await env.BACKUP.list({ prefix })).objects.map((object) => object.key).sort();
+  }
+
+  test('deletes a video/ or channel/ file 27 days after its date, and not before', async () => {
+    for (const day of ['2026-09-13', '2026-09-14']) {
+      await env.BACKUP.put(backupKey('video', day), '');
+      await env.BACKUP.put(backupKey('channel', day), '');
+    }
+
+    await runBackup(env, NOW);
+
+    expect(await keys('video/')).toEqual([backupKey('video', '2026-09-14'), backupKey('video', '2026-10-10')]);
+    expect(await keys('channel/')).toEqual([backupKey('channel', '2026-09-14'), backupKey('channel', '2026-10-10')]);
+  });
+
+  // Its key names the day the rows are from, a day before it was written.
+  test('deletes a channel_snapshot/ file 28 days after its date', async () => {
+    for (const day of ['2026-09-12', '2026-09-13']) {
+      await env.BACKUP.put(backupKey('channel_snapshot', day), '');
+    }
+
+    await runBackup(env, NOW);
+
+    expect(await keys('channel_snapshot/')).toEqual([backupKey('channel_snapshot', '2026-09-13')]);
+  });
+
+  test('leaves the files of a table without expireDays alone', async () => {
+    await env.BACKUP.put(backupKey('revision', '2025-01-01'), '');
+
+    await runBackup(env, NOW);
+
+    expect(await keys('revision/')).toEqual([backupKey('revision', '2025-01-01')]);
+  });
+
+  test('still deletes when writing the table fails', async () => {
+    await env.BACKUP.put(backupKey('video', '2026-09-12'), '');
+
+    const put = env.BACKUP.put.bind(env.BACKUP);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    vi.spyOn(env.BACKUP, 'put').mockImplementation(async (...args: Parameters<R2Bucket['put']>) => {
+      if (String(args[0]).startsWith('video/')) throw new Error('R2 said no');
+
+      return put(...args);
+    });
+
+    await runBackup(env, NOW);
+
+    const remaining = await keys('video/');
+
+    vi.restoreAllMocks();
+
+    expect(remaining).toEqual([]);
+    expect(error).toHaveBeenCalledWith('backup: video failed', expect.any(Error));
   });
 });

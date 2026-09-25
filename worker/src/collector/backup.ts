@@ -5,8 +5,10 @@ import {
   dayBounds,
   daysPresent,
   dayOf,
+  expiredDays,
   MAX_DAYS_PER_RUN,
   missingDays,
+  OMITTED_METADATA,
   previousDay,
   toSql,
   type TableShape,
@@ -147,26 +149,83 @@ async function backUpDayAtATime(env: Env, table: TableShape, dayColumn: string, 
   return days.length;
 }
 
+/**
+ * How many rows `keep` leaves out of a table's file, and how many of those it
+ * should not have had to. `IS NOT TRUE` rather than `NOT`, so that a row the
+ * condition cannot decide - a NULL in it - counts as left out, which is what
+ * readAll does with it.
+ */
+async function countOmitted(
+  db: D1Database,
+  table: TableShape,
+  keep: { clause: string; bindings: unknown[]; alarming: string },
+): Promise<{ omitted: number; alarming: number }> {
+  const row = await db
+    .prepare(
+      `SELECT count(*) AS omitted, coalesce(sum(CASE WHEN ${keep.alarming} THEN 1 ELSE 0 END), 0) AS alarming
+         FROM ${table.name}
+        WHERE (${keep.clause}) IS NOT TRUE`,
+    )
+    .bind(...keep.bindings)
+    .first<{ omitted: number; alarming: number }>();
+
+  return { omitted: row?.omitted ?? 0, alarming: row?.alarming ?? 0 };
+}
+
 /** Writes a whole table under today's date, replacing any file already there. */
 async function backUpWholeTable(env: Env, table: TableShape, now: Date): Promise<number> {
   const today = dayOf(formatTimestamp(now));
+  const keep = table.keep?.(now);
   // Two filters, one per issue: `keep` leaves rows out of the file (#223),
   // and withoutStaleApiValues clears columns in the rows that stay (#224).
-  const rows = withoutStaleApiValues(table, await readAll(env.DB, table, table.keep?.(now)), now);
+  const rows = withoutStaleApiValues(table, await readAll(env.DB, table, keep), now);
+  const omitted = keep === undefined ? undefined : await countOmitted(env.DB, table, keep);
 
   await env.BACKUP.put(
     backupKey(table.name, today),
     toSql(
       table,
       rows,
-      table.keep === undefined
+      keep === undefined
         ? `Every row, as of ${today}.`
         : `Every row as of ${today} but the ones #223 keeps out of R2 - see keep in BACKED_UP_TABLES.`,
     ),
+    omitted === undefined
+      ? undefined
+      : {
+          customMetadata: {
+            [OMITTED_METADATA.omitted]: String(omitted.omitted),
+            [OMITTED_METADATA.alarming]: String(omitted.alarming),
+          },
+        },
   );
   console.log(`backup: wrote ${rows.length} rows of ${table.name} for ${today}`);
 
+  if (omitted !== undefined && omitted.alarming > 0) {
+    console.warn(`backup: left ${omitted.alarming} rows of ${table.name} out that it should have been able to write`);
+  }
+
   return rows.length;
+}
+
+/**
+ * Deletes the files of a table that have reached its `expireDays` (#223).
+ *
+ * The bucket's lifecycle rule would delete them as well, but R2 only says it
+ * removes an expired object "typically within 24 hours", and these files
+ * hold YouTube API data that may not be kept past 30 days. The date is read
+ * from the key rather than from when the object was written, which is also
+ * what keeps a file written late from living longer than its date allows.
+ */
+async function expireFiles(env: Env, table: TableShape, today: string): Promise<void> {
+  if (table.expireDays === undefined) return;
+
+  const days = expiredDays(await daysPresent(env.BACKUP, table.name), today, table.expireDays);
+
+  if (days.length === 0) return;
+
+  await env.BACKUP.delete(days.map((day) => backupKey(table.name, day)));
+  console.log(`backup: deleted ${days.length} files of ${table.name} up to ${days[days.length - 1]}`);
 }
 
 /**
@@ -222,7 +281,7 @@ export async function clearStaleChannelApiValues(db: D1Database, now: Date): Pro
  *
  * A failure reaches the worker's log, and, since #115, `/api/health` as well:
  * that endpoint's `backup` field reads the bucket's newest key per prefix
- * through `latestDay` in ../lib/backup.ts, built on the same `daysPresent`
+ * through `daysPresent` in ../lib/backup.ts, the same listing
  * this job uses to find what is missing. A `collect_task` row of this job's
  * own was the other option; it was not taken, because #115's completion
  * condition is noticing by result rather than by whether a write succeeded,
@@ -246,6 +305,14 @@ export async function runBackup(env: Env, now: Date = new Date()): Promise<void>
       }
     } catch (error) {
       console.error(`backup: ${table.name} failed`, error);
+    }
+
+    // Apart from the write: a night the write fails is not a reason to keep
+    // a file past its date as well.
+    try {
+      await expireFiles(env, table, today);
+    } catch (error) {
+      console.error(`backup: deleting expired files of ${table.name} failed`, error);
     }
   }
 }

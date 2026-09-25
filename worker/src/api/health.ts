@@ -1,10 +1,11 @@
-import { BACKED_UP_TABLES, dayOf, daysBetween, latestDay } from '../lib/backup';
+import { BACKED_UP_TABLES, backupKey, dayOf, daysBetween, daysPresent, OMITTED_METADATA } from '../lib/backup';
 import type { Env } from '../lib/env';
 import {
   CHAT_REPLAY_ACTIVITY_STALE_MINUTES,
   isBackupStale,
   isRetentionStale,
   isTimestampStale,
+  isVideoSweepBehind,
   JOB_SUCCESS_STALE_MINUTES,
 } from '../lib/health-thresholds';
 import { formatTimestamp } from '../lib/time';
@@ -120,8 +121,36 @@ interface BackupHealth {
   latestDate: string | null;
   /** How many days ago that day was. Null when latestDate is null. */
   daysAgo: number | null;
-  /** Whether this table has crossed #110's threshold and should be treated as behind. */
+  /**
+   * Files the backup job should already have deleted: older than the table's
+   * `expireDays` by a day or more (#223). Always 0 for a table without one.
+   */
+  expiredFiles: number;
+  /**
+   * For a table with `keep`, how many rows the newest file left out that it
+   * should have been able to write - for `video`, available videos last
+   * fetched too long ago (#223). Null for a table without `keep`, and for a
+   * file written before the count was recorded.
+   */
+  omittedAlarming: number | null;
+  /**
+   * Whether this table has crossed #110's threshold and should be treated as
+   * behind, or since #223 still holds an expired file or left out a row it
+   * should not have.
+   */
   stale: boolean;
+}
+
+/**
+ * How far behind video-update's sweep is (#223). A warning, not a fault: it
+ * does not change the status code. `behind` is the early notice before the
+ * backup starts leaving available videos out of `video/`, which does.
+ */
+interface VideoSweepHealth {
+  /** The least recent `fetched_at` of an available video. Null when there is none. */
+  oldestFetchedAt: string | null;
+  /** Whether that is past `VIDEO_SWEEP_WARNING_HOURS`. */
+  behind: boolean;
 }
 
 /**
@@ -145,6 +174,13 @@ interface RetentionHealth {
   undatedUnavailableVideos: number;
   /** Whether either oldest instant is past 30 days and a tick, or an undated video is waiting. */
   stale: boolean;
+}
+
+/** A count R2 metadata carries as a string, or null when it is absent or not a count. */
+function readCount(value: string | undefined): number | null {
+  if (value === undefined || !/^\d+$/.test(value)) return null;
+
+  return Number(value);
 }
 
 interface TaskState {
@@ -227,22 +263,51 @@ const worstAttempts = (rows: TaskState[], kind: string) =>
 export async function health(
   env: Env,
   now: Date = new Date(),
-): Promise<{ jobs: JobHealth[]; backup: BackupHealth[]; retention: RetentionHealth; databaseReadAt: string }> {
+): Promise<{
+  jobs: JobHealth[];
+  backup: BackupHealth[];
+  retention: RetentionHealth;
+  videoSweep: VideoSweepHealth;
+  databaseReadAt: string;
+}> {
   const today = dayOf(formatTimestamp(now));
   const backup = await Promise.all(
     BACKED_UP_TABLES.map(async (table): Promise<BackupHealth> => {
-      const latestDate = await latestDay(env.BACKUP, table.name);
+      const days = [...(await daysPresent(env.BACKUP, table.name))].sort();
+      const latestDate = days.length === 0 ? null : days[days.length - 1];
       const daysAgo = latestDate === null ? null : daysBetween(latestDate, today);
+      // A day past expireDays rather than on it: the job deletes a file the
+      // night it reaches its age, and until 00:20 that night it is still there.
+      const expiredFiles =
+        table.expireDays === undefined ? 0 : days.filter((day) => daysBetween(day, today) > table.expireDays!).length;
+      const omittedAlarming =
+        table.keep === undefined || latestDate === null
+          ? null
+          : readCount(
+              (await env.BACKUP.head(backupKey(table.name, latestDate)))?.customMetadata?.[OMITTED_METADATA.alarming],
+            );
 
-      return { table: table.name, latestDate, daysAgo, stale: isBackupStale(table.name, daysAgo) };
+      return {
+        table: table.name,
+        latestDate,
+        daysAgo,
+        expiredFiles,
+        omittedAlarming,
+        stale: isBackupStale(table.name, daysAgo) || expiredFiles > 0 || (omittedAlarming ?? 0) > 0,
+      };
     }),
   );
 
   const oldest = await env.DB.prepare(
     `SELECT (SELECT min(fetched_at) FROM channel_snapshot) AS snapshot,
             (SELECT min(last_available_at) FROM video WHERE availability = 'unavailable') AS video,
-            (SELECT count(*) FROM video WHERE availability = 'unavailable' AND last_available_at IS NULL) AS undated`,
-  ).first<{ snapshot: string | null; video: string | null; undated: number }>();
+            (SELECT count(*) FROM video WHERE availability = 'unavailable' AND last_available_at IS NULL) AS undated,
+            (SELECT min(fetched_at) FROM video WHERE availability <> 'unavailable') AS available`,
+  ).first<{ snapshot: string | null; video: string | null; undated: number; available: string | null }>();
+  const videoSweep: VideoSweepHealth = {
+    oldestFetchedAt: oldest?.available ?? null,
+    behind: isVideoSweepBehind(oldest?.available ?? null, now),
+  };
   const undatedUnavailableVideos = oldest?.undated ?? 0;
   const retention: RetentionHealth = {
     oldestSnapshotAt: oldest?.snapshot ?? null,
@@ -306,6 +371,7 @@ export async function health(
     }),
     backup,
     retention,
+    videoSweep,
     // When these figures were read. A cached answer keeps the reading's time
     // rather than taking the reader's, which is what makes a stale answer
     // recognisable as one.
