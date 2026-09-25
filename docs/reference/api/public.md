@@ -43,12 +43,13 @@
 
 ## 公開用のバケットを返すエンドポイント
 
-| パス                     | 返すもの                                   |
-| ------------------------ | ------------------------------------------ |
-| `/api/footprints/events` | `kemov-public` の `footprints/events.json` |
-| `/api/genet/music`       | `kemov-public` の `genet/music.json`       |
+| パス                          | 返すもの                                        |
+| ----------------------------- | ----------------------------------------------- |
+| `/api/footprints/events`      | `kemov-public` の `footprints/events.json`      |
+| `/api/genet/music`            | `kemov-public` の `genet/music.json`            |
+| `/api/subscribers/milestones` | `kemov-public` の `subscribers/milestones.json` |
 
-どちらも、管理サイトが公開したオブジェクトをそのまま返します（[データ](../data.md#公開用のデータ)）。
+どれも、管理サイトが公開したオブジェクトをそのまま返します（[データ](../data.md#公開用のデータ)）。
 
 - 同じバイト列を、オブジェクト自身の `ETag` と `Last-Modified` で返し、読み直さない
 - 一度も書いていないキーには、404 と `{"error":"not published yet"}` を返す

@@ -106,7 +106,7 @@ async function insertSnapshot(channelId: string, fetchedAt: string): Promise<voi
 }
 
 /**
- * One row of every table #144 added to `BACKED_UP_TABLES`, wired together so
+ * One row of every table #144 and #225 added to `BACKED_UP_TABLES`, wired together so
  * every foreign key among them is satisfied. Depends on `seed`'s `channel`
  * ('UCaaa') and `video` ('vid1') rows.
  *
@@ -137,6 +137,19 @@ async function seedAdminTables(): Promise<void> {
     "INSERT INTO footprints_event_source (event_id, position, url, title) VALUES (?1, 1, 'https://example.invalid', NULL)",
   )
     .bind(eventId)
+    .run();
+
+  const milestone = await env.DB.prepare(
+    `INSERT INTO subscriber_milestone (channel_id, date_precision, reached_date, subscriber_count, announced_by, event_id)
+     VALUES ('UCaaa', 'day', '2026-01-01', 10000, 'member', ?1) RETURNING milestone_id`,
+  )
+    .bind(eventId)
+    .first<{ milestone_id: number }>();
+
+  await env.DB.prepare(
+    "INSERT INTO subscriber_milestone_source (milestone_id, position, url, title) VALUES (?1, 1, 'https://example.invalid/post', NULL)",
+  )
+    .bind(milestone!.milestone_id)
     .run();
 
   await env.DB.prepare("INSERT INTO genet_person (name) VALUES ('作曲家')").run();
@@ -253,6 +266,8 @@ describe('runBackup', () => {
       backupKey('revision', '2026-09-06'),
       backupKey('revision', '2026-09-07'),
       backupKey('source_whitelist', '2026-09-08'),
+      backupKey('subscriber_milestone', '2026-09-08'),
+      backupKey('subscriber_milestone_source', '2026-09-08'),
       backupKey('video', '2026-09-08'),
       backupKey('video_override', '2026-09-08'),
     ]);

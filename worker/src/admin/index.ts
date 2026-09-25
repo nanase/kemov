@@ -14,6 +14,19 @@ import { listPublications } from './publications';
 import { getRevision, listRevisions, readRevisionId } from './revisions';
 import { listSnapshots } from './snapshots';
 import {
+  createMilestone,
+  deleteMilestone,
+  getMilestone,
+  listMilestones,
+  updateMilestone,
+} from './subscriber-milestones';
+import {
+  pendingSubscriberMilestones,
+  publishMilestone,
+  publishSubscriberMilestonesNow,
+  withdrawMilestone,
+} from './subscriber-milestones-publish';
+import {
   addSourceWhitelist,
   deleteSourceWhitelist,
   listSourceWhitelist,
@@ -151,6 +164,63 @@ export async function handleAdminRequest(
     if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
 
     return await publishFootprintsNow(env, instant);
+  }
+
+  // The same shape as footprints' routes: `sub` is the literal 'milestones',
+  // 'pending' or 'publish', and the id and action follow it.
+  if (segments.length === 4 && name === 'subscribers' && sub === 'milestones') {
+    if (request.method === 'POST') {
+      const body = await readJsonObject(request);
+
+      return 'error' in body ? body.error : await createMilestone(env, body.value);
+    }
+
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET, POST');
+
+    const { searchParams } = new URL(request.url);
+
+    return await listMilestones(env, searchParams.get('channelId'), searchParams.get('status'));
+  }
+
+  if (segments.length === 5 && name === 'subscribers' && sub === 'milestones' && id2 !== undefined) {
+    const milestoneId = readPositiveInt(id2);
+
+    if (milestoneId === null) return errorResponse(404, `no subscriber milestone ${id2}`);
+
+    if (request.method === 'GET') return await getMilestone(env, milestoneId);
+
+    if (request.method === 'DELETE') return await deleteMilestone(env, milestoneId);
+
+    if (request.method !== 'PUT') return methodNotAllowed(request, 'GET, PUT, DELETE');
+
+    const body = await readJsonObject(request);
+
+    return 'error' in body ? body.error : await updateMilestone(env, milestoneId, body.value);
+  }
+
+  if (segments.length === 6 && name === 'subscribers' && sub === 'milestones' && id2 !== undefined) {
+    const milestoneId = readPositiveInt(id2);
+
+    if (milestoneId === null) return errorResponse(404, `no subscriber milestone ${id2}`);
+
+    if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
+
+    if (action === 'publish') return await publishMilestone(env, milestoneId);
+    if (action === 'withdraw') return await withdrawMilestone(env, milestoneId);
+
+    return errorResponse(404, `no endpoint at ${pathname}`);
+  }
+
+  if (segments.length === 4 && name === 'subscribers' && sub === 'pending') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    return await pendingSubscriberMilestones(env);
+  }
+
+  if (segments.length === 4 && name === 'subscribers' && sub === 'publish') {
+    if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
+
+    return await publishSubscriberMilestonesNow(env, instant);
   }
 
   if (segments.length === 4 && name === 'genet' && sub === 'streams') {

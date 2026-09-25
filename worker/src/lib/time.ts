@@ -59,6 +59,11 @@ export function isSchemaDate(value: string): boolean {
   return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value);
 }
 
+/** Whether `value` is a real month in the schema's `YYYY-MM` shape, for a row whose `date_precision` is `month`. */
+export function isSchemaMonth(value: string): boolean {
+  return /^\d{4}-\d{2}$/.test(value) && isSchemaDate(`${value}-01`);
+}
+
 const AN_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
 /**

@@ -109,6 +109,7 @@ bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-365d channel/ -
 bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-365d channel_snapshot/ --expire-days 365 -y
 
 for t in channel_snapshot_exclusion video_override footprints_event footprints_event_member footprints_event_source \
+         subscriber_milestone subscriber_milestone_source \
          source_whitelist genet_person genet_tune genet_tune_attribute genet_tune_attribute_person genet_tune_video genet_tune_score \
          genet_stream genet_performance genet_scene revision publication; do
   bun wrangler r2 bucket lifecycle add kemov-backup "expire-${t//_/-}-365d" "$t/" --expire-days 365 -y
@@ -119,7 +120,7 @@ done
 
 prefix の末尾のスラッシュは省けません。`genet_tune` を prefix にすると `genet_tune_attribute/` にも一致し、`video` は `video_override/` にも一致します。どちらも誤った保持期間で消えてしまいます。上の prefix がすべて `/` で終わるのはこのためです。
 
-`bun wrangler r2 bucket lifecycle list kemov-backup` で確かめます。上で足した 20 個と、もとからある Default Multipart Abort Rule の、計 21 個が並ぶはずです。
+`bun wrangler r2 bucket lifecycle list kemov-backup` で確かめます。上で足した 22 個と、もとからある Default Multipart Abort Rule の、計 23 個が並ぶはずです。
 
 ## 公開用のバケット
 

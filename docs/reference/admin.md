@@ -10,7 +10,7 @@
   - 読むのは `/api` で、公開され、キャッシュされる
   - 書くのは `/admin/api` で、Access の後ろにある
 - 公開の状態を行に持つ
-  - あしあとの `footprints_event` とジェネット楽曲一覧の `genet_stream` は、`status` の列を持つ
+  - あしあとの `footprints_event`、ジェネット楽曲一覧の `genet_stream`、登録者数の節目の `subscriber_milestone` は、`status` の列を持つ
 - 版の履歴は追記だけにする
   - `revision` と `publication` は、トリガーが `UPDATE` と `DELETE` を拒む
 - 公開の条件は、公開するときに確かめる
@@ -35,7 +35,7 @@ flowchart TD
   class json,pub out
 ```
 
-公開の門を通るのは、あしあととジェネット楽曲一覧だけです。メンバー・動画の上書き・統計の除外は、保存した時点で効きます。出典のホワイトリストは公開の門の設定で、保存した時点で効きます。
+公開の門を通るのは、あしあと・ジェネット楽曲一覧・登録者数の節目だけです。メンバー・動画の上書き・統計の除外は、保存した時点で効きます。出典のホワイトリストは公開の門の設定で、保存した時点で効きます。
 
 ## `/admin` と Cloudflare Access
 
