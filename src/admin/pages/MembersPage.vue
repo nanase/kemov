@@ -277,14 +277,14 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
         <span class="grow"></span>
         <span class="sub num">{{ rows.length }} 人</span>
         <!-- Always there, unsaved changes or not: a 409 from 保存 says to reload, and the draft is kept across it. -->
-        <button class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
+        <button class="btn quiet" type="button" :disabled="loading || listSaving" @click="load">再読み込み</button>
         <template v-if="dirty">
           <button class="btn quiet" type="button" :disabled="listSaving" @click="discard">
             {{ MEMBER_TEXT.discard }}
           </button>
           <button class="btn primary" type="button" :disabled="listSaving" @click="saveList">保存</button>
         </template>
-        <button class="btn" type="button" @click="addMember">＋ メンバーを足す</button>
+        <button class="btn" type="button" :disabled="listSaving" @click="addMember">＋ メンバーを足す</button>
       </div>
       <div class="scroller">
         <div v-if="loadError" class="empty">
@@ -324,7 +324,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
                   type="button"
                   :aria-label="MEMBER_TEXT.moveUp(m.name)"
                   :title="MEMBER_TEXT.moveUp(m.name)"
-                  :disabled="index === 0"
+                  :disabled="listSaving || index === 0"
                   @click="move(m.channelId, -1)"
                 >
                   ↑
@@ -334,7 +334,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
                   type="button"
                   :aria-label="MEMBER_TEXT.moveDown(m.name)"
                   :title="MEMBER_TEXT.moveDown(m.name)"
-                  :disabled="index === rows.length - 1"
+                  :disabled="listSaving || index === rows.length - 1"
                   @click="move(m.channelId, 1)"
                 >
                   ↓
@@ -358,7 +358,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
       </div>
     </div>
 
-    <div v-if="activeFields" class="inspector">
+    <!-- inert while 保存 is in flight: the request already carries the draft as it was, and what is typed meanwhile would be cleared with it. -->
+    <div v-if="activeFields" class="inspector" :inert="listSaving ? '' : undefined">
       <div class="inspector-head">
         <div style="flex: 1 1 auto; min-width: 0">
           <h3>{{ newForm ? MEMBER_TEXT.addHeading : activeName }}</h3>
