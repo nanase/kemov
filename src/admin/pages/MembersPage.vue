@@ -359,7 +359,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
     </div>
 
     <!-- inert while 保存 is in flight: the request already carries the draft as it was, and what is typed meanwhile would be cleared with it. -->
-    <div v-if="activeFields" class="inspector" :inert="listSaving ? '' : undefined">
+    <div v-if="activeFields" class="inspector" :inert="listSaving || undefined">
       <div class="inspector-head">
         <div style="flex: 1 1 auto; min-width: 0">
           <h3>{{ newForm ? MEMBER_TEXT.addHeading : activeName }}</h3>
