@@ -100,6 +100,13 @@ export interface TableShape {
    * Meaningful only for a table replaced whole, never one with a `dayColumn`.
    */
   readonly replace?: boolean;
+  /**
+   * Columns holding values fetched from the YouTube API, which this site may
+   * keep for 30 days at most (#222), and the column saying when they were
+   * fetched. A row whose values are older than `BACKED_UP_API_VALUE_MAX_AGE_MS`
+   * is written with those columns as NULL - see `withoutStaleApiValues`.
+   */
+  readonly apiValues?: { readonly columns: readonly string[]; readonly fetchedAt: string };
 }
 
 /**
@@ -142,6 +149,7 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
       'twitch',
     ],
     conflict: ['channel_id'],
+    apiValues: { columns: ['custom_url', 'thumbnail_url'], fetchedAt: 'fetched_at' },
   },
   {
     name: 'video',
@@ -402,6 +410,48 @@ export function toSql(table: TableShape, rows: readonly Record<string, unknown>[
     ...statements,
     '',
   ].join('\n');
+}
+
+/**
+ * How old a YouTube API value may be and still be written into a backup file
+ * (#224).
+ *
+ * The 30 days #222 allows have to cover the file's whole life, not only the
+ * value's age when it is written. The file itself is kept for 27 days and R2
+ * deletes it up to a day after that (docs/reference/data.md, "保持期間"),
+ * which leaves one day for the value's age at writing. The collector
+ * refreshes these values on every run, so a value older than a day is one it
+ * has stopped refreshing - a channel `Channels.list` no longer returns, or an
+ * outage - and the file is written without it. The cost falls only on a
+ * restore, which gets NULL there until the collector next writes the
+ * channel.
+ */
+export const BACKED_UP_API_VALUE_MAX_AGE_MS = 86_400_000;
+
+/**
+ * `rows` with `table.apiValues`'s columns set to NULL wherever they were
+ * fetched longer than `BACKED_UP_API_VALUE_MAX_AGE_MS` before `now`, or at no
+ * recorded time at all: a value with no fetch time cannot be shown to be
+ * recent. Rows of a table without `apiValues` come back unchanged.
+ */
+export function withoutStaleApiValues(
+  table: TableShape,
+  rows: readonly Record<string, unknown>[],
+  now: Date,
+): Record<string, unknown>[] {
+  const { apiValues } = table;
+
+  if (apiValues === undefined) return [...rows];
+
+  const cutoff = formatTimestamp(new Date(now.getTime() - BACKED_UP_API_VALUE_MAX_AGE_MS));
+
+  return rows.map((row) => {
+    const fetchedAt = row[apiValues.fetchedAt];
+
+    if (typeof fetchedAt === 'string' && fetchedAt >= cutoff) return row;
+
+    return { ...row, ...Object.fromEntries(apiValues.columns.map((column) => [column, null])) };
+  });
 }
 
 /** The R2 key one day of one table is written to. */

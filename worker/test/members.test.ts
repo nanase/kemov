@@ -1,6 +1,8 @@
 import { env } from 'cloudflare:test';
 
 import { listMembers, updateMember } from '../src/admin/members';
+import { runBackup } from '../src/collector/backup';
+import { backupKey, dayOf } from '../src/lib/backup';
 import { clearEverything } from './reset-db';
 
 beforeEach(clearEverything);
@@ -135,7 +137,7 @@ describe('updateMember', () => {
     });
   });
 
-  test('logs one revision row, with the row minus fetched_at in table-column order', async () => {
+  test('logs one revision row, with the row minus fetched_at and the API columns in table-column order', async () => {
     await insertChannel('UCaaa');
 
     await updateMember(env, 'UCaaa', validBody());
@@ -148,7 +150,8 @@ describe('updateMember', () => {
     expect(rows[0].action).toEqual('save');
     // Key order matters here - Object.keys reflects insertion order for
     // string keys, and every key below is one - so this also confirms the
-    // body was built in channel's own column order, fetched_at left out.
+    // body was built in channel's own column order, fetched_at, custom_url
+    // and thumbnail_url left out.
     expect(Object.keys(JSON.parse(rows[0].body!))).toEqual([
       'channel_id',
       'name',
@@ -161,8 +164,6 @@ describe('updateMember', () => {
       'color_back',
       'activity_start_date',
       'activity_end_date',
-      'custom_url',
-      'thumbnail_url',
       'display_order',
       'twitch',
     ]);
@@ -178,11 +179,33 @@ describe('updateMember', () => {
       color_back: '#456789',
       activity_start_date: '2021-04-01',
       activity_end_date: null,
-      custom_url: '@handle',
-      thumbnail_url: 'https://example.invalid/a.jpg',
       display_order: 5,
       twitch: 'tsubaki__kemov',
     });
+  });
+
+  // What #224 is for: the nightly backup copies revision as it stands, and
+  // its files are kept far longer than the 30 days the YouTube API allows.
+  // Checked through the file itself rather than the row alone, so that a
+  // value reaching the backup some other way would be caught here too.
+  test('keeps custom_url and thumbnail_url out of the revision backup', async () => {
+    await insertChannel('UCaaa');
+
+    await updateMember(env, 'UCaaa', validBody());
+
+    const { created_at: createdAt } = (await env.DB.prepare('SELECT created_at FROM revision').first<{
+      created_at: string;
+    }>())!;
+
+    await runBackup(env, new Date(Date.parse(createdAt) + 86_400_000));
+
+    const sql = await (await env.BACKUP.get(backupKey('revision', dayOf(createdAt))))!.text();
+
+    expect(sql).toContain("'channel', 'UCaaa', 'save'");
+    expect(sql).not.toContain('@handle');
+    expect(sql).not.toContain('example.invalid');
+    expect(sql).not.toContain('custom_url');
+    expect(sql).not.toContain('thumbnail_url');
   });
 
   test('saving twice logs two revisions', async () => {
