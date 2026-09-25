@@ -99,13 +99,13 @@ bun wrangler secret list                  # 名前だけを出し、値は出さ
 
 `lifecycle add` を、リポジトリのルートで実行します。
 
-- `channel/` にもとからあった規則は、並べて足すのではなく置き換える。1 つの prefix には規則を 1 つしか置けないため
-  - `channel/` の規則は 30 日から 365 日、365 日から 27 日（#224）と変わってきた。今ある規則を `remove` してから、27 日の規則を `add` する
+- `channel/` に規則が既にあるときは、並べて足すのではなく置き換える。1 つの prefix には規則を 1 つしか置けないため
+  - 先に `lifecycle list` で今ある規則の名前を確かめ、その規則だけを `remove` する。無い名前を `remove` すると、エラーで止まる
+  - `channel/` の規則の名前は、`expire-channel-30d`、`expire-channel-365d`、`expire-channel-27d`（#224）と変わってきた。下のコマンドは、今ある規則が `expire-channel-365d` の場合である
 - `-y` は、`add` が尋ねる確認を飛ばす。確認が出ると、ループが途中で止まる
 
 ```sh
 bun wrangler r2 bucket lifecycle add kemov-backup expire-video-30d video/ --expire-days 30 -y
-bun wrangler r2 bucket lifecycle remove kemov-backup --name expire-channel-30d
 bun wrangler r2 bucket lifecycle remove kemov-backup --name expire-channel-365d
 bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-27d channel/ --expire-days 27 -y
 bun wrangler r2 bucket lifecycle add kemov-backup expire-channel-snapshot-365d channel_snapshot/ --expire-days 365 -y
