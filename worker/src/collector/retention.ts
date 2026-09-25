@@ -36,8 +36,14 @@ import { isRetentionTick, retentionCutoff } from '../lib/retention';
 const EXPIRED_VIDEOS = `SELECT video_id FROM video
   WHERE availability = 'unavailable' AND (last_available_at IS NULL OR last_available_at < ?1)`;
 
-export async function runRetention(env: Env, now: Date = new Date()): Promise<void> {
-  if (!isRetentionTick(now)) return;
+/**
+ * `scheduledAt` decides whether this is the tick of the hour that deletes:
+ * the trigger's scheduled time, so that a :00 tick that starts late still
+ * counts as the :00 tick rather than skipping the hour. `now` places the
+ * cutoff, since what matters there is how old a row is when it goes.
+ */
+export async function runRetention(env: Env, scheduledAt: Date = new Date(), now: Date = new Date()): Promise<void> {
+  if (!isRetentionTick(scheduledAt)) return;
 
   const cutoff = retentionCutoff(now);
 

@@ -35,9 +35,9 @@ export const RETENTION_INTERVAL_MINUTES = 60;
  */
 const RETENTION_TICK_MINUTES = 10;
 
-/** Whether the tick running at `now` is the one each hour that deletes. */
-export function isRetentionTick(now: Date): boolean {
-  return now.getUTCMinutes() < RETENTION_TICK_MINUTES;
+/** Whether the tick scheduled at `scheduledAt` is the one each hour that deletes. */
+export function isRetentionTick(scheduledAt: Date): boolean {
+  return scheduledAt.getUTCMinutes() < RETENTION_TICK_MINUTES;
 }
 
 /**

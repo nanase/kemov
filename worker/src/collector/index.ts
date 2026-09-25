@@ -27,7 +27,12 @@ export function jobsFor(cron: string): readonly string[] {
   return jobsByCron.get(cron) ?? [];
 }
 
-type JobHandler = (env: Env) => Promise<void>;
+/**
+ * One job. `scheduledAt` is the instant the cron trigger was due, which can
+ * be earlier than when the job actually starts; only retention reads it, to
+ * decide which tick of the hour it is (#223).
+ */
+type JobHandler = (env: Env, scheduledAt: Date) => Promise<void>;
 
 /** What runScheduled dispatches through: a job's name to the code that runs it. */
 export type JobHandlers = Readonly<Record<string, JobHandler>>;
@@ -39,12 +44,15 @@ export type JobHandlers = Readonly<Record<string, JobHandler>>;
  * so #63 to #65 are free to land in any order.
  */
 const jobHandlers: JobHandlers = {
-  backup: runBackup,
-  'channel-stats': runChannelStats,
-  'chat-replay': runChatReplay,
-  retention: runRetention,
-  'video-discover': runVideoDiscover,
-  'video-update': runVideoUpdate,
+  // Wrapped rather than passed as they are: each takes something of its own
+  // as a second argument - a fetch, or a clock for the tests - and must not be
+  // handed the scheduled instant in its place.
+  backup: (env) => runBackup(env),
+  'channel-stats': (env) => runChannelStats(env),
+  'chat-replay': (env) => runChatReplay(env),
+  retention: (env, scheduledAt) => runRetention(env, scheduledAt),
+  'video-discover': (env) => runVideoDiscover(env),
+  'video-update': (env) => runVideoUpdate(env),
 };
 
 /**
@@ -55,13 +63,21 @@ const jobHandlers: JobHandlers = {
  * failing - a bad API response, a D1 error - never stops the others from
  * running or crashes the trigger.
  *
+ * `scheduledAt` is the trigger's own scheduled time, which the worker's
+ * scheduled handler passes; a caller without one gets the current instant.
+ *
  * `handlers` is the map above unless a caller says otherwise, the same way a
  * collector takes its own fetch. Only a test passes it, and only to reach the
  * branch below: every job jobsByCron names now has a handler, so a job without
  * one cannot otherwise be produced - and that branch is the net under the next
  * job somebody adds.
  */
-export async function runScheduled(cron: string, env: Env, handlers: JobHandlers = jobHandlers): Promise<void> {
+export async function runScheduled(
+  cron: string,
+  env: Env,
+  scheduledAt: Date = new Date(),
+  handlers: JobHandlers = jobHandlers,
+): Promise<void> {
   const jobs = jobsFor(cron);
 
   if (jobs.length === 0) {
@@ -81,7 +97,7 @@ export async function runScheduled(cron: string, env: Env, handlers: JobHandlers
       }
 
       try {
-        await handler(env);
+        await handler(env, scheduledAt);
       } catch (error) {
         console.error(`job "${job}" failed`, error);
       }

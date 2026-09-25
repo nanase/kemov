@@ -66,7 +66,7 @@ describe('runScheduled', () => {
   test('warns instead of dropping a job with no handler', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    await runScheduled('* * * * *', env, {});
+    await runScheduled('* * * * *', env, new Date(), {});
 
     expect(warn).toHaveBeenCalledWith('no handler implemented yet for job "chat-replay"');
 

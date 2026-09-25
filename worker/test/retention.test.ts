@@ -119,7 +119,7 @@ describe('runRetention', () => {
     await insertSnapshot('UCaaa', '2026-09-07T01:00:00Z');
     await insertSnapshot('UCaaa', '2026-09-08T01:00:00Z');
 
-    await runRetention(env, NOW);
+    await runRetention(env, NOW, NOW);
 
     expect(await snapshots()).toEqual(['2026-09-08T01:00:00Z']);
   });
@@ -128,7 +128,7 @@ describe('runRetention', () => {
     await insertSnapshot('UCaaa', '2026-09-07T01:59:59Z');
     await insertSnapshot('UCaaa', '2026-09-07T02:00:00Z');
 
-    await runRetention(env, NOW);
+    await runRetention(env, NOW, NOW);
 
     expect(await snapshots()).toEqual(['2026-09-07T02:00:00Z']);
   });
@@ -136,9 +136,22 @@ describe('runRetention', () => {
   test('does nothing on the other five ticks of the hour', async () => {
     await insertSnapshot('UCaaa', '2026-09-01T00:00:00Z');
 
-    await runRetention(env, new Date('2026-10-07T01:10:00Z'));
+    const at = new Date('2026-10-07T01:10:00Z');
+
+    await runRetention(env, at, at);
 
     expect(await snapshots()).toEqual(['2026-09-01T00:00:00Z']);
+  });
+
+  // A :00 tick that starts twelve minutes late is still the :00 tick, and the
+  // cutoff follows when it runs rather than when it was due.
+  test('deletes on a late start of the hourly tick, with the cutoff from when it ran', async () => {
+    await insertSnapshot('UCaaa', '2026-09-07T02:11:59Z');
+    await insertSnapshot('UCaaa', '2026-09-07T02:12:00Z');
+
+    await runRetention(env, NOW, new Date('2026-10-07T01:12:00Z'));
+
+    expect(await snapshots()).toEqual(['2026-09-07T02:12:00Z']);
   });
 
   // The foreign key refuses to delete a snapshot an exclusion names, so the
@@ -149,7 +162,7 @@ describe('runRetention', () => {
     await insertExclusion('UCaaa', '2026-09-06T00:00:00Z');
     await insertExclusion('UCaaa', '2026-09-20T00:00:00Z');
 
-    await runRetention(env, NOW);
+    await runRetention(env, NOW, NOW);
 
     const { results } = await env.DB.prepare('SELECT fetched_at FROM channel_snapshot_exclusion').all();
 
@@ -170,7 +183,7 @@ describe('runRetention', () => {
         .run();
     }
 
-    await runRetention(env, NOW);
+    await runRetention(env, NOW, NOW);
 
     expect(await rowsNaming('gone')).toEqual({
       video: 0,
@@ -184,7 +197,7 @@ describe('runRetention', () => {
   test('keeps an unavailable video inside the line', async () => {
     await insertVideo('recent', '2026-09-07T02:00:00Z');
 
-    await runRetention(env, NOW);
+    await runRetention(env, NOW, NOW);
 
     expect((await rowsNaming('recent')).video).toEqual(1);
   });
@@ -194,7 +207,7 @@ describe('runRetention', () => {
   test('deletes an unavailable video with no last_available_at', async () => {
     await insertVideo('undated', null);
 
-    await runRetention(env, NOW);
+    await runRetention(env, NOW, NOW);
 
     expect((await rowsNaming('undated')).video).toEqual(0);
   });
@@ -205,7 +218,7 @@ describe('runRetention', () => {
     await insertVideo('public');
     await env.DB.prepare(`UPDATE video SET fetched_at = '2026-01-01T00:00:00Z' WHERE video_id = 'public'`).run();
 
-    await runRetention(env, NOW);
+    await runRetention(env, NOW, NOW);
 
     expect((await rowsNaming('public')).video).toEqual(1);
   });
@@ -219,7 +232,7 @@ describe('runRetention', () => {
        VALUES ('day', '2026-01-01', 'other', 'x', 'gone')`,
     ).run();
 
-    await runRetention(env, NOW);
+    await runRetention(env, NOW, NOW);
 
     expect(await rowsNaming('gone')).toMatchObject({ video: 0, footprints_event: 1 });
   });
@@ -231,7 +244,7 @@ describe('runRetention', () => {
       `INSERT INTO collect_task (kind, target_id, state, updated_at) VALUES ('video_discover', 'UCaaa', 'failed', '2026-10-07T00:50:00Z')`,
     ).run();
 
-    await runRetention(env, NOW);
+    await runRetention(env, NOW, NOW);
 
     const { results } = await env.DB.prepare('SELECT target_id FROM collect_task').all();
 
@@ -249,7 +262,7 @@ describe('runRetention', () => {
     ).run();
 
     try {
-      await expect(runRetention(env, NOW)).rejects.toThrow();
+      await expect(runRetention(env, NOW, NOW)).rejects.toThrow();
     } finally {
       await env.DB.prepare('DROP TRIGGER refuse_video_delete').run();
     }
