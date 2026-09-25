@@ -276,13 +276,14 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
         <span v-if="dirty" class="chip waiting">{{ MEMBER_TEXT.unsaved }}</span>
         <span class="grow"></span>
         <span class="sub num">{{ rows.length }} 人</span>
+        <!-- Always there, unsaved changes or not: a 409 from 保存 says to reload, and the draft is kept across it. -->
+        <button class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
         <template v-if="dirty">
           <button class="btn quiet" type="button" :disabled="listSaving" @click="discard">
             {{ MEMBER_TEXT.discard }}
           </button>
           <button class="btn primary" type="button" :disabled="listSaving" @click="saveList">保存</button>
         </template>
-        <button v-else class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
         <button class="btn" type="button" @click="addMember">＋ メンバーを足す</button>
       </div>
       <div class="scroller">
