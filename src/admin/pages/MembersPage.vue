@@ -113,6 +113,9 @@ async function load(): Promise<void> {
 }
 
 function selectRow(channelId: string): void {
+  // The edit panel is inert while 保存 is in flight; so is the choice of what it shows.
+  if (listSaving.value) return;
+
   newForm.value = null;
   selectedId.value = channelId;
   detail.value = true;
