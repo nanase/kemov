@@ -44,7 +44,7 @@ function periodToQuery(period: RankingPeriod): { period: PeriodQueryId; year: nu
 }
 
 function queryToPeriod(periodId: string | null, yearText: string | null): RankingPeriod | null {
-  if (periodId === null) return 'all';
+  if (periodId === null) return null;
   if (!(PERIOD_QUERY_IDS as readonly string[]).includes(periodId)) return null;
 
   if (periodId !== 'year') {
@@ -102,10 +102,11 @@ export function stateToQuery(state: PageState): URLSearchParams {
  * link, a future one this build does not know yet - is read the same as the
  * key being absent, rather than thrown out as an error: the page still opens,
  * just without that one narrowing.
+ *
+ * "The default" is `defaults`, which the page fills with what the reader
+ * kept last time; a key the address does name wins over it.
  */
-export function queryToState(params: URLSearchParams): PageState {
-  const defaults = defaultState();
-
+export function queryToState(params: URLSearchParams, defaults: PageState = defaultState()): PageState {
   const metricText = params.get('metric');
   const metric = (
     metricText !== null && (VIDEO_PROPERTIES as readonly string[]).includes(metricText) ? metricText : defaults.metric

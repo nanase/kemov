@@ -10,6 +10,7 @@ import {
   previousDay,
   toSql,
   type TableShape,
+  withoutStaleApiValues,
 } from '../lib/backup';
 import { formatTimestamp } from '../lib/time';
 
@@ -147,8 +148,11 @@ async function backUpDayAtATime(env: Env, table: TableShape, dayColumn: string, 
 }
 
 /** Writes a whole table under today's date, replacing any file already there. */
-async function backUpWholeTable(env: Env, table: TableShape, today: string, now: Date): Promise<number> {
-  const rows = await readAll(env.DB, table, table.keep?.(now));
+async function backUpWholeTable(env: Env, table: TableShape, now: Date): Promise<number> {
+  const today = dayOf(formatTimestamp(now));
+  // Two filters, one per issue: `keep` leaves rows out of the file (#223),
+  // and withoutStaleApiValues clears columns in the rows that stay (#224).
+  const rows = withoutStaleApiValues(table, await readAll(env.DB, table, table.keep?.(now)), now);
 
   await env.BACKUP.put(
     backupKey(table.name, today),
@@ -163,6 +167,50 @@ async function backUpWholeTable(env: Env, table: TableShape, today: string, now:
   console.log(`backup: wrote ${rows.length} rows of ${table.name} for ${today}`);
 
   return rows.length;
+}
+
+/**
+ * How many days `channel.custom_url` and `channel.thumbnail_url` may go
+ * without being fetched again before this job clears them from D1 (#224).
+ *
+ * Both come from the YouTube API, which lets this site keep them for 30 days
+ * at most (#222). The collector overwrites them on every run, but only for a
+ * channel `Channels.list` returns: one it stops returning keeps its old values
+ * for as long as nothing clears them. This job runs once a day, so a value is
+ * cleared within a day of passing this age, before it is 28 days old, and the
+ * channel goes without an icon and a handle until the collector fetches it
+ * again.
+ */
+export const CHANNEL_API_VALUE_MAX_AGE_DAYS = 27;
+
+/**
+ * Clears the YouTube API values of every channel last fetched more than
+ * `CHANNEL_API_VALUE_MAX_AGE_DAYS` before `now`, or never, and returns how
+ * many rows it cleared. `fetched_at` is left alone: it still says when the
+ * channel was last fetched.
+ *
+ * Here rather than in the collector because this job is the one that runs
+ * daily whether or not the YouTube API is answering, and it has to run
+ * before the tables are read: it keeps the values out of D1, while
+ * `withoutStaleApiValues` keeps younger ones out of the file.
+ */
+export async function clearStaleChannelApiValues(db: D1Database, now: Date): Promise<number> {
+  const cutoff = formatTimestamp(new Date(now.getTime() - CHANNEL_API_VALUE_MAX_AGE_DAYS * 86_400_000));
+  const { results } = await db
+    .prepare(
+      `UPDATE channel SET custom_url = NULL, thumbnail_url = NULL
+        WHERE (custom_url IS NOT NULL OR thumbnail_url IS NOT NULL)
+          AND (fetched_at IS NULL OR fetched_at < ?1)
+        RETURNING channel_id`,
+    )
+    .bind(cutoff)
+    .all<{ channel_id: string }>();
+
+  if (results.length > 0) {
+    console.log(`backup: cleared stale API values of ${results.map((row) => row.channel_id).join(', ')}`);
+  }
+
+  return results.length;
 }
 
 /**
@@ -183,12 +231,18 @@ async function backUpWholeTable(env: Env, table: TableShape, today: string, now:
 export async function runBackup(env: Env, now: Date = new Date()): Promise<void> {
   const today = dayOf(formatTimestamp(now));
 
+  try {
+    await clearStaleChannelApiValues(env.DB, now);
+  } catch (error) {
+    console.error('backup: clearing stale channel API values failed', error);
+  }
+
   for (const table of BACKED_UP_TABLES) {
     try {
       if (table.dayColumn !== undefined) {
         await backUpDayAtATime(env, table, table.dayColumn, today);
       } else {
-        await backUpWholeTable(env, table, today, now);
+        await backUpWholeTable(env, table, now);
       }
     } catch (error) {
       console.error(`backup: ${table.name} failed`, error);

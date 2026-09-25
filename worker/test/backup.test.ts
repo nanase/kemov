@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
-import { runBackup } from '../src/collector/backup';
+import { CHANNEL_API_VALUE_MAX_AGE_DAYS, clearStaleChannelApiValues, runBackup } from '../src/collector/backup';
 import {
+  BACKED_UP_API_VALUE_MAX_AGE_MS,
   BACKED_UP_TABLES,
   backupKey,
   BYTES_PER_STATEMENT,
@@ -18,6 +19,7 @@ import {
   quote,
   ROWS_PER_STATEMENT,
   toSql,
+  withoutStaleApiValues,
 } from '../src/lib/backup';
 import { clearEverything } from './reset-db';
 
@@ -885,5 +887,169 @@ describe('daysBetween', () => {
 
   test('crosses the end of a month', () => {
     expect(daysBetween('2026-08-31', '2026-09-02')).toEqual(2);
+  });
+});
+
+// #224: the YouTube API values in `channel` may be kept for 30 days at most
+// (#222), in D1 and in the files alike.
+describe('YouTube API values in channel', () => {
+  const CHANNEL = BACKED_UP_TABLES.find((table) => table.name === 'channel')!;
+  const NOW = new Date('2026-10-10T00:20:00Z');
+
+  /** An instant `ms` before NOW, in the schema's shape. */
+  function before(ms: number): string {
+    return `${new Date(NOW.getTime() - ms).toISOString().slice(0, 19)}Z`;
+  }
+
+  async function setFetchedAt(channelId: string, fetchedAt: string | null): Promise<void> {
+    await env.DB.prepare('UPDATE channel SET fetched_at = ?1 WHERE channel_id = ?2').bind(fetchedAt, channelId).run();
+  }
+
+  async function apiColumns(channelId: string): Promise<unknown> {
+    return env.DB.prepare('SELECT custom_url, thumbnail_url, fetched_at FROM channel WHERE channel_id = ?1')
+      .bind(channelId)
+      .first();
+  }
+
+  describe('withoutStaleApiValues', () => {
+    const row = { channel_id: 'UCaaa', name: 'あ', custom_url: '@aaa', thumbnail_url: 'https://example.invalid/a.jpg' };
+
+    test('keeps values fetched within the allowed age', () => {
+      const fresh = { ...row, fetched_at: before(BACKED_UP_API_VALUE_MAX_AGE_MS) };
+
+      expect(withoutStaleApiValues(CHANNEL, [fresh], NOW)).toEqual([fresh]);
+    });
+
+    test('writes NULL for values fetched longer ago, and leaves every other column alone', () => {
+      const stale = { ...row, fetched_at: before(BACKED_UP_API_VALUE_MAX_AGE_MS + 1000) };
+
+      expect(withoutStaleApiValues(CHANNEL, [stale], NOW)).toEqual([
+        { ...stale, custom_url: null, thumbnail_url: null },
+      ]);
+    });
+
+    test('writes NULL for values with no fetch time', () => {
+      expect(withoutStaleApiValues(CHANNEL, [{ ...row, fetched_at: null }], NOW)).toEqual([
+        { ...row, fetched_at: null, custom_url: null, thumbnail_url: null },
+      ]);
+    });
+
+    test('leaves a table without API values alone', () => {
+      const video = BACKED_UP_TABLES.find((table) => table.name === 'video')!;
+      const rows = [{ video_id: 'vid1', title: 't', fetched_at: null }];
+
+      expect(withoutStaleApiValues(video, rows, NOW)).toEqual(rows);
+    });
+  });
+
+  describe('clearStaleChannelApiValues', () => {
+    test('clears a channel fetched longer ago than the limit, keeping fetched_at and the rest of the row', async () => {
+      await insertChannel('UCaaa');
+
+      const fetchedAt = before(CHANNEL_API_VALUE_MAX_AGE_DAYS * 86_400_000 + 1000);
+
+      await setFetchedAt('UCaaa', fetchedAt);
+
+      expect(await clearStaleChannelApiValues(env.DB, NOW)).toEqual(1);
+      expect(await apiColumns('UCaaa')).toEqual({ custom_url: null, thumbnail_url: null, fetched_at: fetchedAt });
+      expect(
+        await env.DB.prepare('SELECT name, twitter FROM channel WHERE channel_id = ?1').bind('UCaaa').first(),
+      ).toEqual({ name: 'あ', twitter: 'aaa' });
+    });
+
+    test('keeps a channel fetched within the limit', async () => {
+      await insertChannel('UCaaa');
+
+      const fetchedAt = before(CHANNEL_API_VALUE_MAX_AGE_DAYS * 86_400_000);
+
+      await setFetchedAt('UCaaa', fetchedAt);
+
+      expect(await clearStaleChannelApiValues(env.DB, NOW)).toEqual(0);
+      expect(await apiColumns('UCaaa')).toEqual({
+        custom_url: '@aaa',
+        thumbnail_url: 'https://example.invalid/a.jpg',
+        fetched_at: fetchedAt,
+      });
+    });
+
+    test('clears values with no fetch time', async () => {
+      await insertChannel('UCaaa');
+      await setFetchedAt('UCaaa', null);
+
+      expect(await clearStaleChannelApiValues(env.DB, NOW)).toEqual(1);
+      expect(await apiColumns('UCaaa')).toEqual({ custom_url: null, thumbnail_url: null, fetched_at: null });
+    });
+  });
+
+  describe('runBackup', () => {
+    async function channelFile(): Promise<string> {
+      return (await env.BACKUP.get(backupKey('channel', dayOf(NOW.toISOString()))))!.text();
+    }
+
+    test('writes values the collector fetched within the last day', async () => {
+      await insertChannel('UCaaa');
+      await setFetchedAt('UCaaa', before(10 * 60 * 1000));
+
+      await runBackup(env, NOW);
+
+      const sql = await channelFile();
+
+      expect(sql).toContain("'@aaa'");
+      expect(sql).toContain("'https://example.invalid/a.jpg'");
+    });
+
+    // A channel Channels.list stopped returning: D1 may still hold its values
+    // for a while, but a file kept for 27 days may not.
+    test('leaves out values older than a day, while D1 keeps them', async () => {
+      await insertChannel('UCaaa');
+      await setFetchedAt('UCaaa', before(2 * 86_400_000));
+
+      await runBackup(env, NOW);
+
+      const sql = await channelFile();
+
+      expect(sql).not.toContain('@aaa');
+      expect(sql).not.toContain('example.invalid');
+      expect(await apiColumns('UCaaa')).toMatchObject({ custom_url: '@aaa' });
+    });
+
+    test('clears values older than the limit from D1 before writing the file', async () => {
+      await insertChannel('UCaaa');
+      await setFetchedAt('UCaaa', before(28 * 86_400_000));
+
+      await runBackup(env, NOW);
+
+      expect(await apiColumns('UCaaa')).toMatchObject({ custom_url: null, thumbnail_url: null });
+      expect(await channelFile()).not.toContain('@aaa');
+    });
+  });
+});
+
+// The two filters a whole-table file goes through, from two issues: #223's
+// `keep`, which leaves rows out of `video/`, and #224's withoutStaleApiValues,
+// which clears columns in `channel/`. One run, both files, so that neither
+// can quietly stop applying while the other goes on passing its own tests.
+describe('runBackup with both retention filters', () => {
+  const NOW = new Date('2026-10-10T00:20:00Z');
+
+  test('leaves the old unavailable video out of video/ and the stale values out of channel/', async () => {
+    await insertChannel('UCaaa');
+    await env.DB.prepare(`UPDATE channel SET fetched_at = '2026-10-08T00:00:00Z' WHERE channel_id = 'UCaaa'`).run();
+    await insertVideo('kept', 'UCaaa');
+    await insertVideo('gone', 'UCaaa');
+    await env.DB.prepare(
+      `UPDATE video SET availability = 'unavailable', last_available_at = '2026-10-01T00:00:00Z' WHERE video_id = 'gone'`,
+    ).run();
+
+    await runBackup(env, NOW);
+
+    const video = await (await env.BACKUP.get(backupKey('video', '2026-10-10')))!.text();
+    const channel = await (await env.BACKUP.get(backupKey('channel', '2026-10-10')))!.text();
+
+    expect(video).toContain(`('kept',`);
+    expect(video).not.toContain(`('gone',`);
+    expect(channel).toContain(`('UCaaa',`);
+    expect(channel).not.toContain('@aaa');
+    expect(channel).not.toContain('example.invalid');
   });
 });

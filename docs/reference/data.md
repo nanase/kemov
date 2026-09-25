@@ -145,6 +145,8 @@ erDiagram
 
 `revision` は、`entity` と `entity_key` の組で、どの表のどの行の版かを示します。外部キーではないので、行を消しても版は残ります。
 
+版は後から消せないので、YouTube API から取った値は本文に写しません。メンバーの版が `custom_url` と `thumbnail_url` を持たないのはこのためです（[管理 API](api/admin.md)）。
+
 ## 列の書き手
 
 `channel` には書き手が 2 つあります。この分担を無視して書くと、もう一方の書いた内容を消してしまいます。
@@ -368,19 +370,21 @@ D1 が拒む文があっても、見つかるのはそのファイルから戻�
 | ------------------- | -------- | ------------------------------------------------------------------------------------------------------------- |
 | `video/`            | 27 日    | YouTube API から取ったデータを 30 日までしか持てない。ファイルはどれも完全な写しで、最新の 1 つがあれば足りる |
 | `channel_snapshot/` | 27 日    | YouTube API から取ったデータを 30 日までしか持てない                                                          |
+| `channel/`          | 27 日    | YouTube API から取った `custom_url` と `thumbnail_url` を含む。[`channel/`](#channel) を参照                  |
 | 次の一覧            | 365 日   | 次を参照                                                                                                      |
 
-365 日の規則を置く prefix は、`channel/`・`channel_snapshot_exclusion/`・`video_override/`・`footprints_event/`・`footprints_event_member/`・`footprints_event_source/`・`source_whitelist/`・`genet_person/`・`genet_tune/`・`genet_tune_attribute/`・`genet_tune_attribute_person/`・`genet_tune_video/`・`genet_tune_score/`・`genet_stream/`・`genet_performance/`・`genet_scene/`・`revision/`・`publication/` です。
+365 日の規則を置く prefix は、`channel_snapshot_exclusion/`・`video_override/`・`footprints_event/`・`footprints_event_member/`・`footprints_event_source/`・`source_whitelist/`・`genet_person/`・`genet_tune/`・`genet_tune_attribute/`・`genet_tune_attribute_person/`・`genet_tune_video/`・`genet_tune_score/`・`genet_stream/`・`genet_performance/`・`genet_scene/`・`revision/`・`publication/` です。
 
 ### 27 日の根拠
 
-R2 は、期限を過ぎたオブジェクトを通常 24 時間以内に消します（根拠: Cloudflare のドキュメント）。ファイルは期限の日数に最大 1 日を足した長さだけ残り、中のデータは、書いた時点でその分だけ古くなっています。27 日なら、どちらの prefix もデータは 30 日を超えません。
+R2 は、期限を過ぎたオブジェクトを通常 24 時間以内に消します（根拠: Cloudflare のドキュメント）。ファイルは期限の日数に最大 1 日を足した長さだけ残り、中のデータは、書いた時点でその分だけ古くなっています。27 日なら、どの prefix もデータは 30 日を超えません。
 
 | prefix                         | 書いた時点のデータの古さ | 期限  | 消えるまでの遅れ | 最も古いデータの古さ |
 | ------------------------------ | ------------------------ | ----- | ---------------- | -------------------- |
 | `channel_snapshot/`            | 最大 1 日と 20 分        | 27 日 | 最大 1 日        | 29 日と 20 分        |
 | `video/`（取れる動画）         | 約 1.5 日（2026-09-25）  | 27 日 | 最大 1 日        | 約 29.5 日           |
 | `video/`（取れなくなった動画） | 最大 2 日                | 27 日 | 最大 1 日        | 30 日                |
+| `channel/` の 2 列             | 最大 1 日                | 27 日 | 最大 1 日        | 29 日                |
 
 - `channel_snapshot/` の X 日のファイルは、X+1 日の 00:20 UTC に書く。中身は X 日の 00:00 からの行
   - 遅れて書くと、その分だけ古くなる。そのため前日の分しか書かない（[バックアップ](#バックアップ)）
@@ -388,6 +392,7 @@ R2 は、期限を過ぎたオブジェクトを通常 24 時間以内に消し�
   - 50 は 1 回に読む本数、20 はそのうち配信中・配信予定に先に回す上限、144 は 1 日の回数（`worker/src/collector/video.ts`）
   - 動画が 8,640 本を超えると 1 巡が 2 日を超え、この行も 30 日を超えうる
 - `video/` の取れなくなった動画は、最後に取れてから 2 日以内のものだけを入れる（[バックアップ](#バックアップ)）
+- `channel/` の `custom_url` と `thumbnail_url` は、取ってから 1 日を超えたものを NULL にして書く（[`channel/`](#channel)）
 
 ### 365 日の側
 
@@ -395,7 +400,20 @@ R2 は、期限を過ぎたオブジェクトを通常 24 時間以内に消し�
 
 ただし、それは R2 の中の穴で、履歴そのものの穴ではありません。`revision` は D1 の中で行が増える一方なので（[バックアップ](#バックアップ)）、D1 はどの日も持ち続けています。R2 の写しは、D1 が壊れたときに D1 を戻すためにあります。その必要は障害の直後に来るもので、1 年後には来ません。365 日は、写しがその出番を待つ期間の上限であって、履歴が残る期間ではありません。
 
-365 日の側の他の表は、収集が取り直せるデータではなく、人が管理サイトで一度だけ入力したデータを持ちます。`channel` も、人が直す表になったことで、同じ理由からこちらに入りました。`channel_snapshot_exclusion/` は `channel_snapshot` の行を指しますが、持つのはチャンネル・時刻・理由だけで、YouTube API から取った値は持ちません。
+365 日の側の他の表は、収集が取り直せるデータではなく、人が管理サイトで一度だけ入力したデータを持ちます。`channel_snapshot_exclusion/` は `channel_snapshot` の行を指しますが、持つのはチャンネル・時刻・理由だけで、YouTube API から取った値は持ちません。
+
+### `channel/`
+
+`channel/` は 27 日です。`channel` は人が直す表ですが、YouTube API から取った `custom_url` と `thumbnail_url` も持ちます。この 2 列を持ってよいのは 30 日までです（[#222](https://github.com/nanase/kemov/issues/222)）。30 日には、ファイルが残る期間と、書いた時点での値の古さの両方が収まる必要があります（[#224](https://github.com/nanase/kemov/issues/224)）。
+
+- ファイルは 27 日で期限を迎え、R2 はそこから最大 24 時間ほど遅れて消す
+- 値の古さには 1 日を残す。バックアップは、取ってから 1 日を超えた 2 列を NULL にして書く
+
+収集は実行のたびに 2 列を書き直すので、ふだんの値は数分しか古くありません。1 日を超えるのは、`Channels.list` がそのチャンネルを返さなくなったときか、収集が止まったときです。このとき復元した行の 2 列は NULL になり、次の収集で埋まります。
+
+D1 の `channel` の 2 列も、30 日を超えては持ちません。バックアップのジョブは、表を読む前に、取ってから 27 日を超えた 2 列を NULL にします。ジョブは 1 日 1 回なので、値は 28 日を超える前に消えます。消えたチャンネルは、公開のページで代替のアイコンになり、YouTube のチャンネルへのリンクが出なくなります。収集がまたそのチャンネルを取れば、元に戻ります。
+
+短くしても、D1 を戻すのには困りません。毎晩の 1 つが表全体の写しなので、戻すには最新の 1 つで足ります。人が決める列の古い値も、別の場所に残ります。管理サイトで直した値はメンバーの版（`revision`）に、一度も直していない値は `channels.yml` にあります。
 
 量の見積もりは次のとおりです。どれも 2026-09-08 に本番の値で測りました。
 

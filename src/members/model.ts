@@ -94,13 +94,14 @@ function oneOf<T extends string>(allowed: readonly T[], value: string | null, fa
 
 /**
  * The state a query string asks for, with anything unreadable left at its
- * default.
+ * default, which is `defaults`: what the reader kept last time, if the page has
+ * one.
  *
  * A hand-written or outdated query is the same case as a hand-edited stored
  * setting: what it names may not be something this page can draw, and the
  * answer is the default rather than a blank screen.
  */
-export function readQuery(search: string): PageState {
+export function readQuery(search: string, defaults: PageState = DEFAULT_STATE): PageState {
   const query = new URLSearchParams(search);
   const year = Number(query.get('year'));
 
@@ -108,23 +109,23 @@ export function readQuery(search: string): PageState {
     listPeriod: oneOf(
       LIST_PERIODS.map((period) => period.id),
       query.get('listPeriod'),
-      DEFAULT_STATE.listPeriod,
+      defaults.listPeriod,
     ),
     behaviorPeriod: oneOf(
       BEHAVIOR_PERIODS.map((period) => period.id),
       query.get('behaviorPeriod'),
-      DEFAULT_STATE.behaviorPeriod,
+      defaults.behaviorPeriod,
     ),
     year: Number.isInteger(year) && year >= 2000 && year <= 2999 ? year : null,
     monthly: oneOf(
       MONTHLY_SERIES.map((series) => series.id),
       query.get('monthly'),
-      DEFAULT_STATE.monthly,
+      defaults.monthly,
     ),
-    type: oneOf(VIDEO_TYPES, query.get('type'), DEFAULT_STATE.type),
+    type: oneOf(VIDEO_TYPES, query.get('type'), defaults.type),
     q: query.get('q') ?? '',
-    metric: oneOf(VIDEO_PROPERTIES, query.get('metric'), DEFAULT_STATE.metric),
-    order: oneOf(['desc', 'asc'] as const, query.get('order'), DEFAULT_STATE.order),
+    metric: oneOf(VIDEO_PROPERTIES, query.get('metric'), defaults.metric),
+    order: oneOf(['desc', 'asc'] as const, query.get('order'), defaults.order),
   };
 }
 

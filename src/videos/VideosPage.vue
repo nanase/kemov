@@ -23,7 +23,11 @@ import {
   yearsIn,
   type Filters,
 } from './model';
-import { queryToState, stateToQuery } from './query';
+import { queryToState, stateToQuery, defaultState } from './query';
+import { useStoredChoice } from '@/lib/useStoredChoice';
+import { RANKING_PERIODS } from '@/lib/ranking';
+import { VIDEO_TYPES } from '@/type/api';
+import { VIDEO_PROPERTIES } from '@/type/video';
 import { videoPageTitle } from '@/lib/pageTitle';
 import { freshnessOf } from '@/stats/model';
 import { useVideosData } from './useVideosData';
@@ -63,11 +67,37 @@ function videoIdFromPath(pathname: string): string | null {
 }
 
 const params = new URLSearchParams(window.location.search);
-const fromQuery = queryToState(params);
+
+// What the reader ranks by, and over what, is kept for next time; the address
+// still wins when it names one. A calendar year is left out: it is one pick
+// among several the period chips offer, not a rolling window to come back to.
+const storedMetric = useStoredChoice<VideoProperty>('kemov/videos/metric', VIDEO_PROPERTIES, defaultState().metric);
+const storedKind = useStoredChoice<VideoType>('kemov/videos/kind', VIDEO_TYPES, defaultState().kind);
+const storedPeriod = useStoredChoice<(typeof RANKING_PERIODS)[number]>(
+  'kemov/videos/period',
+  RANKING_PERIODS,
+  defaultState().period as (typeof RANKING_PERIODS)[number],
+);
+const fromQuery = queryToState(params, {
+  ...defaultState(),
+  metric: storedMetric.value,
+  kind: storedKind.value,
+  period: storedPeriod.value,
+});
 
 const metric = ref<VideoProperty>(fromQuery.metric);
 const kind = ref<VideoType>(fromQuery.kind);
 const period = ref<RankingPeriod>(fromQuery.period);
+
+watch(metric, (value) => (storedMetric.value = value), { flush: 'sync' });
+watch(kind, (value) => (storedKind.value = value), { flush: 'sync' });
+watch(
+  period,
+  (value) => {
+    if (typeof value === 'string') storedPeriod.value = value;
+  },
+  { flush: 'sync' },
+);
 const filters = ref<Filters>(fromQuery.filters);
 const shown = ref<number>(PAGE_SIZE);
 /** Null until a row is pressed - #137's decision that opening `/videos/` selects nothing by default. */
