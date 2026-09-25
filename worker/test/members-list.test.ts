@@ -139,20 +139,68 @@ describe('addMember', () => {
     expect(await publicOrder()).toEqual([A, B, C]);
   });
 
+  // One row per rule of the file this replaced (scripts/channels.js's
+  // checkEntry, removed with channels.yml in #211), so that a rule dropped
+  // from memberFieldProblem shows up here.
   test.each([
     ['channelId', 'UCshort'],
+    ['channelId', 'XXaaaaaaaaaaaaaaaaaaaaaa'],
     ['channelId', null],
     ['name', ''],
-    ['colorKey', '123456'],
-    ['activityStartDate', '2026-02-30'],
+    ['name', '   '],
+    ['name', null],
+    ['fullname', ''],
+    ['fullname', null],
+    ['globalname', ''],
     ['twitter', '@x'],
+    ['twitter', 'x'.repeat(16)],
     ['twitch', 'ab'],
+    ['twitch', 'x'.repeat(26)],
+    ['colorKey', '123456'],
+    ['colorSub', '#12345'],
+    ['colorLight', 'red'],
+    ['colorBack', null],
+    ['activityStartDate', '2026-02-30'],
+    ['activityStartDate', '2026-2-3'],
+    ['activityStartDate', null],
+    ['activityEndDate', '2026-13-01'],
   ])('refuses an invalid %s (same rules as updateMember) and writes nothing', async (key, value) => {
     const response = await addMember(env, newMember({ [key]: value }));
 
     expect(response.status).toEqual(400);
     expect(await publicOrder()).toEqual([]);
     expect(await revisions()).toEqual([]);
+  });
+
+  // null says "still active"; a body that left the key out would say the same
+  // without anybody having decided it.
+  test('refuses a body that leaves activityEndDate out, and accepts an explicit null', async () => {
+    const withoutEnd: Record<string, unknown> = newMember();
+
+    delete withoutEnd.activityEndDate;
+
+    const refused = await addMember(env, withoutEnd);
+
+    expect(refused.status).toEqual(400);
+    expect(((await refused.json()) as { error: string }).error).toMatch(/^activityEndDate must be given/);
+    expect(await publicOrder()).toEqual([]);
+    expect((await addMember(env, newMember({ activityEndDate: null }))).status).toEqual(201);
+  });
+
+  test('accepts the edges of what the rules allow', async () => {
+    const response = await addMember(
+      env,
+      newMember({
+        twitter: 'x'.repeat(15),
+        twitch: 'a_b1',
+        colorKey: '#aBcDeF',
+        activityStartDate: '2024-02-29',
+        activityEndDate: '2024-02-29',
+        globalname: 'x',
+      }),
+    );
+
+    expect(response.status).toEqual(201);
   });
 
   test('refuses an activityEndDate before activityStartDate', async () => {

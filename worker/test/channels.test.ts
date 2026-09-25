@@ -79,8 +79,8 @@ describe('listChannels', () => {
     expect(channels[0]?.perDay.subscriberCount).toEqual({ value: null, reason: 'nothing collected' });
   });
 
-  // The site orders streamers by channels.yml's own order, written into
-  // display_order by the deploy - not by channel_id, which is a YouTube id
+  // The site orders streamers by the order set in the admin site, written into
+  // display_order - not by channel_id, which is a YouTube id
   // and alphanumeric by accident. Inserted out of order here so the test
   // would fail if the query fell back to sorting by channel_id.
   test('orders channels by display_order rather than by channel_id', async () => {
@@ -95,7 +95,7 @@ describe('listChannels', () => {
 
   // Every page that shows one of these numbers shows the streamer's name,
   // colour and avatar beside it. custom_url and thumbnail_url exist nowhere
-  // else - channels.yml does not master them - so a front end without them
+  // else - the admin site does not edit them - so a front end without them
   // has no link to the channel and no picture to draw.
   test('answers with the streamer beside the numbers', async () => {
     await insertFullChannel('UCaaa');

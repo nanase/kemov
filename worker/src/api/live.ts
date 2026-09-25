@@ -51,7 +51,7 @@ export async function listLive(env: Env, now: Date = new Date()) {
 
     streams.push({
       videoId: row.video_id,
-      // The id only. The channel's name and colours come from channels.yml,
+      // The id only. The channel's name and colours come from GET /api/channels,
       // which the front end already holds; repeating them per stream would be
       // a second copy to disagree with the first.
       channelId: row.channel_id,

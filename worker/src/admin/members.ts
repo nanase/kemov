@@ -90,9 +90,8 @@ export async function listMembers(env: Env): Promise<Response> {
  * The columns a PUT may change, in the JSON shape it sends them in.
  *
  * `channel_id` is the URL, not the body, and `custom_url`, `thumbnail_url`
- * and `fetched_at` belong to the collector - see scripts/channels.js's own
- * split between channels.yml's fields and what the collector writes.
- * `display_order` belongs to the list as a whole (saveMemberList): a PUT that
+ * and `fetched_at` belong to the collector, which writes them on its own
+ * clock. `display_order` belongs to the list as a whole (saveMemberList): a PUT that
  * carried one row's own would overwrite an order somebody else had just
  * saved. All of them are refused here rather than silently kept, same as any
  * key this object never had.
@@ -116,12 +115,12 @@ const NEW_MEMBER_KEYS = ['channelId', ...EDITABLE_MEMBER_KEYS] as const;
 
 type NewMemberKey = (typeof NEW_MEMBER_KEYS)[number];
 
-// Same patterns scripts/channels.js's checkEntry applies to channels.yml,
-// repeated rather than shared for the same reason isSchemaDate's comment in
-// lib/time.ts gives: that file is plain JavaScript for bare node, this one
-// is TypeScript for workerd, and neither can import the other. channel is
-// what channels.yml seeds and the admin site now edits, so a value this
-// rejects and one the seed would have rejected are the same rule regardless.
+// The rules a member must meet, and the only place they live: a member reaches
+// `channel` through here or not at all. A YouTube channel id is `UC` and 22
+// characters of base64url; a colour is `#RRGGBB` in either case, since the
+// site writes it into CSS as it is given; an X handle has no `@` and is at
+// most 15 characters of letters, digits and underscore; a Twitch login is 4
+// to 25 of the same.
 const CHANNEL_ID_PATTERN = /^UC[\w-]{22}$/;
 const COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 const TWITTER_PATTERN = /^\w{1,15}$/;
@@ -174,6 +173,16 @@ function readMemberBody(
   body: Record<string, unknown>,
   keys: readonly NewMemberKey[],
 ): { values: Record<NewMemberKey, unknown> } | { error: Response } {
+  // A body that leaves activityEndDate out would read as null, which says the
+  // member is active: the same thing as writing null, without anybody having
+  // decided it. It is state, not an attribute like the handles, so it has to
+  // be said. (readEditableBody treats a left-out key as null.)
+  if (!('activityEndDate' in body)) {
+    return {
+      error: errorResponse(400, 'activityEndDate must be given: YYYY-MM-DD, or null while the member is active'),
+    };
+  }
+
   const read = readEditableBody(body, keys, memberFieldProblem);
 
   if ('error' in read) return read;

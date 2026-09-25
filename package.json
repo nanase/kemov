@@ -15,8 +15,6 @@
     "type-check:worker": "tsc --noEmit -p worker/tsconfig.json",
     "lint": "eslint . --fix",
     "lint:style": "stylelint src/**/*.{css,scss,vue}",
-    "check-channels": "node scripts/check-channels.js",
-    "build-channels-sql": "node scripts/build-channels-sql.js",
     "check-secrets": "node scripts/check-secrets.js",
     "screenshot": "node scripts/screenshot.js",
     "format": "prettier --write .",
@@ -29,7 +27,6 @@
   },
   "dependencies": {
     "dayjs": "^1.11.23",
-    "js-yaml": "^4.3.2",
     "vue": "^3.5.42"
   },
   "devDependencies": {
@@ -37,7 +34,6 @@
     "@cloudflare/workers-types": "^5.20260910.1",
     "@eslint/js": "^10.0.1",
     "@nanase/alnilam": "github:nanase/alnilam#2c6e072cdb4b6124d98484de033238e46710a502",
-    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.20.2",
     "@vitejs/plugin-vue": "^6.0.9",
     "@vitest/coverage-v8": "^4.1.11",

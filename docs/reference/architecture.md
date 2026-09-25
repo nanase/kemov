@@ -143,14 +143,13 @@ flowchart LR
   subgraph D["deploy"]
     direction LR
     build --> migrate["マイグレーションを適用"]
-    migrate --> seed["channels.yml からシードを入れる"]
-    seed --> deploy["bun wrangler deploy"]
+    migrate --> deploy["bun wrangler deploy"]
     deploy --> secrets["シークレットの登録を確かめる"]
   end
   classDef nocred fill:#eceef7,stroke:#9aa3c8,color:#1d2240
   classDef cred fill:#e3f1ed,stroke:#7fb5aa,color:#12302a
   class check nocred
-  class build,migrate,seed,deploy,secrets cred
+  class build,migrate,deploy,secrets cred
   style D fill:#f3f9f7,stroke:#b5d3cc,color:#12302a
 ```
 
@@ -163,11 +162,6 @@ flowchart LR
 - マイグレーションをデプロイより前に置く
   - コードが自分より古いスキーマに出会わないため
   - `d1_migrations` の表があるので、マイグレーションを足さない push ではこの工程は何もしない
-- シードをマイグレーションの後に置く
-  - 列が先にできていないと入れられないため
-- シードをデプロイより前に置く
-  - シードは `channel` にまだ無いチャンネルの行だけを足す（[データ](data.md#シード)）
-  - `channels.yml` に新しく載せたメンバーの行が無いまま、worker が動くことを避けるため
 - シークレットの確認をデプロイの後に置く
   - シークレットは既にある worker に属するため
   - 手順は [設定とデプロイ](../guides/deployment.md#worker-のシークレット) にある

@@ -34,13 +34,7 @@ const A_DATE = /^\d{4}-\d{2}-\d{2}$/;
  *
  * The pattern alone admits 2023-02-29; round-tripping through Date is what
  * refuses a day that does not exist rather than rolling it into the next
- * month. The same check as scripts/channels.js's isRealDate, repeated rather
- * than shared: that one is plain JavaScript so bare node can run it with no
- * build step, this one is TypeScript for workerd, and neither can import the
- * other. What they share is the rule, which is not either file's to change
- * alone - channels.yml's activity_start_date and the admin site's PUT to
- * `channel` (members.ts) both end up in the same column, so the two checks
- * must keep agreeing on what a real date is even though the code does not.
+ * month.
  *
  * The NaN check matters on its own, not only as part of the round trip:
  * for an ISO string, `new Date` does not roll an out-of-range component
@@ -84,9 +78,7 @@ export function isSchemaTimestamp(value: string): boolean {
  * The Japan-time (UTC+9) calendar date an instant falls on, in the schema's
  * date shape. Shared by footprints.ts (`startsAt` must fall on `startDate`
  * in Japan time) and snapshots.ts (grouping ticks into days) - both read the
- * same rule from here rather than each keeping its own copy, unlike
- * `isSchemaDate`'s deliberate duplication in scripts/channels.js: that one
- * crosses a runtime boundary this does not.
+ * same rule from here rather than each keeping its own copy.
  */
 export function japanDateOf(instant: string): string {
   return new Date(new Date(instant).getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);

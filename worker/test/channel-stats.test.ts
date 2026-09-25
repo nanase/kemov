@@ -28,7 +28,7 @@ interface CollectTaskRow {
   checked_at: string | null;
 }
 
-// Every column channels.yml owns is required by the schema, so a test that
+// Every column a person fills in is required by the schema, so a test that
 // only cares about the collector's three columns still has to supply them.
 // The name is set to the id so a test can tell rows apart without a second
 // lookup.

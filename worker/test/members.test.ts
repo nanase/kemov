@@ -239,6 +239,20 @@ describe('updateMember', () => {
     expect(await revisionRows()).toEqual([]);
   });
 
+  test('refuses a body that leaves activityEndDate out: a member is active or ended by a decision, not by omission', async () => {
+    await insertChannel('UCaaa');
+
+    const withoutEnd: Record<string, unknown> = validBody();
+
+    delete withoutEnd.activityEndDate;
+
+    const response = await updateMember(env, 'UCaaa', withoutEnd);
+
+    expect(response.status).toEqual(400);
+    expect(((await response.json()) as { error: string }).error).toMatch(/^activityEndDate must be given/);
+    expect(await revisionRows()).toEqual([]);
+  });
+
   test('accepts a left-out nullable column as null', async () => {
     await insertChannel('UCaaa');
 
