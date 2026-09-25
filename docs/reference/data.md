@@ -243,11 +243,11 @@ flowchart LR
 
 ### 消せるとき
 
-`DELETE /admin/api/members/<チャンネル ID>` は、`channel_snapshot`・`video`・`footprints_event_member` のどれにも行が無いメンバーだけを消します。記録が付いたあとは 409 を返し、どの表に何件あるかを伝えます。
+`DELETE /admin/api/members/<チャンネル ID>` は、`channel_snapshot`・`video`・`footprints_event_member`・`subscriber_milestone` のどれにも行が無いメンバーだけを消します。記録が付いたあとは 409 を返し、どの表に何件あるかを伝えます。
 
 消すときは、そのメンバーあての `collect_task`（`channel_snapshot` にも `video` にも行が無いうちに、取得に失敗して残った予定）も同じ `batch` で消します。`collect_task` は `channel` への外部キーを持たないので、D1 は片づけてくれません。
 
-`channel_snapshot`・`video`・`footprints_event_member` は `channel` を参照しているので、記録の付いた行の削除は D1 も拒みます。この拒否はわざとです。誤って消した行が、何年分もの収集の履歴を道連れにしてはなりません。
+`channel_snapshot`・`video`・`footprints_event_member`・`subscriber_milestone` は `channel` を参照しているので、記録の付いた行の削除は D1 も拒みます。この拒否はわざとです。誤って消した行が、何年分もの収集の履歴を道連れにしてはなりません。
 
 記録は 30 日を過ぎると消えます（[30 日を過ぎたデータの削除](#30-日を過ぎたデータの削除)）。収集が 30 日以上失敗し続けたメンバーは、`channel_snapshot` の行が無くなるので、ほかの表にも行が無ければ消せるようになります。
 
