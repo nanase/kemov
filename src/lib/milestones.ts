@@ -116,39 +116,98 @@ export function countScale(largest: number): CountScale {
   return { top, ticks: Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step) };
 }
 
+/** One month's bar, estimated from the milestones. */
+export interface MonthEstimate {
+  count: number;
+  /**
+   * True for a month that holds a milestone, and for this month when today's
+   * count was read. The rest are interpolated between those.
+   */
+  recorded: boolean;
+  /** True for a month after the member's activity ended. */
+  afterEnd: boolean;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** A date as a day number. A month-precise date is the middle of its month. */
+function dayOf(date: string): number {
+  const [year, month, day] = pointDate(date).split('-').map(Number) as [number, number, number];
+
+  return Date.UTC(year, month - 1, day) / DAY_MS;
+}
+
 /**
- * Which side of its point each label goes, for points on one line.
+ * One member's subscriber count month by month, estimated from their
+ * milestones - worked out on the page and never stored (#225).
  *
- * Labels go above. One that would sit within `gap` of the last label above
- * goes below instead, so two milestones a few months apart can both be read.
- * `fractions` are in the order the points are drawn, oldest first.
+ * A month holding a milestone carries its newest one, and this month carries
+ * today's count when it was read. Every other month is read off a straight
+ * line between the nearest known counts either side, at the month's last
+ * day: the line a reader would draw between two points. It is drawn apart
+ * from a known count, so it is never taken for one.
+ *
+ * Months before the first milestone are null: nothing is known there, and a
+ * bar of zero would say the channel had nobody. So are the months after the
+ * last milestone when today's count was not read, rather than a guess at
+ * where it went.
+ *
+ * `endDate` marks the months after a member's activity ended. Their count
+ * still moves, so the line still runs through them.
  */
-export function labelSides(fractions: readonly number[], gap: number): ('above' | 'below')[] {
-  let lastAbove = -Infinity;
+export function monthlyEstimates(
+  milestones: readonly SubscriberMilestone[],
+  months: readonly string[],
+  now: number | null,
+  today: string,
+  endDate: string | null,
+): (MonthEstimate | null)[] {
+  const first = milestones[0];
 
-  return fractions.map((fraction) => {
-    if (fraction - lastAbove < gap) return 'below';
+  if (first === undefined) return months.map(() => null);
 
-    lastAbove = fraction;
+  const anchors = milestones.map((m) => ({ day: dayOf(m.reachedDate), count: m.subscriberCount }));
 
-    return 'above';
+  if (now !== null && dayOf(today) > anchors.at(-1)!.day) anchors.push({ day: dayOf(today), count: now });
+
+  const current = months.at(-1);
+  const endMonth = endDate?.slice(0, 7) ?? null;
+
+  return months.map((month) => {
+    if (month < first.reachedDate.slice(0, 7)) return null;
+
+    const afterEnd = endMonth !== null && month > endMonth;
+
+    if (month === current && now !== null) return { count: now, recorded: true, afterEnd };
+
+    const inMonth = milestones.filter((m) => m.reachedDate.slice(0, 7) === month);
+
+    if (inMonth.length > 0) return { count: inMonth.at(-1)!.subscriberCount, recorded: true, afterEnd };
+
+    const day = dayOf(`${month}-${String(daysIn(month)).padStart(2, '0')}`);
+    const after = anchors.findIndex((anchor) => anchor.day >= day);
+
+    if (after <= 0) return null;
+
+    const [from, to] = [anchors[after - 1]!, anchors[after]!];
+    const count = Math.round(from.count + ((to.count - from.count) * (day - from.day)) / (to.day - from.day));
+
+    return { count, recorded: false, afterEnd };
   });
 }
 
 /**
  * Where a card opens beside the point at (`x`, `y`), both from 0 to 1 of the
  * chart: towards the middle of the chart on both axes, so it never runs off
- * the side it is nearest to. `y` is null on a row of points, where the card
- * always opens below.
+ * the side it is nearest to.
  */
-export function cardPlacement(x: number, y: number | null): Record<string, string> {
+export function cardPlacement(x: number, y: number): Record<string, string> {
   const place: Record<string, string> = {};
 
   if (x <= 0.5) place.left = `max(0px, calc(${pct(x)} - 18px))`;
   else place.right = `max(0px, calc(${pct(1 - x)} - 18px))`;
 
-  if (y === null) place.top = 'calc(50% + 12px)';
-  else if (y > 0.5) place.bottom = `calc(${pct(1 - y)} + 12px)`;
+  if (y > 0.5) place.bottom = `calc(${pct(1 - y)} + 12px)`;
   else place.top = `calc(${pct(y)} + 12px)`;
 
   return place;

@@ -316,6 +316,7 @@ onBeforeUnmount(() => {
               :states="states"
               :minimal="minimal"
               :months="months"
+              :today="formatDate(now)"
               @select="select"
             />
           </div>

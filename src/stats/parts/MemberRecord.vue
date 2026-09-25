@@ -169,6 +169,7 @@ const seriesItems = SERIES.map((s) => ({
           :months="months"
           :status="milestoneStatus"
           :dark="dark"
+          :today="today"
         />
         <MilestoneTrail
           v-else

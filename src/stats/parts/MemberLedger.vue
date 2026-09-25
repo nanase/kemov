@@ -17,7 +17,8 @@ import {
 import type { AnnouncementKind } from '../model';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
 import SparkLine from '@/parts/SparkLine.vue';
-import MilestoneDots from './MilestoneDots.vue';
+import { monthlyEstimates } from '@/lib/milestones';
+import MilestoneBars from './MilestoneBars.vue';
 
 /**
  * The eleven members and their sum, in the order the API sends them.
@@ -34,7 +35,7 @@ import MilestoneDots from './MilestoneDots.vue';
  * look hangs on `data-` attributes instead, so the CSS does not decide which
  * ARIA attribute is the right one.
  */
-const { subjects, total, metric, period, selected, dark, states, minimal, months } = defineProps<{
+const { subjects, total, metric, period, selected, dark, states, minimal, months, today } = defineProps<{
   subjects: readonly Subject[];
   total: Subject;
   metric: MetricId;
@@ -47,6 +48,8 @@ const { subjects, total, metric, period, selected, dark, states, minimal, months
   minimal: boolean;
   /** The month axis the small charts share. */
   months: readonly string[];
+  /** Today in JST, `YYYY-MM-DD`, where the subscriber bars end. */
+  today: string;
 }>();
 
 const emit = defineEmits<{ select: [id: string] }>();
@@ -133,7 +136,20 @@ function press(id: string) {
           </td>
           <td class="c-spark">
             <template v-if="series === 'milestones'">
-              <MilestoneDots v-if="subject.milestones.length > 0" :milestones="subject.milestones" :months="months" />
+              <MilestoneBars
+                v-if="subject.milestones.length > 0"
+                :estimates="
+                  monthlyEstimates(
+                    subject.milestones,
+                    months,
+                    subject.counts.subscriberCount,
+                    today,
+                    subject.activityEndDate,
+                  )
+                "
+                small
+                aria-hidden="true"
+              />
             </template>
             <SparkLine v-else :values="subject.months[series]" kind="flow" />
             <span class="pick" aria-hidden="true"></span>
