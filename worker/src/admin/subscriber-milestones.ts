@@ -294,9 +294,20 @@ function milestoneFieldsProblem(fields: MilestoneFields): string | null {
 
   for (const source of fields.sources) {
     if (!source.url.startsWith('https://')) return 'every source url must start with https://';
+    // The schema's CHECK looks at the prefix alone, so `https://` by itself
+    // would save, and count towards nothing but still reach the public JSON.
+    if (!hasHost(source.url)) return 'every source url must be a valid https URL';
   }
 
   return null;
+}
+
+function hasHost(url: string): boolean {
+  try {
+    return new URL(url).hostname !== '';
+  } catch {
+    return false;
+  }
 }
 
 /**
