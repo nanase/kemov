@@ -110,7 +110,7 @@ bun wrangler d1 execute kemov-restore --remote --file channel.sql
 
 `revision` と `publication` は、どちらもトリガーで `DELETE` を拒みます（[管理サイト](../reference/admin.md#設計の方針)）。追記だけという性質は、`worker/test/backup.test.ts` の `clearEverything` と同じくここでも効きます。そのため、次の `DELETE` のあいだだけトリガーを外し、すぐに付け直します。テストも同じことをしています。
 
-2 つの `CREATE TRIGGER` の文は `migrations/0005_add_revision_and_publication.sql` から写しています。そのマイグレーションのトリガーの文を変えたのにここを直さなければ、食い違います。
+2 つの `CREATE TRIGGER` の文は `migrations/0005_add_revision_and_publication.sql` から写しています。`0010_add_subscriber_milestone.sql` は 2 つの表を作り直しましたが、トリガーは同じ文で付け直しています。トリガーの文を変えるマイグレーションを足したのにここを直さなければ、食い違います。
 
 ```sh
 bun wrangler d1 execute kemov --remote --command "
@@ -128,6 +128,8 @@ DELETE FROM genet_tune_attribute;
 DELETE FROM genet_stream;
 DELETE FROM genet_tune;
 DELETE FROM genet_person;
+DELETE FROM subscriber_milestone_source;
+DELETE FROM subscriber_milestone;
 DELETE FROM footprints_event_source;
 DELETE FROM footprints_event_member;
 DELETE FROM footprints_event;

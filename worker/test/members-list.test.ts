@@ -461,7 +461,7 @@ describe('deleteMember', () => {
     expect(rows[0]).toEqual({ entity_key: B, action: 'delete', body: null });
   });
 
-  // The three tables that reference `channel`. Each one alone is enough to
+  // The four tables that reference `channel`. Each one alone is enough to
   // refuse, and the refusal says which.
   test.each([
     [
@@ -477,6 +477,11 @@ describe('deleteMember', () => {
     [
       'footprints_event_member',
       `INSERT INTO footprints_event (date_precision, start_date, kind, title) VALUES ('day', '2026-09-01', 'other', 't')`,
+    ],
+    [
+      'subscriber_milestone',
+      `INSERT INTO subscriber_milestone (channel_id, date_precision, reached_date, subscriber_count, announced_by)
+       VALUES ('${B}', 'day', '2024-01-29', 20000, 'member')`,
     ],
   ])('refuses a member with a %s row, says why, and deletes nothing', async (table, insert) => {
     await seedThree();

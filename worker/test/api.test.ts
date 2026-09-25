@@ -102,9 +102,27 @@ describe('routing', () => {
   // reaches the key it names, which the 404 message proves: the generic
   // "no endpoint at" 404 and publicDataResponse's "not published yet" read
   // differently.
-  test('routes /api/footprints/events and /api/genet/music to PUBLIC_DATA', async () => {
+  test('routes /api/footprints/events, /api/genet/music and /api/subscribers/milestones to PUBLIC_DATA', async () => {
     expect(await (await get('/api/footprints/events')).json()).toEqual({ error: 'not published yet' });
     expect(await (await get('/api/genet/music')).json()).toEqual({ error: 'not published yet' });
+    expect(await (await get('/api/subscribers/milestones')).json()).toEqual({ error: 'not published yet' });
+  });
+
+  // The 404 above would read the same from any key nothing was written to, so
+  // this one proves the route names the key publishing writes.
+  test('answers /api/subscribers/milestones with subscribers/milestones.json', async () => {
+    const body = { shape_version: 1, milestones: [] };
+
+    await env.PUBLIC_DATA.put('subscribers/milestones.json', JSON.stringify(body));
+
+    try {
+      const response = await get('/api/subscribers/milestones');
+
+      expect(response.status).toEqual(200);
+      expect(await response.json()).toEqual(body);
+    } finally {
+      await env.PUBLIC_DATA.delete('subscribers/milestones.json');
+    }
   });
 
   test('reaches each endpoint that needs no parameters', async () => {

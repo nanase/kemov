@@ -2,7 +2,7 @@ import { byteLength } from '../lib/backup';
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
-import { isSchemaDate, isSchemaTimestamp, japanDateOf } from '../lib/time';
+import { isSchemaDate, isSchemaMonth, isSchemaTimestamp, japanDateOf } from '../lib/time';
 
 /**
  * Reading, saving and deleting `footprints_event` (#141, #140): the
@@ -333,10 +333,6 @@ function eventFieldsProblem(fields: EventFields): string | null {
   return null;
 }
 
-function isSchemaMonth(value: string): boolean {
-  return /^\d{4}-\d{2}$/.test(value) && isSchemaDate(`${value}-01`);
-}
-
 export interface EventFields {
   datePrecision: string;
   startDate: string;
@@ -614,6 +610,7 @@ export async function updateEvent(env: Env, eventId: number, body: Record<string
  * next "publish now" to leave it out. Withdrawing first logs that `withdraw`
  * and makes the row eligible for deletion the same request could otherwise
  * not safely make. Logs no `revision`, same as createEvent and updateEvent.
+ * Also 409 while a subscriber milestone links to the event (#225).
  */
 export async function deleteEvent(env: Env, eventId: number): Promise<Response> {
   const existing = await readEvent(env, eventId);
@@ -622,6 +619,17 @@ export async function deleteEvent(env: Env, eventId: number): Promise<Response> 
 
   if (existing.event.status === 'published') {
     return errorResponse(409, 'withdraw this event before deleting it');
+  }
+
+  // subscriber_milestone.event_id is a foreign key to this row, so the
+  // DELETE below would fail on it as a 500. Answered here instead, the same
+  // way genet-tunes.ts refuses to delete a tune a stream still performs.
+  const linked = await env.DB.prepare('SELECT milestone_id FROM subscriber_milestone WHERE event_id = ?1 LIMIT 1')
+    .bind(eventId)
+    .first<{ milestone_id: number }>();
+
+  if (linked !== null) {
+    return errorResponse(409, `subscriber milestone ${linked.milestone_id} links to this event; unlink it there first`);
   }
 
   await env.DB.batch([

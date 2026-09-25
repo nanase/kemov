@@ -1,8 +1,9 @@
 import { env } from 'cloudflare:test';
 
 /**
- * The constraints 0005_add_revision_and_publication.sql adds. Nothing in
- * `worker/src/` writes these tables yet - the publish/save operations are
+ * The constraints 0005_add_revision_and_publication.sql adds, as
+ * 0010_add_subscriber_milestone.sql rebuilt them with one more entity and
+ * target. Nothing in `worker/src/` writes these tables yet - the publish/save operations are
  * #144's later tasks - so this is the schema on its own, exercised with raw
  * SQL rather than through application code.
  */
@@ -41,6 +42,15 @@ describe('revision', () => {
         "INSERT INTO revision (entity, entity_key, action, body) VALUES ('channel', 'UCaaa', 'save', '[1,2]')",
       ).run(),
     ).rejects.toThrow();
+  });
+
+  // 0010_add_subscriber_milestone.sql widened the CHECK by rebuilding the table.
+  test('accepts subscriber_milestone', async () => {
+    await expect(
+      env.DB.prepare(
+        "INSERT INTO revision (entity, entity_key, action, body) VALUES ('subscriber_milestone', '1', 'publish', '{}')",
+      ).run(),
+    ).resolves.toMatchObject({ success: true });
   });
 
   test('refuses an entity outside the entities the admin site tracks', async () => {
@@ -93,7 +103,21 @@ describe('publication', () => {
     ).rejects.toThrow();
   });
 
-  test('refuses a target outside footprints/genet_music', async () => {
+  test('accepts subscriber_milestones', async () => {
+    const { meta } = await env.DB.prepare(
+      "INSERT INTO revision (entity, entity_key, action, body) VALUES ('subscriber_milestone', '1', 'publish', '{}')",
+    ).run();
+
+    await expect(
+      env.DB.prepare(
+        "INSERT INTO publication (target, last_revision_id, object_key, byte_length) VALUES ('subscriber_milestones', ?1, 'subscribers/milestones.json', 100)",
+      )
+        .bind(meta.last_row_id)
+        .run(),
+    ).resolves.toMatchObject({ success: true });
+  });
+
+  test('refuses a target outside footprints/genet_music/subscriber_milestones', async () => {
     const { meta } = await env.DB.prepare(
       "INSERT INTO revision (entity, entity_key, action, body) VALUES ('footprints_event', '1', 'publish', '{}')",
     ).run();

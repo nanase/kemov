@@ -134,5 +134,9 @@ export async function handleApiRequest(
     return await publicDataResponse(request, env, 'genet/music.json');
   }
 
+  if (segments.length === 3 && resource === 'subscribers' && name === 'milestones') {
+    return await publicDataResponse(request, env, 'subscribers/milestones.json');
+  }
+
   return errorWithCacheHeaders(404, `no endpoint at ${pathname}`);
 }

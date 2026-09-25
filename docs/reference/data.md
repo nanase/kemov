@@ -76,6 +76,39 @@ erDiagram
   }
 ```
 
+### 登録者数の節目
+
+```mermaid
+erDiagram
+  channel ||--o{ subscriber_milestone : "節目"
+  footprints_event |o--o{ subscriber_milestone : "記念配信など（任意）"
+  subscriber_milestone ||--o{ subscriber_milestone_source : "出典"
+  subscriber_milestone {
+    INTEGER milestone_id PK
+    TEXT channel_id FK
+    INTEGER event_id FK "NULL を許す"
+  }
+  subscriber_milestone_source {
+    INTEGER milestone_id PK, FK
+    INTEGER position PK
+  }
+  channel {
+    TEXT channel_id PK
+  }
+  footprints_event {
+    INTEGER event_id PK
+  }
+```
+
+`subscriber_milestone` は、メンバー本人・公式・リスナーが公表した登録者数を、人が出典つきで記録する表です（#225）。`channel_snapshot` は 30 日しか持てないので、長い推移はこちらで持ちます。
+
+- `reached_date` は、その人数に達した日（または月）。記念配信の日ではない
+- `subscriber_count` は下限として読む。その日には少なくともその人数に達していた
+- `announced_by` は、誰が公表したか（`member`・`official`・`listener`）
+- `event_id` は、記念配信などのあしあとの出来事。つながなくてもよい
+
+日付も人数も、YouTube API の値からは作りません（#222）。
+
 ### ジェネット楽曲一覧
 
 ```mermaid
@@ -361,7 +394,7 @@ YouTube API のデータを持つ `video/`・`channel/`・`channel_snapshot/` �
 | `channel/`          | 27 日    | YouTube API から取った `custom_url` と `thumbnail_url` を含む。[`channel/`](#channel) を参照                  |
 | 次の一覧            | 365 日   | 次を参照                                                                                                      |
 
-365 日の規則を置く prefix は、`channel_snapshot_exclusion/`・`video_override/`・`footprints_event/`・`footprints_event_member/`・`footprints_event_source/`・`source_whitelist/`・`genet_person/`・`genet_tune/`・`genet_tune_attribute/`・`genet_tune_attribute_person/`・`genet_tune_video/`・`genet_tune_score/`・`genet_stream/`・`genet_performance/`・`genet_scene/`・`revision/`・`publication/` です。
+365 日の規則を置く prefix は、`channel_snapshot_exclusion/`・`video_override/`・`footprints_event/`・`footprints_event_member/`・`footprints_event_source/`・`subscriber_milestone/`・`subscriber_milestone_source/`・`source_whitelist/`・`genet_person/`・`genet_tune/`・`genet_tune_attribute/`・`genet_tune_attribute_person/`・`genet_tune_video/`・`genet_tune_score/`・`genet_stream/`・`genet_performance/`・`genet_scene/`・`revision/`・`publication/` です。
 
 ### 27 日の根拠
 
@@ -416,6 +449,6 @@ D1 の `channel` の 2 列も、30 日を超えては持ちません。バック
 
 このバケットはバックアップしません。公開したオブジェクトはすべて `revision` から作り、`revision` はバックアップしています。`kemov-public` を失っても、失うのはデータではなく、公開し直す手間だけです。`collect_task` と `chat_author` を `kemov-backup` から外す（[バックアップ](#バックアップ)）のと同じ理屈を、表ではなくバケットに当てはめています。
 
-管理サイトの公開の操作がこのバケットに書き（[あしあと](api/admin.md#あしあと)、[ジェネット楽曲一覧](api/admin.md#ジェネット楽曲一覧)）、`/api` がそれを返します（[公開の API](api/public.md#公開用のバケットを返すエンドポイント)）。
+管理サイトの公開の操作がこのバケットに書き（[あしあと](api/admin.md#あしあと)、[ジェネット楽曲一覧](api/admin.md#ジェネット楽曲一覧)、[登録者数の節目](api/admin.md#登録者数の節目)）、`/api` がそれを返します（[公開の API](api/public.md#公開用のバケットを返すエンドポイント)）。
 
 バケットの作り方は [設定とデプロイ](../guides/deployment.md#公開用のバケット) にあります。

@@ -492,8 +492,12 @@ export async function saveMembers(env: Env, body: Record<string, unknown>): Prom
   return await saveMemberList(env, added, order as string[]);
 }
 
-/** The tables whose rows hang off a member, and so keep it from being deleted. */
-const RECORD_TABLES = ['channel_snapshot', 'video', 'footprints_event_member'] as const;
+/**
+ * The tables whose rows hang off a member, and so keep it from being deleted.
+ * subscriber_milestone_source is not named: its rows hang off a milestone, so
+ * a member with one already has a subscriber_milestone row.
+ */
+const RECORD_TABLES = ['channel_snapshot', 'video', 'footprints_event_member', 'subscriber_milestone'] as const;
 
 // One condition, used both to explain a refusal and to guard the DELETE
 // itself, so what is refused and what would have been deleted cannot differ.
