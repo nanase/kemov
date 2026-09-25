@@ -1,4 +1,12 @@
-import type { Channel, ChannelMonths, CountName, Delta, LiveStream, MonthTotals } from '@/type/api';
+import type {
+  Channel,
+  ChannelMonths,
+  CountName,
+  Delta,
+  LiveStream,
+  MonthTotals,
+  SubscriberMilestone,
+} from '@/type/api';
 
 /**
  * Everything the statistics page works out from what the API answers.
@@ -20,7 +28,7 @@ export const WEEK_MINUTES = 7 * MINUTES_PER_DAY;
 
 /** The four numbers the list and the totals can show. */
 export const METRICS = [
-  { id: 'subscriberCount', label: '登録数', head: '登録数', series: 'subs' },
+  { id: 'subscriberCount', label: '登録数', head: '登録数', series: 'milestones' },
   { id: 'viewCount', label: '再生数', head: '再生数', series: 'views' },
   { id: 'videoCount', label: '配信・動画数', head: '動画数', series: 'streams' },
   { id: 'chatCount', label: 'チャット数', head: 'チャット数', series: 'chat' },
@@ -44,18 +52,26 @@ export type PeriodId = (typeof PERIODS)[number]['id'];
  * the videos published that month have collected since, not what was watched
  * that month. #134 settled that the page has to say so rather than let the
  * axis imply otherwise.
+ *
+ * `milestones` is not a month series. Subscribers were once drawn month by
+ * month from `channel_snapshot`, which now keeps 30 days only (#223), so the
+ * tab draws the counts people announced instead (#225). They fall on no
+ * regular dates, so there is no month-on-month growth to draw either, and
+ * that tab went with the old one.
  */
 export const SERIES = [
   { id: 'streams', label: '配信・動画', kind: 'flow', unit: '本' },
   { id: 'hours', label: '配信時間', kind: 'flow', unit: '時間', decimals: 1 },
   { id: 'chat', label: 'チャット数', kind: 'flow', unit: '件' },
   { id: 'views', label: '再生数', kind: 'flow', unit: '回', note: '公開月ごと' },
-  { id: 'subsLevel', label: '登録数', kind: 'level', unit: '人' },
-  { id: 'subs', label: '登録数の増加', kind: 'flow', unit: '人' },
+  { id: 'milestones', label: '登録数', kind: 'milestone', unit: '人' },
 ] as const;
 
 export type SeriesId = (typeof SERIES)[number]['id'];
-export type SeriesKind = 'flow' | 'level';
+export type SeriesKind = (typeof SERIES)[number]['kind'];
+
+/** The series that have a value for every month. */
+export type MonthSeriesId = Exclude<SeriesId, 'milestones'>;
 
 /** How finely the heatmap can be cut, in minutes per cell. */
 export const HEAT_STEPS = [
@@ -126,7 +142,9 @@ export interface Subject {
   counts: Record<CountName, number | null>;
   chatTotal: number | null;
   deltas: Record<PeriodId, Record<CountName, Delta>>;
-  months: Record<SeriesId, (number | null)[]>;
+  months: Record<MonthSeriesId, (number | null)[]>;
+  /** Oldest first. Always empty on the sum: announced counts are never added up. */
+  milestones: readonly SubscriberMilestone[];
   spans: readonly number[];
   /** Set only on the sum. */
   members?: Subject[];
@@ -160,8 +178,8 @@ function sumCounts(parts: readonly (number | null)[]): number | null {
 
 /** The series a month row carries, named as the record panel names them. */
 function monthsOf(
-  row: Pick<ChannelMonths, 'streams' | 'videos' | 'streamSeconds' | 'chatMessages' | 'views' | 'subscribers'>,
-): Record<SeriesId, (number | null)[]> {
+  row: Pick<ChannelMonths, 'streams' | 'videos' | 'streamSeconds' | 'chatMessages' | 'views'>,
+): Record<MonthSeriesId, (number | null)[]> {
   const both = row.streams.map((streams, i) => {
     const videos = row.videos[i] ?? null;
 
@@ -173,38 +191,7 @@ function monthsOf(
     hours: row.streamSeconds.map((seconds) => (seconds === null ? null : seconds / 3600)),
     chat: row.chatMessages,
     views: row.views,
-    subsLevel: row.subscribers,
-    subs: monthlyGain(row.subscribers),
   };
-}
-
-/**
- * Month-on-month growth, from the counts each month was read at.
- *
- * A month without a reading has no growth to report, and neither has the
- * first month with one: there is nothing before it to compare against. Both
- * are null rather than zero, so that "nothing was collected" cannot be drawn
- * as "nobody subscribed".
- *
- * The month after a gap is the second of those cases: the difference from the
- * last reading covers every month in between, and drawing it as one month's
- * growth would put the whole gap on the month that happened to be read.
- */
-export function monthlyGain(counts: readonly (number | null)[]): (number | null)[] {
-  let previous: number | null = null;
-
-  return counts.map((count) => {
-    if (count === null) {
-      previous = null;
-
-      return null;
-    }
-
-    const gain = previous === null ? null : count - previous;
-    previous = count;
-
-    return gain;
-  });
 }
 
 export interface SubjectSource {
@@ -212,11 +199,18 @@ export interface SubjectSource {
   months: readonly ChannelMonths[];
   total: MonthTotals;
   spans: ReadonlyMap<string, readonly number[]>;
+  /**
+   * Each member's milestones, oldest first, as `@/lib/milestones`'
+   * `milestonesByChannel` groups them. Grouped by the page rather than here:
+   * whatever this file imports goes to every page that imports it, and not
+   * every page that does draws milestones.
+   */
+  milestones: ReadonlyMap<string, readonly SubscriberMilestone[]>;
 }
 
 const EMPTY_MONTHS = (length: number) => new Array<number | null>(length).fill(null);
 
-/** One member, put together from the three endpoints that describe them. */
+/** One member, put together from the endpoints that describe them. */
 export function subjectOf(channel: Channel, source: SubjectSource): Subject {
   const length = source.total.streams.length;
   const row = source.months.find((m) => m.channelId === channel.channelId);
@@ -227,7 +221,6 @@ export function subjectOf(channel: Channel, source: SubjectSource): Subject {
       streamSeconds: EMPTY_MONTHS(length),
       chatMessages: EMPTY_MONTHS(length),
       views: EMPTY_MONTHS(length),
-      subscribers: EMPTY_MONTHS(length),
     },
   );
 
@@ -243,6 +236,7 @@ export function subjectOf(channel: Channel, source: SubjectSource): Subject {
     chatTotal: sumCounts(months.chat),
     deltas: { perHour: channel.perHour, perDay: channel.perDay, per30Days: channel.per30Days },
     months,
+    milestones: source.milestones.get(channel.channelId) ?? [],
     spans: source.spans.get(channel.channelId) ?? [],
   };
 }
@@ -250,37 +244,31 @@ export function subjectOf(channel: Channel, source: SubjectSource): Subject {
 /**
  * The sum of the members on screen.
  *
- * The monthly series come from `GET /api/months`, which already carries an
- * ended member's last subscriber count forward rather than dropping it to
- * zero (#134). Doing it here instead would mean adding up nulls and getting
- * a month where the site appears to have lost thousands of subscribers.
- *
  * The sum is only the API's own when every member is on screen. With the
- * list narrowed to active members it is added up here, which the subscriber
- * series cannot be - so that series says nothing rather than something
- * wrong.
+ * list narrowed to active members it is added up here instead.
+ *
+ * Milestones are not summed: each member's fall on their own dates, and a
+ * total made of them would be a number nobody announced. The record panel
+ * lists every member's own instead (#225).
  */
 export function totalOf(subjects: readonly Subject[], source: SubjectSource, everyMember: boolean): Subject {
   const length = source.total.streams.length;
-  const series = (id: SeriesId): (number | null)[] =>
+  const series = (id: MonthSeriesId): (number | null)[] =>
     Array.from({ length }, (_, i) => sumCounts(subjects.map((s) => s.months[id][i] ?? null)));
 
-  const months: Record<SeriesId, (number | null)[]> = everyMember
+  const months: Record<MonthSeriesId, (number | null)[]> = everyMember
     ? monthsOf({
         streams: source.total.streams,
         videos: source.total.videos,
         streamSeconds: source.total.streamSeconds,
         chatMessages: source.total.chatMessages,
         views: source.total.views,
-        subscribers: source.total.subscribers,
       })
     : {
         streams: series('streams'),
         hours: series('hours'),
         chat: series('chat'),
         views: series('views'),
-        subsLevel: EMPTY_MONTHS(length),
-        subs: EMPTY_MONTHS(length),
       };
 
   const starts = subjects.map((s) => s.activityStartDate).sort();
@@ -305,6 +293,7 @@ export function totalOf(subjects: readonly Subject[], source: SubjectSource, eve
       per30Days: deltasOf(subjects, 'per30Days'),
     },
     months,
+    milestones: [],
     spans: subjects.flatMap((s) => [...s.spans]),
     members: [...subjects],
   };

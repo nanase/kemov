@@ -17,6 +17,7 @@ import {
 import type { AnnouncementKind } from '../model';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
 import SparkLine from '@/parts/SparkLine.vue';
+import MilestoneDots from './MilestoneDots.vue';
 
 /**
  * The eleven members and their sum, in the order the API sends them.
@@ -33,7 +34,7 @@ import SparkLine from '@/parts/SparkLine.vue';
  * look hangs on `data-` attributes instead, so the CSS does not decide which
  * ARIA attribute is the right one.
  */
-const { subjects, total, metric, period, selected, dark, states, minimal } = defineProps<{
+const { subjects, total, metric, period, selected, dark, states, minimal, months } = defineProps<{
   subjects: readonly Subject[];
   total: Subject;
   metric: MetricId;
@@ -44,6 +45,8 @@ const { subjects, total, metric, period, selected, dark, states, minimal } = def
   states: ReadonlyMap<string, AnnouncementKind>;
   /** In minimal display the rows are numbers to read, not rows to press. */
   minimal: boolean;
+  /** The month axis the small charts share. */
+  months: readonly string[];
 }>();
 
 const emit = defineEmits<{ select: [id: string] }>();
@@ -52,7 +55,6 @@ const emit = defineEmits<{ select: [id: string] }>();
 const avatarSize = 20;
 
 const series = computed(() => tableSeries(metric));
-const kind = computed(() => (series.value === 'subsLevel' ? 'level' : 'flow'));
 const headings = computed(() => ({
   value: metricDef(metric).head,
   change: metric === 'chatCount' ? '' : periodLabel(period),
@@ -130,7 +132,10 @@ function press(id: string) {
             </span>
           </td>
           <td class="c-spark">
-            <SparkLine :values="subject.months[series]" :kind="kind" />
+            <template v-if="series === 'milestones'">
+              <MilestoneDots v-if="subject.milestones.length > 0" :milestones="subject.milestones" :months="months" />
+            </template>
+            <SparkLine v-else :values="subject.months[series]" kind="flow" />
             <span class="pick" aria-hidden="true"></span>
           </td>
         </tr>
@@ -159,7 +164,8 @@ function press(id: string) {
             </span>
           </td>
           <td class="c-spark">
-            <SparkLine :values="total.months[series]" :kind="kind" />
+            <!-- Announced counts are never added up, so the sum has no milestones to draw. -->
+            <SparkLine v-if="series !== 'milestones'" :values="total.months[series]" kind="flow" />
             <span class="pick" aria-hidden="true"></span>
           </td>
         </tr>

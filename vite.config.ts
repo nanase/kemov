@@ -78,32 +78,37 @@ function genetMusicDevData(): Plugin {
 }
 
 /**
- * Answers `/api/footprints/events` from a file on disk while developing.
+ * Answers a published JSON's `/api` path from a file on disk while developing.
  *
- * Nothing has been published to the deployment yet, and what it will carry is
- * registered on the server rather than kept here (#140), so the page is
- * checked against a file a developer puts at `dev-data/footprints-events.json`
- * - the shape `GET /api/footprints/events` publishes. Without the file the
- * request falls through to whatever `VITE_API_PROXY` points at, which answers
- * the 404 the deployment really gives.
+ * What the admin site publishes is registered on the server rather than kept
+ * here (#140, #225), so a page is checked against a file a developer puts
+ * under `dev-data/` in the shape the endpoint publishes:
+ *
+ * - `dev-data/footprints-events.json` for `GET /api/footprints/events`
+ * - `dev-data/subscriber-milestones.json` for `GET /api/subscribers/milestones`
+ *
+ * Without the file the request falls through to whatever `VITE_API_PROXY`
+ * points at, which answers what the deployment really gives.
  *
  * Only while serving: a build never sees this, and the published site reads
  * the same URL from the worker.
  */
-const footprintEvents: PluginOption = {
-  name: 'kemov-footprint-events',
-  apply: 'serve',
-  configureServer(server) {
-    const file = resolve(root, 'dev-data', 'footprints-events.json');
+function publishedDevData(name: string, path: string, fileName: string): PluginOption {
+  return {
+    name,
+    apply: 'serve',
+    configureServer(server) {
+      const file = resolve(root, 'dev-data', fileName);
 
-    server.middlewares.use((request, response, next) => {
-      if (request.url?.replace(/\?.*$/, '') !== '/api/footprints/events' || !existsSync(file)) return next();
+      server.middlewares.use((request, response, next) => {
+        if (request.url?.replace(/\?.*$/, '') !== path || !existsSync(file)) return next();
 
-      response.setHeader('Content-Type', 'application/json; charset=utf-8');
-      response.end(readFileSync(file));
-    });
-  },
-};
+        response.setHeader('Content-Type', 'application/json; charset=utf-8');
+        response.end(readFileSync(file));
+      });
+    },
+  };
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -129,7 +134,8 @@ export default defineConfig({
       },
     }),
     webfontDownload(),
-    footprintEvents,
+    publishedDevData('kemov-footprint-events', '/api/footprints/events', 'footprints-events.json'),
+    publishedDevData('kemov-subscriber-milestones', '/api/subscribers/milestones', 'subscriber-milestones.json'),
     memberPages,
     injectHTML(),
     genetMusicDevData(),

@@ -6,7 +6,9 @@ import {
   getChannels,
   getLive,
   getRanking,
+  getSubscriberMilestones,
   getVideosTable,
+  isNotPublished,
   MAX_VIDEO_PAGES,
 } from '@/lib/api';
 
@@ -122,6 +124,26 @@ describe('getChannels', () => {
     get.mockResolvedValue(answer('<html>Service Unavailable</html>'));
 
     await expect(getChannels()).rejects.toThrow(ApiShapeError);
+  });
+});
+
+describe('getSubscriberMilestones', () => {
+  const failure = (status: number, data: unknown) =>
+    Object.assign(new Error('Request failed'), { response: { status, data } });
+
+  // The public bucket's own 404 says nothing has been published (#225). A
+  // 404 without that reason came from somewhere else, and stays a failure.
+  test('tells "not published yet" apart from any other 404', async () => {
+    get.mockRejectedValueOnce(failure(404, { error: 'not published yet' }));
+    const unpublished = await getSubscriberMilestones().catch((error: unknown) => error);
+
+    get.mockRejectedValueOnce(failure(404, '<html>Not Found</html>'));
+    const elsewhere = await getSubscriberMilestones().catch((error: unknown) => error);
+
+    expect(unpublished).toMatchObject({ status: 404, reason: 'not published yet' });
+    expect(isNotPublished(unpublished)).toBe(true);
+    expect(isNotPublished(elsewhere)).toBe(false);
+    expect(isNotPublished(new ApiError('/subscribers/milestones', 503, 'down', 'not published yet'))).toBe(false);
   });
 });
 

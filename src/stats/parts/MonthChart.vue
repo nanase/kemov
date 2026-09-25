@@ -25,7 +25,9 @@ const hover = ref(-1);
 const axisWidth = ref(320);
 let observer: ResizeObserver | undefined;
 
-const plot = computed(() => plotOf(values, series.kind));
+// Every month series is a flow now: the one level the page drew, the
+// subscriber count, left for the milestone chart (#225).
+const plot = computed(() => plotOf(values, 'flow'));
 const marks = computed(() => axisMarks(months, axisWidth.value));
 
 /** The last month that has a value, which is what the readout falls back to. */
@@ -119,10 +121,6 @@ onBeforeUnmount(() => observer?.disconnect());
         @pointerleave="hover = -1"
       >
         <line v-for="y in [25, 50, 75]" :key="y" class="grid" x1="0" :y1="y" :x2="plot.width" :y2="y" />
-        <template v-if="series.kind === 'level'">
-          <path v-if="plot.area" class="area" :d="plot.area" />
-          <path v-if="plot.line" class="line" :d="plot.line" />
-        </template>
         <rect
           v-for="bar in plot.bars"
           :key="bar.index"
@@ -231,18 +229,6 @@ onBeforeUnmount(() => observer?.disconnect());
 
 .bar.pointed {
   fill: var(--member-accent, var(--k-accent));
-}
-
-.area {
-  fill: var(--member-color, var(--k-accent));
-  opacity: 0.2;
-}
-
-.line {
-  fill: none;
-  stroke: var(--member-color, var(--k-accent));
-  stroke-width: 2px;
-  vector-effect: non-scaling-stroke;
 }
 
 .base {

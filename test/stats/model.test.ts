@@ -12,7 +12,6 @@ import {
   knownId,
   METRICS,
   metricDef,
-  monthlyGain,
   SERIES,
   seriesDef,
   subjectOf,
@@ -21,7 +20,7 @@ import {
   WEEK_MINUTES,
   type SubjectSource,
 } from '@/stats/model';
-import type { Channel, LiveStream, MonthTotals } from '@/type/api';
+import type { Channel, LiveStream, MonthTotals, SubscriberMilestone } from '@/type/api';
 
 /**
  * What the statistics page works out for itself.
@@ -67,7 +66,6 @@ const months = (id: string, over: Partial<Record<string, (number | null)[]>> = {
   chatMessages: [null, 100, 200],
   chatUniqueUsers: [null, 10, 20],
   views: [null, 1000, 2000],
-  subscribers: [null, 900, 1000],
   ...over,
 });
 
@@ -79,14 +77,25 @@ const TOTAL: MonthTotals = {
   chatMessages: [0, 200, 400],
   chatUniqueUsers: [0, 20, 40],
   views: [0, 2000, 4000],
-  subscribers: [null, 1800, 2000],
 };
+
+const milestone = (id: number, channelId: string, reachedDate: string, count: number): SubscriberMilestone => ({
+  milestoneId: id,
+  channelId,
+  datePrecision: reachedDate.length === 7 ? 'month' : 'day',
+  reachedDate,
+  subscriberCount: count,
+  announcedBy: 'member',
+  event: null,
+  sources: [],
+});
 
 const source = (over: Partial<SubjectSource> = {}): SubjectSource => ({
   channels: [channel('UCa'), channel('UCb')],
   months: [months('UCa'), months('UCb')],
   total: TOTAL,
   spans: new Map([['UCa', [1260, 120]]]),
+  milestones: new Map([['UCa', [milestone(1, 'UCa', '2021-12', 10_000), milestone(2, 'UCa', '2024-01-30', 20_000)]]]),
   ...over,
 });
 
@@ -122,25 +131,10 @@ describe('subjectOf', () => {
   test('reads an ended member as ended', () => {
     expect(subjectOf(channel('UCa', { activityEndDate: '2024-03-31' }), source()).ended).toBe(true);
   });
-});
 
-describe('monthlyGain', () => {
-  test('is the difference from the month before', () => {
-    expect(monthlyGain([100, 120, 150])).toEqual([null, 20, 30]);
-  });
-
-  // A month nobody read is not a month nobody subscribed in.
-  test('reports nothing for a month with no reading, and for the first one with', () => {
-    expect(monthlyGain([null, null, 1000, null, 1100])).toEqual([null, null, null, null, null]);
-  });
-
-  // The 20 here covers two months, so it belongs to neither of them.
-  test('reports nothing for the month after a gap', () => {
-    expect(monthlyGain([100, null, 120])).toEqual([null, null, null]);
-  });
-
-  test('keeps a loss as a loss', () => {
-    expect(monthlyGain([100, 90])).toEqual([null, -10]);
+  test("takes the member's own milestones", () => {
+    expect(subjectOf(channel('UCa'), source()).milestones.map((m) => m.milestoneId)).toEqual([1, 2]);
+    expect(subjectOf(channel('UCb'), source()).milestones).toEqual([]);
   });
 });
 
@@ -151,16 +145,21 @@ describe('totalOf', () => {
     const total = totalOf(subjects(), source(), true);
 
     expect(total.months.streams).toEqual([0, 6, 6]);
-    // The API carries an ended member's last count forward; this must not
-    // recompute it from the members' own series, which deliberately do not.
-    expect(total.months.subsLevel).toEqual([null, 1800, 2000]);
   });
 
-  test('adds the members up when the list is narrowed, and then says nothing about subscribers', () => {
+  test('adds the members up when the list is narrowed', () => {
     const total = totalOf([subjects()[0]!], source(), false);
 
     expect(total.months.streams).toEqual([null, 3, 3]);
-    expect(total.months.subsLevel).toEqual([null, null, null]);
+  });
+
+  // Each member's milestones fall on their own dates: a sum of them would be
+  // a number nobody announced (#225).
+  test('adds up no milestones, and keeps each member with their own', () => {
+    const total = totalOf(subjects(), source(), true);
+
+    expect(total.milestones).toEqual([]);
+    expect(total.members?.[0]?.milestones).toHaveLength(2);
   });
 
   test('adds up the counts and the changes', () => {

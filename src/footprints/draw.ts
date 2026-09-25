@@ -100,11 +100,4 @@ export function openMs(height: number): number {
   return Math.min(340, 120 + Math.max(0, height) * 0.25);
 }
 
-/** The host a source is on, which is what the page shows instead of the URL. */
-export function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
-}
+export { hostOf } from '@/lib/host';
