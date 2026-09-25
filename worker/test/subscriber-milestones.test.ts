@@ -124,6 +124,11 @@ describe('createMilestone', () => {
     [{ sources: [{ url: 'http://example.com' }] }, 'every source url must start with https://'],
     [{ sources: [{ url: 'https://' }] }, 'every source url must be a valid https URL'],
     [{ sources: [{ url: 'https:// example.com' }] }, 'every source url must be a valid https URL'],
+    [
+      { sources: [{ url: 'https://user:secret@example.com/a' }] },
+      'every source url must not carry a user name or password',
+    ],
+    [{ sources: [{ url: 'https://user@example.com/a' }] }, 'every source url must not carry a user name or password'],
     [{ sources: 'https://example.com' }, 'sources must be an array of { url, title }'],
   ])('refuses %o with 400', async (overrides, message) => {
     const response = await createMilestone(env, validBody(overrides));

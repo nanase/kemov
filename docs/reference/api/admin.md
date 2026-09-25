@@ -181,7 +181,7 @@ JSON は `shape_version` と `channel_id` も持ちます。
 - `subscriberCount` が 1 以上の整数
 - `announcedBy` が `member`・`official`・`listener` のどれか
 - `eventId` をつなぐなら、その出来事の `kind` が `milestone`
-- 出典の `url` が、ホストを持つ `https://` の URL
+- 出典の `url` が、ホストを持つ `https://` の URL で、ユーザー名とパスワードを含まない
 
 `POST .../publish` は、満たしていない条件をまとめて 400 で返します。条件は次のとおりです。
 
