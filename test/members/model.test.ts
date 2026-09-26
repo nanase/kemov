@@ -356,6 +356,12 @@ describe('readQuery and writeQuery', () => {
     expect(readQuery('')).toMatchObject({ listPeriod: 'all', type: 'streaming', metric: 'viewCount', order: 'desc' });
   });
 
+  // The milestone tab is the last of the panel's tabs, and is not a month series (#225).
+  test('opens the panel on the milestone tab when the query names it', () => {
+    expect(readQuery('?monthly=milestones').monthly).toBe('milestones');
+    expect(readQuery(writeQuery(state({ monthly: 'milestones' }))).monthly).toBe('milestones');
+  });
+
   test('carries only what the reader changed', () => {
     expect(writeQuery(state())).toEqual('');
     expect(writeQuery(state({ q: '歌枠', order: 'asc' }))).toEqual('?q=%E6%AD%8C%E6%9E%A0&order=asc');

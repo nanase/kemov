@@ -2,10 +2,11 @@
 import { computed } from 'vue';
 
 import MemberAvatar from '@/parts/MemberAvatar.vue';
+import { latestLabel, MILESTONE_EMPTY, MILESTONE_FAILED, type MilestoneStatus } from '@/lib/milestones';
 import { formatCount } from '@/lib/numberFormat';
 
 import type { Cumulative } from '../model';
-import type { Channel } from '@/type/api';
+import type { Channel, SubscriberMilestone } from '@/type/api';
 
 /**
  * Who this is, and the six figures that only ever grow.
@@ -15,10 +16,13 @@ import type { Channel } from '@/type/api';
  * moved. Their picture keeps the same ring in their own colour as everybody
  * else's.
  */
-const { channel, totals, dark } = defineProps<{
+const { channel, totals, dark, milestones, milestoneStatus } = defineProps<{
   channel: Channel;
   totals: Cumulative;
   dark: boolean;
+  /** This member's published milestones, oldest first. */
+  milestones: readonly SubscriberMilestone[];
+  milestoneStatus: MilestoneStatus;
 }>();
 
 const span = computed(() =>
@@ -27,16 +31,34 @@ const span = computed(() =>
     : `${channel.activityStartDate} → ${channel.activityEndDate}`,
 );
 
+/**
+ * What stands under the subscriber count: the newest milestone, which is the
+ * last time somebody put a date to the count (#225).
+ *
+ * Nothing recorded and nothing read are said in different words, and the
+ * second is left empty while it is still being read. A count that is not
+ * known is never written as a flat line or as zero.
+ */
+const subscriberNote = computed(() => {
+  if (milestoneStatus === 'loading') return { text: '', pending: false, whole: '' };
+  if (milestoneStatus === 'failed') return { text: MILESTONE_FAILED, pending: true, whole: '' };
+
+  const last = milestones.at(-1);
+
+  return last === undefined
+    ? { text: MILESTONE_EMPTY, pending: true, whole: '' }
+    : { text: latestLabel(last), pending: false, whole: last.reachedDate };
+});
+
 const figures = computed(() => [
   {
     key: '登録者数',
     value: formatCount(totals.subscriberCount),
     unit: '',
-    // The place for a history is kept open rather than filled with a flat
-    // line: collection starts in 2026-10 (#125), and a chart of nothing would
-    // say the count never moved.
-    note: '推移の記録は 2026-10 から',
-    pending: true,
+    note: subscriberNote.value.text,
+    pending: subscriberNote.value.pending,
+    wrap: true,
+    whole: subscriberNote.value.whole,
   },
   { key: '総再生数', value: formatCount(totals.viewCount), unit: '', note: 'チャンネル全体', pending: false },
   {
@@ -130,7 +152,12 @@ const figures = computed(() => [
           <dd class="value mv-n">
             {{ figure.value }}<small v-if="figure.unit"> {{ figure.unit }}</small>
           </dd>
-          <dd class="note mv-n" :class="{ pending: figure.pending }">{{ figure.note }}</dd>
+          <dd class="note mv-n" :class="{ pending: figure.pending, wrap: figure.wrap }">
+            <template v-if="figure.whole"
+              >{{ figure.note.slice(0, -figure.whole.length) }}<span class="whole">{{ figure.whole }}</span></template
+            >
+            <template v-else>{{ figure.note }}</template>
+          </dd>
         </div>
       </dl>
     </div>
@@ -279,7 +306,19 @@ const figures = computed(() => [
   line-height: 1.3;
 }
 
-/* Not measured yet, rather than measured as nothing. */
+/* A date is worth reading whole: the last milestone is longer than the room
+   the other notes have. */
+.note.wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* The hyphens of a date are places a line could break; it stays in one piece. */
+.note .whole {
+  white-space: nowrap;
+}
+
+/* Not recorded, rather than recorded as nothing. */
 .note.pending {
   display: inline-block;
   max-width: 100%;

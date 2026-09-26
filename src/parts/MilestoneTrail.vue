@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
 
-import { axisFraction, cardPlacement, chartSummary, countLabel, countScale } from '@/lib/milestones';
+import {
+  axisFraction,
+  axisMarks,
+  cardPlacement,
+  chartSummary,
+  countLabel,
+  countScale,
+  MILESTONE_EMPTY,
+  MILESTONE_FAILED,
+  type MilestoneStatus,
+} from '@/lib/milestones';
 import { useMilestoneCard } from '@/lib/useMilestoneCard';
 import MilestoneCard from '@/parts/MilestoneCard.vue';
 import type { SubscriberMilestone } from '@/type/api';
-import { axisMarks } from '../draw';
-import type { MilestoneStatus } from '../useStatsData';
 import MilestoneLegend from './MilestoneLegend.vue';
 import MilestonePoint from './MilestonePoint.vue';
 
@@ -90,10 +98,8 @@ onBeforeUnmount(() => observer?.disconnect());
 
 <template>
   <div class="milestone-trail">
-    <p v-if="status === 'failed'" class="failed">
-      節目の記録を取得できませんでした。しばらく時間をおいてから再度お試しください
-    </p>
-    <p v-else-if="status === 'ready' && milestones.length === 0" class="empty">節目の記録はまだありません</p>
+    <p v-if="status === 'failed'" class="failed">{{ MILESTONE_FAILED }}。しばらく時間をおいてから再度お試しください</p>
+    <p v-else-if="status === 'ready' && milestones.length === 0" class="empty">{{ MILESTONE_EMPTY }}</p>
     <div v-else class="plot">
       <div class="scale n" aria-hidden="true">
         <template v-if="status === 'ready'">

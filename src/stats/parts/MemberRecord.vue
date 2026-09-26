@@ -21,9 +21,9 @@ import {
   type Subject,
 } from '../model';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
-import type { MilestoneStatus } from '../useStatsData';
+import MilestoneTrail from '@/parts/MilestoneTrail.vue';
+import type { MilestoneStatus } from '@/lib/milestones';
 import MilestoneRows from './MilestoneRows.vue';
-import MilestoneTrail from './MilestoneTrail.vue';
 import MonthChart from './MonthChart.vue';
 import RecentStreams, { type StreamRow } from './RecentStreams.vue';
 import SegmentGroup from '@/parts/SegmentGroup.vue';

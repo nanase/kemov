@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 
+import MilestoneTrail from '@/parts/MilestoneTrail.vue';
 import SegmentGroup from '@/parts/SegmentGroup.vue';
+import { memberAccent, memberColor } from '@/lib/memberColor';
+import { MILESTONE_HEADING, type MilestoneStatus } from '@/lib/milestones';
 import { DASH, formatCount } from '@/lib/numberFormat';
 
 import { formatLength } from '../draw';
-import { MONTHLY_SERIES, monthlySeries, type MonthlySeriesId } from '../model';
-import type { ChannelMonths } from '@/type/api';
+import { isMilestoneTab, MONTHLY_TABS, monthlySeries, type MonthlyTabId } from '../model';
+import type { ChannelMonths, SubscriberMilestone } from '@/type/api';
 
 /**
  * Month by month, one measure at a time.
@@ -15,23 +18,58 @@ import type { ChannelMonths } from '@/type/api';
  * else (#136). A line at each turn of the year is the only gridline: the
  * months either side of one are a year apart, and without the mark a reader
  * counts twelve bars to find out.
+ *
+ * The last tab is the member's subscriber milestones (#225), which are not a
+ * month series: it draws the same points and card as the statistics page, on
+ * the same month axis, and says so in its heading.
  */
-const { months, row, series, missing } = defineProps<{
+const { months, row, series, missing, milestones, milestoneStatus, now, today, name, color, dark } = defineProps<{
   /** Every month the site knows, as `YYYY-MM`, oldest first. */
   months: readonly string[];
   /** This member's series, or null while they are on their way. */
   row: ChannelMonths | null;
-  series: MonthlySeriesId;
+  series: MonthlyTabId;
   /** True when the monthly record was asked for and never arrived. */
   missing: boolean;
+  /** This member's published milestones, oldest first. */
+  milestones: readonly SubscriberMilestone[];
+  milestoneStatus: MilestoneStatus;
+  /** Today's count from the API, or null when it was not read. */
+  now: number | null;
+  /** Today in JST, `YYYY-MM-DD`. */
+  today: string;
+  name: string;
+  /** The member's colour, as the API sends it. */
+  color: string | null;
+  dark: boolean;
 }>();
 
-const emit = defineEmits<{ series: [id: MonthlySeriesId] }>();
+const emit = defineEmits<{ series: [id: MonthlyTabId] }>();
+
+const onMilestones = computed(() => isMilestoneTab(series));
+const monthSeries = computed(() => (isMilestoneTab(series) ? null : series));
+
+const trailColors = computed(() =>
+  color === null
+    ? undefined
+    : { '--member-color': memberColor(color, dark), '--member-accent': memberAccent(color, dark) },
+);
+
+/**
+ * Without the month axis there is nowhere to put a milestone, so the trail
+ * draws the empty frame it draws while loading rather than every point at
+ * the left edge.
+ */
+const trailStatus = computed<MilestoneStatus>(() =>
+  milestoneStatus === 'ready' && months.length === 0 ? 'loading' : milestoneStatus,
+);
 
 const pointed = ref<number | null>(null);
 const chosen = ref<number | null>(null);
 
-const values = computed(() => (row === null ? [] : monthlySeries(row, series)));
+const values = computed(() =>
+  row === null || monthSeries.value === null ? [] : monthlySeries(row, monthSeries.value),
+);
 const peak = computed(() => Math.max(1, ...values.value.map((value) => value ?? 0)));
 
 /**
@@ -91,7 +129,7 @@ const readout = computed(() => {
   };
 });
 
-const seriesItems = MONTHLY_SERIES.map((entry) => ({ id: entry.id, label: entry.label }));
+const seriesItems = MONTHLY_TABS.map((entry) => ({ id: entry.id, label: entry.label }));
 
 function label(index: number): string {
   const value = values.value[index] ?? null;
@@ -119,19 +157,32 @@ watch(
 <template>
   <div class="mv-panel">
     <div class="mv-head">
-      <b>月ごと</b>
+      <b>{{ onMilestones ? MILESTONE_HEADING : '月ごと' }}</b>
       <!-- Views are collected by the month a video went up, not by the month
            they were watched in, and the two are easy to confuse (#136). -->
       <span v-if="series === 'views'">その月に公開した動画・配信の累計</span>
+      <span v-else-if="onMilestones">月ごとの値ではありません</span>
       <span class="mv-grow"></span>
       <SegmentGroup
         :items="seriesItems"
         :value="series"
         label="月ごとの指標"
-        @pick="emit('series', $event as MonthlySeriesId)"
+        @pick="emit('series', $event as MonthlyTabId)"
       />
     </div>
     <p v-if="missing" class="mv-empty">月ごとの記録を取得できませんでした</p>
+
+    <div v-else-if="onMilestones" class="trail" :style="trailColors">
+      <MilestoneTrail
+        :key="name"
+        :milestones="milestones"
+        :months="months"
+        :now="now"
+        :today="today"
+        :status="trailStatus"
+        :name="name"
+      />
+    </div>
 
     <template v-else>
       <div class="mv-read mv-n">
@@ -171,6 +222,10 @@ watch(
 </template>
 
 <style scoped>
+.trail {
+  padding: 10px 12px 12px;
+}
+
 .chart {
   display: flex;
   flex: 1 1 auto;
@@ -256,6 +311,15 @@ watch(
 .axis {
   flex: none;
   height: 18px;
+}
+
+/* In the two-column board the panel is what is left of a screen-tall column,
+   and the chart is shorter than the trail's own height, which would push its
+   legend out of the panel. */
+@container (min-width: 1121px) {
+  .trail :deep(.area) {
+    height: 184px;
+  }
 }
 
 @container (max-width: 1120px) {
