@@ -118,7 +118,7 @@ const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
  * The video ID `url` points at, or null when it is not a YouTube video's URL
  * (#225). Only the forms a member's own stream is shared as are read:
  * `youtube.com/watch?v=<ID>` on `www.`, `m.` or no prefix, `youtu.be/<ID>`
- * and `www.youtube.com/live/<ID>`, over `https`. Other query parameters, such
+ * and `www.youtube.com/live/<ID>`, over `https` with no port or user info. Other query parameters, such
  * as a start time, are ignored. A channel page, a playlist, another host or an
  * ID that is not 11 characters is not a video's URL.
  */
@@ -131,7 +131,9 @@ export function youtubeVideoIdOf(url: string): string | null {
     return null;
   }
 
-  if (parsed.protocol !== 'https:') return null;
+  if (parsed.protocol !== 'https:' || parsed.port !== '' || parsed.username !== '' || parsed.password !== '') {
+    return null;
+  }
 
   let id: string | null = null;
 

@@ -192,6 +192,9 @@ describe('youtubeVideoIdOf', () => {
     `https://example.com/watch?v=${ID}`,
     `https://notyoutube.com/watch?v=${ID}`,
     `http://www.youtube.com/watch?v=${ID}`,
+    `https://www.youtube.com:8443/watch?v=${ID}`,
+    `https://youtu.be:8443/${ID}`,
+    `https://user:pass@www.youtube.com/watch?v=${ID}`,
     'not a url',
   ])('does not read %s as a video', (url) => {
     expect(youtubeVideoIdOf(url)).toBeNull();
