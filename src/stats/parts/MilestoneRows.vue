@@ -101,7 +101,12 @@ onBeforeUnmount(() => observer?.disconnect());
           <span class="swatch" aria-hidden="true"></span>
           <span class="name">{{ row.member.name }}</span>
         </span>
-        <div v-if="row.points.length > 0" class="strip" role="group" :aria-label="row.summary ?? undefined">
+        <div
+          v-if="status === 'ready' && row.points.length > 0"
+          class="strip"
+          role="group"
+          :aria-label="row.summary ?? undefined"
+        >
           <span class="rule" aria-hidden="true"></span>
           <template v-for="point in row.points" :key="point.milestone.milestoneId">
             <span class="label n" :data-side="point.side" :style="{ left: `${point.x * 100}%` }" aria-hidden="true">{{

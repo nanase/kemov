@@ -80,6 +80,17 @@ const figures = computed(() =>
 );
 
 const chosenSeries = computed(() => seriesDef(series));
+
+/**
+ * The milestones' status as the charts should draw it. Without the month
+ * axis there is nowhere to put a milestone, so the charts draw the empty
+ * frame they draw while loading - the same as the month tabs, whose charts
+ * are empty when the months could not be read - rather than every point at
+ * the left edge.
+ */
+const milestoneDrawStatus = computed<MilestoneStatus>(() =>
+  milestoneStatus === 'ready' && months.length === 0 ? 'loading' : milestoneStatus,
+);
 const seriesItems = SERIES.map((s) => ({
   id: s.id,
   label: s.label,
@@ -167,7 +178,7 @@ const seriesItems = SERIES.map((s) => ({
           v-if="subject.members"
           :members="subject.members"
           :months="months"
-          :status="milestoneStatus"
+          :status="milestoneDrawStatus"
           :dark="dark"
         />
         <MilestoneTrail
@@ -177,7 +188,7 @@ const seriesItems = SERIES.map((s) => ({
           :months="months"
           :now="subject.counts.subscriberCount"
           :today="today"
-          :status="milestoneStatus"
+          :status="milestoneDrawStatus"
           :name="subject.name"
         />
       </template>

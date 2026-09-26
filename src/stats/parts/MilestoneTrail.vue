@@ -36,6 +36,9 @@ const { milestones, months, now, today, status, name } = defineProps<{
 
 const { openId, cardId, toggle, close } = useMilestoneCard();
 
+/** What is drawn: nothing until the milestones are ready to be placed. */
+const shown = computed(() => (status === 'ready' ? milestones : []));
+
 const axis = useTemplateRef<HTMLElement>('axis');
 const axisWidth = ref(320);
 let observer: ResizeObserver | undefined;
@@ -43,13 +46,13 @@ let observer: ResizeObserver | undefined;
 const marks = computed(() => axisMarks(months, axisWidth.value));
 
 const scale = computed(() =>
-  countScale(Math.max(now ?? 0, ...milestones.map((milestone) => milestone.subscriberCount))),
+  countScale(Math.max(now ?? 0, ...shown.value.map((milestone) => milestone.subscriberCount))),
 );
 
 const height = (count: number) => 1 - count / scale.value.top;
 
 const points = computed(() =>
-  milestones.map((milestone) => ({
+  shown.value.map((milestone) => ({
     milestone,
     x: axisFraction(milestone.reachedDate, months),
     y: height(milestone.subscriberCount),
@@ -57,7 +60,7 @@ const points = computed(() =>
 );
 
 const nowPoint = computed(() =>
-  now === null || milestones.length === 0 ? null : { x: axisFraction(today, months), y: height(now) },
+  now === null || shown.value.length === 0 ? null : { x: axisFraction(today, months), y: height(now) },
 );
 
 /** The dotted line, in the 0-100 box the SVG is drawn in. */
@@ -67,7 +70,7 @@ const line = computed(() => {
   return all.length < 2 ? '' : all.map((p) => `${(p.x * 100).toFixed(3)},${(p.y * 100).toFixed(3)}`).join(' ');
 });
 
-const summary = computed(() => chartSummary(name, milestones));
+const summary = computed(() => chartSummary(name, shown.value));
 const opened = computed(() => points.value.find((p) => p.milestone.milestoneId === openId.value) ?? null);
 
 const at = (x: number, y: number) => ({ left: `${x * 100}%`, top: `${y * 100}%` });
@@ -148,7 +151,7 @@ onBeforeUnmount(() => observer?.disconnect());
         >{{ mark.label }}</span
       >
     </div>
-    <MilestoneLegend v-if="milestones.length > 0" :now="nowPoint !== null" />
+    <MilestoneLegend v-if="shown.length > 0" :now="nowPoint !== null" />
   </div>
 </template>
 
