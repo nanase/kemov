@@ -4,7 +4,7 @@ import { computed, ref, watch } from 'vue';
 import MilestoneTrail from '@/parts/MilestoneTrail.vue';
 import SegmentGroup from '@/parts/SegmentGroup.vue';
 import { memberAccent, memberColor } from '@/lib/memberColor';
-import { MILESTONE_HEADING, type MilestoneStatus } from '@/lib/milestones';
+import { drawStatus, MILESTONE_HEADING, type MilestoneStatus } from '@/lib/milestones';
 import { DASH, formatCount } from '@/lib/numberFormat';
 
 import { formatLength } from '../draw';
@@ -55,15 +55,7 @@ const trailColors = computed(() =>
     : { '--member-color': memberColor(color, dark), '--member-accent': memberAccent(color, dark) },
 );
 
-/**
- * Without the month axis there is nowhere to put a milestone, so the trail
- * draws the empty frame it draws while loading rather than every point at
- * the left edge. A member with no milestones has none to place, and the
- * trail says so.
- */
-const trailStatus = computed<MilestoneStatus>(() =>
-  milestoneStatus === 'ready' && months.length === 0 && milestones.length > 0 ? 'loading' : milestoneStatus,
-);
+const trailStatus = computed<MilestoneStatus>(() => drawStatus(milestoneStatus, months.length, milestones.length));
 
 const pointed = ref<number | null>(null);
 const chosen = ref<number | null>(null);

@@ -25,6 +25,18 @@ const NUMBER = new Intl.NumberFormat('ja-JP');
 export type MilestoneStatus = 'loading' | 'ready' | 'failed';
 
 /**
+ * The status a chart of milestones is drawn with.
+ *
+ * Without the month axis there is nowhere to put a milestone, so a chart with
+ * some to place draws the empty frame it draws while loading rather than
+ * every point at the left edge. With none to place, "nothing recorded" is
+ * still true and is said.
+ */
+export function drawStatus(status: MilestoneStatus, monthCount: number, milestoneCount: number): MilestoneStatus {
+  return status === 'ready' && monthCount === 0 && milestoneCount > 0 ? 'loading' : status;
+}
+
+/**
  * What the site calls a milestone on screen. Every sentence below that says
  * it, and every one the pages build from it, is made from this word, so that
  * changing what the site says is a change here (the admin site and the code

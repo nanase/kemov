@@ -4,6 +4,7 @@ import {
   chartSummary,
   countLabel,
   countScale,
+  drawStatus,
   labelSides,
   latestLabel,
   MILESTONE_EMPTY,
@@ -194,5 +195,14 @@ describe('what is read out', () => {
     expect(latestLabel(milestone({ reachedDate: '2023-06', subscriberCount: 15000 }))).toEqual(
       `最新の${MILESTONE_WORD} 1.5万人 ・ 2023-06`,
     );
+  });
+
+  // With no month axis a milestone has nowhere to go, but a member with none
+  // has nothing to place, and "nothing recorded" is still true.
+  test('holds a chart back for a missing month axis only when it has milestones to place', () => {
+    expect(drawStatus('ready', 0, 2)).toBe('loading');
+    expect(drawStatus('ready', 0, 0)).toBe('ready');
+    expect(drawStatus('ready', 60, 2)).toBe('ready');
+    expect(drawStatus('failed', 0, 2)).toBe('failed');
   });
 });
