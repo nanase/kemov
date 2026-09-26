@@ -3,7 +3,7 @@ import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 import { revisionStatement } from '../lib/revision';
-import { hasTwoHosts, isWhitelistedSource, readSourceWhitelist } from '../lib/source-whitelist';
+import { hasOwnVideoSource, hasTwoHosts, isWhitelistedSource, readSourceWhitelist } from '../lib/source-whitelist';
 import { formatTimestamp } from '../lib/time';
 import {
   eventLinkProblem,
@@ -32,7 +32,8 @@ import {
  * than stopped at the first one.
  *
  * The sources are enough on the same terms as an event's (#175): one on the
- * whitelist, or sources on two different hosts. A number a listener
+ * whitelist, or sources on two different hosts. A video of the milestone's own
+ * channel that `video` holds counts as one on the whitelist (#225). A number a listener
  * announced is the exception #225 decided: that listener's post is the
  * source, and one is enough, whatever its host. Its URL is kept for the
  * admin site and never published (see `publicEntryOf`).
@@ -50,7 +51,8 @@ async function publishProblems(env: Env, saved: SubscriberMilestone, whitelist: 
   } else if (
     milestone.announced_by !== 'listener' &&
     !urls.some((url) => isWhitelistedSource(url, whitelist)) &&
-    !hasTwoHosts(urls)
+    !hasTwoHosts(urls) &&
+    !(await hasOwnVideoSource(env, urls, milestone.channel_id))
   ) {
     problems.push('no source is in the whitelist and the sources are not on two hosts');
   }

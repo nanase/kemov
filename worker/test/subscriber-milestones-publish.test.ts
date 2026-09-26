@@ -159,6 +159,61 @@ describe('publishMilestone', () => {
     expect((await publishMilestone(env, milestoneId)).status).toEqual(200);
   });
 
+  async function insertVideo(videoId: string, channelId: string): Promise<void> {
+    await env.DB.prepare(
+      `INSERT INTO video (video_id, channel_id, title, published_at, availability, live_broadcast_content, fetched_at)
+       VALUES (?1, ?2, 't', '2024-01-29T00:00:00Z', 'public', 'none', '2024-01-29T00:00:00Z')`,
+    )
+      .bind(videoId, channelId)
+      .run();
+  }
+
+  // #225: the member's own stream is a source by itself, like a whitelisted one.
+  describe("a video of the milestone's own channel", () => {
+    test.each([
+      'https://www.youtube.com/watch?v=abcdefghijk&t=10s',
+      'https://youtu.be/abcdefghijk',
+      'https://www.youtube.com/live/abcdefghijk',
+    ])('is enough by itself: %s', async (url) => {
+      await insertVideo('abcdefghijk', 'UCaaa');
+
+      const milestoneId = await create({ sources: [{ url }] });
+
+      expect((await publishMilestone(env, milestoneId)).status).toEqual(200);
+    });
+
+    test("is not enough when it is another member's", async () => {
+      await env.DB.prepare(
+        `INSERT INTO channel (channel_id, name, fullname, color_key, color_sub, color_light, color_back, activity_start_date)
+         VALUES ('UCbbb', 'b', 'b', '#000000', '#000000', '#000000', '#000000', '2021-01-01')`,
+      ).run();
+      await insertVideo('abcdefghijk', 'UCbbb');
+
+      const milestoneId = await create({ sources: [{ url: 'https://youtu.be/abcdefghijk' }] });
+      const response = await publishMilestone(env, milestoneId);
+
+      expect(response.status).toEqual(400);
+      expect(await errorsOf(response)).toEqual([SOURCES_NOT_ENOUGH]);
+    });
+
+    test('is not enough when video does not hold it', async () => {
+      const milestoneId = await create({ sources: [{ url: 'https://youtu.be/abcdefghijk' }] });
+      const response = await publishMilestone(env, milestoneId);
+
+      expect(response.status).toEqual(400);
+      expect(await errorsOf(response)).toEqual([SOURCES_NOT_ENOUGH]);
+    });
+
+    test("does not change what a listener's milestone needs", async () => {
+      const milestoneId = await create({
+        announcedBy: 'listener',
+        sources: [{ url: 'https://youtu.be/abcdefghijk' }],
+      });
+
+      expect((await publishMilestone(env, milestoneId)).status).toEqual(200);
+    });
+  });
+
   test('refuses a linked event whose kind is no longer milestone', async () => {
     const eventId = await liveEvent('記念配信');
     const milestoneId = await create({ eventId });
