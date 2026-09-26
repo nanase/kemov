@@ -114,6 +114,16 @@ describe('monthlyEstimates', () => {
     expect(estimates[2]!.count).toBeLessThan(5000);
   });
 
+  // A page left open past the end of a month keeps the old axis for a while.
+  // Today's count belongs to today's month, not to the axis's last one.
+  test("puts today's count in today's month even when the axis has not reached it", () => {
+    const estimates = monthlyEstimates(two, months, 5000, '2024-06-01', null);
+
+    expect(estimates[4]?.recorded).toBe(false);
+    expect(estimates[4]!.count).toBeGreaterThan(3000);
+    expect(estimates[4]!.count).toBeLessThan(5000);
+  });
+
   // Without today's count there is nothing to draw a line towards.
   test("draws nothing after the last milestone when today's count was not read", () => {
     const estimates = monthlyEstimates(two, months, null, '2024-05-20', null);

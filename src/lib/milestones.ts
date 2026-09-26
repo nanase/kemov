@@ -189,7 +189,9 @@ export function monthlyEstimates(
 
   if (now !== null && dayOf(today) > anchors.at(-1)!.day) anchors.push({ day: dayOf(today), count: now });
 
-  const current = months.at(-1);
+  // Today's own month, not the axis's last: a page left open past the end of
+  // a month keeps the old axis until the months are read again.
+  const current = today.slice(0, 7);
   const endMonth = endDate?.slice(0, 7) ?? null;
 
   return months.map((month) => {
