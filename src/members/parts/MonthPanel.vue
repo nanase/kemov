@@ -58,10 +58,11 @@ const trailColors = computed(() =>
 /**
  * Without the month axis there is nowhere to put a milestone, so the trail
  * draws the empty frame it draws while loading rather than every point at
- * the left edge.
+ * the left edge. A member with no milestones has none to place, and the
+ * trail says so.
  */
 const trailStatus = computed<MilestoneStatus>(() =>
-  milestoneStatus === 'ready' && months.length === 0 ? 'loading' : milestoneStatus,
+  milestoneStatus === 'ready' && months.length === 0 && milestones.length > 0 ? 'loading' : milestoneStatus,
 );
 
 const pointed = ref<number | null>(null);
