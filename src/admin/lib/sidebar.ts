@@ -36,6 +36,7 @@ export const SIDEBAR_GROUPS: readonly NavGroup[] = [
     label: 'データ',
     items: [
       { page: 'snaps', name: '統計' },
+      { page: 'subscribers', name: '登録者数の節目' },
       { page: 'footprints', name: 'あしあと' },
       { page: 'channels', name: 'メンバー' },
       { page: 'videos', name: '配信・動画' },

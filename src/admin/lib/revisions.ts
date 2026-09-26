@@ -33,6 +33,7 @@ const ENTITY_LABEL: Record<string, string> = {
   channel: 'メンバー',
   video_override: '配信・動画の上書き',
   channel_snapshot_exclusion: '統計の除外',
+  subscriber_milestone: '登録者数の節目',
 };
 
 const ACTION_LABEL: Record<string, string> = {
@@ -46,6 +47,7 @@ const ACTION_LABEL: Record<string, string> = {
 const TARGET_LABEL: Record<string, string> = {
   footprints: 'あしあと',
   genet_music: 'ジェネット楽曲一覧',
+  subscriber_milestones: '登録者数の節目',
 };
 
 export const ENTITIES = Object.keys(ENTITY_LABEL);
