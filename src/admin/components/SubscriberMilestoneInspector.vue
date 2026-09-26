@@ -58,12 +58,14 @@ const saving = ref(false);
 const errorMessage = ref<string | null>(null);
 const errorField = ref<MilestoneFieldKey | null>(null);
 
+// A refetch hands the same row back as a new object, and the fields follow
+// what was saved. The error is left alone: a refetch can follow a failed step
+// (see `moveStatus`), and the message is still the answer to it. Selecting
+// another row mounts a new panel (the page keys it by id), which starts clean.
 watch(
   () => props.milestone,
   () => {
     fields.value = initialFields();
-    errorMessage.value = null;
-    errorField.value = null;
   },
 );
 
@@ -157,12 +159,21 @@ function save(): Promise<void> {
   });
 }
 
-/** Saves the fields, then moves the row one step, as FootprintsInspector.vue's own `moveStatus` does. */
+/**
+ * Saves the fields, then moves the row one step, as FootprintsInspector.vue's
+ * own `moveStatus` does. The save stands even when the step is refused (a
+ * publish without enough sources), so the table is refetched either way.
+ */
 function moveStatus(action: 'publish' | 'withdraw'): Promise<void> {
   return withErrorHandling(async () => {
     await putJson(`/subscribers/milestones/${milestoneId.value}`, toRequestBody(fields.value));
-    await postJson(`/subscribers/milestones/${milestoneId.value}/${action}`, {});
-    emit('changed');
+
+    try {
+      await postJson(`/subscribers/milestones/${milestoneId.value}/${action}`, {});
+    } finally {
+      emit('changed');
+    }
+
     showToast(action === 'withdraw' ? WITHDRAW_QUEUED_TOAST : PUBLISH_QUEUED_TOAST);
   });
 }
