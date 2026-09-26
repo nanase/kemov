@@ -8,6 +8,7 @@ import {
   readLiveList,
   readMonthsSeries,
   readStreamList,
+  readSubscriberMilestones,
   readVideoPage,
   readVideoRanking,
   readVideoTable,
@@ -16,6 +17,7 @@ import {
   type LiveList,
   type MonthsSeries,
   type StreamList,
+  type SubscriberMilestones,
   type Video,
   type VideoPage,
   type VideoRanking,
@@ -51,6 +53,14 @@ export class ApiError extends Error {
     readonly path: string,
     readonly status: number | null,
     message: string,
+    /**
+     * The `error` the API wrote into its body, when it wrote one.
+     *
+     * A status alone cannot tell the API's own 404 from one a proxy or a
+     * misrouted request answered with, and the two mean different things on
+     * a page that reads "not published yet" as "nothing recorded".
+     */
+    readonly reason: string | null = null,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -108,12 +118,18 @@ async function get<T>(path: string, read: (body: unknown) => T): Promise<ApiResu
   try {
     response = await axios.get<unknown>(`${apiBase}${path}`);
   } catch (error) {
-    const status =
+    const response =
       typeof error === 'object' && error !== null && 'response' in error
-        ? ((error as { response?: { status?: number } }).response?.status ?? null)
-        : null;
+        ? (error as { response?: { status?: number; data?: unknown } }).response
+        : undefined;
+    const reason = (response?.data as { error?: unknown } | null | undefined)?.error;
 
-    throw new ApiError(path, status, `${path} could not be read: ${String(error)}`);
+    throw new ApiError(
+      path,
+      response?.status ?? null,
+      `${path} could not be read: ${String(error)}`,
+      typeof reason === 'string' ? reason : null,
+    );
   }
 
   try {
@@ -194,6 +210,21 @@ export function getVideosTable(): Promise<ApiResult<VideoTable>> {
  */
 export function getFootprintEvents(): Promise<ApiResult<FootprintEvents>> {
   return get('/footprints/events', readFootprintEvents);
+}
+
+/**
+ * The subscriber counts announced and recorded by hand (#225).
+ *
+ * Like the footprints, a 404 with `not published yet` is an answer: nothing
+ * has been recorded. `isNotPublished` tells it apart from any other failure.
+ */
+export function getSubscriberMilestones(): Promise<ApiResult<SubscriberMilestones>> {
+  return get('/subscribers/milestones', readSubscriberMilestones);
+}
+
+/** Whether a failure is the public bucket's "nothing has been written under this key yet". */
+export function isNotPublished(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404 && error.reason === 'not published yet';
 }
 
 /**

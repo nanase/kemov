@@ -316,7 +316,9 @@ YouTube API Services の Developer Policies（III.E.4.d）は、チャンネル�
 
 ### 公開サイトへの影響
 
-`/api/months` の登録者数は、各月の終わり以前で最も新しい `channel_snapshot` を使います。30 日を過ぎた月は、その行が消えるので欠けます。2026 年 9 月の値は、11 月以降に欠けます。長い期間の推移は、公表された節目から作り直します（[#225](https://github.com/nanase/kemov/issues/225)）。
+`/api/months` は登録者数の系列を持ちません。30 日を過ぎた `channel_snapshot` は消えるので、月ごとの推移を作れないためです。統計ページの登録数は、公表された節目（[登録者数の節目](#登録者数の節目)）から描きます（[#225](https://github.com/nanase/kemov/issues/225)）。
+
+`/api/channels` の 30 日の増減は、これまでどおり `channel_snapshot` から作ります。
 
 Time Travel やバックアップから戻した行も、30 日を過ぎていれば次の回で消えます。
 

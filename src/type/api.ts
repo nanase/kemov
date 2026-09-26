@@ -343,7 +343,10 @@ export function readLiveList(body: unknown): LiveList {
  *
  * Every array has one entry per month in `months`, in the same order. A null
  * is not a zero: in a member's own series it means the month is before their
- * debut, and in `subscribers` it means no count was read that month.
+ * debut.
+ *
+ * There is no subscriber series. `channel_snapshot` keeps 30 days only, so
+ * the page draws subscribers from the published milestones instead (#225).
  */
 export const MONTH_SERIES = [
   'streams',
@@ -357,25 +360,10 @@ export const MONTH_SERIES = [
 
 export type MonthSeriesName = (typeof MONTH_SERIES)[number];
 
-export type ChannelMonths = { channelId: string } & Record<MonthSeriesName, (number | null)[]> & {
-    /**
-     * What this member's subscriber count was read as that month.
-     *
-     * Null where no snapshot covers the month, which is every month before
-     * collection started (#125). `total.subscribers` is not this summed - see
-     * below.
-     */
-    subscribers: (number | null)[];
-  };
+export type ChannelMonths = { channelId: string } & Record<MonthSeriesName, (number | null)[]>;
 
-/**
- * The same series for every member at once.
- *
- * `subscribers` carries an ended member's last known count forward rather
- * than dropping it, which is what #134 asks of the total and what a member's
- * own series deliberately does not do.
- */
-export type MonthTotals = Record<MonthSeriesName, number[]> & { subscribers: (number | null)[] };
+/** The same series for every member at once. */
+export type MonthTotals = Record<MonthSeriesName, number[]>;
 
 export interface MonthsSeries {
   /** The newest reading behind these numbers, or null when there is none yet. */
@@ -390,7 +378,7 @@ export interface MonthsSeries {
  * A month-by-month series, every entry a tally or a hole.
  *
  * Read as counts rather than as plain numbers: every one of these is a number
- * of things - streams, seconds, chat lines, subscribers - and the page adds
+ * of things - streams, seconds, chat lines - and the page adds
  * them up. A negative or fractional entry would be carried into a total that
  * nobody could explain.
  */
@@ -405,17 +393,13 @@ function readChannelMonths(value: unknown, path: string): ChannelMonths {
       MonthSeriesName,
       (number | null)[]
     >),
-    subscribers: readCounts(value, path, 'subscribers'),
   };
 }
 
 function readMonthTotals(value: unknown, path: string): MonthTotals {
-  return {
-    ...(Object.fromEntries(
-      MONTH_SERIES.map((name) => [name, readEach(field(value, name, path), `${path}.${name}`, readCount)]),
-    ) as Record<MonthSeriesName, number[]>),
-    subscribers: readCounts(value, path, 'subscribers'),
-  };
+  return Object.fromEntries(
+    MONTH_SERIES.map((name) => [name, readEach(field(value, name, path), `${path}.${name}`, readCount)]),
+  ) as MonthTotals;
 }
 
 export function readMonthsSeries(body: unknown): MonthsSeries {
@@ -673,5 +657,82 @@ export function readFootprintEvents(body: unknown): FootprintEvents {
       dayjs(readInstant(v, p)),
     ),
     events: readEach(field(body, 'events', 'body'), 'body.events', readFootprintEvent),
+  };
+}
+
+/** Who announced a subscriber count (#225). */
+export const MILESTONE_ANNOUNCERS = ['member', 'official', 'listener'] as const;
+
+export type MilestoneAnnouncer = (typeof MILESTONE_ANNOUNCERS)[number];
+
+/** A milestone's date is known to the day or to the month, never only to the year. */
+const MILESTONE_PRECISIONS = ['day', 'month'] as const;
+
+/**
+ * A subscriber count somebody announced, as `GET /api/subscribers/milestones`
+ * publishes it (#225).
+ *
+ * The count is a floor: on `reachedDate` the channel had at least this many.
+ * A listener's post is published without its URL, so `sources` is empty for
+ * one - which is the rule, not a hole.
+ */
+export interface SubscriberMilestone {
+  milestoneId: number;
+  channelId: string;
+  datePrecision: (typeof MILESTONE_PRECISIONS)[number];
+  /** `YYYY-MM-DD`, or `YYYY-MM` when only the month is known. */
+  reachedDate: string;
+  subscriberCount: number;
+  announcedBy: MilestoneAnnouncer;
+  /** The footprints event it is linked to, as the public timeline shows it. */
+  event: { eventId: number; title: string; startDate: string } | null;
+  sources: { url: string; title: string | null }[];
+}
+
+export interface SubscriberMilestones {
+  publishedAt: Dayjs | null;
+  milestones: SubscriberMilestone[];
+}
+
+function readSubscriberMilestone(value: unknown, path: string): SubscriberMilestone {
+  const datePrecision = readOneOf(field(value, 'date_precision', path), `${path}.date_precision`, MILESTONE_PRECISIONS);
+  const reachedDate = readString(field(value, 'reached_date', path), `${path}.reached_date`);
+
+  if (!DATE_SHAPES[datePrecision].test(reachedDate)) {
+    throw new ShapeError(`${path}.reached_date`, `a date as exact as its ${datePrecision} precision`, reachedDate);
+  }
+
+  return {
+    milestoneId: readNumber(field(value, 'milestone_id', path), `${path}.milestone_id`),
+    channelId: readString(field(value, 'channel_id', path), `${path}.channel_id`),
+    datePrecision,
+    reachedDate,
+    subscriberCount: readCount(field(value, 'subscriber_count', path), `${path}.subscriber_count`),
+    announcedBy: readOneOf(field(value, 'announced_by', path), `${path}.announced_by`, MILESTONE_ANNOUNCERS),
+    event: readOrNull(field(value, 'event', path), `${path}.event`, (event, at) => ({
+      eventId: readNumber(field(event, 'event_id', at), `${at}.event_id`),
+      title: readString(field(event, 'title', at), `${at}.title`),
+      startDate: readString(field(event, 'start_date', at), `${at}.start_date`),
+    })),
+    sources: readEach(field(value, 'sources', path), `${path}.sources`, (source, at) => ({
+      url: readString(field(source, 'url', at), `${at}.url`),
+      title: readOrNull(field(source, 'title', at), `${at}.title`, readString),
+    })),
+  };
+}
+
+/**
+ * `GET /api/subscribers/milestones`'s body.
+ *
+ * Until the first publish the endpoint answers 404 with
+ * `{"error":"not published yet"}`. The caller reads that as "nothing
+ * recorded", not as a failure (see `useStatsData`).
+ */
+export function readSubscriberMilestones(body: unknown): SubscriberMilestones {
+  return {
+    publishedAt: readOrNull(field(body, 'published_at', 'body'), 'body.published_at', (v, p) =>
+      dayjs(readInstant(v, p)),
+    ),
+    milestones: readEach(field(body, 'milestones', 'body'), 'body.milestones', readSubscriberMilestone),
   };
 }

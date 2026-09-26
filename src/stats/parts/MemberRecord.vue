@@ -21,6 +21,9 @@ import {
   type Subject,
 } from '../model';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
+import type { MilestoneStatus } from '../useStatsData';
+import MilestoneRows from './MilestoneRows.vue';
+import MilestoneTrail from './MilestoneTrail.vue';
 import MonthChart from './MonthChart.vue';
 import RecentStreams, { type StreamRow } from './RecentStreams.vue';
 import SegmentGroup from '@/parts/SegmentGroup.vue';
@@ -34,21 +37,25 @@ import StreamHeatmap from './StreamHeatmap.vue';
  * against anybody else (#134), which is why the record can be opened for the
  * sum without changing what any of it means.
  */
-const { subject, metric, period, series, step, months, dark, state, streams, heading } = defineProps<{
-  subject: Subject;
-  metric: MetricId;
-  period: PeriodId;
-  series: SeriesId;
-  /** Minutes per heatmap cell. */
-  step: HeatStep;
-  months: readonly string[];
-  dark: boolean;
-  /** Whether this member is on air or due to start, when they are. */
-  state: AnnouncementKind | undefined;
-  streams: readonly StreamRow[];
-  /** What the panel says at its top; the sum says how many members it covers. */
-  heading: string;
-}>();
+const { subject, metric, period, series, step, months, dark, state, streams, heading, milestoneStatus, today } =
+  defineProps<{
+    subject: Subject;
+    metric: MetricId;
+    period: PeriodId;
+    series: SeriesId;
+    /** Minutes per heatmap cell. */
+    step: HeatStep;
+    months: readonly string[];
+    dark: boolean;
+    /** Whether this member is on air or due to start, when they are. */
+    state: AnnouncementKind | undefined;
+    streams: readonly StreamRow[];
+    /** What the panel says at its top; the sum says how many members it covers. */
+    heading: string;
+    milestoneStatus: MilestoneStatus;
+    /** Today in JST, `YYYY-MM-DD`, where the milestone chart puts today's count. */
+    today: string;
+  }>();
 
 const emit = defineEmits<{ metric: [id: MetricId]; series: [id: SeriesId]; step: [minutes: HeatStep]; close: [] }>();
 
@@ -73,6 +80,17 @@ const figures = computed(() =>
 );
 
 const chosenSeries = computed(() => seriesDef(series));
+
+/**
+ * The milestones' status as the charts should draw it. Without the month
+ * axis there is nowhere to put a milestone, so the charts draw the empty
+ * frame they draw while loading - the same as the month tabs, whose charts
+ * are empty when the months could not be read - rather than every point at
+ * the left edge.
+ */
+const milestoneDrawStatus = computed<MilestoneStatus>(() =>
+  milestoneStatus === 'ready' && months.length === 0 ? 'loading' : milestoneStatus,
+);
 const seriesItems = SERIES.map((s) => ({
   id: s.id,
   label: s.label,
@@ -155,7 +173,26 @@ const seriesItems = SERIES.map((s) => ({
         </div>
         <span v-if="chosenSeries.note" class="note">{{ chosenSeries.note }}</span>
       </div>
-      <MonthChart :values="subject.months[series]" :months="months" :series="chosenSeries" />
+      <template v-if="series === 'milestones'">
+        <MilestoneRows
+          v-if="subject.members"
+          :members="subject.members"
+          :months="months"
+          :status="milestoneDrawStatus"
+          :dark="dark"
+        />
+        <MilestoneTrail
+          v-else
+          :key="subject.id"
+          :milestones="subject.milestones"
+          :months="months"
+          :now="subject.counts.subscriberCount"
+          :today="today"
+          :status="milestoneDrawStatus"
+          :name="subject.name"
+        />
+      </template>
+      <MonthChart v-else :values="subject.months[series]" :months="months" :series="chosenSeries" />
     </div>
 
     <div class="block">

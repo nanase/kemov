@@ -1,11 +1,19 @@
 import { computed, ref, type Ref } from 'vue';
 
-import { getChannels, getLive, getMonths, getStreams, type ApiError } from '@/lib/api';
+import {
+  getChannels,
+  getLive,
+  getMonths,
+  getStreams,
+  getSubscriberMilestones,
+  isNotPublished,
+  type ApiError,
+} from '@/lib/api';
 import { useIntervalAction } from '@/lib/useIntervalAction';
-import type { Channel, LiveStream, MonthsSeries, StreamList } from '@/type/api';
+import type { Channel, LiveStream, MonthsSeries, StreamList, SubscriberMilestone } from '@/type/api';
 
 /**
- * The four endpoints the statistics page reads, and how often it asks again.
+ * The five endpoints the statistics page reads, and how often it asks again.
  *
  * They are split into two rhythms rather than one. The counts and what is on
  * air change every collection round; the month-by-month series and the stream
@@ -27,11 +35,23 @@ const ARCHIVE_SECONDS = 1800;
 /** How long to wait after a failure before asking again. */
 const RETRY_SECONDS = 600;
 
+/**
+ * Where the subscriber milestones stand.
+ *
+ * Kept apart from the list itself because an empty list is two different
+ * things: nothing recorded, which the page says, and nothing read, which it
+ * must not say as the same words.
+ */
+export type MilestoneStatus = 'loading' | 'ready' | 'failed';
+
 export interface StatsData {
   channels: Ref<Channel[]>;
   live: Ref<LiveStream[]>;
   months: Ref<MonthsSeries | null>;
   streams: Ref<StreamList | null>;
+  /** Every published milestone. Empty until read, and while nothing has been published. */
+  milestones: Ref<SubscriberMilestone[]>;
+  milestoneStatus: Ref<MilestoneStatus>;
   /** When the counts were read, as the API reports it. */
   countsFetchedAt: Ref<number | null>;
   /** True until the first round of each rhythm is over, answered or not. */
@@ -47,6 +67,8 @@ export function useStatsData(): StatsData {
   const live = ref<LiveStream[]>([]);
   const months = ref<MonthsSeries | null>(null);
   const streams = ref<StreamList | null>(null);
+  const milestones = ref<SubscriberMilestone[]>([]);
+  const milestoneStatus = ref<MilestoneStatus>('loading');
   const countsFetchedAt = ref<number | null>(null);
   const countsAsked = ref(false);
   const archiveAsked = ref(false);
@@ -87,14 +109,30 @@ export function useStatsData(): StatsData {
   const archive = useIntervalAction(
     ARCHIVE_SECONDS * 1000,
     async () => {
-      const [monthsSeries, streamList] = await Promise.allSettled([getMonths(), getStreams()]);
+      const [monthsSeries, streamList, published] = await Promise.allSettled([
+        getMonths(),
+        getStreams(),
+        getSubscriberMilestones(),
+      ]);
 
       if (monthsSeries.status === 'fulfilled') months.value = monthsSeries.value.data;
       if (streamList.status === 'fulfilled') streams.value = streamList.value.data;
 
+      // Nothing published yet is an answer - nobody has a milestone - the same
+      // as the footprints' own 404. Any other failure keeps what was read
+      // last, and is only "could not be read" while nothing ever was.
+      const unpublished = published.status === 'rejected' && isNotPublished(published.reason);
+
+      if (published.status === 'fulfilled' || unpublished) {
+        milestones.value = published.status === 'fulfilled' ? published.value.data.milestones : [];
+        milestoneStatus.value = 'ready';
+      } else if (milestoneStatus.value === 'loading') {
+        milestoneStatus.value = 'failed';
+      }
+
       archiveAsked.value = true;
 
-      const failed = refusal([monthsSeries, streamList]);
+      const failed = refusal(unpublished ? [monthsSeries, streamList] : [monthsSeries, streamList, published]);
 
       if (failed !== undefined) throw failed.reason;
 
@@ -110,6 +148,8 @@ export function useStatsData(): StatsData {
     live,
     months,
     streams,
+    milestones,
+    milestoneStatus,
     countsFetchedAt,
     loading: computed(() => !countsAsked.value || !archiveAsked.value) as Ref<boolean>,
     failure: computed(() => failureOf(counts.error.value) ?? failureOf(archive.error.value)) as Ref<ApiError | null>,

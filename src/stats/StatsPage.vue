@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt from '@/shell/UpdatedAt.vue';
+import { milestonesByChannel } from '@/lib/milestones';
 import { formatDate, formatDateTime } from '@/lib/timeFormat';
 
 import {
@@ -90,9 +91,9 @@ const source = computed<SubjectSource>(() => ({
     chatMessages: [],
     chatUniqueUsers: [],
     views: [],
-    subscribers: [],
   },
   spans: new Map((data.streams.value?.channels ?? []).map((c) => [c.channelId, c.spans])),
+  milestones: milestonesByChannel(data.milestones.value),
 }));
 
 const everyMember = computed(() => !activeOnly.value);
@@ -314,6 +315,8 @@ onBeforeUnmount(() => {
               :dark="dark"
               :states="states"
               :minimal="minimal"
+              :months="months"
+              :today="formatDate(now)"
               @select="select"
             />
           </div>
@@ -331,6 +334,8 @@ onBeforeUnmount(() => {
           :state="states.get(subject.id)"
           :streams="streamRows"
           :heading="heading"
+          :milestone-status="data.milestoneStatus.value"
+          :today="formatDate(now)"
           @metric="metric = $event"
           @series="series = $event"
           @step="step = $event"

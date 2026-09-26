@@ -22,7 +22,6 @@ const MONTHS = {
       chatMessages: [null, 500, 120],
       chatUniqueUsers: [null, 90, 40],
       views: [null, 12000, 3000],
-      subscribers: [null, null, 1000],
     },
   ],
   total: {
@@ -33,7 +32,6 @@ const MONTHS = {
     chatMessages: [0, 500, 120],
     chatUniqueUsers: [0, 90, 40],
     views: [0, 12000, 3000],
-    subscribers: [null, 980, 1000],
   },
 };
 
@@ -54,15 +52,6 @@ describe('readMonthsSeries', () => {
     const series = readMonthsSeries(MONTHS);
 
     expect(series.channels[0]!.videos).toEqual([null, 1, 0]);
-  });
-
-  // The total carries an ended member's last count forward, so it can hold a
-  // number in a month where that member's own series holds null.
-  test('reads a total subscriber count the member does not have of their own', () => {
-    const series = readMonthsSeries(MONTHS);
-
-    expect(series.channels[0]!.subscribers[1]).toBeNull();
-    expect(series.total.subscribers[1]).toEqual(980);
   });
 
   test('refuses a total series with a hole in it', () => {
@@ -91,7 +80,6 @@ describe('readMonthsSeries', () => {
         chatMessages: [],
         chatUniqueUsers: [],
         views: [],
-        subscribers: [],
       },
     };
 
