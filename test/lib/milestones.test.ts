@@ -4,7 +4,13 @@ import {
   chartSummary,
   countLabel,
   countScale,
+  drawStatus,
   labelSides,
+  latestLabel,
+  MILESTONE_EMPTY,
+  MILESTONE_FAILED,
+  MILESTONE_HEADING,
+  MILESTONE_WORD,
   milestonesByChannel,
   monthlyEstimates,
   pointName,
@@ -171,8 +177,32 @@ describe('what is read out', () => {
     const list = [milestone({ reachedDate: '2021-08-28', subscriberCount: 5000 }), milestone()];
 
     expect(chartSummary('シマハイイロギツネ', list)).toEqual(
-      'シマハイイロギツネの登録者数の節目 2 件。最新は 2024-01-30 の 2万人',
+      `シマハイイロギツネの登録者数の${MILESTONE_WORD} 2 件。最新は 2024-01-30 の 2万人`,
     );
     expect(chartSummary('シマハイイロギツネ', [])).toBeNull();
+  });
+
+  // Every sentence that names a milestone is made from one word, so that
+  // changing what the site calls it is one change (#225).
+  test('says the milestone in the one word the site uses', () => {
+    expect(MILESTONE_EMPTY).toEqual(`${MILESTONE_WORD}の記録はまだありません`);
+    expect(MILESTONE_FAILED).toEqual(`${MILESTONE_WORD}の記録を取得できませんでした`);
+    expect(MILESTONE_HEADING).toEqual(`登録者数の${MILESTONE_WORD}`);
+  });
+
+  test('notes the newest milestone under the count on the member page', () => {
+    expect(latestLabel(milestone())).toEqual(`最新の${MILESTONE_WORD} 2万人 ・ 2024-01-30`);
+    expect(latestLabel(milestone({ reachedDate: '2023-06', subscriberCount: 15000 }))).toEqual(
+      `最新の${MILESTONE_WORD} 1.5万人 ・ 2023-06`,
+    );
+  });
+
+  // With no month axis a milestone has nowhere to go, but a member with none
+  // has nothing to place, and "nothing recorded" is still true.
+  test('holds a chart back for a missing month axis only when it has milestones to place', () => {
+    expect(drawStatus('ready', 0, 2)).toBe('loading');
+    expect(drawStatus('ready', 0, 0)).toBe('ready');
+    expect(drawStatus('ready', 60, 2)).toBe('ready');
+    expect(drawStatus('failed', 0, 2)).toBe('failed');
   });
 });

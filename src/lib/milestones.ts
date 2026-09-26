@@ -15,6 +15,44 @@ import type { MilestoneAnnouncer, SubscriberMilestone } from '@/type/api';
 
 const NUMBER = new Intl.NumberFormat('ja-JP');
 
+/**
+ * Where the milestones stand.
+ *
+ * Kept apart from the list itself because an empty list is two different
+ * things: nothing recorded, which the page says, and nothing read, which it
+ * must not say as the same words.
+ */
+export type MilestoneStatus = 'loading' | 'ready' | 'failed';
+
+/**
+ * The status a chart of milestones is drawn with.
+ *
+ * Without the month axis there is nowhere to put a milestone, so a chart with
+ * some to place draws the empty frame it draws while loading rather than
+ * every point at the left edge. With none to place, "nothing recorded" is
+ * still true and is said.
+ */
+export function drawStatus(status: MilestoneStatus, monthCount: number, milestoneCount: number): MilestoneStatus {
+  return status === 'ready' && monthCount === 0 && milestoneCount > 0 ? 'loading' : status;
+}
+
+/**
+ * What the site calls a milestone on screen. Every sentence below that says
+ * it, and every one the pages build from it, is made from this word, so that
+ * changing what the site says is a change here (the admin site and the code
+ * say 節目 regardless).
+ */
+export const MILESTONE_WORD = 'ふしめ';
+
+/** What a chart says in place of one when nothing was recorded. */
+export const MILESTONE_EMPTY = `${MILESTONE_WORD}の記録はまだありません`;
+
+/** What a chart says when the record could not be read. */
+export const MILESTONE_FAILED = `${MILESTONE_WORD}の記録を取得できませんでした`;
+
+/** The monthly panel's heading while its milestone tab is chosen. */
+export const MILESTONE_HEADING = `登録者数の${MILESTONE_WORD}`;
+
 /** Who announced it, as the card and the point's name say it. */
 export const ANNOUNCER_LABELS: Readonly<Record<MilestoneAnnouncer, string>> = {
   member: '本人の公表',
@@ -87,6 +125,42 @@ export function axisFraction(date: string, months: readonly string[]): number {
   const within = date.length === 7 ? 0.5 : (Number(date.slice(8, 10)) - 0.5) / daysIn(month);
 
   return (index + within) / months.length;
+}
+
+/**
+ * The year marks under the chart, with the ones that would collide dropped.
+ *
+ * The two ends always carry their own month, so the axis says what it spans
+ * even at a width where every year mark in between has to go.
+ */
+export interface AxisMark {
+  /** Where it sits, as a percentage of the width. */
+  left: number;
+  label: string;
+  edge?: 'left' | 'right';
+}
+
+export function axisMarks(months: readonly string[], widthPx: number): AxisMark[] {
+  if (months.length === 0) return [];
+
+  const marks: AxisMark[] = [{ left: 0, label: months[0]!, edge: 'left' }];
+  const gap = Math.max(13, (54 / Math.max(widthPx, 1)) * 100);
+  let last = 0;
+
+  months.forEach((month, index) => {
+    if (index === 0 || index === months.length - 1 || !month.endsWith('-01')) return;
+
+    const left = ((index + 0.5) / months.length) * 100;
+
+    if (left < gap || left > 100 - gap || left < last + gap) return;
+
+    marks.push({ left, label: `${month.slice(0, 4)}年` });
+    last = left;
+  });
+
+  if (months.length > 1) marks.push({ left: 100, label: months.at(-1)!, edge: 'right' });
+
+  return marks;
 }
 
 export interface CountScale {
@@ -253,5 +327,10 @@ export function chartSummary(name: string, milestones: readonly SubscriberMilest
 
   if (last === undefined) return null;
 
-  return `${name}の登録者数の節目 ${milestones.length} 件。最新は ${last.reachedDate} の ${countLabel(last.subscriberCount)}人`;
+  return `${name}の${MILESTONE_HEADING} ${milestones.length} 件。最新は ${last.reachedDate} の ${countLabel(last.subscriberCount)}人`;
+}
+
+/** The newest milestone as the member page's figure notes it: `最新のふしめ 2万人 ・ 2024-01-30`. */
+export function latestLabel(milestone: SubscriberMilestone): string {
+  return `最新の${MILESTONE_WORD} ${countLabel(milestone.subscriberCount)}人 ・ ${milestone.reachedDate}`;
 }

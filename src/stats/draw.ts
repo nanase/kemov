@@ -10,41 +10,7 @@ import { formatDuration as formatVideoDuration } from '@/type/video';
  * rule against comparing them is kept while drawing.
  */
 
-/**
- * The year marks under the chart, with the ones that would collide dropped.
- *
- * The two ends always carry their own month, so the axis says what it spans
- * even at a width where every year mark in between has to go.
- */
-export interface AxisMark {
-  /** Where it sits, as a percentage of the width. */
-  left: number;
-  label: string;
-  edge?: 'left' | 'right';
-}
-
-export function axisMarks(months: readonly string[], widthPx: number): AxisMark[] {
-  if (months.length === 0) return [];
-
-  const marks: AxisMark[] = [{ left: 0, label: months[0]!, edge: 'left' }];
-  const gap = Math.max(13, (54 / Math.max(widthPx, 1)) * 100);
-  let last = 0;
-
-  months.forEach((month, index) => {
-    if (index === 0 || index === months.length - 1 || !month.endsWith('-01')) return;
-
-    const left = ((index + 0.5) / months.length) * 100;
-
-    if (left < gap || left > 100 - gap || left < last + gap) return;
-
-    marks.push({ left, label: `${month.slice(0, 4)}年` });
-    last = left;
-  });
-
-  if (months.length > 1) marks.push({ left: 100, label: months.at(-1)!, edge: 'right' });
-
-  return marks;
-}
+export { axisMarks, type AxisMark } from '@/lib/milestones';
 
 const NUMBER = new Intl.NumberFormat('ja-JP');
 

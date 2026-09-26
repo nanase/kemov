@@ -1,12 +1,20 @@
 import { computed, ref, type Ref } from 'vue';
 
-import { getChannels, getMonths, getVideosTable, type ApiError } from '@/lib/api';
+import {
+  getChannels,
+  getMonths,
+  getSubscriberMilestones,
+  getVideosTable,
+  isNotPublished,
+  type ApiError,
+} from '@/lib/api';
+import { milestonesByChannel, type MilestoneStatus } from '@/lib/milestones';
 import { useIntervalAction } from '@/lib/useIntervalAction';
 import { tableRows, type VideoTableRow } from '@/lib/ranking';
-import type { Channel, MonthsSeries } from '@/type/api';
+import type { Channel, MonthsSeries, SubscriberMilestone } from '@/type/api';
 
 /**
- * The three endpoints the member page reads, and how often it asks again.
+ * The endpoints the member page reads, and how often it asks again.
  *
  * `GET /api/videos/table` is the whole public archive in one response, which
  * is what #144 built it for: the list's ranking, the heatmap, the shape of a
@@ -31,6 +39,9 @@ export interface MembersData {
   channels: Ref<Channel[]>;
   months: Ref<MonthsSeries | null>;
   rows: Ref<VideoTableRow[]>;
+  /** Every published milestone, oldest first, by channel. Empty until read. */
+  milestones: Ref<ReadonlyMap<string, readonly SubscriberMilestone[]>>;
+  milestoneStatus: Ref<MilestoneStatus>;
   /** When the counts were read, as the API reports it. */
   countsFetchedAt: Ref<number | null>;
   /** True until the first round of each rhythm is over, answered or not. */
@@ -53,6 +64,8 @@ export function useMembersData(): MembersData {
   const channels = ref<Channel[]>([]);
   const months = ref<MonthsSeries | null>(null);
   const rows = ref<VideoTableRow[]>([]);
+  const milestones = ref<ReadonlyMap<string, readonly SubscriberMilestone[]>>(new Map());
+  const milestoneStatus = ref<MilestoneStatus>('loading');
   const countsFetchedAt = ref<number | null>(null);
   const countsAsked = ref(false);
   const archiveAsked = ref(false);
@@ -88,7 +101,11 @@ export function useMembersData(): MembersData {
     async () => {
       // Asked together but kept apart: the board can be drawn from the table
       // alone, and the monthly panel from the months alone.
-      const [table, monthsSeries] = await Promise.allSettled([getVideosTable(), getMonths()]);
+      const [table, monthsSeries, published] = await Promise.allSettled([
+        getVideosTable(),
+        getMonths(),
+        getSubscriberMilestones(),
+      ]);
 
       if (table.status === 'fulfilled') {
         rows.value = tableRows(table.value.data);
@@ -100,9 +117,21 @@ export function useMembersData(): MembersData {
         monthsRead.value = true;
       }
 
+      // Nothing published yet is an answer - nobody has a milestone. Any
+      // other failure keeps what was read last, and is only "could not be
+      // read" while nothing ever was. The same as the statistics page.
+      const unpublished = published.status === 'rejected' && isNotPublished(published.reason);
+
+      if (published.status === 'fulfilled' || unpublished) {
+        milestones.value = milestonesByChannel(published.status === 'fulfilled' ? published.value.data.milestones : []);
+        milestoneStatus.value = 'ready';
+      } else if (milestoneStatus.value === 'loading') {
+        milestoneStatus.value = 'failed';
+      }
+
       archiveAsked.value = true;
 
-      const failed = refusal([table, monthsSeries]);
+      const failed = refusal(unpublished ? [table, monthsSeries] : [table, monthsSeries, published]);
 
       if (failed !== undefined) throw failed.reason;
 
@@ -117,6 +146,8 @@ export function useMembersData(): MembersData {
     channels,
     months,
     rows,
+    milestones,
+    milestoneStatus,
     countsFetchedAt,
     loading: computed(() => !countsAsked.value || !archiveAsked.value) as Ref<boolean>,
     missing: computed(() => ({ table: !tableRead.value, months: !monthsRead.value })) as Ref<{

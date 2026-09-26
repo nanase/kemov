@@ -2,14 +2,22 @@
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
 
 import { memberAccent, memberColor } from '@/lib/memberColor';
-import { axisFraction, cardPlacement, chartSummary, countLabel, labelSides } from '@/lib/milestones';
+import {
+  axisFraction,
+  cardPlacement,
+  chartSummary,
+  countLabel,
+  labelSides,
+  MILESTONE_EMPTY,
+  MILESTONE_FAILED,
+} from '@/lib/milestones';
 import { useMilestoneCard } from '@/lib/useMilestoneCard';
 import MilestoneCard from '@/parts/MilestoneCard.vue';
 import { axisMarks } from '../draw';
 import type { Subject } from '../model';
-import type { MilestoneStatus } from '../useStatsData';
-import MilestoneLegend from './MilestoneLegend.vue';
-import MilestonePoint from './MilestonePoint.vue';
+import type { MilestoneStatus } from '@/lib/milestones';
+import MilestoneLegend from '@/parts/MilestoneLegend.vue';
+import MilestonePoint from '@/parts/MilestonePoint.vue';
 
 /**
  * Every member's subscriber milestones, one row each, for the sum (#225).
@@ -79,9 +87,7 @@ onBeforeUnmount(() => observer?.disconnect());
 
 <template>
   <div class="milestone-rows">
-    <p v-if="status === 'failed'" class="failed">
-      節目の記録を取得できませんでした。しばらく時間をおいてから再度お試しください
-    </p>
+    <p v-if="status === 'failed'" class="failed">{{ MILESTONE_FAILED }}。しばらく時間をおいてから再度お試しください</p>
     <template v-else>
       <div class="row head" aria-hidden="true">
         <span></span>
@@ -129,7 +135,7 @@ onBeforeUnmount(() => observer?.disconnect());
             @close="close(true)"
           />
         </div>
-        <span v-else-if="status === 'ready'" class="empty">節目の記録はまだありません</span>
+        <span v-else-if="status === 'ready'" class="empty">{{ MILESTONE_EMPTY }}</span>
         <span v-else class="strip" aria-hidden="true"><span class="rule"></span></span>
       </div>
       <MilestoneLegend :now="false" />

@@ -21,9 +21,9 @@ import {
   type Subject,
 } from '../model';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
-import type { MilestoneStatus } from '../useStatsData';
+import MilestoneTrail from '@/parts/MilestoneTrail.vue';
+import { drawStatus, type MilestoneStatus } from '@/lib/milestones';
 import MilestoneRows from './MilestoneRows.vue';
-import MilestoneTrail from './MilestoneTrail.vue';
 import MonthChart from './MonthChart.vue';
 import RecentStreams, { type StreamRow } from './RecentStreams.vue';
 import SegmentGroup from '@/parts/SegmentGroup.vue';
@@ -82,14 +82,19 @@ const figures = computed(() =>
 const chosenSeries = computed(() => seriesDef(series));
 
 /**
- * The milestones' status as the charts should draw it. Without the month
- * axis there is nowhere to put a milestone, so the charts draw the empty
- * frame they draw while loading - the same as the month tabs, whose charts
- * are empty when the months could not be read - rather than every point at
- * the left edge.
+ * The milestones' status as the charts should draw it: the empty frame they
+ * draw while loading when there is no month axis to place them on - the same
+ * as the month tabs, whose charts are empty when the months could not be
+ * read.
  */
 const milestoneDrawStatus = computed<MilestoneStatus>(() =>
-  milestoneStatus === 'ready' && months.length === 0 ? 'loading' : milestoneStatus,
+  drawStatus(
+    milestoneStatus,
+    months.length,
+    subject.members === undefined
+      ? subject.milestones.length
+      : subject.members.reduce((total, member) => total + member.milestones.length, 0),
+  ),
 );
 const seriesItems = SERIES.map((s) => ({
   id: s.id,

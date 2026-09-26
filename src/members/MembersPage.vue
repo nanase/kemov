@@ -26,7 +26,7 @@ import {
   LIST_PERIODS,
   matchesSearch,
   memberStreams,
-  MONTHLY_SERIES,
+  MONTHLY_TABS,
   readQuery,
   searchTerms,
   shapeOf,
@@ -36,7 +36,7 @@ import {
   writeQuery,
   type BehaviorPeriodId,
   type ListPeriodId,
-  type MonthlySeriesId,
+  type MonthlyTabId,
   type PageState,
 } from './model';
 import DistributionPanel, { type EdgeEntry } from './parts/DistributionPanel.vue';
@@ -92,9 +92,9 @@ const kept = {
     ['all', '1y'],
     'all',
   ),
-  monthly: useStoredChoice<MonthlySeriesId>(
+  monthly: useStoredChoice<MonthlyTabId>(
     'kemov/members/monthly',
-    MONTHLY_SERIES.map((series) => series.id),
+    MONTHLY_TABS.map((tab) => tab.id),
     DEFAULT_STATE.monthly,
   ),
 };
@@ -229,6 +229,7 @@ const rows = computed(() =>
 const months = computed(
   () => data.months.value?.channels.find((entry) => entry.channelId === member.value?.channelId) ?? null,
 );
+const memberMilestones = computed(() => data.milestones.value.get(member.value?.channelId ?? '') ?? []);
 const monthLabels = computed(() => data.months.value?.months ?? []);
 
 const totals = computed(() => (member.value === null ? null : cumulativeOf(member.value, rows.value, now.value)));
@@ -506,7 +507,14 @@ onBeforeUnmount(() => {
       <template v-else>
         <div class="board">
           <div class="left">
-            <IdentityPanel v-if="totals" :channel="member" :totals :dark />
+            <IdentityPanel
+              v-if="totals"
+              :channel="member"
+              :totals
+              :dark
+              :milestones="memberMilestones"
+              :milestone-status="data.milestoneStatus.value"
+            />
             <GaugePanel
               v-if="windows"
               :current="windows.current"
@@ -520,7 +528,14 @@ onBeforeUnmount(() => {
               :row="months"
               :missing="data.missing.value.months"
               :series="state.monthly"
-              @series="state = { ...state, monthly: $event as MonthlySeriesId }"
+              :milestones="memberMilestones"
+              :milestone-status="data.milestoneStatus.value"
+              :now="totals?.subscriberCount ?? null"
+              :today="jstDay(now)"
+              :name="member.name"
+              :color="member.color.key"
+              :dark
+              @series="state = { ...state, monthly: $event as MonthlyTabId }"
             />
           </div>
           <VideoList

@@ -51,6 +51,18 @@ export const MONTHLY_SERIES = [
 
 export type MonthlySeriesId = (typeof MONTHLY_SERIES)[number]['id'];
 
+/**
+ * The monthly panel's tabs: the month series, then the subscriber milestones
+ * (#225). The last is not a month series - it has no value for a month - so
+ * it is kept out of `MonthlySeriesId`, which `monthlySeries` reads.
+ */
+export const MONTHLY_TABS = [...MONTHLY_SERIES, { id: 'milestones', label: '登録数' }] as const;
+
+export type MonthlyTabId = (typeof MONTHLY_TABS)[number]['id'];
+
+/** The tab that draws the milestones rather than a month series. */
+export const isMilestoneTab = (id: MonthlyTabId): id is 'milestones' => id === 'milestones';
+
 /** The kinds the list can show, one at a time. */
 export const KINDS = [
   { id: 'streaming', label: '配信' },
@@ -70,7 +82,7 @@ export interface PageState {
   listPeriod: ListPeriodId;
   behaviorPeriod: BehaviorPeriodId;
   year: number | null;
-  monthly: MonthlySeriesId;
+  monthly: MonthlyTabId;
   type: VideoType;
   q: string;
   metric: VideoProperty;
@@ -118,7 +130,7 @@ export function readQuery(search: string, defaults: PageState = DEFAULT_STATE): 
     ),
     year: Number.isInteger(year) && year >= 2000 && year <= 2999 ? year : null,
     monthly: oneOf(
-      MONTHLY_SERIES.map((series) => series.id),
+      MONTHLY_TABS.map((tab) => tab.id),
       query.get('monthly'),
       defaults.monthly,
     ),

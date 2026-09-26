@@ -9,6 +9,7 @@ import {
   isNotPublished,
   type ApiError,
 } from '@/lib/api';
+import type { MilestoneStatus } from '@/lib/milestones';
 import { useIntervalAction } from '@/lib/useIntervalAction';
 import type { Channel, LiveStream, MonthsSeries, StreamList, SubscriberMilestone } from '@/type/api';
 
@@ -34,15 +35,6 @@ const ARCHIVE_SECONDS = 1800;
 
 /** How long to wait after a failure before asking again. */
 const RETRY_SECONDS = 600;
-
-/**
- * Where the subscriber milestones stand.
- *
- * Kept apart from the list itself because an empty list is two different
- * things: nothing recorded, which the page says, and nothing read, which it
- * must not say as the same words.
- */
-export type MilestoneStatus = 'loading' | 'ready' | 'failed';
 
 export interface StatsData {
   channels: Ref<Channel[]>;
