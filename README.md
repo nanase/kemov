@@ -67,6 +67,7 @@ bun run dev
   - [マイグレーション](docs/guides/migrations.md): スキーマを変える
   - [復旧](docs/guides/recovery.md): 壊れたデータベースを戻す
   - [設定とデプロイ](docs/guides/deployment.md): Cloudflare と GitHub の設定、デプロイの戻し方
+  - [メンバーの増減](docs/guides/members.md): メンバーを足す、活動終了日を書く、名前などを直す
 - リファレンス
   - [全体の構成](docs/reference/architecture.md): 要求の受け分け、収集、デプロイ、仕様の索引
   - [管理サイト](docs/reference/admin.md): 設計の方針、認証、画面
