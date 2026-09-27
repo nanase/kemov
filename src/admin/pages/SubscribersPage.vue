@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { RouterLink, useRoute } from 'vue-router';
 
 import SubscriberMilestoneInspector from '../components/SubscriberMilestoneInspector.vue';
-import { AdminApiError, getJson } from '../lib/api';
+import { AdminApiError, getJson, postJson } from '../lib/api';
 import { STATUS_OPTIONS, type FootprintsEvent, type FootprintsMember } from '../lib/footprints';
 import {
   announcerLabel,
@@ -12,6 +12,7 @@ import {
   milestonesQuery,
   type SubscriberMilestone,
 } from '../lib/subscriber-milestones';
+import { bulkPublishTargets, publishInTurn, type BulkPublishOutcome } from '../lib/subscriber-milestones-bulk';
 import { milestoneMarkFor, type MilestonesPending } from '../lib/subscriber-milestones-publish';
 import { showToast } from '../lib/toast';
 
@@ -35,6 +36,9 @@ const detail = ref(false);
 // Null when it could not be read, so a failed request does not draw every
 // published row as already public - see FootprintsPage.vue.
 const pending = ref<MilestonesPending | null>(null);
+// まとめて公開待ちにする (#237): how far a run has got, and what the last one did.
+const bulkProgress = ref<{ done: number; total: number } | null>(null);
+const bulkOutcome = ref<BulkPublishOutcome | null>(null);
 
 // `/subscribers?milestone=<id>` is where the 公開 screen's rows lead. Read
 // once, for the first list that arrives.
@@ -43,6 +47,11 @@ let requestedId = typeof route.query.milestone === 'string' ? Number(route.query
 
 const selected = computed(() => milestones.value.find((m) => m.milestoneId === selectedId.value) ?? null);
 const linkable = computed(() => linkableEvents(events.value));
+// While a list is loading or failed to load, `milestones` is not what the
+// filters ask for, so the button acts on nothing until it is.
+const bulkTargets = computed(() =>
+  loading.value || loadError.value !== null ? [] : bulkPublishTargets(milestones.value),
+);
 // A new milestone starts with the member the table is narrowed to, or the
 // first member when it is not narrowed.
 const newChannelId = computed(() =>
@@ -169,6 +178,53 @@ async function created(milestoneId: number): Promise<void> {
   }
 }
 
+/**
+ * Sends each draft the table shows through 「公開待ちにする」, one at a time
+ * (lib/subscriber-milestones-bulk.ts). The filters are locked meanwhile, so
+ * the table stays the one the confirmation counted. The list is read again
+ * afterwards, stopped or not.
+ */
+async function publishShownDrafts(): Promise<void> {
+  const targets = bulkTargets.value;
+
+  if (targets.length === 0) return;
+  if (!window.confirm(bulkConfirmText(targets.length))) return;
+
+  bulkOutcome.value = null;
+  bulkProgress.value = { done: 0, total: targets.length };
+
+  try {
+    bulkOutcome.value = await publishInTurn(
+      targets,
+      (milestoneId) => postJson(`/subscribers/milestones/${milestoneId}/publish`, {}),
+      (done) => {
+        bulkProgress.value = { done, total: targets.length };
+      },
+    );
+  } finally {
+    bulkProgress.value = null;
+    await reload();
+  }
+}
+
+function bulkConfirmText(count: number): string {
+  return [
+    `表に出ている下書き ${count} 件を公開待ちにします。`,
+    '出典の検査に通らなかった行は飛ばして続けます。',
+    '本番に出すには、このあと「公開」画面で「いま公開する」を押します。',
+  ].join('\n');
+}
+
+function bulkHeading(outcome: BulkPublishOutcome): string {
+  if (outcome.stopped) return '途中で止まりました';
+
+  return outcome.published > 0 ? 'まとめて公開待ちにしました' : '公開待ちにできた行はありません';
+}
+
+function milestoneLine(m: SubscriberMilestone): string {
+  return `${m.reachedDate} ${formatCount(m.subscriberCount)} 人 ${memberName(m.channelId)}`;
+}
+
 watch([channelId, status], load);
 onMounted(() => {
   load();
@@ -183,7 +239,7 @@ onMounted(() => {
     <div class="pane">
       <div class="toolbar">
         <h2>登録者数の節目</h2>
-        <select v-model="channelId" aria-label="メンバーで絞る">
+        <select v-model="channelId" aria-label="メンバーで絞る" :disabled="bulkProgress !== null">
           <option value="all">すべてのメンバー</option>
           <option v-for="m in members" :key="m.channelId" :value="m.channelId">{{ m.name }}</option>
         </select>
@@ -193,6 +249,7 @@ onMounted(() => {
             :key="opt.value"
             type="button"
             :aria-pressed="status === opt.value"
+            :disabled="bulkProgress !== null"
             @click="status = opt.value"
           >
             {{ opt.label }}
@@ -200,9 +257,58 @@ onMounted(() => {
         </div>
         <span class="grow"></span>
         <span class="sub num">{{ milestones.length }} 件</span>
+        <button
+          class="btn"
+          type="button"
+          :disabled="bulkProgress !== null || bulkTargets.length === 0"
+          @click="publishShownDrafts"
+        >
+          <template v-if="bulkProgress">
+            公開待ちにしています… {{ bulkProgress.done }} / {{ bulkProgress.total }} 件
+          </template>
+          <template v-else>下書きをまとめて公開待ちにする（{{ bulkTargets.length }} 件）</template>
+        </button>
         <button class="btn" type="button" :disabled="members.length === 0" @click="startAdding">＋ 足す</button>
       </div>
       <div class="scroller">
+        <div v-if="bulkOutcome" class="bulk">
+          <div class="panel" :class="{ flag: bulkOutcome.stopped || bulkOutcome.skipped.length > 0 }">
+            <h4>{{ bulkHeading(bulkOutcome) }}</h4>
+            <div v-if="bulkOutcome.stopped" class="hint">
+              失敗した行でいったん止めました。一覧は読み直してあります。もう一度押すと、下書きのまま残っている行をもう一度試します。
+            </div>
+            <div class="kv">
+              <dt>公開待ちにできた</dt>
+              <dd class="num">{{ bulkOutcome.published }} / {{ bulkOutcome.total }} 件</dd>
+              <dt>検査に通らなかった</dt>
+              <dd class="num">{{ bulkOutcome.skipped.length }} 件</dd>
+              <template v-if="bulkOutcome.stopped">
+                <dt>止まった行</dt>
+                <dd>{{ milestoneLine(bulkOutcome.stopped.milestone) }}</dd>
+                <dt>理由</dt>
+                <dd>{{ bulkOutcome.stopped.reason }}</dd>
+                <dt>まだ試していない</dt>
+                <dd class="num">{{ bulkOutcome.total - bulkOutcome.published - bulkOutcome.skipped.length - 1 }} 件</dd>
+              </template>
+            </div>
+            <template v-if="bulkOutcome.skipped.length > 0">
+              <div class="hint">検査に通らなかった行（下書きのまま）</div>
+              <ul class="bulk-skipped">
+                <li v-for="s in bulkOutcome.skipped" :key="s.milestone.milestoneId">
+                  <span>{{ milestoneLine(s.milestone) }}</span>
+                  <span class="sub">{{ s.reason }}</span>
+                </li>
+              </ul>
+            </template>
+            <div v-if="bulkOutcome.published > 0" class="hint">
+              本番に出すには、「公開」画面で「いま公開する」を押します
+            </div>
+            <div class="stack">
+              <RouterLink v-if="bulkOutcome.published > 0" class="btn" to="/publish">公開画面へ</RouterLink>
+              <button class="btn quiet" type="button" @click="bulkOutcome = null">閉じる</button>
+            </div>
+          </div>
+        </div>
         <div v-if="loadError" class="empty">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
@@ -277,3 +383,34 @@ onMounted(() => {
     />
   </div>
 </template>
+
+<style scoped>
+/* The filters are locked while a bulk run goes on. */
+.seg button:disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.bulk {
+  padding: 10px 14px;
+}
+
+.bulk-skipped {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+}
+
+.bulk-skipped li {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bulk-skipped .sub {
+  overflow-wrap: anywhere;
+}
+</style>
