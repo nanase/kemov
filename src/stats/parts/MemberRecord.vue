@@ -191,6 +191,7 @@ const seriesItems = SERIES.map((s) => ({
           :key="subject.id"
           :milestones="subject.milestones"
           :months="months"
+          :start="subject.activityStartDate"
           :now="subject.counts.subscriberCount"
           :today="today"
           :status="milestoneDrawStatus"

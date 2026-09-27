@@ -53,6 +53,12 @@ export const MILESTONE_FAILED = `${MILESTONE_WORD}の記録を取得できませ
 /** The monthly panel's heading while its milestone tab is chosen. */
 export const MILESTONE_HEADING = `登録者数の${MILESTONE_WORD}`;
 
+/** What the key calls a milestone that reached no new round figure (#239). */
+export const MILESTONE_MINOR = `細かい${MILESTONE_WORD}`;
+
+/** What the key calls the point a line comes up from nobody at (#239). */
+export const MILESTONE_START = '活動開始';
+
 /** Who announced it, as the card and the point's name say it. */
 export const ANNOUNCER_LABELS: Readonly<Record<MilestoneAnnouncer, string>> = {
   member: '本人の公表',
@@ -88,6 +94,54 @@ export function milestonesByChannel(all: readonly SubscriberMilestone[]): Map<st
   }
 
   return byChannel;
+}
+
+/**
+ * The round figure a count has reached: 1,000, 2,000, 3,000, 5,000, then
+ * every 1万. Zero below 1,000. 4,000 and 1.5万 are not round figures here
+ * (#239).
+ */
+export function majorFloor(count: number): number {
+  if (count >= 10000) return Math.floor(count / 10000) * 10000;
+
+  return [5000, 3000, 2000, 1000].find((figure) => count >= figure) ?? 0;
+}
+
+/**
+ * Which of one member's milestones are major ones, oldest first: the round
+ * figure a milestone was the first to reach, or null for a minor one (#239).
+ * One that passes several takes the largest.
+ *
+ * The first milestone is counted up from nobody, whether or not the chart
+ * draws the start of activity before it. A count that fell back under a
+ * round figure and reached it again is a minor one the second time.
+ */
+export function majorFigures(milestones: readonly SubscriberMilestone[]): (number | null)[] {
+  let reached = 0;
+
+  return milestones.map((milestone) => {
+    const figure = majorFloor(milestone.subscriberCount);
+
+    if (figure <= reached) return null;
+
+    reached = figure;
+
+    return figure;
+  });
+}
+
+/**
+ * Where one member's line starts from nobody: the start of their activity,
+ * when it comes before their first milestone (#239). Null for a member with
+ * none, whose chart says so in words rather than drawing a lone zero.
+ *
+ * Drawn only, never stored or counted as a milestone: the newest milestone
+ * and what a chart says aloud come from the recorded ones alone.
+ */
+export function zeroDate(milestones: readonly SubscriberMilestone[], activityStartDate: string): string | null {
+  const first = milestones[0];
+
+  return first !== undefined && pointDate(first.reachedDate) > activityStartDate ? activityStartDate : null;
 }
 
 /**
@@ -238,10 +292,13 @@ function dayOf(date: string): number {
  * day: the line a reader would draw between two points. It is drawn apart
  * from a known count, so it is never taken for one.
  *
- * Months before the first milestone are null: nothing is known there, and a
- * bar of zero would say the channel had nobody. So are the months after the
- * last milestone when today's count was not read, rather than a guess at
- * where it went.
+ * The line starts from nobody at the start of activity, where `zeroDate`
+ * puts it (#239). That month and the ones up to the first milestone are
+ * interpolated like any other; the start is where the line comes up from,
+ * not a known count. Months before it are null: nothing is known there, and
+ * a bar of zero would say the channel had nobody. So are the months after
+ * the last milestone when today's count was not read, rather than a guess
+ * at where it went.
  *
  * The months after a member's activity ended are null as well. Their count
  * still moves, and the line towards today's count still runs through them,
@@ -254,14 +311,19 @@ export function monthlyEstimates(
   now: number | null,
   today: string,
   endDate: string | null,
+  activityStartDate: string | null,
 ): (MonthEstimate | null)[] {
   const first = milestones[0];
 
   if (first === undefined) return months.map(() => null);
 
+  const zero = activityStartDate === null ? null : zeroDate(milestones, activityStartDate);
   const anchors = milestones.map((m) => ({ day: dayOf(m.reachedDate), count: m.subscriberCount }));
 
+  if (zero !== null) anchors.unshift({ day: dayOf(zero), count: 0 });
   if (now !== null && dayOf(today) > anchors.at(-1)!.day) anchors.push({ day: dayOf(today), count: now });
+
+  const firstMonth = (zero ?? first.reachedDate).slice(0, 7);
 
   // Today's own month, not the axis's last: a page left open past the end of
   // a month keeps the old axis until the months are read again.
@@ -269,7 +331,7 @@ export function monthlyEstimates(
   const endMonth = endDate?.slice(0, 7) ?? null;
 
   return months.map((month) => {
-    if (month < first.reachedDate.slice(0, 7)) return null;
+    if (month < firstMonth) return null;
     if (endMonth !== null && month > endMonth) return null;
     if (month === current && now !== null) return { count: now, recorded: true };
 

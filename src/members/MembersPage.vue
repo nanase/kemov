@@ -533,6 +533,7 @@ onBeforeUnmount(() => {
               :now="totals?.subscriberCount ?? null"
               :today="jstDay(now)"
               :name="member.name"
+              :start="member.activityStartDate"
               :color="member.color.key"
               :dark
               @series="state = { ...state, monthly: $event as MonthlyTabId }"

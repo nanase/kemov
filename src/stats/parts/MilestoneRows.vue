@@ -8,8 +8,10 @@ import {
   chartSummary,
   countLabel,
   labelSides,
+  majorFigures,
   MILESTONE_EMPTY,
   MILESTONE_FAILED,
+  zeroDate,
 } from '@/lib/milestones';
 import { useMilestoneCard } from '@/lib/useMilestoneCard';
 import MilestoneCard from '@/parts/MilestoneCard.vue';
@@ -26,6 +28,10 @@ import MilestonePoint from '@/parts/MilestonePoint.vue';
  * and putting every member on one count axis would be a chart for comparing
  * them (#134). Each row is a line of time only: when a milestone came, and
  * the count written beside it, with nothing measured against anybody else.
+ *
+ * As on one member's chart, only a major milestone is written beside, as the
+ * round figure it reached, and a small ring marks the start of activity the
+ * row's count comes up from (#239).
  */
 const { members, months, status, dark } = defineProps<{
   members: readonly Subject[];
@@ -47,8 +53,20 @@ const labelGap = computed(() => 30 / Math.max(axisWidth.value, 1));
 
 const rows = computed(() =>
   members.map((member) => {
-    const xs = member.milestones.map((milestone) => axisFraction(milestone.reachedDate, months));
-    const sides = labelSides(xs, labelGap.value);
+    const majors = majorFigures(member.milestones);
+    const points = member.milestones.map((milestone, i) => ({
+      milestone,
+      major: majors[i] ?? null,
+      x: axisFraction(milestone.reachedDate, months),
+    }));
+    const labelled = points.flatMap(({ milestone, major, x }) =>
+      major === null ? [] : [{ id: milestone.milestoneId, figure: major, x }],
+    );
+    const sides = labelSides(
+      labelled.map((label) => label.x),
+      labelGap.value,
+    );
+    const zero = zeroDate(member.milestones, member.activityStartDate);
 
     return {
       member,
@@ -57,7 +75,9 @@ const rows = computed(() =>
           ? undefined
           : { '--member-color': memberColor(member.color, dark), '--member-accent': memberAccent(member.color, dark) },
       summary: chartSummary(member.name, member.milestones),
-      points: member.milestones.map((milestone, i) => ({ milestone, x: xs[i]!, side: sides[i]! })),
+      points,
+      labels: labelled.map((label, i) => ({ ...label, side: sides[i]! })),
+      zero: zero === null ? null : axisFraction(zero, months),
     };
   }),
 );
@@ -114,18 +134,31 @@ onBeforeUnmount(() => observer?.disconnect());
           :aria-label="row.summary ?? undefined"
         >
           <span class="rule" aria-hidden="true"></span>
-          <template v-for="point in row.points" :key="point.milestone.milestoneId">
-            <span class="label n" :data-side="point.side" :style="{ left: `${point.x * 100}%` }" aria-hidden="true">{{
-              countLabel(point.milestone.subscriberCount)
-            }}</span>
-            <MilestonePoint
-              :milestone="point.milestone"
-              :expanded="openId === point.milestone.milestoneId"
-              :controls="cardId(point.milestone.milestoneId)"
-              :style="{ left: `${point.x * 100}%`, top: '50%' }"
-              @press="toggle(point.milestone.milestoneId, $event)"
-            />
-          </template>
+          <span
+            v-if="row.zero !== null"
+            class="start"
+            :style="{ left: `${row.zero * 100}%` }"
+            aria-hidden="true"
+          ></span>
+          <span
+            v-for="label in row.labels"
+            :key="label.id"
+            class="label n"
+            :data-side="label.side"
+            :style="{ left: `${label.x * 100}%` }"
+            aria-hidden="true"
+            >{{ countLabel(label.figure) }}</span
+          >
+          <MilestonePoint
+            v-for="point in row.points"
+            :key="point.milestone.milestoneId"
+            :milestone="point.milestone"
+            :major="point.major !== null"
+            :expanded="openId === point.milestone.milestoneId"
+            :controls="cardId(point.milestone.milestoneId)"
+            :style="{ left: `${point.x * 100}%`, top: '50%' }"
+            @press="toggle(point.milestone.milestoneId, $event)"
+          />
           <MilestoneCard
             v-if="opened && opened.row === row"
             :id="cardId(opened.point.milestone.milestoneId)"
@@ -138,7 +171,11 @@ onBeforeUnmount(() => observer?.disconnect());
         <span v-else-if="status === 'ready'" class="empty">{{ MILESTONE_EMPTY }}</span>
         <span v-else class="strip" aria-hidden="true"><span class="rule"></span></span>
       </div>
-      <MilestoneLegend :now="false" />
+      <MilestoneLegend
+        :now="false"
+        :minor="status === 'ready' && rows.some((row) => row.points.some((point) => point.major === null))"
+        :start="status === 'ready' && rows.some((row) => row.zero !== null)"
+      />
     </template>
   </div>
 </template>
@@ -213,6 +250,18 @@ onBeforeUnmount(() => observer?.disconnect());
   border-radius: 1px;
   background: var(--k-line);
   transform: translateY(-50%);
+}
+
+.start {
+  box-sizing: border-box;
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--k-text-3);
+  border-radius: 50%;
+  background: var(--k-surface);
+  transform: translate(-50%, -50%);
 }
 
 .label {

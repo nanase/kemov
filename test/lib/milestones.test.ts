@@ -7,6 +7,8 @@ import {
   drawStatus,
   labelSides,
   latestLabel,
+  majorFigures,
+  majorFloor,
   MILESTONE_EMPTY,
   MILESTONE_FAILED,
   MILESTONE_HEADING,
@@ -14,6 +16,7 @@ import {
   milestonesByChannel,
   monthlyEstimates,
   pointName,
+  zeroDate,
 } from '@/lib/milestones';
 import type { SubscriberMilestone } from '@/type/api';
 
@@ -99,11 +102,11 @@ describe('monthlyEstimates', () => {
 
   // Nothing is known before the first milestone: no bar, not a bar of zero.
   test('has no month before the first milestone', () => {
-    expect(monthlyEstimates(two, months, 4000, '2024-05-20', null)[0]).toBeNull();
+    expect(monthlyEstimates(two, months, 4000, '2024-05-20', null, null)[0]).toBeNull();
   });
 
   test('takes a milestone month as known and the months between as interpolated', () => {
-    const estimates = monthlyEstimates(two, months, 4000, '2024-05-20', null);
+    const estimates = monthlyEstimates(two, months, 4000, '2024-05-20', null, null);
 
     expect(estimates[1]).toEqual({ count: 1000, recorded: true });
     // 2024-03-31 is 59 of the 60 days from 02-01 to 04-01.
@@ -112,7 +115,7 @@ describe('monthlyEstimates', () => {
   });
 
   test("ends on today's count, reached by a line from the last milestone", () => {
-    const estimates = monthlyEstimates(two.slice(0, 1), months, 5000, '2024-05-20', null);
+    const estimates = monthlyEstimates(two.slice(0, 1), months, 5000, '2024-05-20', null, null);
 
     expect(estimates[4]).toEqual({ count: 5000, recorded: true });
     expect(estimates[2]?.recorded).toBe(false);
@@ -123,7 +126,7 @@ describe('monthlyEstimates', () => {
   // A page left open past the end of a month keeps the old axis for a while.
   // Today's count belongs to today's month, not to the axis's last one.
   test("puts today's count in today's month even when the axis has not reached it", () => {
-    const estimates = monthlyEstimates(two, months, 5000, '2024-06-01', null);
+    const estimates = monthlyEstimates(two, months, 5000, '2024-06-01', null, null);
 
     expect(estimates[4]?.recorded).toBe(false);
     expect(estimates[4]!.count).toBeGreaterThan(3000);
@@ -132,20 +135,121 @@ describe('monthlyEstimates', () => {
 
   // Without today's count there is nothing to draw a line towards.
   test("draws nothing after the last milestone when today's count was not read", () => {
-    const estimates = monthlyEstimates(two, months, null, '2024-05-20', null);
+    const estimates = monthlyEstimates(two, months, null, '2024-05-20', null, null);
 
     expect(estimates[3]).toMatchObject({ count: 3000 });
     expect(estimates[4]).toBeNull();
   });
 
   test('draws nothing after an activity ended', () => {
-    const estimates = monthlyEstimates(two, months, 4000, '2024-05-20', '2024-03-15');
+    const estimates = monthlyEstimates(two, months, 4000, '2024-05-20', '2024-03-15', null);
 
     expect(estimates.map((e) => e?.recorded ?? null)).toEqual([null, true, false, null, null]);
   });
 
   test('is all empty without a milestone', () => {
-    expect(monthlyEstimates([], months, 4000, '2024-05-20', null)).toEqual([null, null, null, null, null]);
+    expect(monthlyEstimates([], months, 4000, '2024-05-20', null, null)).toEqual([null, null, null, null, null]);
+    expect(monthlyEstimates([], months, 4000, '2024-05-20', null, '2024-01-10')).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  // The start is where the line comes up from, not a count anyone recorded.
+  test('interpolates up from nobody at the start of activity', () => {
+    const estimates = monthlyEstimates(two, months, 4000, '2024-05-20', null, '2024-01-10');
+
+    // 2024-01-31 is 21 of the 22 days from 01-10 to 02-01.
+    expect(estimates[0]).toEqual({ count: Math.round((1000 * 21) / 22), recorded: false });
+    expect(estimates[1]).toEqual({ count: 1000, recorded: true });
+  });
+
+  test('starts no earlier than the first milestone when that is on or before the start', () => {
+    const early = monthlyEstimates(two, months, 4000, '2024-05-20', null, '2024-02-01');
+
+    expect(early[0]).toBeNull();
+    expect(early[1]).toEqual({ count: 1000, recorded: true });
+  });
+});
+
+describe('majorFloor', () => {
+  test.each([
+    [0, 0],
+    [999, 0],
+    [1000, 1000],
+    [1999, 1000],
+    [2000, 2000],
+    [3000, 3000],
+    [4999, 3000],
+    [5000, 5000],
+    [9999, 5000],
+    [10000, 10000],
+    [15000, 10000],
+    [19999, 10000],
+    [20000, 20000],
+    [123456, 120000],
+  ])('puts %i on %i', (count, floor) => {
+    expect(majorFloor(count)).toBe(floor);
+  });
+});
+
+describe('majorFigures', () => {
+  const counts = (...values: number[]) =>
+    values.map((subscriberCount, i) => milestone({ milestoneId: i + 1, subscriberCount }));
+
+  test('marks a milestone that reaches a round figure the one before it was under', () => {
+    expect(majorFigures(counts(800, 1000, 1500, 1999, 2000))).toEqual([null, 1000, null, null, 2000]);
+  });
+
+  test('marks a count exactly on a round figure, but not one that stays over it', () => {
+    expect(majorFigures(counts(5000, 5000, 5100))).toEqual([5000, null, null]);
+  });
+
+  test('takes the largest round figure when one milestone passes several', () => {
+    expect(majorFigures(counts(3100, 4802, 5001))).toEqual([3000, null, 5000]);
+    expect(majorFigures(counts(9000, 21000))).toEqual([5000, 20000]);
+  });
+
+  // Nobody at the start of activity comes before the first milestone, and
+  // a member whose first milestone predates it is read the same way.
+  test('counts the first milestone up from nobody', () => {
+    expect(majorFigures(counts(999))).toEqual([null]);
+    expect(majorFigures(counts(12000))).toEqual([10000]);
+  });
+
+  test('marks only the first milestone to reach a round figure, not one reaching it again after a fall', () => {
+    expect(majorFigures(counts(5010, 4990, 5020))).toEqual([5000, null, null]);
+    expect(majorFigures(counts(10200, 9800, 10100, 20000))).toEqual([10000, null, null, 20000]);
+  });
+
+  test('has nothing for no milestones', () => {
+    expect(majorFigures([])).toEqual([]);
+  });
+});
+
+describe('zeroDate', () => {
+  test('starts the line from nobody on the start of activity', () => {
+    expect(zeroDate([milestone({ reachedDate: '2023-03-11' })], '2022-09-01')).toBe('2022-09-01');
+  });
+
+  test('adds nothing when the first milestone is on or before the start', () => {
+    expect(zeroDate([milestone({ reachedDate: '2022-09-01' })], '2022-09-01')).toBeNull();
+    expect(zeroDate([milestone({ reachedDate: '2022-08-20' })], '2022-09-01')).toBeNull();
+  });
+
+  // A month-precise date sits in the middle of its month, as on the axis.
+  test('places a month-precise first milestone in the middle of its month', () => {
+    const inMonth = [milestone({ reachedDate: '2022-09', datePrecision: 'month' })];
+
+    expect(zeroDate(inMonth, '2022-09-01')).toBe('2022-09-01');
+    expect(zeroDate(inMonth, '2022-09-20')).toBeNull();
+  });
+
+  test('adds nothing for a member with no milestones', () => {
+    expect(zeroDate([], '2022-09-01')).toBeNull();
   });
 });
 
