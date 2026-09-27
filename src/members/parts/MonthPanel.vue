@@ -23,26 +23,29 @@ import type { ChannelMonths, SubscriberMilestone } from '@/type/api';
  * month series: it draws the same points and card as the statistics page, on
  * the same month axis, and says so in its heading.
  */
-const { months, row, series, missing, milestones, milestoneStatus, now, today, name, color, dark } = defineProps<{
-  /** Every month the site knows, as `YYYY-MM`, oldest first. */
-  months: readonly string[];
-  /** This member's series, or null while they are on their way. */
-  row: ChannelMonths | null;
-  series: MonthlyTabId;
-  /** True when the monthly record was asked for and never arrived. */
-  missing: boolean;
-  /** This member's published milestones, oldest first. */
-  milestones: readonly SubscriberMilestone[];
-  milestoneStatus: MilestoneStatus;
-  /** Today's count from the API, or null when it was not read. */
-  now: number | null;
-  /** Today in JST, `YYYY-MM-DD`. */
-  today: string;
-  name: string;
-  /** The member's colour, as the API sends it. */
-  color: string | null;
-  dark: boolean;
-}>();
+const { months, row, series, missing, milestones, milestoneStatus, now, today, name, start, color, dark } =
+  defineProps<{
+    /** Every month the site knows, as `YYYY-MM`, oldest first. */
+    months: readonly string[];
+    /** This member's series, or null while they are on their way. */
+    row: ChannelMonths | null;
+    series: MonthlyTabId;
+    /** True when the monthly record was asked for and never arrived. */
+    missing: boolean;
+    /** This member's published milestones, oldest first. */
+    milestones: readonly SubscriberMilestone[];
+    milestoneStatus: MilestoneStatus;
+    /** Today's count from the API, or null when it was not read. */
+    now: number | null;
+    /** Today in JST, `YYYY-MM-DD`. */
+    today: string;
+    name: string;
+    /** The start of the member's activity, `YYYY-MM-DD`. */
+    start: string;
+    /** The member's colour, as the API sends it. */
+    color: string | null;
+    dark: boolean;
+  }>();
 
 const emit = defineEmits<{ series: [id: MonthlyTabId] }>();
 
@@ -169,6 +172,7 @@ watch(
         :key="name"
         :milestones="milestones"
         :months="months"
+        :start="start"
         :now="now"
         :today="today"
         :status="trailStatus"

@@ -145,6 +145,7 @@ function press(id: string) {
                     subject.counts.subscriberCount,
                     today,
                     subject.activityEndDate,
+                    subject.activityStartDate,
                   )
                 "
                 aria-hidden="true"

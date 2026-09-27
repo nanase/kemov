@@ -8,9 +8,11 @@ import {
   chartSummary,
   countLabel,
   countScale,
+  majorFigures,
   MILESTONE_EMPTY,
   MILESTONE_FAILED,
   type MilestoneStatus,
+  zeroDate,
 } from '@/lib/milestones';
 import { useMilestoneCard } from '@/lib/useMilestoneCard';
 import MilestoneCard from '@/parts/MilestoneCard.vue';
@@ -28,12 +30,19 @@ import MilestonePoint from './MilestonePoint.vue';
  * a solid line would draw a climb nobody measured. A member who has
  * finished is drawn exactly the same way.
  *
- * The ring at the right is today's count from the API. It is not a
- * milestone, is never stored, and opens no card.
+ * Only a major milestone carries a label, and it gives the round figure
+ * reached; the card it opens gives the count (#239). The rest are drawn
+ * small and pale, and are pressable all the same.
+ *
+ * The line comes up from nobody at the start of activity, marked by a small
+ * ring, and the ring at the right is today's count from the API. Neither is
+ * a milestone: neither is stored, opens a card or is read out.
  */
-const { milestones, months, now, today, status, name } = defineProps<{
+const { milestones, months, now, today, status, name, start } = defineProps<{
   milestones: readonly SubscriberMilestone[];
   months: readonly string[];
+  /** The start of the member's activity, `YYYY-MM-DD`. */
+  start: string;
   /** Today's count, or null when it was not read. */
   now: number | null;
   /** Today in JST, `YYYY-MM-DD`. */
@@ -59,13 +68,22 @@ const scale = computed(() =>
 
 const height = (count: number) => 1 - count / scale.value.top;
 
-const points = computed(() =>
-  shown.value.map((milestone) => ({
+const points = computed(() => {
+  const majors = majorFigures(shown.value);
+
+  return shown.value.map((milestone, i) => ({
     milestone,
+    major: majors[i] ?? null,
     x: axisFraction(milestone.reachedDate, months),
     y: height(milestone.subscriberCount),
-  })),
-);
+  }));
+});
+
+const zeroPoint = computed(() => {
+  const date = zeroDate(shown.value, start);
+
+  return date === null ? null : { x: axisFraction(date, months), y: height(0) };
+});
 
 const nowPoint = computed(() =>
   now === null || shown.value.length === 0 ? null : { x: axisFraction(today, months), y: height(now) },
@@ -73,7 +91,11 @@ const nowPoint = computed(() =>
 
 /** The dotted line, in the 0-100 box the SVG is drawn in. */
 const line = computed(() => {
-  const all = [...points.value, ...(nowPoint.value === null ? [] : [nowPoint.value])];
+  const all = [
+    ...(zeroPoint.value === null ? [] : [zeroPoint.value]),
+    ...points.value,
+    ...(nowPoint.value === null ? [] : [nowPoint.value]),
+  ];
 
   return all.length < 2 ? '' : all.map((p) => `${(p.x * 100).toFixed(3)},${(p.y * 100).toFixed(3)}`).join(' ');
 });
@@ -123,12 +145,14 @@ onBeforeUnmount(() => observer?.disconnect());
           </template>
           <polyline v-if="line" class="link" :points="line" />
         </svg>
+        <span v-if="zeroPoint" class="start" :style="at(zeroPoint.x, zeroPoint.y)" aria-hidden="true"></span>
         <template v-for="point in points" :key="point.milestone.milestoneId">
-          <span class="label n" :style="at(point.x, point.y)" aria-hidden="true">{{
-            countLabel(point.milestone.subscriberCount)
+          <span v-if="point.major !== null" class="label n" :style="at(point.x, point.y)" aria-hidden="true">{{
+            countLabel(point.major)
           }}</span>
           <MilestonePoint
             :milestone="point.milestone"
+            :major="point.major !== null"
             :expanded="openId === point.milestone.milestoneId"
             :controls="cardId(point.milestone.milestoneId)"
             :style="at(point.x, point.y)"
@@ -157,7 +181,12 @@ onBeforeUnmount(() => observer?.disconnect());
         >{{ mark.label }}</span
       >
     </div>
-    <MilestoneLegend v-if="shown.length > 0" :now="nowPoint !== null" />
+    <MilestoneLegend
+      v-if="shown.length > 0"
+      :now="nowPoint !== null"
+      :minor="points.some((point) => point.major === null)"
+      :start="zeroPoint !== null"
+    />
   </div>
 </template>
 
@@ -238,15 +267,27 @@ onBeforeUnmount(() => observer?.disconnect());
   vector-effect: non-scaling-stroke;
 }
 
+/* Over the points, so a round figure stays readable among the minor ones. */
 .label {
   position: absolute;
-  z-index: 1;
+  z-index: 3;
   color: var(--k-text-2);
   font-size: 10.5px;
   line-height: 1;
   white-space: nowrap;
   transform: translate(-50%, -19px);
   pointer-events: none;
+}
+
+.start {
+  box-sizing: border-box;
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--k-text-3);
+  border-radius: 50%;
+  background: var(--k-surface);
+  transform: translate(-50%, -50%);
 }
 
 .now {
