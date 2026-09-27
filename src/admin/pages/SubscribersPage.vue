@@ -39,6 +39,8 @@ const pending = ref<MilestonesPending | null>(null);
 // まとめて公開待ちにする (#237): how far a run has got, and what the last one did.
 const bulkProgress = ref<{ done: number; total: number } | null>(null);
 const bulkOutcome = ref<BulkPublishOutcome | null>(null);
+// Whether the edit panel has a write on its way; a run waits for it to land.
+const inspectorBusy = ref(false);
 
 // `/subscribers?milestone=<id>` is where the 公開 screen's rows lead. Read
 // once, for the first list that arrives.
@@ -195,8 +197,8 @@ async function created(milestoneId: number): Promise<void> {
 async function publishShownDrafts(): Promise<void> {
   const targets = bulkTargets.value;
 
-  if (targets.length === 0) return;
-  if (!window.confirm(bulkConfirmText(targets.length))) return;
+  if (targets.length === 0 || inspectorBusy.value) return;
+  if (!window.confirm(bulkConfirmText(targets.length)) || inspectorBusy.value) return;
 
   bulkOutcome.value = null;
   bulkProgress.value = { done: 0, total: targets.length };
@@ -268,7 +270,7 @@ onMounted(() => {
         <button
           class="btn"
           type="button"
-          :disabled="bulkProgress !== null || bulkTargets.length === 0"
+          :disabled="bulkProgress !== null || inspectorBusy || bulkTargets.length === 0"
           @click="publishShownDrafts"
         >
           <template v-if="bulkProgress">
@@ -386,6 +388,7 @@ onMounted(() => {
       :events="linkable"
       :pending="pending"
       :bulk-running="bulkProgress !== null"
+      @busy="inspectorBusy = $event"
       @changed="reload"
       @created="created"
       @back="back"
