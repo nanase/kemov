@@ -39,8 +39,21 @@ const pending = ref<MilestonesPending | null>(null);
 // まとめて公開待ちにする (#237): how far a run has got, and what the last one did.
 const bulkProgress = ref<{ done: number; total: number } | null>(null);
 const bulkOutcome = ref<BulkPublishOutcome | null>(null);
-// Whether the edit panel has a write on its way; a run waits for it to land.
-const inspectorBusy = ref(false);
+// How many of the edit panel's writes are on their way; a run waits for them
+// to land. Counted here, not in the panel: selecting another row unmounts the
+// panel but not its request.
+const writesInFlight = ref(0);
+const inspectorBusy = computed(() => writesInFlight.value > 0);
+
+function trackWrite(write: Promise<unknown>): void {
+  writesInFlight.value++;
+
+  const settled = (): void => {
+    writesInFlight.value--;
+  };
+
+  write.then(settled, settled);
+}
 
 // `/subscribers?milestone=<id>` is where the 公開 screen's rows lead. Read
 // once, for the first list that arrives.
@@ -388,7 +401,7 @@ onMounted(() => {
       :events="linkable"
       :pending="pending"
       :bulk-running="bulkProgress !== null"
-      @busy="inspectorBusy = $event"
+      :track-write="trackWrite"
       @changed="reload"
       @created="created"
       @back="back"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 
 import { AdminApiError, deleteJson, postJson, putJson } from '../lib/api';
@@ -53,10 +53,15 @@ const props = defineProps<{
    * the run's read of a row and its publish.
    */
   bulkRunning: boolean;
+  /**
+   * The other half of `bulkRunning`: handed every write this panel sends, so
+   * the page does not start a run while one is on its way. A function rather
+   * than an event, since the write outlives the panel when another row is
+   * selected mid-save, and an unmounted panel's events reach nobody.
+   */
+  trackWrite: (write: Promise<unknown>) => void;
 }>();
-// `busy` is the other half of `bulkRunning`: the page does not start a run
-// while a write from here is still on its way.
-const emit = defineEmits<{ changed: []; created: [milestoneId: number]; back: []; busy: [busy: boolean] }>();
+const emit = defineEmits<{ changed: []; created: [milestoneId: number]; back: [] }>();
 
 function initialFields(): MilestoneFormFields {
   return props.milestone === null ? emptyFormFields(props.channelId) : toFormFields(props.milestone);
@@ -65,13 +70,6 @@ function initialFields(): MilestoneFormFields {
 const fields = ref<MilestoneFormFields>(initialFields());
 const saving = ref(false);
 const locked = computed(() => saving.value || props.bulkRunning);
-
-watch(saving, (busy) => emit('busy', busy));
-// Selecting another row mounts a new panel while this one's write may still
-// be on its way; the page must not keep waiting for a panel that is gone.
-onBeforeUnmount(() => {
-  if (saving.value) emit('busy', false);
-});
 const errorMessage = ref<string | null>(null);
 const errorField = ref<MilestoneFieldKey | null>(null);
 
@@ -145,7 +143,10 @@ async function withErrorHandling(action: () => Promise<void>): Promise<void> {
   errorField.value = null;
 
   try {
-    await action();
+    const write = action();
+
+    props.trackWrite(write);
+    await write;
   } catch (error) {
     if (error instanceof AdminApiError) {
       errorMessage.value = error.message;
