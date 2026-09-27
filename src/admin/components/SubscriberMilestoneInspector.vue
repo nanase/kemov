@@ -46,6 +46,20 @@ const props = defineProps<{
   events: FootprintsEvent[];
   /** `GET /subscribers/pending`, or null when it could not be read. */
   pending: MilestonesPending | null;
+  /**
+   * Whether the page's まとめて公開待ちにする is running. Every button that
+   * writes waits meanwhile: a publish would log a second `publish` revision
+   * for a row the run also reaches, and a save or a delete could land between
+   * the run's read of a row and its publish.
+   */
+  bulkRunning: boolean;
+  /**
+   * The other half of `bulkRunning`: handed every write this panel sends, so
+   * the page does not start a run while one is on its way. A function rather
+   * than an event, since the write outlives the panel when another row is
+   * selected mid-save, and an unmounted panel's events reach nobody.
+   */
+  trackWrite: (write: Promise<unknown>) => void;
 }>();
 const emit = defineEmits<{ changed: []; created: [milestoneId: number]; back: [] }>();
 
@@ -55,6 +69,7 @@ function initialFields(): MilestoneFormFields {
 
 const fields = ref<MilestoneFormFields>(initialFields());
 const saving = ref(false);
+const locked = computed(() => saving.value || props.bulkRunning);
 const errorMessage = ref<string | null>(null);
 const errorField = ref<MilestoneFieldKey | null>(null);
 
@@ -128,7 +143,10 @@ async function withErrorHandling(action: () => Promise<void>): Promise<void> {
   errorField.value = null;
 
   try {
-    await action();
+    const write = action();
+
+    props.trackWrite(write);
+    await write;
   } catch (error) {
     if (error instanceof AdminApiError) {
       errorMessage.value = error.message;
@@ -311,16 +329,16 @@ function remove(): Promise<void> {
     </div>
 
     <div class="inspector-foot">
-      <button class="btn primary" type="button" :disabled="saving" @click="save">保存</button>
+      <button class="btn primary" type="button" :disabled="locked" @click="save">保存</button>
       <template v-if="milestone">
-        <button v-if="buttons.publishLabel" class="btn" type="button" :disabled="saving" @click="moveStatus('publish')">
+        <button v-if="buttons.publishLabel" class="btn" type="button" :disabled="locked" @click="moveStatus('publish')">
           {{ buttons.publishLabel }}
         </button>
         <button
           v-if="buttons.withdrawLabel"
           class="btn"
           type="button"
-          :disabled="saving"
+          :disabled="locked"
           @click="moveStatus('withdraw')"
         >
           {{ buttons.withdrawLabel }}
@@ -328,7 +346,7 @@ function remove(): Promise<void> {
         <button class="btn back quiet" type="button" @click="emit('back')">← 一覧</button>
         <span class="grow"></span>
         <span class="foot-sep" aria-hidden="true"></span>
-        <button class="btn danger" type="button" :disabled="saving || buttons.deleteDisabled" @click="remove">
+        <button class="btn danger" type="button" :disabled="locked || buttons.deleteDisabled" @click="remove">
           削除
         </button>
         <!-- In the foot rather than the body, so it is in view beside the button it explains. -->
