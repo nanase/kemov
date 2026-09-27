@@ -377,6 +377,7 @@ onMounted(() => {
       :members="members"
       :events="linkable"
       :pending="pending"
+      :bulk-running="bulkProgress !== null"
       @changed="reload"
       @created="created"
       @back="back"

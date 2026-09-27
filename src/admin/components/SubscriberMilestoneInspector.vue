@@ -46,6 +46,12 @@ const props = defineProps<{
   events: FootprintsEvent[];
   /** `GET /subscribers/pending`, or null when it could not be read. */
   pending: MilestonesPending | null;
+  /**
+   * Whether the page's まとめて公開待ちにする is running. Its own publish button
+   * waits meanwhile: pressing it on a row the run also reaches would log a
+   * second `publish` revision for the same row.
+   */
+  bulkRunning: boolean;
 }>();
 const emit = defineEmits<{ changed: []; created: [milestoneId: number]; back: [] }>();
 
@@ -313,7 +319,13 @@ function remove(): Promise<void> {
     <div class="inspector-foot">
       <button class="btn primary" type="button" :disabled="saving" @click="save">保存</button>
       <template v-if="milestone">
-        <button v-if="buttons.publishLabel" class="btn" type="button" :disabled="saving" @click="moveStatus('publish')">
+        <button
+          v-if="buttons.publishLabel"
+          class="btn"
+          type="button"
+          :disabled="saving || bulkRunning"
+          @click="moveStatus('publish')"
+        >
           {{ buttons.publishLabel }}
         </button>
         <button
