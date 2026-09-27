@@ -113,11 +113,19 @@ async function load(): Promise<void> {
   }
 }
 
+// As with `load`: the first request can still be on its way when a bulk run
+// ends and asks again, and its older answer must not land last.
+let pendingGeneration = 0;
+
 async function loadPending(): Promise<void> {
+  const generation = ++pendingGeneration;
+
   try {
-    pending.value = await getJson<MilestonesPending>('/subscribers/pending');
+    const body = await getJson<MilestonesPending>('/subscribers/pending');
+
+    if (generation === pendingGeneration) pending.value = body;
   } catch {
-    pending.value = null;
+    if (generation === pendingGeneration) pending.value = null;
   }
 }
 
