@@ -67,19 +67,20 @@ async function publishNow(): Promise<void> {
       if (body.published) done.push(`あしあと ${body.eventCount} 件`);
     }
 
-    if (canPublish.genet) {
-      const body = await postJson<{ published: boolean; streamCount?: number }>('/genet/publish', {});
-
-      if (body.published) done.push(`ジェネット楽曲一覧 配信 ${body.streamCount} 件`);
-    }
-
     // A milestone carries its linked event as the published timeline shows it,
     // so publishing あしあと can leave the milestones JSON behind even when
-    // nothing about the milestones was waiting when the list was read.
+    // nothing about the milestones was waiting when the list was read. Run
+    // right after it, so a failure of the unrelated genet run cannot stop it.
     if (canPublish.milestones || footprintsPublished) {
       const body = await postJson<{ published: boolean; milestoneCount?: number }>('/subscribers/publish', {});
 
       if (body.published) done.push(`登録者数の節目 ${body.milestoneCount} 件`);
+    }
+
+    if (canPublish.genet) {
+      const body = await postJson<{ published: boolean; streamCount?: number }>('/genet/publish', {});
+
+      if (body.published) done.push(`ジェネット楽曲一覧 配信 ${body.streamCount} 件`);
     }
 
     showToast(done.length === 0 ? '公開を待っているものがありません' : `公開しました。${done.join('、')}`);
