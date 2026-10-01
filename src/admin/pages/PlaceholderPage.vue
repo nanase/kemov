@@ -10,7 +10,7 @@ const name = computed(() => pageTitle(props.page));
 </script>
 
 <template>
-  <div class="main solo">
+  <div class="main">
     <div class="pane">
       <div class="toolbar">
         <h2>{{ name }}</h2>

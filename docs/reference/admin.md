@@ -63,7 +63,9 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
 
 `src/admin/router.ts` は、`#` のフラグメントではなく、クライアント側のルーター（`vue-router` の history モード）です。再読み込みや共有したリンクでも、同じ画面に戻れます。worker はどの `/admin/*` のパスにも同じページを返し（[`/admin` と Cloudflare Access](#admin-と-cloudflare-access)）、画面を選ぶのはブラウザに任せます。
 
-`src/admin/AdminShell.vue` は、すべての画面を囲む外枠です。上端のバーには、ページの名前と `GET /admin/api/me` が返すメールアドレスを出します。サイドバーには 3 つの群（やること・データ・運用）を、公開サイトのメニューと同じ順に並べます。
+`src/admin/AdminShell.vue` は、すべての画面を囲む外枠です。上端のバーには、群・ページ・開いている項目の名前を並べたパンくずと、アカウントのメニューを出します。メニューにあるのは「公開サイトを開く」と「ログアウト」だけで、アカウントの名前やメールアドレスは出しません。ログアウトは Cloudflare Access の `/cdn-cgi/access/logout` へのリンクで、worker は関わりません。
+
+サイドバーには 3 つの群（やること・データ・運用）を、公開サイトのメニューと同じ順に並べます。サイドバーは « で細い帯に畳め、» で開きます。畳んだかどうかはブラウザに覚えます。
 
 - 数を出す項目は次のとおりです
   - 公開は、`GET /admin/api/footprints/pending` の `pending` と `changed` を合わせた数
@@ -72,7 +74,9 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
 - それ以外の項目は、名前だけを出す
 - サイドバーのどの項目にも当たらないパスには、`src/admin/pages/PlaceholderPage.vue` を出す
 
-表と編集の欄の分け方（`.main`/`.pane`/`.inspector`）は、2 つの幅で狭くなります。`@media` ではなく `@container` を使う理由は、`src/admin/shell.css` のコメントにあります。
+どの画面も、表（`.pane`）を上に、開いた項目の編集の欄（`.inspector`）を下に置きます。間の仕切り（`src/admin/components/SplitHandle.vue`）は、ドラッグと上下の矢印キーで動かし、ダブルクリックで元の高さに戻します。仕切りの位置は、画面ごとにブラウザに覚えます。編集の欄の項目は、幅に応じて最大 3 列に並べます。
+
+狭い幅では、サイドバーを引き出しにし（860px 以下）、表と編集の欄を 1 つずつ出します（600px 以下）。`@media` ではなく `@container` を使う理由は、`src/admin/shell.css` のコメントにあります。
 
 外枠のほかに、次の画面に触れておきます。
 
@@ -93,7 +97,7 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
   - 日付と人数は、人が公表を見て入力します。YouTube API の値を候補として出しません（#222）
   - リスナーの投稿の URL は、この画面にだけ出ます。公開の JSON には worker が入れません
 - ジェネット楽曲一覧（`src/admin/pages/SetsPage.vue`）
-  - `.pane`/`.inspector` を使わない唯一の画面で、代わりに `.setlist`/`.editor` を全幅で使う。配信のデータは、他の画面が使う細い編集の欄に収まらないため（#141 のデザイン）
+  - `.pane`/`.inspector` を使わない唯一の画面で、代わりに `.setlist`/`.editor` を使う。配信のデータは、項目を格子に並べる編集の欄ではなく、曲ごとの区切りで編集するため。上下の並べ方と仕切りは、他の画面と同じ
   - 曲は、それを演奏するすべての配信で共有する。そのため、曲のクレジットの保存（`src/admin/lib/genet-tunes.ts`）は、配信の欄と演奏する曲・シーンの保存（`src/admin/lib/genet-streams.ts`）とは別の操作
   - Markdown の欄（曲の題、演奏の説明）は、書く欄の真下にその場のプレビューを出す。プレビューは公開サイトと同じ描画部品（`src/components/genet/MarkDown.vue`）を使う
   - Markdown の欄には、決まった形の Markdown のリンクをカーソルの位置に挿入するボタンがある。リンクの種類は Wikipedia・英語版 Wikipedia・配信のタイムスタンプ・URL そのもの

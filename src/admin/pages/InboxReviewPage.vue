@@ -181,7 +181,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
 </script>
 
 <template>
-  <div class="main" :class="{ detail, solo: selected === null }">
+  <div class="main" :class="{ detail }">
     <div class="pane">
       <div class="toolbar">
         <h2>確認待ち</h2>
@@ -340,6 +340,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
   padding-left: 1.2em;
   display: grid;
   gap: 3px;
-  font-size: 12.5px;
+  font-size: var(--a-small);
 }
 </style>

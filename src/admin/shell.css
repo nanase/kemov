@@ -1,25 +1,40 @@
 /*
- * The admin site's own app shell (#144). Ported from the confirmed mock
- * (#141 comment 5695260204, Artifact https://claude.ai/artifact/2m1v3K3WRCFnDeAaoMZm26) -
- * class names match the mock's so the two stay easy to compare.
+ * The admin site's own app shell. The first version was ported from the mock
+ * in #141 (#144); the layout now follows the redesign's adopted mock (案 4 of
+ * Artifact https://claude.ai/artifact/J9KS3fmKk27xUeiKZVF17Q): a dark top
+ * bar, a sidebar that folds into a narrow rail, and on every page the list
+ * above with the open item below it, split by a bar that moves.
  *
  * Colours come from src/shell/tokens.css, the public site's own tokens, but
  * `<html data-theme="light">` (set in index.html) pins every page here to
  * that file's light block - tokens.css's dark blocks are both guarded by
  * `:not([data-theme='light'])`, so they never apply here regardless of the
- * reader's OS setting. tokens.css has no amber "flag" tone or a separate
- * "danger" from its own reddish --k-warn, so the few colours below fill that
- * gap rather than being invented wholesale.
+ * reader's OS setting. tokens.css has no amber "flag" tone, a separate
+ * "danger" from its own reddish --k-warn, or the top bar's dark green, so the
+ * few colours below fill that gap rather than being invented wholesale.
+ *
+ * Type keeps to three steps: 13px for labels, chips and table heads, 14.5px
+ * for everything read or typed, 17-19px for headings.
  */
 
 @import '../shell/tokens.css';
 
 :root {
-  --a-flag: #8a5a12;
+  --a-flag: #7c5210;
   --a-flag-soft: #f7ecd6;
   --a-danger: #a63d28;
   --a-danger-soft: #f8e4de;
+  --a-bar: #12332d;
+  --a-bar-text: #e9f2ef;
+  --a-bar-text-2: #a9c2bb;
+  --a-bar-line: rgb(255 255 255 / 25%);
+  --a-bar-hover: rgb(255 255 255 / 8%);
+  --a-bar-accent: #4ecfb8;
+  --a-bar-on-accent: #04201c;
+  --a-font: 'IBM Plex Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', meiryo, system-ui, sans-serif;
   --a-mono: 'IBM Plex Mono', 'SFMono-Regular', consolas, monospace;
+  --a-small: 13px;
+  --a-body: 14.5px;
 }
 
 * {
@@ -35,9 +50,9 @@ body {
 body {
   background: var(--k-bg);
   color: var(--k-text);
-  font-family: 'Zen Kaku Gothic New', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, system-ui, sans-serif;
-  font-size: 14px;
-  line-height: 1.7;
+  font-family: var(--a-font);
+  font-size: var(--a-body);
+  line-height: 1.65;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -53,6 +68,10 @@ textarea {
   outline: 2px solid var(--k-accent);
   outline-offset: 2px;
   border-radius: 3px;
+}
+
+[aria-invalid='true'] {
+  border-color: var(--a-danger) !important;
 }
 
 #app {
@@ -72,30 +91,36 @@ textarea {
 }
 
 .topbar {
+  position: relative;
+  z-index: 25;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 12px;
-  height: 50px;
-  border-bottom: 1px solid var(--k-line);
-  background: var(--k-surface-2);
+  gap: 12px;
+  padding: 0 16px;
+  height: 54px;
+  background: var(--a-bar);
+  color: var(--a-bar-text);
 }
 
 .brandmark {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
 .crumb {
-  color: var(--k-text-3);
-  font-size: 12.5px;
-  white-space: nowrap;
+  min-width: 0;
   overflow: hidden;
+  color: var(--a-bar-text-2);
+  font-size: var(--a-body);
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crumb b {
+  color: #fff;
+  font-weight: 700;
 }
 
 .topbar .grow {
@@ -103,47 +128,152 @@ textarea {
   min-width: 0;
 }
 
+.bar-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--a-bar-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--a-bar-text);
+  cursor: pointer;
+}
+
+.bar-btn:hover {
+  background: var(--a-bar-hover);
+}
+
 .drawer-toggle {
   display: none;
 }
 
-.who {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12.5px;
-  color: var(--k-text-2);
-  white-space: nowrap;
+/* The account: a round button with no name on it, and a menu of two things. */
+.account {
+  position: relative;
+  flex: none;
 }
 
-.who .dot {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--k-accent);
-  color: var(--k-on-accent);
+.account-btn {
   display: grid;
   place-items: center;
-  font-size: 11px;
-  font-weight: 700;
+  width: 36px;
+  height: 36px;
+  padding: 3px;
+  border: 1px solid var(--a-bar-line);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.account-btn i {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--a-bar-accent);
+  color: var(--a-bar-on-accent);
+}
+
+.account-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 2px;
+  width: 220px;
+  padding: 6px;
+  border: 1px solid var(--k-line-2);
+  border-radius: 10px;
+  background: var(--k-surface);
+  box-shadow:
+    var(--k-shadow),
+    0 8px 24px -8px rgb(14 31 28 / 25%);
+  color: var(--k-text);
+}
+
+.account-menu a {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.account-menu a:hover {
+  background: var(--k-surface-2);
+}
+
+.account-menu a.out {
+  color: var(--a-danger);
 }
 
 .body {
   display: grid;
-  grid-template-columns: 254px minmax(0, 1fr);
+  grid-template-columns: 228px minmax(0, 1fr);
   min-height: 0;
+}
+
+.body.folded {
+  grid-template-columns: 52px minmax(0, 1fr);
 }
 
 /* ---- sidebar ----------------------------------------------------------- */
 
 .side {
-  border-right: 1px solid var(--k-line);
-  background: var(--k-surface-2);
-  overflow-y: auto;
-  padding: 12px 10px 18px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding: 8px 10px 18px;
+  overflow-y: auto;
+  border-right: 1px solid var(--k-line);
+  background: var(--k-surface-2);
+}
+
+.side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-left: 10px;
+  color: var(--k-text-3);
+  font-size: var(--a-small);
+  font-weight: 700;
+}
+
+.side-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--k-line-2);
+  border-radius: 8px;
+  background: var(--k-surface);
+  cursor: pointer;
+}
+
+.side-btn:hover {
+  background: var(--k-sunken);
+}
+
+.side[hidden] {
+  display: none;
+}
+
+.rail {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+  border-right: 1px solid var(--k-line);
+  background: var(--k-surface-2);
 }
 
 .side-group {
@@ -152,17 +282,11 @@ textarea {
   gap: 2px;
 }
 
-.side-group + .side-group {
-  border-top: 1px solid var(--k-line-2);
-  padding-top: 14px;
-}
-
 .side-label {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  padding: 0 10px 4px;
   color: var(--k-text-3);
-  padding: 0 8px 4px;
+  font-size: var(--a-small);
+  font-weight: 700;
 }
 
 .nav {
@@ -170,34 +294,27 @@ textarea {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 7px 9px;
+  padding: 7px 10px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   background: none;
+  color: var(--k-text-2);
   text-align: left;
   cursor: pointer;
-  color: var(--k-text-2);
   transition:
     background 0.12s,
     color 0.12s;
 }
 
 .nav:hover {
-  background: var(--k-surface-3, var(--k-sunken));
+  background: var(--k-sunken);
   color: var(--k-text);
 }
 
 .nav[aria-current='true'] {
-  background: var(--k-surface);
-  color: var(--k-text);
-  font-weight: 500;
-  box-shadow: var(--k-shadow);
-}
-
-.nav[aria-current='true'] .name {
-  box-shadow: inset 2px 0 0 var(--k-accent);
-  padding-left: 7px;
-  margin-left: -7px;
+  background: var(--k-accent-soft);
+  color: var(--k-accent);
+  font-weight: 700;
 }
 
 .nav .name {
@@ -206,43 +323,44 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13.5px;
 }
 
 .count {
-  font-family: var(--a-mono);
-  font-size: 11px;
-  padding: 0 6px;
+  flex: none;
+  min-width: 22px;
+  padding: 0 7px;
   border-radius: 999px;
   background: var(--k-sunken);
   color: var(--k-text-2);
-  flex: none;
+  font-size: var(--a-small);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .count.due {
   background: var(--a-flag-soft);
   color: var(--a-flag);
-  font-weight: 500;
+  font-weight: 700;
 }
 
-.side-foot {
-  margin-top: auto;
-  padding: 9px 9px 0;
-  border-top: 1px solid var(--k-line);
-  font-size: 11.5px;
-  color: var(--k-text-3);
-}
-
-/* ---- main -------------------------------------------------------------- */
+/* ---- main: the list above, the open item below -------------------------- */
 
 .main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 376px;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   min-height: 0;
+  min-width: 0;
 }
 
-.main.solo {
-  grid-template-columns: minmax(0, 1fr);
+/*
+ * `--split` is the list's share of the height, written by SplitHandle.vue
+ * when the bar is moved. The clamp keeps a few rows of the list and the
+ * editor's head and foot in view however small the window is.
+ */
+.main:has(> .inspector),
+.main.sets:has(> .editor) {
+  grid-template-rows: clamp(120px, var(--split, 40%), calc(100% - 240px)) minmax(240px, 1fr);
 }
 
 .pane {
@@ -254,17 +372,18 @@ textarea {
 
 .toolbar {
   display: flex;
-  align-items: center;
-  gap: 8px;
   flex-wrap: wrap;
-  padding: 10px 14px;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--k-line);
 }
 
 .toolbar h2 {
   margin: 0 4px 0 0;
-  font-size: 15.5px;
+  font-size: 19px;
   font-weight: 700;
+  line-height: 1.35;
   white-space: nowrap;
 }
 
@@ -272,22 +391,30 @@ textarea {
   flex: 1 1 auto;
 }
 
+.toolbar select,
+.toolbar input[type='text'] {
+  min-height: 34px;
+  padding: 4px 10px;
+  border: 1px solid var(--k-line-2);
+  border-radius: 8px;
+  background: var(--k-surface);
+}
+
 .seg {
   display: inline-flex;
-  border: 1px solid var(--k-line);
-  border-radius: 7px;
   overflow: hidden;
+  border: 1px solid var(--k-line-2);
+  border-radius: 8px;
   background: var(--k-surface);
 }
 
 .seg button {
+  padding: 5px 12px;
   border: 0;
+  border-right: 1px solid var(--k-line);
   background: none;
-  padding: 4px 11px;
-  font-size: 12.5px;
   color: var(--k-text-2);
   cursor: pointer;
-  border-right: 1px solid var(--k-line);
 }
 
 .seg button:last-child {
@@ -301,17 +428,16 @@ textarea {
 .seg button[aria-pressed='true'] {
   background: var(--k-accent);
   color: var(--k-on-accent);
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .btn {
+  padding: 5px 14px;
   border: 1px solid var(--k-line-2);
+  border-radius: 8px;
   background: var(--k-surface);
-  border-radius: 7px;
-  padding: 4px 12px;
-  font-size: 12.5px;
-  cursor: pointer;
   white-space: nowrap;
+  cursor: pointer;
   transition:
     background 0.12s,
     border-color 0.12s;
@@ -327,8 +453,8 @@ a.btn {
    resets the colours on a disabled hover is beaten by a later, equally
    specific one, and on .btn.primary it left white text on a white ground. */
 .btn:hover:not(:disabled) {
-  background: var(--k-surface-2);
   border-color: var(--k-text-3);
+  background: var(--k-surface-2);
 }
 
 .btn:disabled {
@@ -337,22 +463,22 @@ a.btn {
 }
 
 .btn.primary {
-  background: var(--k-accent);
   border-color: var(--k-accent);
+  background: var(--k-accent);
   color: var(--k-on-accent);
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .btn.primary:hover:not(:disabled) {
-  background: var(--k-accent);
   border-color: var(--k-accent);
+  background: var(--k-accent);
   filter: brightness(1.08);
 }
 
 /* Faded green still reads as "primary, and pressable" - a disabled one is grey. */
 .btn.primary:disabled {
-  background: var(--k-sunken);
   border-color: var(--k-line-2);
+  background: var(--k-sunken);
   color: var(--k-text-3);
   opacity: 1;
 }
@@ -364,8 +490,8 @@ a.btn {
 }
 
 .btn.quiet:hover:not(:disabled) {
-  background: var(--k-surface-2);
   border-color: transparent;
+  background: var(--k-surface-2);
 }
 
 .btn.danger {
@@ -373,8 +499,8 @@ a.btn {
 }
 
 .btn.danger:hover:not(:disabled) {
-  background: var(--a-danger-soft);
   border-color: var(--a-danger);
+  background: var(--a-danger-soft);
 }
 
 .btn.back {
@@ -382,8 +508,8 @@ a.btn {
 }
 
 .scroller {
-  overflow: auto;
   min-height: 0;
+  overflow: auto;
 }
 
 /* ---- table --------------------------------------------------------- */
@@ -391,27 +517,25 @@ a.btn {
 table.grid {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
 }
 
 table.grid thead th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--k-surface);
+  padding: 8px 12px;
   border-bottom: 1px solid var(--k-line-2);
-  text-align: left;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  background: var(--k-surface);
   color: var(--k-text-3);
-  padding: 7px 10px;
+  font-size: var(--a-small);
+  font-weight: 700;
+  text-align: left;
   white-space: nowrap;
 }
 
 table.grid td {
+  padding: 8px 12px;
   border-bottom: 1px solid var(--k-line);
-  padding: 7px 10px;
   vertical-align: middle;
 }
 
@@ -427,55 +551,49 @@ table.grid tbody tr[aria-selected='true'] td {
   background: var(--k-accent-soft);
 }
 
-table.grid tbody tr[aria-selected='true'] td:first-child {
-  box-shadow: inset 3px 0 0 var(--k-accent);
-}
-
 /* やること's own select column, and the band under the table that acts on what it selects. */
 table.grid td.tick,
 table.grid th.tick {
-  width: 34px;
+  width: 36px;
   padding-right: 0;
 }
 
 table.grid input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
   accent-color: var(--k-accent);
-  width: 14px;
-  height: 14px;
   cursor: pointer;
 }
 
 .bulkbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
-  padding: 8px 14px;
+  padding: 8px 20px;
   border-top: 1px solid var(--k-line);
   background: var(--k-accent-soft);
   color: var(--k-accent);
-  font-size: 12.5px;
 }
 
 .keys {
   display: flex;
-  gap: 9px;
   flex-wrap: wrap;
-  font-size: 11.5px;
+  gap: 9px;
   color: var(--k-text-3);
+  font-size: var(--a-small);
 }
 
 .keys kbd {
-  font-family: var(--a-mono);
-  font-size: 10.5px;
+  padding: 0 4px;
   border: 1px solid var(--k-line-2);
   border-radius: 4px;
-  padding: 0 4px;
   background: var(--k-surface);
+  font-family: var(--a-mono);
+  font-size: 12px;
 }
 
 .num {
-  font-family: var(--a-mono);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -489,20 +607,21 @@ table.grid input[type='checkbox'] {
 }
 
 .sub {
-  font-size: 11.5px;
   color: var(--k-text-3);
+  font-size: var(--a-small);
 }
 
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
-  line-height: 1.6;
-  padding: 1px 8px;
+  padding: 1px 9px;
   border-radius: 999px;
   background: var(--k-sunken);
   color: var(--k-text-2);
+  font-size: var(--a-small);
+  font-weight: 500;
+  line-height: 1.5;
   white-space: nowrap;
 }
 
@@ -518,8 +637,9 @@ table.grid input[type='checkbox'] {
 
 /* 公開待ち: the same green as 公開, drawn as an outline - on its way, not there yet. */
 .chip.waiting {
-  background: none;
+  padding: 0 8px;
   border: 1px dashed var(--k-accent);
+  background: none;
   color: var(--k-accent);
 }
 
@@ -530,151 +650,229 @@ table.grid input[type='checkbox'] {
 
 .chip.alarm::before {
   content: '';
-  width: 10px;
-  height: 10px;
   flex: none;
+  width: 11px;
+  height: 11px;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23A63D28' d='M8.87 1.98a1 1 0 0 0-1.74 0L.63 13.5A1 1 0 0 0 1.5 15h13a1 1 0 0 0 .87-1.5z'/%3E%3Cpath fill='%23F8E4DE' d='M7.25 5.5h1.5v4.2h-1.5zM7.25 10.9h1.5v1.5h-1.5z'/%3E%3C/svg%3E")
     center / contain no-repeat;
 }
 
 .chip.kind {
-  background: none;
+  padding: 0 8px;
   border: 1px solid var(--k-line-2);
+  background: none;
   color: var(--k-text-2);
 }
 
 .who-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-right: 5px;
+  gap: 5px;
+  margin-right: 6px;
   white-space: nowrap;
 }
 
 .who-chip i {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  flex: none;
   display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
 }
 
 .stack {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
   align-items: center;
+  gap: 4px 6px;
 }
 
-/* ---- inspector ------------------------------------------------------- */
+/* ---- inspector: the open item, below the list ---------------------------- */
 
+/* A container, so the fields can ask how wide the editor itself is. */
 .inspector {
-  border-left: 1px solid var(--k-line);
-  background: var(--k-surface-2);
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  min-height: 0;
-  min-width: 0;
-}
-
-.inspector-head {
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--k-line);
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.inspector-head h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.5;
-}
-
-.inspector-body {
-  overflow: auto;
-  padding: 14px;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
-  gap: 13px;
   min-height: 0;
-}
-
-.inspector-foot {
-  padding: 10px 14px;
-  border-top: 1px solid var(--k-line);
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
+  min-width: 0;
   background: var(--k-surface);
 }
 
+/* The bar between the list and the item (SplitHandle.vue), the first thing in
+   the editor. Thin to look at, with a taller strip to grab than the 6px it
+   draws. */
+.split-handle {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  flex: none;
+  place-items: center;
+  height: 6px;
+  border-top: 1px solid var(--k-line);
+  border-bottom: 1px solid var(--k-line);
+  background: var(--k-surface-2);
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.split-handle::before {
+  content: '';
+  position: absolute;
+  inset: -5px 0;
+}
+
+.split-handle:hover,
+.split-handle.drag {
+  background: var(--k-accent-soft);
+}
+
+.split-handle .grip {
+  width: 28px;
+  height: 2px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(to right, var(--k-line-2) 0 3px, transparent 3px 6px);
+}
+
+.inspector-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--k-line);
+}
+
+.inspector-head > div:first-child {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  min-width: 0;
+}
+
+.inspector-head h3 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The fields in up to three columns, filled row by row: the editor has the
+ * page's whole width, so one long column would leave most of it empty. A
+ * notice that something is wrong takes a row of its own.
+ */
+.inspector-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(max(280px, calc((100% - 2 * 18px) / 3)), 1fr));
+  flex: 1 1 auto;
+  gap: 14px 18px;
+  align-content: start;
+  align-items: start;
+  min-height: 0;
+  padding: 16px 20px 22px;
+  overflow: auto;
+}
+
+.inspector-body > .panel.flag,
+.inspector-body > .hint,
+.inspector-body > .wide {
+  grid-column: 1 / -1;
+}
+
+/* What reads better long: a title, a block of text, a list of tunes. */
+@container (min-width: 640px) {
+  .inspector-body > .span2,
+  .inspector-body > .field:has(> textarea) {
+    grid-column: span 2;
+  }
+}
+
+.inspector-foot {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--k-line);
+  background: var(--k-surface-2);
+}
+
 .foot-sep {
-  width: 1px;
   align-self: stretch;
+  width: 1px;
   min-height: 22px;
-  background: var(--k-line-2);
   margin-inline: 6px;
+  background: var(--k-line-2);
 }
 
 .field {
   display: grid;
-  gap: 3px;
+  gap: 4px;
+  min-width: 0;
 }
 
 .field > label {
-  font-size: 11px;
+  color: var(--k-text-2);
+  font-size: var(--a-small);
   font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--k-text-3);
 }
 
 .field input[type='text'],
 .field textarea,
 .field select {
   width: 100%;
-  background: var(--k-surface);
+  padding: 6px 10px;
   border: 1px solid var(--k-line-2);
-  border-radius: 6px;
-  padding: 5px 8px;
-  font-size: 13px;
+  border-radius: 7px;
+  background: var(--k-surface);
+}
+
+.field input[readonly] {
+  background: var(--k-sunken);
+  color: var(--k-text-3);
 }
 
 .field textarea {
-  resize: vertical;
-  min-height: 56px;
+  min-height: 64px;
   line-height: 1.6;
+  resize: vertical;
 }
 
 .row2 {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
 }
 
 .hint {
-  font-size: 11.5px;
   color: var(--k-text-3);
+  font-size: var(--a-small);
   line-height: 1.55;
 }
 
 .panel {
-  background: var(--k-surface);
-  border: 1px solid var(--k-line);
-  border-radius: 8px;
-  padding: 10px 12px;
   display: grid;
-  gap: 7px;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--k-line);
+  border-radius: 9px;
+  background: var(--k-surface-2);
 }
 
 .panel > h4 {
   margin: 0;
-  font-size: 11px;
+  color: var(--k-text-2);
+  font-size: var(--a-small);
   font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--k-text-3);
 }
 
 .panel.flag {
@@ -683,36 +881,102 @@ table.grid input[type='checkbox'] {
 }
 
 .panel.flag > h4 {
-  color: var(--a-flag);
   display: flex;
   align-items: center;
   gap: 5px;
+  color: var(--a-flag);
 }
 
 .panel.flag > h4::before {
   content: '';
+  flex: none;
   width: 14px;
   height: 14px;
-  flex: none;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%238A5A12' d='M8.87 1.98a1 1 0 0 0-1.74 0L.63 13.5A1 1 0 0 0 1.5 15h13a1 1 0 0 0 .87-1.5z'/%3E%3Cpath fill='%23F7ECD6' d='M7.25 5.5h1.5v4.2h-1.5zM7.25 10.9h1.5v1.5h-1.5z'/%3E%3C/svg%3E")
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%237C5210' d='M8.87 1.98a1 1 0 0 0-1.74 0L.63 13.5A1 1 0 0 0 1.5 15h13a1 1 0 0 0 .87-1.5z'/%3E%3Cpath fill='%23F7ECD6' d='M7.25 5.5h1.5v4.2h-1.5zM7.25 10.9h1.5v1.5h-1.5z'/%3E%3C/svg%3E")
     center / contain no-repeat;
 }
 
 .kv {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 3px 12px;
-  font-size: 12.5px;
   align-items: baseline;
+  gap: 3px 12px;
 }
 
 .kv dt {
   color: var(--k-text-3);
+  font-size: var(--a-small);
   white-space: nowrap;
 }
 
 .kv dd {
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A row of buttons under a form or a notice. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.actions .grow {
+  flex: 1 1 auto;
+}
+
+/* A page that is a column of panels rather than a list (公開). */
+.page-body {
+  display: grid;
+  gap: 14px;
+  max-width: 820px;
+  padding: 16px 20px;
+}
+
+/* A second table further down the same list (版の履歴's 公開の記録). */
+.toolbar.later {
+  margin-top: 18px;
+  border-top: 1px solid var(--k-line);
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+/* One source: its URL, its title, and the button that drops it. */
+.source-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.source-row input {
+  width: 100%;
+  padding: 5px 9px;
+  border: 1px solid var(--k-line-2);
+  border-radius: 7px;
+  background: var(--k-surface);
+}
+
+/* A switch with what it says beside it. */
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+/* A colour code typed beside the swatch it makes (メンバー). */
+.color-input {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.color-input .who-chip i {
+  width: 16px;
+  height: 16px;
 }
 
 /* ---- collected-value / override rows (配信・動画) ------------------- */
@@ -720,8 +984,8 @@ table.grid input[type='checkbox'] {
 .ov {
   display: grid;
   grid-template-columns: 92px 1fr auto;
-  gap: 8px;
   align-items: center;
+  gap: 8px;
   padding: 6px 0;
   border-bottom: 1px dashed var(--k-line);
 }
@@ -731,8 +995,8 @@ table.grid input[type='checkbox'] {
 }
 
 .ov > .k {
-  font-size: 11.5px;
   color: var(--k-text-3);
+  font-size: var(--a-small);
 }
 
 .ov .vals {
@@ -742,55 +1006,53 @@ table.grid input[type='checkbox'] {
 }
 
 .ov .collected {
-  font-size: 12.5px;
   overflow-wrap: anywhere;
 }
 
 .ov .collected.struck {
-  text-decoration: line-through;
   color: var(--k-text-3);
+  text-decoration: line-through;
 }
 
 .ov input[type='text'],
 .ov select {
   width: 100%;
-  background: var(--k-surface);
+  padding: 4px 8px;
   border: 1px solid var(--k-accent);
-  border-radius: 5px;
-  padding: 3px 7px;
-  font-size: 12.5px;
+  border-radius: 6px;
+  background: var(--k-surface);
 }
 
 .toggle {
   position: relative;
-  width: 34px;
-  height: 19px;
-  border-radius: 999px;
-  border: 1px solid var(--k-line-2);
-  background: var(--k-sunken);
-  cursor: pointer;
   flex: none;
+  width: 40px;
+  height: 22px;
   padding: 0;
+  border: 1px solid var(--k-line-2);
+  border-radius: 999px;
+  background: var(--k-track);
+  cursor: pointer;
 }
 
 .toggle::after {
   content: '';
   position: absolute;
   inset: 2px auto 2px 2px;
-  width: 13px;
+  width: 16px;
   border-radius: 50%;
   background: var(--k-surface);
-  box-shadow: var(--k-shadow);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
   transition: transform 0.15s;
 }
 
 .toggle[aria-pressed='true'] {
-  background: var(--k-accent);
   border-color: var(--k-accent);
+  background: var(--k-accent);
 }
 
 .toggle[aria-pressed='true']::after {
-  transform: translateX(15px);
+  transform: translateX(18px);
 }
 
 .empty {
@@ -798,55 +1060,55 @@ table.grid input[type='checkbox'] {
   place-items: center;
   gap: 8px;
   padding: 56px 20px;
-  text-align: center;
   color: var(--k-text-3);
+  text-align: center;
 }
 
 .empty b {
-  font-size: 16px;
   color: var(--k-text);
+  font-size: 17px;
   font-weight: 700;
 }
 
 .picker {
   position: absolute;
   inset: 0;
-  background: var(--k-scrim);
+  z-index: 40;
   display: grid;
   place-items: center;
-  z-index: 40;
   padding: 16px;
+  background: var(--k-scrim);
 }
 
 .picker-box {
   width: min(470px, 100%);
-  background: var(--k-surface);
-  border-radius: 11px;
-  border: 1px solid var(--k-line-2);
-  box-shadow: var(--k-shadow);
   overflow: hidden;
+  border: 1px solid var(--k-line-2);
+  border-radius: 11px;
+  background: var(--k-surface);
+  box-shadow: var(--k-shadow);
 }
 
 .picker-head {
   padding: 11px 14px;
   border-bottom: 1px solid var(--k-line);
+  font-size: 17px;
   font-weight: 700;
-  font-size: 14px;
 }
 
 .picker-body {
-  padding: 14px;
   display: grid;
   gap: 8px;
   max-height: 50vh;
+  padding: 14px;
   overflow: auto;
 }
 
 .picker-foot {
-  padding: 11px 14px;
-  border-top: 1px solid var(--k-line);
   display: flex;
   gap: 8px;
+  padding: 11px 14px;
+  border-top: 1px solid var(--k-line);
   background: var(--k-surface-2);
 }
 
@@ -859,57 +1121,63 @@ table.grid input[type='checkbox'] {
 
 .toast {
   position: absolute;
-  left: 50%;
   bottom: 18px;
-  transform: translateX(-50%);
-  background: var(--k-text);
-  color: var(--k-bg);
-  font-size: 12.5px;
-  padding: 7px 15px;
-  border-radius: 999px;
-  box-shadow: var(--k-shadow);
+  left: 50%;
   z-index: 30;
-  pointer-events: none;
   max-width: calc(100% - 32px);
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: var(--k-text);
+  box-shadow: var(--k-shadow);
+  color: var(--k-bg);
+  pointer-events: none;
+  transform: translateX(-50%);
 }
 
-/* ---- ジェネット楽曲一覧: 配信を左に、全幅の編集を右に -------------------- *
- * The one screen that does not use .pane/.inspector - #141's design says so
- * explicitly, because a stream's own data (its tunes, each with credits,
- * reference videos and sheet music) does not fit the narrow inspector every
- * other screen uses. .setlist replaces .pane, .editor replaces .inspector. */
-
-.main.sets {
-  grid-template-columns: 302px minmax(0, 1fr);
-}
+/* ---- ジェネット楽曲一覧: 配信を上に、編集を下に ----------------------------- *
+ * The one screen that does not use .pane/.inspector: a stream's own data (its
+ * tunes, each with credits, reference videos and sheet music) is edited in
+ * sections rather than one grid of fields. .setlist replaces .pane, .editor
+ * replaces .inspector, and the bar between them is the same SplitHandle. */
 
 .setlist {
-  border-right: 1px solid var(--k-line);
-  overflow: auto;
-  min-height: 0;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: auto;
+}
+
+.setlist-filter {
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--k-line);
+}
+
+.setlist-items {
+  min-height: 0;
+  overflow: auto;
 }
 
 .setlist-item {
   display: grid;
   gap: 3px;
   width: 100%;
-  text-align: left;
-  padding: 9px 12px;
+  padding: 9px 20px;
   border: 0;
   border-bottom: 1px solid var(--k-line);
   background: none;
+  text-align: left;
   cursor: pointer;
+}
+
+.setlist-item:hover {
+  background: var(--k-surface-2);
 }
 
 .setlist-item[aria-current='true'] {
   background: var(--k-accent-soft);
-  box-shadow: inset 3px 0 0 var(--k-accent);
 }
 
 .setlist-item .t {
-  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -922,29 +1190,49 @@ table.grid input[type='checkbox'] {
 }
 
 .editor {
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.editor > .toolbar {
+  flex: none;
+}
+
+.editor > .scroller {
+  flex: 1 1 auto;
+}
+
+.editor .toolbar h2 {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 17px;
+  text-overflow: ellipsis;
+}
+
+/* A notice above the editor's sections. */
+.editor-notice {
+  padding: 12px 20px 0;
 }
 
 .editor-section {
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--k-line);
   display: grid;
   gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--k-line);
 }
 
 .editor-section > h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--a-body);
 }
 
 .tune {
+  overflow: hidden;
   border: 1px solid var(--k-line);
   border-radius: 9px;
   background: var(--k-surface);
-  overflow: hidden;
 }
 
 .tune + .tune {
@@ -959,14 +1247,14 @@ table.grid input[type='checkbox'] {
   padding: 8px 12px;
   border: 0;
   background: var(--k-surface-2);
-  cursor: pointer;
   text-align: left;
+  cursor: pointer;
 }
 
 .tune-head .no {
-  font-family: var(--a-mono);
-  font-size: 11.5px;
   color: var(--k-text-3);
+  font-size: var(--a-small);
+  font-variant-numeric: tabular-nums;
 }
 
 .tune-head .t {
@@ -975,13 +1263,12 @@ table.grid input[type='checkbox'] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
 }
 
 .tune-body {
-  padding: 12px;
   display: grid;
   gap: 13px;
+  padding: 12px;
   border-top: 1px solid var(--k-line);
 }
 
@@ -994,27 +1281,26 @@ table.grid input[type='checkbox'] {
 
 .md-bar {
   display: flex;
-  gap: 5px;
   flex-wrap: wrap;
   align-items: center;
+  gap: 5px;
 }
 
 .md-bar .lab {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--k-text-3);
   margin-right: auto;
+  color: var(--k-text-2);
+  font-size: var(--a-small);
+  font-weight: 700;
 }
 
 .md-ins {
-  font-size: 11px;
-  padding: 1px 7px;
+  padding: 1px 8px;
   border: 1px solid var(--k-line-2);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--k-surface);
-  cursor: pointer;
+  font-size: var(--a-small);
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .md-ins:hover {
@@ -1024,27 +1310,26 @@ table.grid input[type='checkbox'] {
 .md textarea,
 .md input[type='text'] {
   width: 100%;
-  background: var(--k-surface);
+  padding: 6px 10px;
   border: 1px solid var(--k-line-2);
-  border-radius: 6px;
-  padding: 5px 8px;
+  border-radius: 7px;
+  background: var(--k-surface);
   font-family: var(--a-mono);
-  font-size: 12.5px;
+  font-size: 13.5px;
 }
 
 .md textarea {
-  resize: vertical;
-  min-height: 44px;
+  min-height: 48px;
   line-height: 1.6;
+  resize: vertical;
 }
 
 .md-prev {
-  font-size: 12.5px;
-  padding: 4px 9px;
-  background: var(--k-surface-2);
+  min-height: 29px;
+  padding: 4px 10px;
   border: 1px dashed var(--k-line-2);
-  border-radius: 6px;
-  min-height: 27px;
+  border-radius: 7px;
+  background: var(--k-surface-2);
   line-height: 1.7;
 }
 
@@ -1077,11 +1362,19 @@ a.mdl.ext {
   gap: 6px;
 }
 
+/* One credit of a tune (作曲, 作詞...): its name, how it is written, and who. */
+.attr-block {
+  display: grid;
+  gap: 6px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--k-line);
+}
+
 .row-item {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 8px;
   align-items: center;
+  gap: 8px;
 }
 
 .row-item.two {
@@ -1091,22 +1384,30 @@ a.mdl.ext {
 .row-item select,
 .row-item input[type='text'] {
   width: 100%;
-  background: var(--k-surface);
+  padding: 5px 9px;
   border: 1px solid var(--k-line-2);
-  border-radius: 6px;
-  padding: 5px 8px;
-  font-size: 12.5px;
+  border-radius: 7px;
+  background: var(--k-surface);
+}
+
+.row-item .full {
+  grid-column: 1 / -1;
+}
+
+.row-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .row-del {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
+  flex: none;
+  width: 30px;
+  height: 30px;
   border: 1px solid var(--k-line-2);
+  border-radius: 7px;
   background: var(--k-surface);
   color: var(--a-danger);
   cursor: pointer;
-  flex: none;
 }
 
 .row-del:hover {
@@ -1118,89 +1419,53 @@ a.mdl.ext {
 .chipset {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
   align-items: center;
+  gap: 6px;
 }
 
 .chip-x {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11.5px;
-  padding: 2px 4px 2px 9px;
+  padding: 2px 4px 2px 10px;
   border-radius: 999px;
   background: var(--k-sunken);
   color: var(--k-text-2);
+  font-size: var(--a-small);
 }
 
 .chip-x button {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
+  width: 18px;
+  height: 18px;
   border: 0;
+  border-radius: 50%;
   background: var(--k-line-2);
   color: var(--k-surface);
-  cursor: pointer;
+  font-size: 12px;
   line-height: 1;
-  font-size: 11px;
+  cursor: pointer;
 }
 
 /* ---- narrow ---------------------------------------------------------- *
- * By the shell's own inline size (@container), not the viewport - #144's
- * handoff asks for this explicitly, since the shell fills whatever page
- * embeds it rather than always being the full viewport width. */
-
-@container admin (max-width: 1140px) {
-  .main {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .main .inspector {
-    display: none;
-  }
-
-  .main.detail .pane {
-    display: none;
-  }
-
-  .main.detail .inspector {
-    display: grid;
-  }
-
-  .btn.back {
-    display: inline-block;
-  }
-
-  /* .main.sets's own base rule outweighs the plain .main rule above on
-   * specificity alone (two classes beat one), so it needs its own override
-   * here rather than inheriting that one. */
-  .main.sets {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .main.sets .editor {
-    display: none;
-  }
-
-  .main.sets.detail .setlist {
-    display: none;
-  }
-
-  .main.sets.detail .editor {
-    display: grid;
-  }
-}
+ * By the shell's own inline size (@container), not the viewport, since the
+ * shell fills whatever page embeds it rather than always being the full
+ * viewport width. */
 
 @container admin (max-width: 860px) {
-  .body {
+  .body,
+  .body.folded {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rail {
+    display: none;
   }
 
   .side {
     position: absolute;
-    inset: 50px auto 0 0;
-    width: 254px;
+    inset: 54px auto 0 0;
     z-index: 20;
+    width: 260px;
     box-shadow: var(--k-shadow);
     transform: translateX(-102%);
     transition: transform 0.18s ease;
@@ -1210,16 +1475,12 @@ a.mdl.ext {
     transform: none;
   }
 
+  .side-head {
+    display: none;
+  }
+
   .drawer-toggle {
     display: inline-grid;
-    place-items: center;
-    width: 30px;
-    height: 28px;
-    border: 1px solid var(--k-line-2);
-    border-radius: 7px;
-    background: var(--k-surface);
-    cursor: pointer;
-    flex: none;
   }
 
   .crumb {
@@ -1227,9 +1488,38 @@ a.mdl.ext {
   }
 }
 
-@container admin (max-width: 480px) {
+/* A phone: one of the list and the item at a time, with ← 一覧 to go back. */
+@container admin (max-width: 600px) {
+  .main:has(> .inspector),
+  .main.sets:has(> .editor) {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .main .inspector,
+  .main.sets .editor {
+    display: none;
+  }
+
+  .main.detail .pane,
+  .main.sets.detail .setlist {
+    display: none;
+  }
+
+  .main.detail .inspector,
+  .main.sets.detail .editor {
+    display: flex;
+  }
+
+  .split-handle {
+    display: none;
+  }
+
+  .btn.back {
+    display: inline-block;
+  }
+
   .row2 {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .clip {

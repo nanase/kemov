@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 
+import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, getJson, putJson } from '../lib/api';
+import { useCrumbDetail } from '../lib/crumb';
 import {
   defaultDayRange,
   jstClock,
@@ -184,6 +186,8 @@ onMounted(async () => {
   await loadMembers();
   await loadDays();
 });
+
+useCrumbDetail(() => (selectedTick.value ? jstClock(selectedTick.value.fetchedAt) : openDay.value));
 </script>
 
 <template>
@@ -273,6 +277,7 @@ onMounted(async () => {
     </div>
 
     <div v-if="selectedTick" class="inspector">
+      <SplitHandle />
       <div class="inspector-head">
         <div>
           <h3>{{ jstClock(selectedTick.fetchedAt) }}</h3>
@@ -293,7 +298,7 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 9px">
+        <div class="switch-row">
           <button
             class="toggle"
             type="button"

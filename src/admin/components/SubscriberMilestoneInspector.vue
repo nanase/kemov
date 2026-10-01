@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 
 import { AdminApiError, deleteJson, postJson, putJson } from '../lib/api';
+import { useCrumbDetail } from '../lib/crumb';
 import type { FootprintsEvent, FootprintsMember } from '../lib/footprints';
 import { CHANGED_NOTICE, PUBLISH_QUEUED_TOAST, waitingNoticeFor, WITHDRAW_QUEUED_TOAST } from '../lib/publish-mark';
 import {
@@ -26,6 +27,8 @@ import {
   type MilestonesPending,
 } from '../lib/subscriber-milestones-publish';
 import { showToast } from '../lib/toast';
+
+import SplitHandle from './SplitHandle.vue';
 
 /**
  * 編集パネル for one 登録者数の節目 row (#225), or for a new one when
@@ -203,14 +206,17 @@ function remove(): Promise<void> {
     showToast('削除しました');
   });
 }
+
+useCrumbDetail(() => heading.value);
 </script>
 
 <template>
   <div class="inspector">
+    <SplitHandle />
     <div class="inspector-head">
-      <div style="flex: 1 1 auto; min-width: 0">
+      <div>
         <h3>{{ heading }}</h3>
-        <div v-if="milestone" class="stack" style="margin-top: 4px">
+        <div v-if="milestone" class="stack">
           <span v-if="mark" class="chip" :class="mark.tone">{{ mark.label }}</span>
           <span class="chip kind">{{ announcerLabel(milestone.announcedBy) }}</span>
         </div>
@@ -365,40 +371,5 @@ function remove(): Promise<void> {
 <style scoped>
 .delete-hint {
   flex-basis: 100%;
-}
-
-.source-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  gap: 7px;
-  align-items: center;
-}
-
-.source-row input {
-  width: 100%;
-  font-size: 12.5px;
-  background: var(--k-surface);
-  border: 1px solid var(--k-line-2);
-  border-radius: 6px;
-  padding: 4px 7px;
-}
-
-.row-del {
-  border: 0;
-  background: none;
-  color: var(--a-danger);
-  cursor: pointer;
-  font-size: 15px;
-  line-height: 1;
-  padding: 3px 7px;
-  border-radius: 5px;
-}
-
-.row-del:hover {
-  background: var(--a-danger-soft);
-}
-
-[aria-invalid='true'] {
-  border-color: var(--a-danger) !important;
 }
 </style>

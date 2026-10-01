@@ -1,28 +1,37 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { getJson } from './lib/api';
+import { crumbDetail } from './lib/crumb';
 import { inboxBadges, publishBadge, refreshPublishBadge } from './lib/publish-badge';
-import { pageTitle, SIDEBAR_GROUPS } from './lib/sidebar';
+import { pageGroup, pageTitle, SIDEBAR_GROUPS } from './lib/sidebar';
 import { toastMessage } from './lib/toast';
 
 /**
  * The app shell (#141, #144): the top bar, the sidebar and whatever screen
  * the router placed in the default slot. Nothing page-specific lives here -
- * `FootprintsPage.vue`, `PublishPage.vue` and `PlaceholderPage.vue` are each
- * a full `.main` on their own, matching the mock's own split between the
- * shell and what it wraps.
+ * every page is a full `.main` on its own, matching the mock's own split
+ * between the shell and what it wraps.
+ *
+ * Signing out is Cloudflare Access's own: the account menu links to
+ * `/cdn-cgi/access/logout`, which ends the Access session for this hostname,
+ * so nothing on the worker's side takes part in it.
  */
+
+const LOGOUT_URL = '/cdn-cgi/access/logout';
+const FOLD_KEY = 'kemov-admin-side-folded';
 
 const route = useRoute();
 const drawerOpen = ref(false);
-const email = ref<string | null>(null);
+const accountOpen = ref(false);
+const accountEl = ref<HTMLElement | null>(null);
+const folded = ref(false);
 const collectFailuresBadge = ref<number | null>(null);
 
-const initial = computed(() => (email.value ? email.value.charAt(0).toUpperCase() : ''));
 const currentPage = computed(() => route.path.replace(/^\/+/, ''));
-const crumb = computed(() => pageTitle(currentPage.value));
+const group = computed(() => pageGroup(currentPage.value));
+const page = computed(() => pageTitle(currentPage.value));
 
 function badgeFor(page: string): number | null {
   if (page === 'publish') return publishBadge.value;
@@ -38,14 +47,40 @@ function closeDrawer(): void {
   drawerOpen.value = false;
 }
 
+function setFolded(value: boolean): void {
+  folded.value = value;
+
+  try {
+    localStorage.setItem(FOLD_KEY, value ? '1' : '0');
+  } catch {
+    // Storage can be blocked; the sidebar still folds for this visit.
+  }
+}
+
+function onDocumentPointer(event: PointerEvent): void {
+  if (accountOpen.value && !accountEl.value?.contains(event.target as Node)) accountOpen.value = false;
+}
+
+function onDocumentKey(event: KeyboardEvent): void {
+  if (event.key === 'Escape') accountOpen.value = false;
+}
+
+watch(
+  () => route.path,
+  () => {
+    accountOpen.value = false;
+  },
+);
+
 onMounted(async () => {
   try {
-    const me = await getJson<{ email: string }>('/me');
-
-    email.value = me.email;
+    folded.value = localStorage.getItem(FOLD_KEY) === '1';
   } catch {
-    // The topbar shows no initial when this fails - nothing else here depends on it.
+    folded.value = false;
   }
+
+  document.addEventListener('pointerdown', onDocumentPointer);
+  document.addEventListener('keydown', onDocumentKey);
 
   await refreshPublishBadge();
 
@@ -57,15 +92,26 @@ onMounted(async () => {
     collectFailuresBadge.value = null;
   }
 });
+
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', onDocumentPointer);
+  document.removeEventListener('keydown', onDocumentKey);
+});
 </script>
 
 <template>
   <div class="shell">
     <div class="topbar">
-      <button class="drawer-toggle" type="button" aria-label="メニュー" @click="drawerOpen = !drawerOpen">
+      <button
+        class="bar-btn drawer-toggle"
+        type="button"
+        aria-label="メニュー"
+        :aria-expanded="drawerOpen"
+        @click="drawerOpen = !drawerOpen"
+      >
         <svg
-          width="15"
-          height="15"
+          width="16"
+          height="16"
           viewBox="0 0 16 16"
           fill="none"
           stroke="currentColor"
@@ -76,18 +122,119 @@ onMounted(async () => {
         </svg>
       </button>
       <span class="brandmark">けもV 管理</span>
-      <span class="crumb">/ {{ crumb }}</span>
+      <span class="crumb">
+        <template v-if="group">{{ group }} / </template>
+        <template v-if="crumbDetail"
+          >{{ page }} / <b>{{ crumbDetail }}</b></template
+        >
+        <b v-else>{{ page }}</b>
+      </span>
       <span class="grow"></span>
-      <span class="who"
-        ><span class="dot" title="Access で認証済み">{{ initial }}</span></span
-      >
+      <div ref="accountEl" class="account">
+        <button
+          class="account-btn"
+          type="button"
+          aria-label="アカウント"
+          aria-haspopup="menu"
+          :aria-expanded="accountOpen"
+          @click="accountOpen = !accountOpen"
+        >
+          <i>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              aria-hidden="true"
+            >
+              <circle cx="8" cy="5.5" r="2.8" />
+              <path d="M2.5 14c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6" />
+            </svg>
+          </i>
+        </button>
+        <div v-if="accountOpen" class="account-menu" role="menu">
+          <a role="menuitem" href="/" target="_blank" rel="noopener">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              aria-hidden="true"
+            >
+              <path d="M9 2h5v5M14 2 7 9M12 10v4H2V4h4" />
+            </svg>
+            公開サイトを開く
+          </a>
+          <a role="menuitem" class="out" :href="LOGOUT_URL">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              aria-hidden="true"
+            >
+              <path d="M6 2H2.5v12H6M10.5 4.5 14 8l-3.5 3.5M14 8H6" />
+            </svg>
+            ログアウト
+          </a>
+        </div>
+      </div>
     </div>
-    <div class="body">
-      <nav class="side" :class="{ open: drawerOpen }" aria-label="ページ">
-        <div v-for="group in SIDEBAR_GROUPS" :key="group.label" class="side-group">
-          <div class="side-label">{{ group.label }}</div>
+    <div class="body" :class="{ folded }">
+      <nav v-if="folded" class="rail" aria-label="ページ">
+        <button
+          class="side-btn"
+          type="button"
+          aria-label="メニューを開く"
+          :aria-expanded="false"
+          @click="setFolded(false)"
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            aria-hidden="true"
+          >
+            <path d="M3 3.5 7.5 8 3 12.5M7.5 3.5 12 8l-4.5 4.5" />
+          </svg>
+        </button>
+      </nav>
+      <nav class="side" :class="{ open: drawerOpen }" :hidden="folded && !drawerOpen" aria-label="ページ">
+        <div class="side-head">
+          <span>メニュー</span>
+          <button
+            class="side-btn"
+            type="button"
+            aria-label="メニューを畳む"
+            :aria-expanded="true"
+            @click="setFolded(true)"
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              aria-hidden="true"
+            >
+              <path d="M8.5 3.5 4 8l4.5 4.5M13 3.5 8.5 8l4.5 4.5" />
+            </svg>
+          </button>
+        </div>
+        <div v-for="g in SIDEBAR_GROUPS" :key="g.label" class="side-group">
+          <div class="side-label">{{ g.label }}</div>
           <router-link
-            v-for="item in group.items"
+            v-for="item in g.items"
             :key="item.page"
             v-slot="{ navigate, isActive }"
             :to="`/${item.page}`"

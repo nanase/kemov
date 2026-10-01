@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 
+import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, getJson, putJson } from '../lib/api';
+import { useCrumbDetail } from '../lib/crumb';
 import {
   AVAILABILITIES,
   AVAILABILITY_LABEL,
@@ -184,6 +186,8 @@ watch(q, () => {
 });
 
 onMounted(load);
+
+useCrumbDetail(() => (selected.value ? (selectedOverride.value?.title ?? selected.value.title) : null));
 </script>
 
 <template>
@@ -240,10 +244,11 @@ onMounted(load);
     </div>
 
     <div v-if="selected" class="inspector">
+      <SplitHandle />
       <div class="inspector-head">
-        <div style="flex: 1 1 auto; min-width: 0">
+        <div>
           <h3>{{ selectedOverride?.title ?? selected.title }}</h3>
-          <div class="stack" style="margin-top: 4px">
+          <div class="stack">
             <span class="num sub">{{ selected.videoId }}</span>
           </div>
         </div>

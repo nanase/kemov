@@ -60,6 +60,11 @@ export function publishBadgeCount(pending: FootprintsPending): number {
   return pending.pending.length + pending.changed.length;
 }
 
+/** The group a page id sits in, for the topbar's breadcrumb - '' for an id no group lists. */
+export function pageGroup(page: string): string {
+  return SIDEBAR_GROUPS.find((group) => group.items.some((i) => i.page === page))?.label ?? '';
+}
+
 /** The sidebar's own name for a page id, for the topbar's breadcrumb - '' for an id no group lists. */
 export function pageTitle(page: string): string {
   for (const group of SIDEBAR_GROUPS) {

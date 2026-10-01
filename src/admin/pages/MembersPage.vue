@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
+import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, getJson, putJson } from '../lib/api';
+import { useCrumbDetail } from '../lib/crumb';
 import {
   MEMBER_TEXT,
   blankNewMember,
@@ -269,6 +271,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnload));
+
+useCrumbDetail(() => (newForm.value ? MEMBER_TEXT.addHeading : activeFields.value ? activeName.value : null));
 </script>
 
 <template>
@@ -363,10 +367,11 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
 
     <!-- inert while 保存 is in flight: the request already carries the draft as it was, and what is typed meanwhile would be cleared with it. -->
     <div v-if="activeFields" class="inspector" :inert="listSaving || undefined">
+      <SplitHandle />
       <div class="inspector-head">
-        <div style="flex: 1 1 auto; min-width: 0">
+        <div>
           <h3>{{ newForm ? MEMBER_TEXT.addHeading : activeName }}</h3>
-          <div v-if="!newForm" class="stack" style="margin-top: 4px">
+          <div v-if="!newForm" class="stack">
             <span class="chip" :class="{ published: activeEnded === null }">{{
               activeEnded === null ? '活動中' : '活動終了'
             }}</span>
@@ -475,40 +480,32 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
           <div class="row2">
             <div class="field">
               <label for="f-color-key">key</label>
-              <div style="display: flex; align-items: center; gap: 7px">
+              <div class="color-input">
                 <input id="f-color-key" v-model="activeFields.colorKey" type="text" placeholder="#RRGGBB" />
-                <span class="who-chip"
-                  ><i :style="{ background: activeFields.colorKey, width: '16px', height: '16px' }"></i
-                ></span>
+                <span class="who-chip"><i :style="{ background: activeFields.colorKey }"></i></span>
               </div>
             </div>
             <div class="field">
               <label for="f-color-sub">sub</label>
-              <div style="display: flex; align-items: center; gap: 7px">
+              <div class="color-input">
                 <input id="f-color-sub" v-model="activeFields.colorSub" type="text" placeholder="#RRGGBB" />
-                <span class="who-chip"
-                  ><i :style="{ background: activeFields.colorSub, width: '16px', height: '16px' }"></i
-                ></span>
+                <span class="who-chip"><i :style="{ background: activeFields.colorSub }"></i></span>
               </div>
             </div>
           </div>
           <div class="row2">
             <div class="field">
               <label for="f-color-light">light</label>
-              <div style="display: flex; align-items: center; gap: 7px">
+              <div class="color-input">
                 <input id="f-color-light" v-model="activeFields.colorLight" type="text" placeholder="#RRGGBB" />
-                <span class="who-chip"
-                  ><i :style="{ background: activeFields.colorLight, width: '16px', height: '16px' }"></i
-                ></span>
+                <span class="who-chip"><i :style="{ background: activeFields.colorLight }"></i></span>
               </div>
             </div>
             <div class="field">
               <label for="f-color-back">back</label>
-              <div style="display: flex; align-items: center; gap: 7px">
+              <div class="color-input">
                 <input id="f-color-back" v-model="activeFields.colorBack" type="text" placeholder="#RRGGBB" />
-                <span class="who-chip"
-                  ><i :style="{ background: activeFields.colorBack, width: '16px', height: '16px' }"></i
-                ></span>
+                <span class="who-chip"><i :style="{ background: activeFields.colorBack }"></i></span>
               </div>
             </div>
           </div>
@@ -547,10 +544,6 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
 </template>
 
 <style scoped>
-[aria-invalid='true'] {
-  border-color: var(--a-danger) !important;
-}
-
 .move {
   white-space: nowrap;
 }
