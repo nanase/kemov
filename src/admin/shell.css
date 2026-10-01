@@ -1135,10 +1135,10 @@ table.grid input[type='checkbox'] {
 }
 
 /* ---- ジェネット楽曲一覧: 配信を上に、編集を下に ----------------------------- *
- * The one screen that does not use .pane/.inspector: a stream's own data (its
- * tunes, each with credits, reference videos and sheet music) is edited in
- * sections rather than one grid of fields. .setlist replaces .pane, .editor
- * replaces .inspector, and the bar between them is the same SplitHandle. */
+ * .setlist in place of .pane and .editor in place of .inspector: a stream's
+ * own data (its tunes, each with credits, reference videos and sheet music)
+ * is edited in sections rather than one grid of fields. The bar between them
+ * is the same SplitHandle. */
 
 .setlist {
   display: grid;

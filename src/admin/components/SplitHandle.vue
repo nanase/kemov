@@ -13,10 +13,9 @@ import {
 } from '../lib/split';
 
 /**
- * The bar between a page's list and the item open below it. It sits on the
- * top edge of the editor (`.inspector`, or `.editor` on ジェネット楽曲一覧) and
- * moves the line by writing `--split` on the `.main` that holds both, which
- * `shell.css` turns into the list's row height.
+ * The bar between a page's list and the item open below it. It is the first
+ * thing in the editor (`.inspector` or `.editor`) and moves the line by
+ * writing `--split` on the `.main` that holds both.
  *
  * Dragging, the arrow keys and a double click (back to the default) all move
  * it; where it was left is kept per page in this browser only.
@@ -74,7 +73,9 @@ function onPointerUp(): void {
 function onKeydown(event: KeyboardEvent): void {
   if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
 
+  // Kept from the page too, which may move its own selection on the same keys.
   event.preventDefault();
+  event.stopPropagation();
   apply(stepSplit(pct.value, event.key === 'ArrowUp' ? -1 : 1));
   store(pct.value);
 }

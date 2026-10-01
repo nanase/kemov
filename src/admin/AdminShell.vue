@@ -2,6 +2,8 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
+import { useStoredChoice } from '../lib/useStoredChoice';
+
 import { getJson } from './lib/api';
 import { crumbDetail } from './lib/crumb';
 import { inboxBadges, publishBadge, refreshPublishBadge } from './lib/publish-badge';
@@ -10,9 +12,9 @@ import { toastMessage } from './lib/toast';
 
 /**
  * The app shell (#141, #144): the top bar, the sidebar and whatever screen
- * the router placed in the default slot. Nothing page-specific lives here -
- * every page is a full `.main` on its own, matching the mock's own split
- * between the shell and what it wraps.
+ * the router placed in the default slot. Nothing page-specific lives here;
+ * a page brings its own `.main`, matching the mock's own split between the
+ * shell and what it wraps.
  *
  * Signing out is Cloudflare Access's own: the account menu links to
  * `/cdn-cgi/access/logout`, which ends the Access session for this hostname,
@@ -20,18 +22,17 @@ import { toastMessage } from './lib/toast';
  */
 
 const LOGOUT_URL = '/cdn-cgi/access/logout';
-const FOLD_KEY = 'kemov-admin-side-folded';
 
 const route = useRoute();
 const drawerOpen = ref(false);
 const accountOpen = ref(false);
 const accountEl = ref<HTMLElement | null>(null);
-const folded = ref(false);
+const folded = useStoredChoice('kemov-admin-side-folded', [false, true], false);
 const collectFailuresBadge = ref<number | null>(null);
 
 const currentPage = computed(() => route.path.replace(/^\/+/, ''));
-const group = computed(() => pageGroup(currentPage.value));
-const page = computed(() => pageTitle(currentPage.value));
+const currentGroup = computed(() => pageGroup(currentPage.value));
+const currentTitle = computed(() => pageTitle(currentPage.value));
 
 function badgeFor(page: string): number | null {
   if (page === 'publish') return publishBadge.value;
@@ -45,16 +46,6 @@ function badgeFor(page: string): number | null {
 
 function closeDrawer(): void {
   drawerOpen.value = false;
-}
-
-function setFolded(value: boolean): void {
-  folded.value = value;
-
-  try {
-    localStorage.setItem(FOLD_KEY, value ? '1' : '0');
-  } catch {
-    // Storage can be blocked; the sidebar still folds for this visit.
-  }
 }
 
 function onDocumentPointer(event: PointerEvent): void {
@@ -73,12 +64,6 @@ watch(
 );
 
 onMounted(async () => {
-  try {
-    folded.value = localStorage.getItem(FOLD_KEY) === '1';
-  } catch {
-    folded.value = false;
-  }
-
   document.addEventListener('pointerdown', onDocumentPointer);
   document.addEventListener('keydown', onDocumentKey);
 
@@ -123,11 +108,11 @@ onUnmounted(() => {
       </button>
       <span class="brandmark">けもV 管理</span>
       <span class="crumb">
-        <template v-if="group">{{ group }} / </template>
+        <template v-if="currentGroup">{{ currentGroup }} / </template>
         <template v-if="crumbDetail"
-          >{{ page }} / <b>{{ crumbDetail }}</b></template
+          >{{ currentTitle }} / <b>{{ crumbDetail }}</b></template
         >
-        <b v-else>{{ page }}</b>
+        <b v-else>{{ currentTitle }}</b>
       </span>
       <span class="grow"></span>
       <div ref="accountEl" class="account">
@@ -193,7 +178,7 @@ onUnmounted(() => {
           type="button"
           aria-label="メニューを開く"
           :aria-expanded="false"
-          @click="setFolded(false)"
+          @click="folded = false"
         >
           <svg
             width="15"
@@ -216,7 +201,7 @@ onUnmounted(() => {
             type="button"
             aria-label="メニューを畳む"
             :aria-expanded="true"
-            @click="setFolded(true)"
+            @click="folded = true"
           >
             <svg
               width="15"
@@ -231,10 +216,10 @@ onUnmounted(() => {
             </svg>
           </button>
         </div>
-        <div v-for="g in SIDEBAR_GROUPS" :key="g.label" class="side-group">
-          <div class="side-label">{{ g.label }}</div>
+        <div v-for="group in SIDEBAR_GROUPS" :key="group.label" class="side-group">
+          <div class="side-label">{{ group.label }}</div>
           <router-link
-            v-for="item in g.items"
+            v-for="item in group.items"
             :key="item.page"
             v-slot="{ navigate, isActive }"
             :to="`/${item.page}`"

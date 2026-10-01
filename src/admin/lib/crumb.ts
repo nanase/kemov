@@ -7,33 +7,31 @@ import { onUnmounted, ref, watch } from 'vue';
  */
 export const crumbDetail = ref<string | null>(null);
 
-/** Whoever set `crumbDetail` last - see `useCrumbDetail`'s unmount. */
+/** Whoever set `crumbDetail` last. */
 let owner: symbol | null = null;
 
+/** `holder` names the open item; an empty name is the same as none. */
+export function claimCrumb(holder: symbol, name: string | null | undefined): void {
+  owner = holder;
+  crumbDetail.value = name === undefined || name === null || name === '' ? null : name;
+}
+
 /**
- * Keeps the breadcrumb on whatever `source` names, and clears it when the
- * component goes.
- *
- * An editor re-keyed onto another item mounts its new instance before the
- * old one's unmount hook runs, so the old one clears the name only if it is
- * still the one that set it.
+ * `holder` is going. The name is cleared only if `holder` is still the one
+ * that set it: an editor re-keyed onto another item mounts its new instance
+ * before the old one's unmount hook runs, and the new name has to stay.
  */
+export function releaseCrumb(holder: symbol): void {
+  if (owner !== holder) return;
+
+  owner = null;
+  crumbDetail.value = null;
+}
+
+/** Keeps the breadcrumb on whatever `source` names, and clears it when the component goes. */
 export function useCrumbDetail(source: () => string | null | undefined): void {
-  const self = Symbol('crumb');
+  const holder = Symbol('crumb');
 
-  watch(
-    source,
-    (name) => {
-      owner = self;
-      crumbDetail.value = name === undefined || name === null || name === '' ? null : name;
-    },
-    { immediate: true },
-  );
-
-  onUnmounted(() => {
-    if (owner !== self) return;
-
-    owner = null;
-    crumbDetail.value = null;
-  });
+  watch(source, (name) => claimCrumb(holder, name), { immediate: true });
+  onUnmounted(() => releaseCrumb(holder));
 }

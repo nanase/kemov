@@ -97,7 +97,7 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
   - 日付と人数は、人が公表を見て入力します。YouTube API の値を候補として出しません（#222）
   - リスナーの投稿の URL は、この画面にだけ出ます。公開の JSON には worker が入れません
 - ジェネット楽曲一覧（`src/admin/pages/SetsPage.vue`）
-  - `.pane`/`.inspector` を使わない唯一の画面で、代わりに `.setlist`/`.editor` を使う。配信のデータは、項目を格子に並べる編集の欄ではなく、曲ごとの区切りで編集するため。上下の並べ方と仕切りは、他の画面と同じ
+  - `.pane`/`.inspector` の代わりに `.setlist`/`.editor` を使う。配信のデータは、項目を格子に並べる編集の欄ではなく、曲ごとの区切りで編集するため。上下の並べ方と仕切りは `.pane`/`.inspector` と同じ
   - 曲は、それを演奏するすべての配信で共有する。そのため、曲のクレジットの保存（`src/admin/lib/genet-tunes.ts`）は、配信の欄と演奏する曲・シーンの保存（`src/admin/lib/genet-streams.ts`）とは別の操作
   - Markdown の欄（曲の題、演奏の説明）は、書く欄の真下にその場のプレビューを出す。プレビューは公開サイトと同じ描画部品（`src/components/genet/MarkDown.vue`）を使う
   - Markdown の欄には、決まった形の Markdown のリンクをカーソルの位置に挿入するボタンがある。リンクの種類は Wikipedia・英語版 Wikipedia・配信のタイムスタンプ・URL そのもの

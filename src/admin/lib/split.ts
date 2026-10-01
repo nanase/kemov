@@ -40,5 +40,5 @@ export function readSplit(raw: string | null): number | null {
 }
 
 export function splitStorageKey(path: string): string {
-  return `kemov-admin-split:${path}`;
+  return `kemov-admin-split${path}`;
 }
