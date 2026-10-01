@@ -14,6 +14,7 @@ import {
   type FootprintsMember,
 } from '../lib/footprints';
 import { AdminApiError, deleteJson, postJson, putJson } from '../lib/api';
+import { APPROVED_TOAST, DEFERRED_TOAST, REJECTED_TOAST } from '../lib/inbox';
 import {
   footprintsMarkFor,
   isChangedSincePublish,
@@ -33,13 +34,21 @@ import { showToast } from '../lib/toast';
  * whenever the selected row changes, and never writes back into `event`
  * itself - the table's own row only changes once the parent refetches after
  * a save, publish, withdraw or delete succeeds.
+ *
+ * `mode` is where the panel was opened from, and decides only the buttons at
+ * the bottom (#141): あしあと's own (保存 / 公開待ちにする / 削除), 確認待ち's
+ * (承認 / あとで / 却下) or 出典の確認待ち's (出典を確かめた / 保存).
  */
-const props = defineProps<{
-  event: FootprintsEvent;
-  members: FootprintsMember[];
-  /** `GET /footprints/pending`, or null when it could not be read. */
-  pending: FootprintsPending | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    event: FootprintsEvent;
+    members: FootprintsMember[];
+    /** `GET /footprints/pending`, or null when it could not be read. */
+    pending: FootprintsPending | null;
+    mode?: 'data' | 'review' | 'source';
+  }>(),
+  { mode: 'data' },
+);
 const emit = defineEmits<{ changed: []; back: [] }>();
 
 const fields = ref<EventFormFields>(toFormFields(props.event));
@@ -132,6 +141,58 @@ function remove(): Promise<void> {
     showToast('削除しました');
   });
 }
+
+/** 確認待ち's 承認: the fields as they stand, then 公開待ち - the same two steps as 「公開待ちにする」. */
+async function approve(): Promise<void> {
+  // `A` reaches here without the button, which is what otherwise stops a second press.
+  if (saving.value) return;
+
+  return withErrorHandling(async () => {
+    await putJson(`/footprints/events/${props.event.eventId}`, fields.value);
+    await postJson(`/footprints/events/${props.event.eventId}/publish`, {});
+    emit('changed');
+    void refreshPublishBadge();
+    showToast(APPROVED_TOAST);
+  });
+}
+
+/** 確認待ち's 「あとで」: keeps what was typed, and moves the row behind the ones not yet looked at. */
+function defer(): Promise<void> {
+  return withErrorHandling(async () => {
+    await putJson(`/footprints/events/${props.event.eventId}`, fields.value);
+    await postJson(`/footprints/events/${props.event.eventId}/defer`, {});
+    emit('changed');
+    void refreshPublishBadge();
+    showToast(DEFERRED_TOAST);
+  });
+}
+
+/** 確認待ち's 却下: the row was never published, so it is deleted outright. */
+function reject(): Promise<void> {
+  return withErrorHandling(async () => {
+    await deleteJson(`/footprints/events/${props.event.eventId}`);
+    emit('changed');
+    void refreshPublishBadge();
+    showToast(REJECTED_TOAST);
+  });
+}
+
+/** 出典の確認待ち's 「出典を確かめた」: the sources as typed, then the mark cleared - refused when they would not pass publishing. */
+function confirmSource(): Promise<void> {
+  return withErrorHandling(async () => {
+    await putJson(`/footprints/events/${props.event.eventId}`, fields.value);
+    await postJson(`/footprints/events/${props.event.eventId}/confirm-source`, {});
+    emit('changed');
+    void refreshPublishBadge();
+    showToast(
+      props.event.status === 'published'
+        ? '出典を確かめました。本番の年表を直すには、あしあとでこの行の「公開待ちにする」を押します'
+        : '出典を確かめました',
+    );
+  });
+}
+
+defineExpose({ approve });
 </script>
 
 <template>
@@ -271,7 +332,20 @@ function remove(): Promise<void> {
       </div>
     </div>
 
-    <div class="inspector-foot">
+    <div v-if="mode === 'review'" class="inspector-foot">
+      <button class="btn primary" type="button" :disabled="saving" @click="approve">承認して公開待ちにする</button>
+      <button class="btn" type="button" :disabled="saving" @click="defer">あとで</button>
+      <button class="btn back quiet" type="button" @click="emit('back')">← 一覧</button>
+      <span class="grow"></span>
+      <span class="foot-sep" aria-hidden="true"></span>
+      <button class="btn danger" type="button" :disabled="saving" @click="reject">却下</button>
+    </div>
+    <div v-else-if="mode === 'source'" class="inspector-foot">
+      <button class="btn primary" type="button" :disabled="saving" @click="confirmSource">出典を確かめた</button>
+      <button class="btn" type="button" :disabled="saving" @click="save">保存</button>
+      <button class="btn back quiet" type="button" @click="emit('back')">← 一覧</button>
+    </div>
+    <div v-else class="inspector-foot">
       <button class="btn primary" type="button" :disabled="saving" @click="save">保存</button>
       <button v-if="buttons.publishLabel" class="btn" type="button" :disabled="saving" @click="moveStatus('publish')">
         {{ buttons.publishLabel }}

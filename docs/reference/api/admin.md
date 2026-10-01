@@ -218,6 +218,31 @@ JSON は `shape_version` と `channel_id` も持ちます。
 | `eventChanged`  | つないだ出来事の姿が、保存済みの JSON と今のあしあとの JSON で違う節目      |
 | `shapeOutdated` | 保存済みの JSON の形が、コードの版より古い                                  |
 
+## やること
+
+確認待ち・出典の確認待ち・公開待ちの 3 つの画面は、上のデータの絞り込みです。自分の表は持ちません（#141）。`worker/src/admin/inbox.ts` が行を選び、1 段だけ動かします。行の中身と公開の仕方は、上の各エンドポイントが受け持ちます。
+
+| メソッド | パス                                                        | 返すもの                                                                                           |
+| -------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| GET      | `/admin/api/inbox`                                          | 確認待ち・出典の確認待ち・公開待ちそれぞれの行の数。サイドバーに出す                               |
+| GET      | `/admin/api/inbox/review`                                   | 確認待ちの出来事と配信。配信が演奏する曲の題も返す                                                 |
+| GET      | `/admin/api/inbox/source`                                   | `sourcePending` が true の出来事のすべて。`status` を問わない                                      |
+| GET      | `/admin/api/inbox/publish`                                  | 次の「いま公開する」が扱うものを、公開の JSON ごとに題と日付を付けて返す。押して何か起きるかも返す |
+| POST     | `/admin/api/footprints/events/<できごと ID>/defer`          | `status` を `review` にした後の行。`published` の出来事なら 409                                    |
+| POST     | `/admin/api/footprints/events/<できごと ID>/confirm-source` | `sourcePending` を false にした後の行。出典が公開の条件を満たさなければ 400                        |
+| POST     | `/admin/api/genet/streams/<動画 ID>/defer`                  | `{ "status": "review" }`。`published` の配信なら 409                                               |
+
+確認待ちに並ぶのは、次の行です。
+
+- `status` が `draft` で、`import` か `publish` の版が無い行。公開してから取り下げた行は入りません
+- `status` が `review` の行。「あとで」に回した行で、まだ見ていない行の後ろに並べます
+
+承認は各行の `POST .../publish`、却下は各行の `DELETE` を使います。ここに専用のエンドポイントはありません。
+
+`defer` と `confirm-source` は、保存と同じく `revision` を記録しません。そのため、公開中の出来事の出典を確かめても、公開の JSON はそのままです。`POST .../publish` を通すと反映されます。
+
+公開待ちの登録者数の節目には、`eventChanged` の節目も入ります。`latestAction` は `event_changed` です。
+
 ## 読むだけのエンドポイント
 
 データの画面のいくつかは、保存するものを持ちません。別の場所で操作する行を選ぶか、他のエンドポイントが出さない記録を読むだけです。どれも `revision` を記録しません。

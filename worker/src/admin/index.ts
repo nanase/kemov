@@ -9,6 +9,15 @@ import { createPerson, deletePerson, getPerson, listPeople, updatePerson } from 
 import { pendingGenetMusic, publishGenetMusicNow, publishStream, withdrawStream } from './genet-publish';
 import { createStream, deleteStream, getStream, listStreams, updateStream } from './genet-streams';
 import { createTune, deleteTune, getTune, listTunes, updateTune } from './genet-tunes';
+import {
+  confirmEventSources,
+  deferEvent,
+  deferStream,
+  inboxCounts,
+  listPublishInbox,
+  listReviewInbox,
+  listSourceInbox,
+} from './inbox';
 import { addMember, deleteMember, listMembers, saveMembers, updateMember } from './members';
 import { listPublications } from './publications';
 import { getRevision, listRevisions, readRevisionId } from './revisions';
@@ -150,6 +159,8 @@ export async function handleAdminRequest(
 
     if (action === 'publish') return await publishEvent(env, eventId);
     if (action === 'withdraw') return await withdrawEvent(env, eventId);
+    if (action === 'defer') return await deferEvent(env, eventId);
+    if (action === 'confirm-source') return await confirmEventSources(env, eventId);
 
     return errorResponse(404, `no endpoint at ${pathname}`);
   }
@@ -254,6 +265,7 @@ export async function handleAdminRequest(
 
     if (action === 'publish') return await publishStream(env, id2);
     if (action === 'withdraw') return await withdrawStream(env, id2);
+    if (action === 'defer') return await deferStream(env, id2);
 
     return errorResponse(404, `no endpoint at ${pathname}`);
   }
@@ -326,6 +338,22 @@ export async function handleAdminRequest(
     if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
 
     return await publishGenetMusicNow(env, instant);
+  }
+
+  if (segments.length === 3 && name === 'inbox') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    return await inboxCounts(env);
+  }
+
+  if (segments.length === 4 && name === 'inbox') {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    if (sub === 'review') return await listReviewInbox(env);
+    if (sub === 'source') return await listSourceInbox(env);
+    if (sub === 'publish') return await listPublishInbox(env);
+
+    return errorResponse(404, `no endpoint at ${pathname}`);
   }
 
   if (segments.length === 3 && name === 'members') {

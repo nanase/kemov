@@ -364,6 +364,22 @@ async function publishState(env: Env) {
 }
 
 /**
+ * What 「いま公開する」 for `subscriber_milestones` would act on, for the
+ * やること screens' 公開待ち (inbox.ts): the milestones waiting, those whose
+ * linked event changed under them, and whether the run would build at all -
+ * `publishState`'s own answer, so the two cannot disagree.
+ */
+export async function waitingSubscriberMilestones(env: Env): Promise<{
+  pending: { milestoneId: number; latestAction: string }[];
+  eventChanged: { milestoneId: number }[];
+  needsBuild: boolean;
+}> {
+  const { pending, eventChanged, needsBuild } = await publishState(env);
+
+  return { pending, eventChanged, needsBuild };
+}
+
+/**
  * GET /admin/api/subscribers/pending.
  *
  * `pending`, `eventChanged` and `shapeOutdated` are `publishState`'s: any of
