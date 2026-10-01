@@ -58,9 +58,12 @@ async function publishNow(): Promise<void> {
   const done: string[] = [];
 
   try {
+    let footprintsPublished = false;
+
     if (canPublish.footprints) {
       const body = await postJson<{ published: boolean; eventCount?: number }>('/footprints/publish', {});
 
+      footprintsPublished = body.published;
       if (body.published) done.push(`あしあと ${body.eventCount} 件`);
     }
 
@@ -70,7 +73,10 @@ async function publishNow(): Promise<void> {
       if (body.published) done.push(`ジェネット楽曲一覧 配信 ${body.streamCount} 件`);
     }
 
-    if (canPublish.milestones) {
+    // A milestone carries its linked event as the published timeline shows it,
+    // so publishing あしあと can leave the milestones JSON behind even when
+    // nothing about the milestones was waiting when the list was read.
+    if (canPublish.milestones || footprintsPublished) {
       const body = await postJson<{ published: boolean; milestoneCount?: number }>('/subscribers/publish', {});
 
       if (body.published) done.push(`登録者数の節目 ${body.milestoneCount} 件`);
