@@ -65,11 +65,12 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
 
 `src/admin/AdminShell.vue` は、すべての画面を囲む外枠です。上端のバーには、ページの名前と `GET /admin/api/me` が返すメールアドレスを出します。サイドバーには 3 つの群（やること・データ・運用）を、公開サイトのメニューと同じ順に並べます。
 
-- 数を出す項目は 2 つ
+- 数を出す項目は次のとおりです
   - 公開は、`GET /admin/api/footprints/pending` の `pending` と `changed` を合わせた数
   - 収集の失敗は、`GET /admin/api/collect-tasks` の `count`
+  - 確認待ち・出典の確認待ち・公開待ちは、`GET /admin/api/inbox` が返す数
 - それ以外の項目は、名前だけを出す
-- サイドバーの行き先のうち、`src/admin/router.ts` に専用のルートが無いものは、`src/admin/pages/PlaceholderPage.vue` を出す
+- サイドバーのどの項目にも当たらないパスには、`src/admin/pages/PlaceholderPage.vue` を出す
 
 表と編集の欄の分け方（`.main`/`.pane`/`.inspector`）は、2 つの幅で狭くなります。`@media` ではなく `@container` を使う理由は、`src/admin/shell.css` のコメントにあります。
 
@@ -108,6 +109,22 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
 - 統計（`src/admin/pages/SnapsPage.vue`）
   - 1 日ぶんの tick を出す（`GET /admin/api/snapshots`）
   - tick ごとに、tick そのものは消さずに、除外するかどうかを切り替えられる
+- 確認待ち（`src/admin/pages/InboxReviewPage.vue`）
+  - あしあとと楽曲一覧の行のうち、まだ誰も通していないものを 1 つの表に並べます。一度も公開していない下書きと、「あとで」に回した行（`status = 'review'`）です。「あとで」の行は、まだ見ていない行の後ろに並びます
+  - #141 のデザインどおり、データの画面の絞り込みとして作っています。あしあとの行は `FootprintsInspector.vue` をそのまま使い、下のボタンだけを替えます
+    - 承認して公開待ちにする: 「公開待ちにする」と同じ
+    - あとで: 欄を保存し、`status` を `review` にする
+    - 却下: 行を削除する。一度も公開していない行だけが並ぶので、取り下げは要りません
+  - 楽曲一覧の行は細い欄に収まらないので、`GenetStreamReview.vue` が曲・開始時刻・メモを読むだけの形で出し、直すときは楽曲一覧の画面へ移ります
+  - 選択の列でまとめて承認できます。1 行ずつ同じ道筋で通し、通らなかった行は飛ばして、最後に理由を一覧で出します（#237 と同じ作り）
+  - `↑` `↓` で行を移り、`A` で選んでいる行を承認します
+- 出典の確認待ち（`src/admin/pages/InboxSourcePage.vue`）
+  - `sourcePending` の立ったあしあとの行を、`status` を問わず並べます
+  - 「出典を確かめた」は、欄を保存してから印を外します。出典が公開の条件を満たさなければ、worker が断ります
+  - 公開中の行は、印を外したあとも本番の年表は変わりません。あしあとで「公開待ちにする」を押します
+- 公開待ち（`src/admin/pages/InboxPublishPage.vue`）
+  - 次の「いま公開する」で本番に入るものと、本番から消えるもの（取り下げ待ち）を、あしあと・ジェネット楽曲一覧・登録者数の節目から並べます
+  - この画面の「いま公開する」は、公開の画面のボタンのうち、することがあるものを順に押します
 - 収集の失敗（`src/admin/pages/CollectPage.vue`）
   - `failed` のまま止まった `collect_task` に、#141 が決めた 3 つの出口を用意する。いま再試行する、再試行せずに確認済みにする、動画を消えたものとして確定する、の 3 つ
 - 版の履歴（`src/admin/pages/HistoryPage.vue`）

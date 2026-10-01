@@ -6,11 +6,8 @@ import { createRouter, createWebHistory } from 'vue-router';
  * `/admin/*` path (see `worker/src/admin/index.ts`), so a reload or a shared
  * link lands back on the same screen instead of the shell's default.
  *
- * `FootprintsPage`, `PublishPage`, `MembersPage`, `VideosPage`, `SnapsPage`,
- * `SubscribersPage`, `CollectPage`, `HistoryPage`, `SetsPage` and `SourceWhitelistPage` are this
- * project's own screens so far. Every other sidebar destination (the やること group's own inbox
- * views) still routes to `PlaceholderPage.vue` until a later task builds a
- * real screen for it.
+ * Every sidebar destination has a screen of its own. `PlaceholderPage.vue`
+ * answers a path no sidebar item names.
  */
 const router = createRouter({
   history: createWebHistory('/admin/'),
@@ -22,7 +19,10 @@ const router = createRouter({
     { path: '/videos', component: () => import('./pages/VideosPage.vue') },
     { path: '/snaps', component: () => import('./pages/SnapsPage.vue') },
     { path: '/subscribers', component: () => import('./pages/SubscribersPage.vue') },
+    { path: '/inbox-review', component: () => import('./pages/InboxReviewPage.vue') },
+    { path: '/inbox-source', component: () => import('./pages/InboxSourcePage.vue') },
     { path: '/inbox-collect', component: () => import('./pages/CollectPage.vue') },
+    { path: '/inbox-publish', component: () => import('./pages/InboxPublishPage.vue') },
     { path: '/history', component: () => import('./pages/HistoryPage.vue') },
     { path: '/sets', component: () => import('./pages/SetsPage.vue') },
     { path: '/source-whitelist', component: () => import('./pages/SourceWhitelistPage.vue') },

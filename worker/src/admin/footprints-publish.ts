@@ -41,13 +41,9 @@ function publishProblems(saved: FootprintsEvent, whitelist: readonly string[]): 
   if (event.title === '') problems.push('title must not be empty');
 
   if (event.source_pending === 0) {
-    const urls = sources.map((source) => source.url);
+    const problem = sourcesProblem(sources, whitelist);
 
-    if (urls.length === 0) {
-      problems.push('sourcePending is false but there are no sources');
-    } else if (!urls.some((url) => isWhitelistedSource(url, whitelist)) && !hasTwoHosts(urls)) {
-      problems.push('sourcePending is false but no source is in the whitelist and the sources are not on two hosts');
-    }
+    if (problem !== null) problems.push(`sourcePending is false but ${problem}`);
   }
 
   if (event.video_id !== null && event.video_id.length !== VIDEO_ID_LENGTH) {
@@ -55,6 +51,24 @@ function publishProblems(saved: FootprintsEvent, whitelist: readonly string[]): 
   }
 
   return problems;
+}
+
+/**
+ * Why `sources` do not back an event, or null when they do: at least one
+ * source, and one of them on `whitelist` or two of them on different hosts.
+ * Publishing checks it for a row that says its sources are confirmed, and
+ * 「出典を確かめた」 (inbox.ts) checks it before letting a row say so.
+ */
+export function sourcesProblem(sources: readonly { url: string }[], whitelist: readonly string[]): string | null {
+  const urls = sources.map((source) => source.url);
+
+  if (urls.length === 0) return 'there are no sources';
+
+  if (!urls.some((url) => isWhitelistedSource(url, whitelist)) && !hasTwoHosts(urls)) {
+    return 'no source is in the whitelist and the sources are not on two hosts';
+  }
+
+  return null;
 }
 
 /**
@@ -187,14 +201,7 @@ async function lastPublishedRevisionId(env: Env, target: string): Promise<number
  * lean on that) is not reported as a change.
  */
 export async function pendingFootprints(env: Env): Promise<Response> {
-  const [lastRevisionId, latest] = await Promise.all([
-    lastPublishedRevisionId(env, 'footprints'),
-    latestRevisions(env),
-  ]);
-
-  const pending = latest
-    .filter((row) => row.revision_id > lastRevisionId)
-    .map((row) => ({ eventId: Number(row.entity_key), latestAction: row.action }));
+  const { pending, latest } = await readWaiting(env);
 
   const { results: publishedEvents } = await env.DB.prepare(
     `SELECT event_id FROM footprints_event WHERE status = 'published' ORDER BY event_id`,
@@ -227,6 +234,34 @@ export async function pendingFootprints(env: Env): Promise<Response> {
   }
 
   return jsonResponse({ pending, changed });
+}
+
+export interface WaitingFootprintsEntry {
+  eventId: number;
+  latestAction: string;
+}
+
+/**
+ * Every event whose latest revision is newer than the last "いま公開する" -
+ * what that run would act on. `pendingFootprints` and the やること screens'
+ * 公開待ち (inbox.ts) both read it here, so the two cannot count differently.
+ */
+export async function waitingFootprints(env: Env): Promise<WaitingFootprintsEntry[]> {
+  return (await readWaiting(env)).pending;
+}
+
+/** `waitingFootprints`, with the latest revisions it was worked out from left in for `pendingFootprints` to compare against. */
+async function readWaiting(env: Env): Promise<{ pending: WaitingFootprintsEntry[]; latest: LatestRevisionRow[] }> {
+  const [lastRevisionId, latest] = await Promise.all([
+    lastPublishedRevisionId(env, 'footprints'),
+    latestRevisions(env),
+  ]);
+
+  const pending = latest
+    .filter((row) => row.revision_id > lastRevisionId)
+    .map((row) => ({ eventId: Number(row.entity_key), latestAction: row.action }));
+
+  return { pending, latest };
 }
 
 /**

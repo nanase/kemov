@@ -305,33 +305,7 @@ function withStatus(saved: GenetStream, status: string): GenetStream {
  * nothing above is waiting.
  */
 export async function pendingGenetMusic(env: Env): Promise<Response> {
-  const [lastRevisionId, streamRevisions, tuneRevisions, personRevisions] = await Promise.all([
-    lastPublishedRevisionId(env, 'genet_music'),
-    latestRevisions(env, 'genet_stream'),
-    latestRevisions(env, 'genet_tune'),
-    latestRevisions(env, 'genet_person'),
-  ]);
-
-  const pending = [
-    ...streamRevisions.map((r) => ({
-      entity: 'genet_stream' as const,
-      key: r.entity_key,
-      revisionId: r.revision_id,
-      latestAction: r.action,
-    })),
-    ...tuneRevisions.map((r) => ({
-      entity: 'genet_tune' as const,
-      key: r.entity_key,
-      revisionId: r.revision_id,
-      latestAction: r.action,
-    })),
-    ...personRevisions.map((r) => ({
-      entity: 'genet_person' as const,
-      key: r.entity_key,
-      revisionId: r.revision_id,
-      latestAction: r.action,
-    })),
-  ].filter((row) => row.revisionId > lastRevisionId);
+  const { pending, shapeOutdated, streamRevisions, tuneRevisions, personRevisions } = await readWaiting(env);
 
   const changed: { entity: 'genet_stream' | 'genet_tune' | 'genet_person'; key: string; title: string }[] = [];
 
@@ -392,9 +366,61 @@ export async function pendingGenetMusic(env: Env): Promise<Response> {
     if (current !== publishedBody) changed.push({ entity: 'genet_person', key: String(personId), title: person.name });
   }
 
+  return jsonResponse({ pending, changed, shapeOutdated });
+}
+
+export interface WaitingGenetEntry {
+  entity: 'genet_stream' | 'genet_tune' | 'genet_person';
+  key: string;
+  revisionId: number;
+  latestAction: string;
+}
+
+/**
+ * What "いま公開する" for `genet_music` would act on: every entity whose
+ * latest revision is newer than the last run, and whether the stored JSON is
+ * in an older shape. `pendingGenetMusic` and the やること screens' 公開待ち
+ * (inbox.ts) both read it here, so the two cannot count differently.
+ */
+export async function waitingGenetMusic(env: Env): Promise<{ pending: WaitingGenetEntry[]; shapeOutdated: boolean }> {
+  const { pending, shapeOutdated } = await readWaiting(env);
+
+  return { pending, shapeOutdated };
+}
+
+/** `waitingGenetMusic`, with the latest revisions it was worked out from left in for `pendingGenetMusic` to compare against. */
+async function readWaiting(env: Env) {
+  const [lastRevisionId, streamRevisions, tuneRevisions, personRevisions] = await Promise.all([
+    lastPublishedRevisionId(env, 'genet_music'),
+    latestRevisions(env, 'genet_stream'),
+    latestRevisions(env, 'genet_tune'),
+    latestRevisions(env, 'genet_person'),
+  ]);
+
+  const pending: WaitingGenetEntry[] = [
+    ...streamRevisions.map((r) => ({
+      entity: 'genet_stream' as const,
+      key: r.entity_key,
+      revisionId: r.revision_id,
+      latestAction: r.action,
+    })),
+    ...tuneRevisions.map((r) => ({
+      entity: 'genet_tune' as const,
+      key: r.entity_key,
+      revisionId: r.revision_id,
+      latestAction: r.action,
+    })),
+    ...personRevisions.map((r) => ({
+      entity: 'genet_person' as const,
+      key: r.entity_key,
+      revisionId: r.revision_id,
+      latestAction: r.action,
+    })),
+  ].filter((row) => row.revisionId > lastRevisionId);
+
   const shapeOutdated = await shapeIsOutdated(env, newestRevisionIdOf(streamRevisions, tuneRevisions, personRevisions));
 
-  return jsonResponse({ pending, changed, shapeOutdated });
+  return { pending, shapeOutdated, streamRevisions, tuneRevisions, personRevisions };
 }
 
 interface PublicStream {

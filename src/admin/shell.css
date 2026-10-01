@@ -431,6 +431,49 @@ table.grid tbody tr[aria-selected='true'] td:first-child {
   box-shadow: inset 3px 0 0 var(--k-accent);
 }
 
+/* やること's own select column, and the band under the table that acts on what it selects. */
+table.grid td.tick,
+table.grid th.tick {
+  width: 34px;
+  padding-right: 0;
+}
+
+table.grid input[type='checkbox'] {
+  accent-color: var(--k-accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.bulkbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  border-top: 1px solid var(--k-line);
+  background: var(--k-accent-soft);
+  color: var(--k-accent);
+  font-size: 12.5px;
+}
+
+.keys {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--k-text-3);
+}
+
+.keys kbd {
+  font-family: var(--a-mono);
+  font-size: 10.5px;
+  border: 1px solid var(--k-line-2);
+  border-radius: 4px;
+  padding: 0 4px;
+  background: var(--k-surface);
+}
+
 .num {
   font-family: var(--a-mono);
   font-variant-numeric: tabular-nums;

@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { getJson } from './lib/api';
-import { publishBadge, refreshPublishBadge } from './lib/publish-badge';
+import { inboxBadges, publishBadge, refreshPublishBadge } from './lib/publish-badge';
 import { pageTitle, SIDEBAR_GROUPS } from './lib/sidebar';
 import { toastMessage } from './lib/toast';
 
@@ -27,6 +27,9 @@ const crumb = computed(() => pageTitle(currentPage.value));
 function badgeFor(page: string): number | null {
   if (page === 'publish') return publishBadge.value;
   if (page === 'inbox-collect') return collectFailuresBadge.value;
+  if (page === 'inbox-review') return inboxBadges.value?.review ?? null;
+  if (page === 'inbox-source') return inboxBadges.value?.source ?? null;
+  if (page === 'inbox-publish') return inboxBadges.value?.publish ?? null;
 
   return null;
 }
