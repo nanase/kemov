@@ -18,7 +18,7 @@ import {
   type NewMemberFields,
 } from '../lib/members';
 import { clearDraft, draft } from '../lib/members-draft';
-import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
+import { forgetPublicData, PREVIEW_NOTES, previewOpen } from '../lib/preview';
 import { showToast } from '../lib/toast';
 
 /**
@@ -191,6 +191,7 @@ async function saveList(): Promise<void> {
 
   try {
     await putJson('/members', { add: draft.added, order: orderedIds.value });
+    forgetPublicData();
     clearDraft();
     await load();
     showToast('保存しました');
@@ -214,6 +215,7 @@ async function save(): Promise<void> {
 
   try {
     await putJson(`/members/${encodeURIComponent(selectedId.value)}`, fields.value);
+    forgetPublicData();
     await load();
     showToast('保存しました');
   } catch (error) {
@@ -236,6 +238,7 @@ async function removeSaved(): Promise<void> {
 
   try {
     await deleteJson(`/members/${encodeURIComponent(selectedId.value)}`);
+    forgetPublicData();
     selectedId.value = null;
     detail.value = false;
     await load();

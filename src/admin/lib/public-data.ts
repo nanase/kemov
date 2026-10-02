@@ -1,27 +1,38 @@
 import { getChannels, getMonths, getSubscriberMilestones, isNotPublished } from '@/lib/api';
 import type { Channel, SubscriberMilestone } from '@/type/api';
 
+import { publicDataGeneration } from './preview';
+
 /**
  * What the public API serves, read once for the previews. The admin site is
  * on the same origin as `/api`, which Cloudflare Access does not guard, so
  * these are the same reads a public page makes.
  *
- * A failed read is not kept: the next preview asks again.
+ * A read is kept until it fails or `forgetPublicData` (lib/preview.ts) is
+ * called after something this site changed was published, whichever comes
+ * first; the next preview then asks again.
  */
-let channels: Promise<Channel[]> | null = null;
-let milestones: Promise<SubscriberMilestone[]> | null = null;
-let months: Promise<string[]> | null = null;
+interface Kept<T> {
+  generation: number;
+  read: Promise<T>;
+}
 
-/** `slot` while it holds a read, else a new `load()`, kept through `keep` until it fails. */
-function once<T>(slot: Promise<T> | null, load: () => Promise<T>, keep: (p: Promise<T> | null) => void): Promise<T> {
-  if (slot !== null) return slot;
+let channels: Kept<Channel[]> | null = null;
+let milestones: Kept<SubscriberMilestone[]> | null = null;
+let months: Kept<string[]> | null = null;
 
-  const loading = load();
+/** `slot`'s read while it is from the current generation, else a new `load()`, kept through `keep` until it fails. */
+function once<T>(slot: Kept<T> | null, load: () => Promise<T>, keep: (kept: Kept<T> | null) => void): Promise<T> {
+  const generation = publicDataGeneration();
 
-  keep(loading);
-  loading.catch(() => keep(null));
+  if (slot !== null && slot.generation === generation) return slot.read;
 
-  return loading;
+  const read = load();
+
+  keep({ generation, read });
+  read.catch(() => keep(null));
+
+  return read;
 }
 
 /** Every member as the public pages read them, with the relay's icon address. */
@@ -29,7 +40,7 @@ export function publicChannels(): Promise<Channel[]> {
   return once(
     channels,
     async () => (await getChannels()).data.channels,
-    (p) => (channels = p),
+    (kept) => (channels = kept),
   );
 }
 
@@ -46,7 +57,7 @@ export function publicMilestones(): Promise<SubscriberMilestone[]> {
         throw error;
       }
     },
-    (p) => (milestones = p),
+    (kept) => (milestones = kept),
   );
 }
 
@@ -55,6 +66,6 @@ export function publicMonths(): Promise<string[]> {
   return once(
     months,
     async () => (await getMonths()).data.months,
-    (p) => (months = p),
+    (kept) => (months = kept),
   );
 }

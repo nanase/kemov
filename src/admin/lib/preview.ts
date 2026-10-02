@@ -7,6 +7,23 @@ import { useStoredChoice } from '../../lib/useStoredChoice';
  */
 export const previewOpen = useStoredChoice('kemov-admin-preview', [false, true], false);
 
+/**
+ * Which public reads the previews may still use (lib/public-data.ts). Kept
+ * here rather than there, so a page that publishes can say so without
+ * loading the public site's API client.
+ */
+let generation = 0;
+
+/** The current generation; a read kept from an older one is read again. */
+export function publicDataGeneration(): number {
+  return generation;
+}
+
+/** Something the public pages read has changed: the next preview reads it again. */
+export function forgetPublicData(): void {
+  generation += 1;
+}
+
 /** Where a change shows once saved, for the line under a preview. */
 export const PREVIEW_NOTES = {
   published: '保存したあと「公開」で「いま公開する」を押すまで、公開ページは変わりません',

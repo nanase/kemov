@@ -22,6 +22,7 @@ import {
   type PendingGenetEntry,
 } from '../lib/genet-publish';
 import { refreshPublishBadge } from '../lib/publish-badge';
+import { forgetPublicData } from '../lib/preview';
 import { CHANGED_ROWS_HINT, publishMarkFor } from '../lib/publish-mark';
 import { milestoneTitle, type SubscriberMilestone } from '../lib/subscriber-milestones';
 import {
@@ -203,6 +204,8 @@ async function publishMilestonesNow(): Promise<void> {
 
   try {
     const body = await postJson<MilestonesPublishResult>('/subscribers/publish', {});
+
+    if (body.published) forgetPublicData();
 
     showToast(
       body.published
