@@ -5,9 +5,15 @@
  *
  * `ok`, `live` and `scrim` are left to tokens.css: the page's design gives
  * them no colours of its own.
+ *
+ * The light colours also apply to any element that carries the attribute,
+ * so a light-only page can draw a piece of this one inside its own (the
+ * admin site's preview). On the root, the first selector is what outweighs
+ * tokens.css.
  */
 
-:root[data-palette='genet'] {
+:root[data-palette='genet'],
+[data-palette='genet'] {
   --k-bg: #ebe4dc;
   --k-surface: #fcf9f6;
   --k-surface-2: #f5eee7;

@@ -1,5 +1,5 @@
 import { forgetPublicData } from '@/admin/lib/preview';
-import { publicChannels, publicMilestones } from '@/admin/lib/public-data';
+import { publicChannels, publicGenetStreams, publicMilestones } from '@/admin/lib/public-data';
 import { getChannels, getSubscriberMilestones, isNotPublished } from '@/lib/api';
 
 vi.mock('@/lib/api', () => ({
@@ -51,5 +51,62 @@ describe('publicChannels', () => {
     await expect(publicChannels()).rejects.toThrow('offline');
     await expect(publicChannels()).resolves.toEqual([]);
     expect(channelsRead).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('publicGenetStreams', () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const music = {
+    published_at: '2026-10-01T00:00:00Z',
+    channel_id: null,
+    shape_version: 2,
+    streams: [
+      {
+        video_id: 'gHVZb1UheTk',
+        platform: 'youtube',
+        url: null,
+        video_type: 'live',
+        title: '【楽曲解説】くるみ割り人形',
+        short_title: null,
+        published_at: '2023-03-09T03:00:00Z',
+        categories: [],
+        keywords: [],
+        performances: [],
+      },
+    ],
+    tunes: [],
+    people: [],
+  };
+
+  test('the streams the page lists, read once', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(music)));
+
+    await expect(publicGenetStreams()).resolves.toMatchObject([{ video_id: 'gHVZb1UheTk' }]);
+    await publicGenetStreams();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('nothing published yet is no streams, not a failure', async () => {
+    fetchMock.mockResolvedValue(new Response('not published yet', { status: 404 }));
+
+    await expect(publicGenetStreams()).resolves.toEqual([]);
+  });
+
+  test('a body the page could not read is a failure, and is not kept', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ...music, streams: 'x' })));
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(music)));
+
+    await expect(publicGenetStreams()).rejects.toThrow();
+    await expect(publicGenetStreams()).resolves.toHaveLength(1);
   });
 });

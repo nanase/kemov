@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
+import { unescapeHtml } from '@nanase/alnilam/string';
 
-import MarkDown from '../../components/genet/MarkDown.vue';
+import { markdownHtml } from '@/lib/genet/musicSong';
+
+import PreviewButton from '../components/PreviewButton.vue';
+import PreviewPane from '../components/PreviewPane.vue';
 import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, getJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
@@ -37,8 +41,14 @@ import {
   type GenetStream,
   type StreamFormFields,
 } from '../lib/genet-streams';
+import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
 import { CHANGED_NOTICE, PUBLISH_QUEUED_TOAST, waitingNoticeFor, WITHDRAW_QUEUED_TOAST } from '../lib/publish-mark';
 import { showToast } from '../lib/toast';
+
+// The プレビュー is drawn in ジェネット楽曲一覧's colours, already while it waits for a tune to be opened.
+import '@/shell/palette-genet.css';
+
+const GenetSongPreview = defineAsyncComponent(() => import('../components/previews/GenetSongPreview.vue'));
 
 /**
  * データ > ジェネット楽曲一覧 (#141, #144's task 14) - the one screen that
@@ -269,6 +279,16 @@ async function openTune(index: number): Promise<void> {
     tuneError.value = error instanceof AdminApiError ? error.message : String(error);
   }
 }
+
+/** The tune open in the editor, with what the プレビュー needs to draw it - null until one is open and read. */
+const previewTune = computed(() => {
+  if (openIndex.value === null) return null;
+
+  const performance = streamFields.value.performances[openIndex.value];
+  const fields = tuneFieldsByIndex.value.get(openIndex.value);
+
+  return performance === undefined || fields === undefined ? null : { tuneId: performance.tuneId, fields };
+});
 
 function tuneTitleFor(index: number): string {
   return tuneFieldsByIndex.value.get(index)?.title ?? `曲 #${streamFields.value.performances[index]?.tuneId ?? ''}`;
@@ -627,6 +647,7 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
           streamMarkFor(selected.status, selected.videoId, pending).label
         }}</span>
         <span class="grow"></span>
+        <PreviewButton />
         <button class="btn primary" type="button" :disabled="streamSaving" @click="saveStream">保存</button>
         <button v-if="showPublish" class="btn" type="button" @click="publishStream">公開待ちにする</button>
         <button v-if="selected.status === 'published'" class="btn" type="button" @click="withdrawStream">
@@ -634,434 +655,454 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
         </button>
       </div>
 
-      <div class="scroller">
-        <div v-if="selectedWaiting" class="editor-notice">
-          <div class="panel">
-            <h4>{{ waitingNoticeFor(selected.status).title }}</h4>
-            <div class="hint">{{ waitingNoticeFor(selected.status).body }}</div>
-            <div>
-              <RouterLink class="btn" to="/publish">公開画面へ</RouterLink>
+      <div class="inspector-main" :class="{ 'with-preview': previewOpen }">
+        <div class="scroller">
+          <div v-if="selectedWaiting" class="editor-notice">
+            <div class="panel">
+              <h4>{{ waitingNoticeFor(selected.status).title }}</h4>
+              <div class="hint">{{ waitingNoticeFor(selected.status).body }}</div>
+              <div>
+                <RouterLink class="btn" to="/publish">公開画面へ</RouterLink>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div v-if="selectedChanged" class="editor-notice">
-          <div class="panel flag">
-            <h4>{{ CHANGED_NOTICE.title }}</h4>
-            <div class="hint">{{ CHANGED_NOTICE.body }}</div>
+          <div v-if="selectedChanged" class="editor-notice">
+            <div class="panel flag">
+              <h4>{{ CHANGED_NOTICE.title }}</h4>
+              <div class="hint">{{ CHANGED_NOTICE.body }}</div>
+            </div>
           </div>
-        </div>
 
-        <div v-if="streamError" class="editor-notice">
-          <div class="panel flag">
-            <h4>保存できません</h4>
-            <div class="hint">{{ streamError }}</div>
+          <div v-if="streamError" class="editor-notice">
+            <div class="panel flag">
+              <h4>保存できません</h4>
+              <div class="hint">{{ streamError }}</div>
+            </div>
           </div>
-        </div>
 
-        <div class="editor-section">
-          <h3>配信</h3>
-          <div class="field">
-            <label for="f-title">タイトル</label>
-            <input
-              id="f-title"
-              v-model="streamFields.title"
-              type="text"
-              :aria-invalid="streamErrorField?.section === 'title'"
-            />
-          </div>
-          <div class="field">
-            <label for="f-short">短いタイトル</label>
-            <input
-              id="f-short"
-              type="text"
-              :value="streamFields.shortTitle ?? ''"
-              placeholder="省くと上のタイトルを使います"
-              :aria-invalid="streamErrorField?.section === 'shortTitle'"
-              @input="streamFields.shortTitle = ($event.target as HTMLInputElement).value || null"
-            />
-          </div>
-          <div class="md">
-            <div class="md-bar"><span class="lab">カテゴリ</span></div>
-            <div class="chipset">
-              <span v-for="(c, i) in streamFields.categories" :key="c" class="chip-x"
-                >{{ c
-                }}<button
-                  type="button"
-                  :aria-label="`${c} を外す`"
-                  @click="streamFields.categories = withoutItem(streamFields.categories, i)"
-                >
-                  &times;
-                </button></span
-              >
-              <button class="md-ins" type="button" @click="addChip(streamFields.categories, 'カテゴリ')">＋</button>
-            </div>
-          </div>
-          <div class="md">
-            <div class="md-bar"><span class="lab">キーワード</span></div>
-            <div class="chipset">
-              <span v-for="(k, i) in streamFields.keywords" :key="k" class="chip-x"
-                >{{ k
-                }}<button
-                  type="button"
-                  :aria-label="`${k} を外す`"
-                  @click="streamFields.keywords = withoutItem(streamFields.keywords, i)"
-                >
-                  &times;
-                </button></span
-              >
-              <button class="md-ins" type="button" @click="addChip(streamFields.keywords, 'キーワード')">＋</button>
-            </div>
-          </div>
-          <div class="row2">
+          <div class="editor-section">
+            <h3>配信</h3>
             <div class="field">
-              <label for="f-vtype">種別</label>
-              <select
-                id="f-vtype"
-                v-model="streamFields.videoType"
-                :aria-invalid="streamErrorField?.section === 'videoType'"
-              >
-                <option v-for="t in VIDEO_TYPES" :key="t" :value="t">{{ t }}</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="f-platform">プラットフォーム</label>
-              <select
-                id="f-platform"
-                v-model="streamFields.platform"
-                :aria-invalid="streamErrorField?.section === 'platform'"
-              >
-                <option v-for="p in PLATFORMS" :key="p" :value="p">{{ p }}</option>
-              </select>
-            </div>
-          </div>
-          <div class="row2">
-            <div class="field">
-              <label for="f-pub">公開日時</label>
+              <label for="f-title">タイトル</label>
               <input
-                id="f-pub"
-                v-model="streamFields.publishedAt"
+                id="f-title"
+                v-model="streamFields.title"
                 type="text"
-                :aria-invalid="streamErrorField?.section === 'publishedAt'"
+                :aria-invalid="streamErrorField?.section === 'title'"
               />
             </div>
-            <div v-if="streamFields.platform !== 'youtube'" class="field">
-              <label for="f-url">URL</label>
+            <div class="field">
+              <label for="f-short">短いタイトル</label>
               <input
-                id="f-url"
+                id="f-short"
                 type="text"
-                :value="streamFields.url ?? ''"
-                :aria-invalid="streamErrorField?.section === 'url'"
-                @input="streamFields.url = ($event.target as HTMLInputElement).value || null"
+                :value="streamFields.shortTitle ?? ''"
+                placeholder="省くと上のタイトルを使います"
+                :aria-invalid="streamErrorField?.section === 'shortTitle'"
+                @input="streamFields.shortTitle = ($event.target as HTMLInputElement).value || null"
               />
             </div>
+            <div class="md">
+              <div class="md-bar"><span class="lab">カテゴリ</span></div>
+              <div class="chipset">
+                <span v-for="(c, i) in streamFields.categories" :key="c" class="chip-x"
+                  >{{ c
+                  }}<button
+                    type="button"
+                    :aria-label="`${c} を外す`"
+                    @click="streamFields.categories = withoutItem(streamFields.categories, i)"
+                  >
+                    &times;
+                  </button></span
+                >
+                <button class="md-ins" type="button" @click="addChip(streamFields.categories, 'カテゴリ')">＋</button>
+              </div>
+            </div>
+            <div class="md">
+              <div class="md-bar"><span class="lab">キーワード</span></div>
+              <div class="chipset">
+                <span v-for="(k, i) in streamFields.keywords" :key="k" class="chip-x"
+                  >{{ k
+                  }}<button
+                    type="button"
+                    :aria-label="`${k} を外す`"
+                    @click="streamFields.keywords = withoutItem(streamFields.keywords, i)"
+                  >
+                    &times;
+                  </button></span
+                >
+                <button class="md-ins" type="button" @click="addChip(streamFields.keywords, 'キーワード')">＋</button>
+              </div>
+            </div>
+            <div class="row2">
+              <div class="field">
+                <label for="f-vtype">種別</label>
+                <select
+                  id="f-vtype"
+                  v-model="streamFields.videoType"
+                  :aria-invalid="streamErrorField?.section === 'videoType'"
+                >
+                  <option v-for="t in VIDEO_TYPES" :key="t" :value="t">{{ t }}</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="f-platform">プラットフォーム</label>
+                <select
+                  id="f-platform"
+                  v-model="streamFields.platform"
+                  :aria-invalid="streamErrorField?.section === 'platform'"
+                >
+                  <option v-for="p in PLATFORMS" :key="p" :value="p">{{ p }}</option>
+                </select>
+              </div>
+            </div>
+            <div class="row2">
+              <div class="field">
+                <label for="f-pub">公開日時</label>
+                <input
+                  id="f-pub"
+                  v-model="streamFields.publishedAt"
+                  type="text"
+                  :aria-invalid="streamErrorField?.section === 'publishedAt'"
+                />
+              </div>
+              <div v-if="streamFields.platform !== 'youtube'" class="field">
+                <label for="f-url">URL</label>
+                <input
+                  id="f-url"
+                  type="text"
+                  :value="streamFields.url ?? ''"
+                  :aria-invalid="streamErrorField?.section === 'url'"
+                  @input="streamFields.url = ($event.target as HTMLInputElement).value || null"
+                />
+              </div>
+            </div>
+            <div class="field">
+              <label for="f-memo">メモ（公開されません）</label>
+              <textarea
+                id="f-memo"
+                :value="streamFields.memo ?? ''"
+                @input="streamFields.memo = ($event.target as HTMLTextAreaElement).value || null"
+              ></textarea>
+            </div>
           </div>
-          <div class="field">
-            <label for="f-memo">メモ（公開されません）</label>
-            <textarea
-              id="f-memo"
-              :value="streamFields.memo ?? ''"
-              @input="streamFields.memo = ($event.target as HTMLTextAreaElement).value || null"
-            ></textarea>
-          </div>
-        </div>
 
-        <div class="editor-section">
-          <h3>曲 {{ streamFields.performances.length }} 件</h3>
+          <div class="editor-section">
+            <h3>曲 {{ streamFields.performances.length }} 件</h3>
 
-          <div v-for="(perf, pi) in streamFields.performances" :key="pi" class="tune">
-            <button class="tune-head" type="button" :aria-expanded="openIndex === pi" @click="openTune(pi)">
-              <span class="no">{{ pi + 1 }}</span>
-              <span class="t">{{ tuneTitleFor(pi) }}</span>
-              <span class="sub num">tune_id {{ perf.tuneId }}</span>
-              <span v-if="!perf.description" class="chip alarm">時刻なし</span>
-              <span class="sub" aria-hidden="true">{{ openIndex === pi ? '▲' : '▼' }}</span>
-            </button>
+            <div v-for="(perf, pi) in streamFields.performances" :key="pi" class="tune">
+              <button class="tune-head" type="button" :aria-expanded="openIndex === pi" @click="openTune(pi)">
+                <span class="no">{{ pi + 1 }}</span>
+                <span class="t">{{ tuneTitleFor(pi) }}</span>
+                <span class="sub num">tune_id {{ perf.tuneId }}</span>
+                <span v-if="!perf.description" class="chip alarm">時刻なし</span>
+                <span class="sub" aria-hidden="true">{{ openIndex === pi ? '▲' : '▼' }}</span>
+              </button>
 
-            <div v-if="openIndex === pi" class="tune-body">
-              <div v-if="tuneError" class="panel flag">
-                <h4>曲を保存できません</h4>
-                <div class="hint">{{ tuneError }}</div>
-              </div>
-
-              <div class="md">
-                <div class="md-bar">
-                  <span class="lab">演奏のしかたと時刻</span>
-                  <button class="md-ins" type="button" @click="openPicker('wiki', $event)">Wikipedia</button>
-                  <button class="md-ins" type="button" @click="openPicker('wikien', $event)">英語版</button>
-                  <button class="md-ins" type="button" @click="openPicker('yt', $event)">配信の時刻</button>
-                  <button class="md-ins" type="button" @click="openPicker('url', $event)">URL</button>
+              <div v-if="openIndex === pi" class="tune-body">
+                <div v-if="tuneError" class="panel flag">
+                  <h4>曲を保存できません</h4>
+                  <div class="hint">{{ tuneError }}</div>
                 </div>
-                <textarea
-                  rows="2"
-                  :value="perf.description ?? ''"
-                  @input="perf.description = ($event.target as HTMLTextAreaElement).value || null"
-                ></textarea>
-                <div class="md-prev">
-                  <span v-if="!perf.description" class="sub">（空）</span>
-                  <MarkDown v-else :source="perf.description" />
-                </div>
-              </div>
 
-              <div class="md">
-                <div class="md-bar">
-                  <span class="lab">場面</span
-                  ><button class="md-ins" type="button" @click="addScene(pi)">＋ 足す</button>
-                </div>
-                <div class="rows">
-                  <span v-if="perf.scenes.length === 0" class="sub">なし</span>
-                  <div v-for="(scene, si) in perf.scenes" :key="si" class="row-item two">
-                    <select v-model="scene.style" aria-label="場面の種類">
-                      <option v-for="st in SCENE_STYLES" :key="st" :value="st">{{ SCENE_STYLE_LABEL[st] }}</option>
-                    </select>
-                    <input
-                      type="text"
-                      :value="scene.startSeconds ?? ''"
-                      placeholder="秒"
-                      aria-label="秒"
-                      @input="
-                        scene.startSeconds =
-                          ($event.target as HTMLInputElement).value === ''
-                            ? null
-                            : Number(($event.target as HTMLInputElement).value)
-                      "
-                    />
-                    <button class="row-del" type="button" aria-label="場面を消す" @click="perf.scenes.splice(si, 1)">
-                      &times;
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <template v-if="tuneFieldsByIndex.get(pi)">
                 <div class="md">
                   <div class="md-bar">
-                    <span class="lab">曲名</span>
+                    <span class="lab">演奏のしかたと時刻</span>
                     <button class="md-ins" type="button" @click="openPicker('wiki', $event)">Wikipedia</button>
                     <button class="md-ins" type="button" @click="openPicker('wikien', $event)">英語版</button>
                     <button class="md-ins" type="button" @click="openPicker('yt', $event)">配信の時刻</button>
                     <button class="md-ins" type="button" @click="openPicker('url', $event)">URL</button>
                   </div>
-                  <input
-                    type="text"
-                    v-model="tuneFieldsByIndex.get(pi)!.title"
-                    :aria-invalid="tuneErrorField?.section === 'title'"
-                  />
+                  <textarea
+                    rows="2"
+                    :value="perf.description ?? ''"
+                    @input="perf.description = ($event.target as HTMLTextAreaElement).value || null"
+                  ></textarea>
                   <div class="md-prev">
-                    <span v-if="!tuneFieldsByIndex.get(pi)!.title" class="sub">（空）</span>
-                    <MarkDown v-else :source="tuneFieldsByIndex.get(pi)!.title" />
+                    <span v-if="!perf.description" class="sub">（空）</span>
+                    <span v-else v-html="markdownHtml(perf.description, [])"></span>
                   </div>
                 </div>
 
                 <div class="md">
                   <div class="md-bar">
-                    <span class="lab">原題</span>
-                    <button class="md-ins" type="button" @click="openPicker('wiki', $event)">Wikipedia</button>
-                    <button class="md-ins" type="button" @click="openPicker('wikien', $event)">英語版</button>
-                    <button class="md-ins" type="button" @click="openPicker('yt', $event)">配信の時刻</button>
-                    <button class="md-ins" type="button" @click="openPicker('url', $event)">URL</button>
-                  </div>
-                  <input
-                    type="text"
-                    :value="tuneFieldsByIndex.get(pi)!.originalTitle ?? ''"
-                    @input="
-                      tuneFieldsByIndex.get(pi)!.originalTitle = ($event.target as HTMLInputElement).value || null
-                    "
-                  />
-                  <div class="md-prev">
-                    <span v-if="!tuneFieldsByIndex.get(pi)!.originalTitle" class="sub">（空）</span>
-                    <MarkDown v-else :source="tuneFieldsByIndex.get(pi)!.originalTitle ?? ''" />
-                  </div>
-                </div>
-
-                <div class="md">
-                  <div class="md-bar">
-                    <span class="lab">小曲</span
-                    ><button class="md-ins" type="button" @click="addSubtune(tuneFieldsByIndex.get(pi)!)">
-                      ＋ 足す
-                    </button>
+                    <span class="lab">場面</span
+                    ><button class="md-ins" type="button" @click="addScene(pi)">＋ 足す</button>
                   </div>
                   <div class="rows">
-                    <span v-if="tuneFieldsByIndex.get(pi)!.subtunes.length === 0" class="sub">なし</span>
-                    <div v-for="(_, si) in tuneFieldsByIndex.get(pi)!.subtunes" :key="si" class="row-item">
-                      <input type="text" v-model="tuneFieldsByIndex.get(pi)!.subtunes[si]" aria-label="小曲" />
-                      <button
-                        class="row-del"
-                        type="button"
-                        aria-label="小曲を消す"
-                        @click="tuneFieldsByIndex.get(pi)!.subtunes.splice(si, 1)"
-                      >
+                    <span v-if="perf.scenes.length === 0" class="sub">なし</span>
+                    <div v-for="(scene, si) in perf.scenes" :key="si" class="row-item two">
+                      <select v-model="scene.style" aria-label="場面の種類">
+                        <option v-for="st in SCENE_STYLES" :key="st" :value="st">{{ SCENE_STYLE_LABEL[st] }}</option>
+                      </select>
+                      <input
+                        type="text"
+                        :value="scene.startSeconds ?? ''"
+                        placeholder="秒"
+                        aria-label="秒"
+                        @input="
+                          scene.startSeconds =
+                            ($event.target as HTMLInputElement).value === ''
+                              ? null
+                              : Number(($event.target as HTMLInputElement).value)
+                        "
+                      />
+                      <button class="row-del" type="button" aria-label="場面を消す" @click="perf.scenes.splice(si, 1)">
                         &times;
                       </button>
                     </div>
                   </div>
                 </div>
 
-                <div class="md">
-                  <div class="md-bar">
-                    <span class="lab">作曲・作詞など</span
-                    ><button class="md-ins" type="button" @click="addAttribute(tuneFieldsByIndex.get(pi)!)">
-                      ＋ 足す
-                    </button>
+                <template v-if="tuneFieldsByIndex.get(pi)">
+                  <div class="md">
+                    <div class="md-bar">
+                      <span class="lab">曲名</span>
+                      <button class="md-ins" type="button" @click="openPicker('wiki', $event)">Wikipedia</button>
+                      <button class="md-ins" type="button" @click="openPicker('wikien', $event)">英語版</button>
+                      <button class="md-ins" type="button" @click="openPicker('yt', $event)">配信の時刻</button>
+                      <button class="md-ins" type="button" @click="openPicker('url', $event)">URL</button>
+                    </div>
+                    <input
+                      type="text"
+                      v-model="tuneFieldsByIndex.get(pi)!.title"
+                      :aria-invalid="tuneErrorField?.section === 'title'"
+                    />
+                    <div class="md-prev">
+                      <span v-if="!tuneFieldsByIndex.get(pi)!.title" class="sub">（空）</span>
+                      <span v-else v-html="markdownHtml(tuneFieldsByIndex.get(pi)!.title, [])"></span>
+                    </div>
                   </div>
-                  <div class="rows">
-                    <span v-if="tuneFieldsByIndex.get(pi)!.attributes.length === 0" class="sub">なし</span>
-                    <div v-for="(attr, ai) in tuneFieldsByIndex.get(pi)!.attributes" :key="ai" class="attr-block">
-                      <div class="row-item">
-                        <select
-                          :value="attr.name ?? '（名前なし）'"
-                          aria-label="項目の名前"
-                          @change="onAttributeNameChange(attr, ($event.target as HTMLSelectElement).value)"
-                        >
-                          <option>（名前なし）</option>
-                          <option v-for="n in attrNameOptions(attr.name)" :key="n">{{ n }}</option>
-                          <option>その他…</option>
-                        </select>
+
+                  <div class="md">
+                    <div class="md-bar">
+                      <span class="lab">原題</span>
+                      <button class="md-ins" type="button" @click="openPicker('wiki', $event)">Wikipedia</button>
+                      <button class="md-ins" type="button" @click="openPicker('wikien', $event)">英語版</button>
+                      <button class="md-ins" type="button" @click="openPicker('yt', $event)">配信の時刻</button>
+                      <button class="md-ins" type="button" @click="openPicker('url', $event)">URL</button>
+                    </div>
+                    <input
+                      type="text"
+                      :value="tuneFieldsByIndex.get(pi)!.originalTitle ?? ''"
+                      @input="
+                        tuneFieldsByIndex.get(pi)!.originalTitle = ($event.target as HTMLInputElement).value || null
+                      "
+                    />
+                    <div class="md-prev">
+                      <span v-if="!tuneFieldsByIndex.get(pi)!.originalTitle" class="sub">（空）</span>
+                      <span v-else>{{ unescapeHtml(tuneFieldsByIndex.get(pi)!.originalTitle ?? '') }}</span>
+                    </div>
+                  </div>
+
+                  <div class="md">
+                    <div class="md-bar">
+                      <span class="lab">小曲</span
+                      ><button class="md-ins" type="button" @click="addSubtune(tuneFieldsByIndex.get(pi)!)">
+                        ＋ 足す
+                      </button>
+                    </div>
+                    <div class="rows">
+                      <span v-if="tuneFieldsByIndex.get(pi)!.subtunes.length === 0" class="sub">なし</span>
+                      <div v-for="(_, si) in tuneFieldsByIndex.get(pi)!.subtunes" :key="si" class="row-item">
+                        <input type="text" v-model="tuneFieldsByIndex.get(pi)!.subtunes[si]" aria-label="小曲" />
                         <button
                           class="row-del"
                           type="button"
-                          aria-label="項目を消す"
-                          @click="tuneFieldsByIndex.get(pi)!.attributes.splice(ai, 1)"
+                          aria-label="小曲を消す"
+                          @click="tuneFieldsByIndex.get(pi)!.subtunes.splice(si, 1)"
                         >
                           &times;
                         </button>
                       </div>
-                      <div class="switch-row">
-                        <button
-                          class="toggle"
-                          type="button"
-                          :aria-pressed="attributeMode(attr) === 'people'"
-                          aria-label="人物を選んで書く"
-                          @click="toggleAttributeMode(attr)"
-                        ></button>
-                        <span class="sub">{{
-                          attributeMode(attr) === 'people' ? '人物を選んで書く' : '文章で書く'
-                        }}</span>
-                      </div>
-                      <input
-                        v-if="attributeMode(attr) === 'text'"
-                        type="text"
-                        :value="attr.text ?? ''"
-                        aria-label="項目の中身"
-                        @input="attr.text = ($event.target as HTMLInputElement).value || null"
-                      />
-                      <template v-else>
-                        <div v-if="peopleLoadError" class="panel flag">
-                          <h4>人の一覧を取得できません</h4>
-                          <div class="hint">{{ peopleLoadError }}</div>
-                          <button class="btn" type="button" @click="loadPeople">読み直す</button>
-                        </div>
-                        <div v-for="(person, pj) in attr.people" :key="pj" class="row-item two">
-                          <select v-model="person.personId" aria-label="人">
-                            <option v-for="p in people" :key="p.personId" :value="p.personId">{{ p.name }}</option>
+                    </div>
+                  </div>
+
+                  <div class="md">
+                    <div class="md-bar">
+                      <span class="lab">作曲・作詞など</span
+                      ><button class="md-ins" type="button" @click="addAttribute(tuneFieldsByIndex.get(pi)!)">
+                        ＋ 足す
+                      </button>
+                    </div>
+                    <div class="rows">
+                      <span v-if="tuneFieldsByIndex.get(pi)!.attributes.length === 0" class="sub">なし</span>
+                      <div v-for="(attr, ai) in tuneFieldsByIndex.get(pi)!.attributes" :key="ai" class="attr-block">
+                        <div class="row-item">
+                          <select
+                            :value="attr.name ?? '（名前なし）'"
+                            aria-label="項目の名前"
+                            @change="onAttributeNameChange(attr, ($event.target as HTMLSelectElement).value)"
+                          >
+                            <option>（名前なし）</option>
+                            <option v-for="n in attrNameOptions(attr.name)" :key="n">{{ n }}</option>
+                            <option>その他…</option>
                           </select>
-                          <input
-                            type="text"
-                            :value="person.creditedAs ?? ''"
-                            placeholder="表示名（省くと人の名前）"
-                            aria-label="表示名"
-                            @input="person.creditedAs = ($event.target as HTMLInputElement).value || null"
-                          />
                           <button
                             class="row-del"
                             type="button"
-                            aria-label="人を消す"
-                            @click="attr.people.splice(pj, 1)"
+                            aria-label="項目を消す"
+                            @click="tuneFieldsByIndex.get(pi)!.attributes.splice(ai, 1)"
                           >
                             &times;
                           </button>
-                          <span class="sub num full">person_id {{ person.personId }}</span>
                         </div>
-                        <div class="row-actions">
-                          <button class="md-ins" type="button" @click="addAttributePerson(attr)">＋ 人を足す</button>
-                          <button class="md-ins" type="button" @click="addNewPerson">＋ 新しい人物を登録</button>
+                        <div class="switch-row">
+                          <button
+                            class="toggle"
+                            type="button"
+                            :aria-pressed="attributeMode(attr) === 'people'"
+                            aria-label="人物を選んで書く"
+                            @click="toggleAttributeMode(attr)"
+                          ></button>
+                          <span class="sub">{{
+                            attributeMode(attr) === 'people' ? '人物を選んで書く' : '文章で書く'
+                          }}</span>
                         </div>
-                      </template>
+                        <input
+                          v-if="attributeMode(attr) === 'text'"
+                          type="text"
+                          :value="attr.text ?? ''"
+                          aria-label="項目の中身"
+                          @input="attr.text = ($event.target as HTMLInputElement).value || null"
+                        />
+                        <template v-else>
+                          <div v-if="peopleLoadError" class="panel flag">
+                            <h4>人の一覧を取得できません</h4>
+                            <div class="hint">{{ peopleLoadError }}</div>
+                            <button class="btn" type="button" @click="loadPeople">読み直す</button>
+                          </div>
+                          <div v-for="(person, pj) in attr.people" :key="pj" class="row-item two">
+                            <select v-model="person.personId" aria-label="人">
+                              <option v-for="p in people" :key="p.personId" :value="p.personId">{{ p.name }}</option>
+                            </select>
+                            <input
+                              type="text"
+                              :value="person.creditedAs ?? ''"
+                              placeholder="表示名（省くと人の名前）"
+                              aria-label="表示名"
+                              @input="person.creditedAs = ($event.target as HTMLInputElement).value || null"
+                            />
+                            <button
+                              class="row-del"
+                              type="button"
+                              aria-label="人を消す"
+                              @click="attr.people.splice(pj, 1)"
+                            >
+                              &times;
+                            </button>
+                            <span class="sub num full">person_id {{ person.personId }}</span>
+                          </div>
+                          <div class="row-actions">
+                            <button class="md-ins" type="button" @click="addAttributePerson(attr)">＋ 人を足す</button>
+                            <button class="md-ins" type="button" @click="addNewPerson">＋ 新しい人物を登録</button>
+                          </div>
+                        </template>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div class="md">
-                  <div class="md-bar">
-                    <span class="lab">参考の動画</span
-                    ><button class="md-ins" type="button" @click="addVideo(tuneFieldsByIndex.get(pi)!)">＋ 足す</button>
-                  </div>
-                  <div class="rows">
-                    <span v-if="tuneFieldsByIndex.get(pi)!.videos.length === 0" class="sub">なし</span>
-                    <div v-for="(v, vi) in tuneFieldsByIndex.get(pi)!.videos" :key="vi" class="row-item two">
-                      <input type="text" v-model="v.videoId" aria-label="動画 ID" />
-                      <input type="text" v-model="v.title" aria-label="動画のタイトル" />
-                      <button
-                        class="row-del"
-                        type="button"
-                        aria-label="動画を消す"
-                        @click="tuneFieldsByIndex.get(pi)!.videos.splice(vi, 1)"
-                      >
-                        &times;
+                  <div class="md">
+                    <div class="md-bar">
+                      <span class="lab">参考の動画</span
+                      ><button class="md-ins" type="button" @click="addVideo(tuneFieldsByIndex.get(pi)!)">
+                        ＋ 足す
                       </button>
                     </div>
-                  </div>
-                </div>
-
-                <div class="md">
-                  <div class="md-bar">
-                    <span class="lab">外部の資料</span
-                    ><button class="md-ins" type="button" @click="addScore(tuneFieldsByIndex.get(pi)!)">＋ 足す</button>
-                  </div>
-                  <div class="rows">
-                    <span v-if="tuneFieldsByIndex.get(pi)!.scores.length === 0" class="sub">なし</span>
-                    <div v-for="(sc, si) in tuneFieldsByIndex.get(pi)!.scores" :key="si" class="row-item two">
-                      <input type="text" v-model="sc.url" placeholder="https://imslp.org/..." aria-label="リンク" />
-                      <input type="text" v-model="sc.title" aria-label="題" />
-                      <button
-                        class="row-del"
-                        type="button"
-                        aria-label="資料を消す"
-                        @click="tuneFieldsByIndex.get(pi)!.scores.splice(si, 1)"
-                      >
-                        &times;
-                      </button>
+                    <div class="rows">
+                      <span v-if="tuneFieldsByIndex.get(pi)!.videos.length === 0" class="sub">なし</span>
+                      <div v-for="(v, vi) in tuneFieldsByIndex.get(pi)!.videos" :key="vi" class="row-item two">
+                        <input type="text" v-model="v.videoId" aria-label="動画 ID" />
+                        <input type="text" v-model="v.title" aria-label="動画のタイトル" />
+                        <button
+                          class="row-del"
+                          type="button"
+                          aria-label="動画を消す"
+                          @click="tuneFieldsByIndex.get(pi)!.videos.splice(vi, 1)"
+                        >
+                          &times;
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div class="actions">
-                  <button class="btn primary" type="button" :disabled="tuneSaving" @click="saveTune(pi)">
-                    この曲を保存
-                  </button>
-                  <span class="grow"></span>
-                  <button class="btn danger" type="button" @click="removePerformance(pi)">
-                    この配信からこの曲を外す
-                  </button>
-                </div>
-              </template>
+                  <div class="md">
+                    <div class="md-bar">
+                      <span class="lab">外部の資料</span
+                      ><button class="md-ins" type="button" @click="addScore(tuneFieldsByIndex.get(pi)!)">
+                        ＋ 足す
+                      </button>
+                    </div>
+                    <div class="rows">
+                      <span v-if="tuneFieldsByIndex.get(pi)!.scores.length === 0" class="sub">なし</span>
+                      <div v-for="(sc, si) in tuneFieldsByIndex.get(pi)!.scores" :key="si" class="row-item two">
+                        <input type="text" v-model="sc.url" placeholder="https://imslp.org/..." aria-label="リンク" />
+                        <input type="text" v-model="sc.title" aria-label="題" />
+                        <button
+                          class="row-del"
+                          type="button"
+                          aria-label="資料を消す"
+                          @click="tuneFieldsByIndex.get(pi)!.scores.splice(si, 1)"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="actions">
+                    <button class="btn primary" type="button" :disabled="tuneSaving" @click="saveTune(pi)">
+                      この曲を保存
+                    </button>
+                    <span class="grow"></span>
+                    <button class="btn danger" type="button" @click="removePerformance(pi)">
+                      この配信からこの曲を外す
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="f-tune-q">曲を探す、または曲名を書いて新しく作る</label>
+              <input id="f-tune-q" v-model="tuneQuery" type="text" placeholder="曲名で絞り込み" />
+            </div>
+            <div v-if="tuneSearchError" class="panel flag">
+              <h4>曲を探せません</h4>
+              <div class="hint">{{ tuneSearchError }}</div>
+              <button class="btn" type="button" @click="searchTunes">読み直す</button>
+            </div>
+            <div v-else-if="tuneSearchResults.length > 0" class="rows">
+              <button
+                v-for="t in tuneSearchResults"
+                :key="t.tuneId"
+                class="setlist-item"
+                type="button"
+                @click="addPerformance(t.tuneId)"
+              >
+                <span class="t">{{ t.title }}</span>
+              </button>
+            </div>
+            <div v-else-if="tuneQuery.trim() !== ''">
+              <button class="btn" type="button" @click="addNewTune">「{{ tuneQuery }}」という曲名で新しく作る</button>
             </div>
           </div>
-
-          <div class="field">
-            <label for="f-tune-q">曲を探す、または曲名を書いて新しく作る</label>
-            <input id="f-tune-q" v-model="tuneQuery" type="text" placeholder="曲名で絞り込み" />
-          </div>
-          <div v-if="tuneSearchError" class="panel flag">
-            <h4>曲を探せません</h4>
-            <div class="hint">{{ tuneSearchError }}</div>
-            <button class="btn" type="button" @click="searchTunes">読み直す</button>
-          </div>
-          <div v-else-if="tuneSearchResults.length > 0" class="rows">
-            <button
-              v-for="t in tuneSearchResults"
-              :key="t.tuneId"
-              class="setlist-item"
-              type="button"
-              @click="addPerformance(t.tuneId)"
-            >
-              <span class="t">{{ t.title }}</span>
-            </button>
-          </div>
-          <div v-else-if="tuneQuery.trim() !== ''">
-            <button class="btn" type="button" @click="addNewTune">「{{ tuneQuery }}」という曲名で新しく作る</button>
-          </div>
         </div>
+        <PreviewPane v-if="previewOpen" :note="PREVIEW_NOTES.published" palette="genet">
+          <GenetSongPreview
+            v-if="previewTune"
+            :tune="previewTune.fields"
+            :tune-id="previewTune.tuneId"
+            :stream="streamFields"
+            :video-id="selected.videoId"
+            :people="people"
+          />
+          <p v-else-if="openIndex !== null" class="preview-label">
+            {{ tuneError ? '曲を読み込めないので、描けません' : '曲を読み込んでいます' }}
+          </p>
+          <p v-else class="preview-label">曲を開くと、公開ページの「楽曲」の欄をここに描きます</p>
+        </PreviewPane>
       </div>
     </div>
   </div>

@@ -1,4 +1,6 @@
 import { getChannels, getMonths, getSubscriberMilestones, isNotPublished } from '@/lib/api';
+import { readGenetMusicData } from '@/lib/genet/musicRead';
+import type { GenetStream } from '@/lib/genet/musicTypes';
 import type { Channel, SubscriberMilestone } from '@/type/api';
 
 import { publicDataGeneration } from './preview';
@@ -20,6 +22,7 @@ interface Kept<T> {
 let channels: Kept<Channel[]> | null = null;
 let milestones: Kept<SubscriberMilestone[]> | null = null;
 let months: Kept<string[]> | null = null;
+let genetStreams: Kept<GenetStream[]> | null = null;
 
 /** `slot`'s read while it is from the current generation, else a new `load()`, kept through `keep` until it fails. */
 function once<T>(slot: Kept<T> | null, load: () => Promise<T>, keep: (kept: Kept<T> | null) => void): Promise<T> {
@@ -67,5 +70,25 @@ export function publicMonths(): Promise<string[]> {
     months,
     async () => (await getMonths()).data.months,
     (kept) => (months = kept),
+  );
+}
+
+/**
+ * The streams ジェネット楽曲一覧 lists, newest first - none, rather than a
+ * failure, before the first publish. Read the way that page reads them, not
+ * through `@/lib/api`, which has no reader for this body.
+ */
+export function publicGenetStreams(): Promise<GenetStream[]> {
+  return once(
+    genetStreams,
+    async () => {
+      const response = await fetch('/api/genet/music');
+
+      if (response.status === 404) return [];
+      if (!response.ok) throw new Error(`/api/genet/music: ${response.status}`);
+
+      return readGenetMusicData(await response.json()).streams;
+    },
+    (kept) => (genetStreams = kept),
   );
 }

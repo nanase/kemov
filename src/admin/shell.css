@@ -1000,6 +1000,7 @@ table.grid input[type='checkbox'] {
   padding: 14px 16px 16px;
   border-radius: 8px;
   background: var(--k-bg);
+  color: var(--k-text);
   font-family: Murecho, 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', meiryo, system-ui, sans-serif;
   font-size: 13px;
   line-height: 1.55;
