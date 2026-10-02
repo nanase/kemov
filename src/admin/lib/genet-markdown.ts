@@ -3,8 +3,8 @@
  * #144): every write box gets the same 4 insert buttons (Wikipedia / 英語版 /
  * 配信の時刻 / URL), regardless of which entity or field it belongs to - a
  * tune's title, a performance's description, all the same shape. Rendering
- * this Markdown back is `src/components/genet/MarkDown.vue`'s own job (the
- * public site's real renderer, reused here for the preview rather than a
+ * this Markdown back is `markdownHtml`'s job (`src/lib/genet/musicSong.ts`,
+ * the public site's own renderer, reused here for the preview rather than a
  * second copy of its link-scheme mapping); this file is only what the 4
  * buttons themselves write.
  */

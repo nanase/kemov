@@ -15,8 +15,8 @@ import { unescapeHtml } from '@nanase/alnilam/string';
  * than a browser, but this file needs none of that - it is plain string
  * handling, so a relative import across that boundary is enough. See the
  * import in `worker/src/pages/index.ts` for the reasoning on that side.
- * `unescapeHtml` is the same function `src/components/genet/MarkDown.vue`
- * already uses for the same reason: a stored name or title can carry
+ * `unescapeHtml` is the same function `src/lib/genet/musicMarkdown.ts`
+ * uses for the same reason: a stored name or title can carry
  * `&quot;`/`&amp;`/`&#39;` as literal text rather than the characters they
  * stand for.
  *

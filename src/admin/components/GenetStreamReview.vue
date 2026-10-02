@@ -2,7 +2,8 @@
 import { computed, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 
-import MarkDown from '../../components/genet/MarkDown.vue';
+import { markdownHtml } from '@/lib/genet/musicSong';
+
 import { AdminApiError, deleteJson, postJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
 import { clock } from '../lib/genet-markdown';
@@ -96,7 +97,7 @@ useCrumbDetail(() => props.stream.shortTitle ?? props.stream.title);
         <div v-for="(p, i) in stream.performances" :key="i" class="ov tune-row">
           <span class="k num">{{ i + 1 }}</span>
           <span class="vals">
-            <span class="collected"><MarkDown :source="tuneTitles[String(p.tuneId)] ?? `曲 ${p.tuneId}`" /></span>
+            <span class="collected" v-html="markdownHtml(tuneTitles[String(p.tuneId)] ?? `曲 ${p.tuneId}`, [])"></span>
             <span class="sub">{{ p.scenes.map((s) => styleLabel(s.style)).join('・') }}</span>
           </span>
           <span class="num sub">{{ firstStart(p) === null ? '—' : clock(firstStart(p)!) }}</span>
