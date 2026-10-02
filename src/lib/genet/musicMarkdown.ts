@@ -4,8 +4,7 @@
  * `plain`/`expand`/`md`), not `marked`: the only syntax in this data is
  * `\`-escapes, newlines and `[text](href)` links (`wiki:`/`wikien:`/`yt:`/a
  * bare `https://` URL). `unescapeHtml` decodes `&quot;`/`&amp;`/`&#39;` left
- * in the data, the same treatment `src/components/genet/MarkDown.vue`
- * already gives the old page's own Markdown.
+ * in the data.
  */
 import { unescapeHtml } from '@nanase/alnilam/string';
 

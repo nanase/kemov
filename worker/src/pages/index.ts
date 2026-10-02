@@ -69,8 +69,8 @@ interface Titled {
  *
  * `memberPageTitle`/`videoPageTitle` unescape the stored name or title before
  * use. Some rows carry `&quot;`, `&amp;` and `&#39;` as literal text rather
- * than the characters they stand for, the same as `src/components/genet/MarkDown.vue`
- * already handles before showing a title on screen. `HTMLRewriter`'s
+ * than the characters they stand for, the same as `src/lib/genet/musicMarkdown.ts`
+ * handles before showing a title on screen. `HTMLRewriter`'s
  * `setInnerContent`/`setAttribute` (see `rewrite` below) escape whatever
  * string they are handed, so unescaping first is what keeps that the only
  * escaping the text goes through - skipping it would show `&amp;quot;`
