@@ -1,13 +1,16 @@
 /**
  * What the edit panel holds, turned into what the public pages read - for the
  * プレビュー beside it. Each goes through the public site's own reader
- * (`readFootprintEvents`, `readSubscriberMilestones`), so a value the page
- * could not read is caught here and named, rather than drawn as `NaN`.
+ * (`readFootprintEvents`, `readSubscriberMilestones`, `readGenetMusicData`),
+ * so a value the page could not read is caught here and named, rather than
+ * drawn as `NaN`.
  *
  * The snake_case bodies mirror what publishing writes: `publicShapeOf` in
- * `worker/src/admin/footprints.ts` and `publicEntryOf` in
- * `worker/src/admin/subscriber-milestones-publish.ts`.
+ * `worker/src/admin/footprints.ts` and the genet files beside it, and
+ * `publicEntryOf` in `worker/src/admin/subscriber-milestones-publish.ts`.
  */
+import { readGenetMusicData } from '@/lib/genet/musicRead';
+import type { GenetPerson, GenetStream, GenetTune } from '@/lib/genet/musicTypes';
 import { ShapeError } from '@/lib/read';
 import {
   readFootprintEvents,
@@ -17,6 +20,9 @@ import {
 } from '@/type/api';
 
 import type { EventFormFields } from './footprints';
+import type { GenetPerson as AdminGenetPerson } from './genet-people';
+import type { StreamFormFields } from './genet-streams';
+import type { TuneFormFields } from './genet-tunes';
 import type { MilestoneFormFields } from './subscriber-milestones';
 
 /** The value, or the field (as the published JSON names it) the page could not read. */
@@ -111,5 +117,87 @@ export function milestonesWithDraft(
     draft,
   ].sort((a, b) =>
     a.reachedDate === b.reachedDate ? a.milestoneId - b.milestoneId : a.reachedDate < b.reachedDate ? -1 : 1,
+  );
+}
+
+/** What the 楽曲 panel draws: the tune, the stream performing it, and the people its credits name. */
+export interface PublicSong {
+  tune: GenetTune;
+  stream: GenetStream;
+  people: GenetPerson[];
+}
+
+/**
+ * One tune and the stream being edited, as ジェネット楽曲一覧 would publish
+ * them (`publicShapeOf` in `worker/src/admin/genet-tunes.ts`,
+ * `worker/src/admin/genet-streams.ts` and `worker/src/admin/genet-people.ts`).
+ * The page reads the whole body at once, so a field it could not read in the
+ * stream stops the page, not just this tune.
+ */
+export function publicSongOf(
+  tune: TuneFormFields,
+  tuneId: number,
+  stream: StreamFormFields,
+  videoId: string,
+  people: readonly AdminGenetPerson[],
+): PreviewReadout<PublicSong> {
+  const body = {
+    published_at: '2000-01-01T00:00:00Z',
+    channel_id: null,
+    streams: [
+      {
+        video_id: videoId,
+        platform: stream.platform,
+        url: stream.url,
+        video_type: stream.videoType,
+        title: stream.title,
+        short_title: stream.shortTitle,
+        published_at: stream.publishedAt,
+        categories: stream.categories,
+        keywords: stream.keywords,
+        performances: stream.performances.map((p) => ({
+          tune_id: p.tuneId,
+          description: p.description,
+          scenes: p.scenes.map((s) => ({ style: s.style, video_id: s.videoId, start_seconds: s.startSeconds })),
+        })),
+      },
+    ],
+    tunes: [
+      {
+        tune_id: tuneId,
+        title: tune.title,
+        original_title: tune.originalTitle,
+        subtunes: tune.subtunes,
+        attributes: tune.attributes.map((a) => ({
+          name: a.name,
+          text: a.text,
+          people: a.people.map((p) => ({ person_id: p.personId, credited_as: p.creditedAs, note: p.note })),
+        })),
+        videos: tune.videos.map((v) => ({
+          video_id: v.videoId,
+          title: v.title,
+          start_seconds: v.startSeconds,
+          description: v.description,
+        })),
+        scores: tune.scores.map((s) => ({ url: s.url, title: s.title })),
+      },
+    ],
+    people: people.map((p) => ({ person_id: p.personId, name: p.name, link: p.link })),
+  };
+
+  return readOne(() => {
+    const data = readGenetMusicData(body);
+
+    return { tune: data.tunes[0]!, stream: data.streams[0]!, people: data.people };
+  });
+}
+
+/**
+ * The published streams with the draft in its own place: in place of its
+ * published self if it has one, newest first the way publishing sorts them.
+ */
+export function streamsWithDraft(published: readonly GenetStream[], draft: GenetStream): GenetStream[] {
+  return [...published.filter((s) => s.video_id !== draft.video_id), draft].sort((a, b) =>
+    a.published_at === b.published_at ? 0 : a.published_at < b.published_at ? 1 : -1,
   );
 }

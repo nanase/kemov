@@ -1,6 +1,15 @@
 import type { EventFormFields } from '@/admin/lib/footprints';
-import { milestonesWithDraft, publicEventOf, publicMilestoneOf } from '@/admin/lib/preview-public';
+import type { StreamFormFields } from '@/admin/lib/genet-streams';
+import type { TuneFormFields } from '@/admin/lib/genet-tunes';
+import {
+  milestonesWithDraft,
+  publicEventOf,
+  publicMilestoneOf,
+  publicSongOf,
+  streamsWithDraft,
+} from '@/admin/lib/preview-public';
 import type { MilestoneFormFields } from '@/admin/lib/subscriber-milestones';
+import type { GenetStream } from '@/lib/genet/musicTypes';
 import type { SubscriberMilestone } from '@/type/api';
 
 /** An あしあと panel's fields for a published event, with `overrides` on top. */
@@ -129,5 +138,100 @@ describe('milestonesWithDraft', () => {
     const draft = published(-1, '2021-12-01');
 
     expect(milestonesWithDraft(others, draft).map((m) => m.milestoneId)).toEqual([1, -1, 2]);
+  });
+});
+
+/** A tune panel's fields, with `overrides` on top. */
+function tuneFields(overrides: Partial<TuneFormFields> = {}): TuneFormFields {
+  return {
+    title: '[くるみ割り人形](wiki:くるみ割り人形) 作品71a',
+    originalTitle: 'Щелкунчик',
+    subtunes: ['第1曲 小序曲'],
+    attributes: [{ name: '作曲', text: null, people: [{ personId: 5, creditedAs: null, note: null }] }],
+    videos: [{ videoId: 'aaaaaaaaaaa', title: 'The Nutcracker', startSeconds: null, description: null }],
+    scores: [{ url: 'https://imslp.org/', title: 'IMSLP' }],
+    memo: '公開されないメモ',
+    ...overrides,
+  };
+}
+
+/** A stream panel's fields performing tune 32, with `overrides` on top. */
+function streamFields(overrides: Partial<StreamFormFields> = {}): StreamFormFields {
+  return {
+    platform: 'youtube',
+    url: null,
+    videoType: 'live',
+    title: '【楽曲解説】くるみ割り人形',
+    shortTitle: null,
+    publishedAt: '2023-03-09T03:00:00Z',
+    categories: ['楽曲解説'],
+    keywords: [],
+    memo: null,
+    performances: [{ tuneId: 32, description: '[演奏](yt:gHVZb1UheTk?t=4925)', scenes: [] }],
+    ...overrides,
+  };
+}
+
+const PEOPLE = [{ personId: 5, name: 'ピョートル・チャイコフスキー', link: null, memo: 'メモ' }];
+
+describe('publicSongOf', () => {
+  test('the tune, the stream and the people as the public page reads them', () => {
+    const readout = publicSongOf(tuneFields(), 32, streamFields(), 'gHVZb1UheTk', PEOPLE);
+
+    expect(readout.ok).toBe(true);
+    if (!readout.ok) return;
+    expect(readout.value.tune).toMatchObject({ tune_id: 32, original_title: 'Щелкунчик' });
+    expect(readout.value.tune).not.toHaveProperty('memo');
+    expect(readout.value.tune.attributes[0]!.people).toEqual([{ person_id: 5, credited_as: null, note: null }]);
+    expect(readout.value.stream).toMatchObject({ video_id: 'gHVZb1UheTk', published_at: '2023-03-09T03:00:00Z' });
+    expect(readout.value.people).toEqual([{ person_id: 5, name: 'ピョートル・チャイコフスキー', link: null }]);
+  });
+
+  // The page reads the whole body at once: a bad date anywhere stops it.
+  test('a date the page cannot read is named', () => {
+    expect(publicSongOf(tuneFields(), 32, streamFields({ publishedAt: '2023-03-09' }), 'x', PEOPLE)).toEqual({
+      ok: false,
+      field: 'published_at',
+    });
+  });
+
+  test('a scene second that is not a number is named', () => {
+    const stream = streamFields({
+      performances: [{ tuneId: 32, description: null, scenes: [{ style: 'play', videoId: 'x', startSeconds: NaN }] }],
+    });
+
+    expect(publicSongOf(tuneFields(), 32, stream, 'x', PEOPLE)).toEqual({ ok: false, field: 'start_seconds' });
+  });
+});
+
+describe('streamsWithDraft', () => {
+  const stream = (videoId: string, publishedAt: string, title = videoId): GenetStream => ({
+    video_id: videoId,
+    platform: 'youtube',
+    url: null,
+    video_type: 'live',
+    title,
+    short_title: null,
+    published_at: publishedAt,
+    categories: [],
+    keywords: [],
+    performances: [],
+  });
+
+  test('a new stream takes its place among the published ones, newest first', () => {
+    const published = [stream('c', '2026-03-01T00:00:00Z'), stream('a', '2026-01-01T00:00:00Z')];
+
+    expect(streamsWithDraft(published, stream('b', '2026-02-01T00:00:00Z')).map((s) => s.video_id)).toEqual([
+      'c',
+      'b',
+      'a',
+    ]);
+  });
+
+  test('a published stream is replaced by its draft, not listed twice', () => {
+    const published = [stream('a', '2026-01-01T00:00:00Z', '前の題')];
+    const merged = streamsWithDraft(published, stream('a', '2026-01-01T00:00:00Z', '新しい題'));
+
+    expect(merged.map((s) => s.title)).toEqual(['新しい題']);
   });
 });

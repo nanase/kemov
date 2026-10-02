@@ -159,6 +159,8 @@ async function publishGenetNow(): Promise<void> {
   try {
     const body = await postJson<GenetPublishResult>('/genet/publish', {});
 
+    if (body.published) forgetPublicData();
+
     showToast(
       body.published
         ? `公開しました。genet/music.json、配信 ${body.streamCount} 件・曲 ${body.tuneCount} 件・人 ${body.personCount} 件、${body.byteLength} バイト`

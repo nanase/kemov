@@ -8,13 +8,15 @@
 defineProps<{
   /** Where the change shows once saved (`PREVIEW_NOTES`). */
   note: string;
+  /** A public page's own colours, as that page opts in on its root (`src/shell/palette-*.css`). */
+  palette?: string;
 }>();
 </script>
 
 <template>
   <aside class="preview" aria-label="プレビュー">
     <div class="preview-head">プレビュー</div>
-    <div class="preview-frame">
+    <div class="preview-frame" :data-palette="palette">
       <slot />
     </div>
     <p class="hint">{{ note }}</p>

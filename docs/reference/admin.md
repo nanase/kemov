@@ -84,8 +84,9 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
 | 登録者数の節目                             | グラフの点を押したときのカード（`MilestoneCard.vue`）と、そのメンバーのふしめのグラフ（`MilestoneTrail.vue`）。グラフは公開中の節目に、編集中の 1 件を差し込んで描く |
 | メンバー                                   | 顔・名前・活動期間を、公開サイトの部品で寄せ集めた見本                                                                                                               |
 | 配信・動画                                 | サムネイル・メンバー・題・種類の見本と、上書きで変わる場所の注記                                                                                                     |
+| ジェネット楽曲一覧                         | 開いている曲の「楽曲」の欄（公開サイトの `SongDetail.vue`）。演奏した回数は、公開中の配信に、編集中の配信を差し込んで数える                                          |
 
-- あしあとと節目は、編集中の値を公開の JSON の形に直し、公開サイトと同じ読み手（`readFootprintEvents`、`readSubscriberMilestones`）に通してから描きます（`src/admin/lib/preview-public.ts`）。公開ページで読めない値は、どの欄かを示して止めます
+- あしあと・節目・ジェネット楽曲一覧は、編集中の値を公開の JSON の形に直し、公開サイトと同じ読み手（`readFootprintEvents`、`readSubscriberMilestones`、`readGenetMusicData`）に通してから描きます（`src/admin/lib/preview-public.ts`）。公開ページで読めない値は、どの欄かを示して止めます
 - 公開サイトの API（`/api/channels` など）は、管理サイトと同じオリジンにあり、Cloudflare Access がかかっていません。プレビューはそれを読みます（`src/admin/lib/public-data.ts`）
 - プレビューはライトだけで描きます。書体は公開サイトと同じ Murecho です
 - 統計の画面には、プレビューの代わりに、除いた tick が公開ページの数にどう効くかの注記を出します
@@ -113,7 +114,7 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
 - ジェネット楽曲一覧（`src/admin/pages/SetsPage.vue`）
   - `.pane`/`.inspector` の代わりに `.setlist`/`.editor` を使う。配信のデータは、項目を格子に並べる編集の欄ではなく、曲ごとの区切りで編集するため。上下の並べ方と仕切りは `.pane`/`.inspector` と同じ
   - 曲は、それを演奏するすべての配信で共有する。そのため、曲のクレジットの保存（`src/admin/lib/genet-tunes.ts`）は、配信の欄と演奏する曲・シーンの保存（`src/admin/lib/genet-streams.ts`）とは別の操作
-  - Markdown の欄（曲の題、演奏の説明）は、書く欄の真下にその場のプレビューを出す。プレビューは公開サイトと同じ描画部品（`src/components/genet/MarkDown.vue`）を使う
+  - Markdown の欄（曲の題、演奏の説明）は、書く欄の真下にその場のプレビューを出す。描き方は公開ページと同じ（`src/lib/genet/musicSong.ts` の `markdownHtml`）。原題は、公開ページと同じく Markdown として読まずにそのまま出す
   - Markdown の欄には、決まった形の Markdown のリンクをカーソルの位置に挿入するボタンがある。リンクの種類は Wikipedia・英語版 Wikipedia・配信のタイムスタンプ・URL そのもの
 - メンバー（`src/admin/pages/MembersPage.vue`）
   - 名前・色・活動期間を直す。PUT で置き換えられるのは、`channel_id`・表示順・収集が書く 3 列を除いた列（#158）

@@ -44,6 +44,12 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   reached_date: '達成の日',
   subscriber_count: '人数',
   announced_by: '誰の公表か',
+  published_at: '公開日時',
+  platform: 'プラットフォーム',
+  video_type: '種別',
+  style: '場面の種類',
+  start_seconds: '秒',
+  person_id: '人',
 };
 
 /** What to say when the public page could not read a field. */
