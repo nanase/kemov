@@ -223,7 +223,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="main solo">
+  <div class="main">
     <div class="pane">
       <div class="toolbar">
         <h2>公開</h2>
@@ -231,7 +231,7 @@ onMounted(async () => {
         <span class="sub">公開すると公開用の JSON が作り直されます</span>
       </div>
       <div class="scroller">
-        <div style="padding: 16px; display: grid; gap: 13px; max-width: 760px">
+        <div class="page-body">
           <div v-if="loadError" class="panel flag">
             <h4>読み込めません</h4>
             <div class="hint">{{ loadError }}</div>
@@ -261,7 +261,7 @@ onMounted(async () => {
                 </li>
               </ul>
             </div>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+            <div class="actions">
               <button
                 class="btn primary"
                 type="button"
@@ -308,7 +308,7 @@ onMounted(async () => {
             <div v-if="publishesOnlyForShape(genetState)" class="hint">
               公開中のデータは古い形のままです。押すと新しい形で作り直します（中身は変わりません）。
             </div>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+            <div class="actions">
               <button
                 class="btn primary"
                 type="button"
@@ -372,7 +372,7 @@ onMounted(async () => {
             <div v-if="milestonesPublishOnlyForShape(milestonesState)" class="hint">
               公開中のデータは古い形のままです。押すと新しい形で作り直します（中身は変わりません）。
             </div>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+            <div class="actions">
               <button
                 class="btn primary"
                 type="button"

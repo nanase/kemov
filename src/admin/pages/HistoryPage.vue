@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 
+import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, getJson } from '../lib/api';
+import { useCrumbDetail } from '../lib/crumb';
 import {
   ACTIONS,
   actionLabel,
@@ -129,6 +131,8 @@ onMounted(async () => {
   await loadRevisions();
   await loadPublications();
 });
+
+useCrumbDetail(() => (selectedId.value === null ? null : `版 #${selectedId.value}`));
 </script>
 
 <template>
@@ -188,7 +192,7 @@ onMounted(async () => {
           </tbody>
         </table>
 
-        <div class="toolbar" style="margin-top: 18px">
+        <div class="toolbar later">
           <h2>公開の記録</h2>
           <span class="grow"></span>
           <span v-if="!publicationsLoadError" class="sub num">{{ publications.length }} 件</span>
@@ -224,6 +228,7 @@ onMounted(async () => {
     </div>
 
     <div v-if="selectedId !== null" class="inspector">
+      <SplitHandle />
       <div class="inspector-head">
         <div>
           <h3>版 #{{ selectedId }}</h3>

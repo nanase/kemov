@@ -4,12 +4,15 @@ import { RouterLink } from 'vue-router';
 
 import MarkDown from '../../components/genet/MarkDown.vue';
 import { AdminApiError, deleteJson, postJson } from '../lib/api';
+import { useCrumbDetail } from '../lib/crumb';
 import { clock } from '../lib/genet-markdown';
 import { SCENE_STYLE_LABEL, type GenetStream, type SceneStyle } from '../lib/genet-streams';
 import { APPROVED_TOAST, DEFERRED_TOAST, firstStart, jstDate, REJECTED_TOAST } from '../lib/inbox';
 import { refreshPublishBadge } from '../lib/publish-badge';
 import { publishMarkFor } from '../lib/publish-mark';
 import { showToast } from '../lib/toast';
+
+import SplitHandle from './SplitHandle.vue';
 
 /**
  * 確認待ち's panel for one ジェネット楽曲一覧 stream (#141). A stream does not
@@ -60,14 +63,17 @@ const defer = () => settle(() => postJson(`${path.value}/defer`, {}), DEFERRED_T
 const reject = () => settle(() => deleteJson(path.value), REJECTED_TOAST);
 
 defineExpose({ approve });
+
+useCrumbDetail(() => props.stream.shortTitle ?? props.stream.title);
 </script>
 
 <template>
   <div class="inspector">
+    <SplitHandle />
     <div class="inspector-head">
-      <div style="flex: 1 1 auto; min-width: 0">
+      <div>
         <h3>{{ stream.shortTitle ?? stream.title }}</h3>
-        <div class="stack" style="margin-top: 4px">
+        <div class="stack">
           <span class="chip" :class="mark.tone">{{ mark.label }}</span>
           <span class="sub num">{{ jstDate(stream.publishedAt) }}</span>
           <span v-for="c in stream.categories" :key="c" class="chip kind">{{ c }}</span>
@@ -85,7 +91,7 @@ defineExpose({ approve });
         <h4>時刻が入っていない曲が {{ withoutStart }} 件</h4>
       </div>
 
-      <div class="panel">
+      <div class="panel span2">
         <h4>曲 {{ stream.performances.length }} 件</h4>
         <div v-for="(p, i) in stream.performances" :key="i" class="ov tune-row">
           <span class="k num">{{ i + 1 }}</span>
@@ -133,7 +139,7 @@ defineExpose({ approve });
 .memo {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 12.5px;
+  font-size: var(--a-small);
   background: var(--k-surface);
   border: 1px solid var(--k-line-2);
   border-radius: 6px;

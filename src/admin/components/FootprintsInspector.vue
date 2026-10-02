@@ -14,6 +14,7 @@ import {
   type FootprintsMember,
 } from '../lib/footprints';
 import { AdminApiError, deleteJson, postJson, putJson } from '../lib/api';
+import { useCrumbDetail } from '../lib/crumb';
 import { APPROVED_TOAST, DEFERRED_TOAST, REJECTED_TOAST } from '../lib/inbox';
 import {
   footprintsMarkFor,
@@ -24,6 +25,8 @@ import {
 import { refreshPublishBadge } from '../lib/publish-badge';
 import { CHANGED_NOTICE, PUBLISH_QUEUED_TOAST, waitingNoticeFor, WITHDRAW_QUEUED_TOAST } from '../lib/publish-mark';
 import { showToast } from '../lib/toast';
+
+import SplitHandle from './SplitHandle.vue';
 
 /**
  * 編集パネル for one あしあと row (#144). `event` is the row the table
@@ -52,6 +55,9 @@ const props = withDefaults(
 const emit = defineEmits<{ changed: []; back: [] }>();
 
 const fields = ref<EventFormFields>(toFormFields(props.event));
+
+useCrumbDetail(() => fields.value.title);
+
 const saving = ref(false);
 const errorMessage = ref<string | null>(null);
 const errorField = ref<EventFieldKey | null>(null);
@@ -197,10 +203,11 @@ defineExpose({ approve });
 
 <template>
   <div class="inspector">
+    <SplitHandle />
     <div class="inspector-head">
-      <div style="flex: 1 1 auto; min-width: 0">
+      <div>
         <h3>{{ fields.title || '（無題）' }}</h3>
-        <div class="stack" style="margin-top: 4px">
+        <div class="stack">
           <span class="chip" :class="mark.tone">{{ mark.label }}</span>
           <span class="chip kind">{{ kindLabel(fields.kind) }}</span>
         </div>
@@ -245,7 +252,7 @@ defineExpose({ approve });
         </div>
       </div>
 
-      <div class="field">
+      <div class="field span2">
         <label for="f-title">題</label>
         <input id="f-title" v-model="fields.title" type="text" :aria-invalid="errorField === 'title'" />
       </div>
@@ -270,7 +277,7 @@ defineExpose({ approve });
 
       <div class="field">
         <label>関わったメンバー</label>
-        <div class="stack" style="padding-top: 2px">
+        <div class="stack">
           <span v-if="selectedMembers.length === 0" class="sub">未設定</span>
           <span v-for="entry in selectedMembers" v-else :key="entry.channelId" class="who-chip">
             <i :style="{ background: entry.member?.colorKey ?? '#9b9289' }"></i>
@@ -300,7 +307,7 @@ defineExpose({ approve });
         <div>
           <button class="btn quiet" type="button" @click="addSource">＋ 出典を足す</button>
         </div>
-        <div style="display: flex; align-items: center; gap: 9px">
+        <div class="switch-row">
           <button
             class="toggle"
             type="button"
@@ -319,7 +326,7 @@ defineExpose({ approve });
 
       <div class="panel">
         <h4>年表での大きさ</h4>
-        <div style="display: flex; align-items: center; gap: 9px">
+        <div class="switch-row">
           <button
             class="toggle"
             type="button"
@@ -384,40 +391,3 @@ defineExpose({ approve });
     </div>
   </div>
 </template>
-
-<style scoped>
-.source-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  gap: 7px;
-  align-items: center;
-}
-
-.source-row input {
-  width: 100%;
-  font-size: 12.5px;
-  background: var(--k-surface);
-  border: 1px solid var(--k-line-2);
-  border-radius: 6px;
-  padding: 4px 7px;
-}
-
-.row-del {
-  border: 0;
-  background: none;
-  color: var(--a-danger);
-  cursor: pointer;
-  font-size: 15px;
-  line-height: 1;
-  padding: 3px 7px;
-  border-radius: 5px;
-}
-
-.row-del:hover {
-  background: var(--a-danger-soft);
-}
-
-[aria-invalid='true'] {
-  border-color: var(--a-danger) !important;
-}
-</style>

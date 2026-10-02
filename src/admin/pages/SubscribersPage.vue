@@ -426,7 +426,7 @@ onMounted(() => {
   list-style: none;
   display: grid;
   gap: 4px;
-  font-size: 12.5px;
+  font-size: var(--a-small);
 }
 
 .bulk-skipped li {

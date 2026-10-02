@@ -123,8 +123,8 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="main solo">
-    <div class="pane" style="flex: 1 1 auto">
+  <div class="main">
+    <div class="pane">
       <div class="toolbar">
         <h2>出典ホワイトリスト</h2>
         <span class="grow"></span>
@@ -260,10 +260,6 @@ onMounted(load);
 </template>
 
 <style scoped>
-[aria-invalid='true'] {
-  border-color: var(--a-danger) !important;
-}
-
 .content {
   display: grid;
   gap: 14px;
@@ -291,6 +287,5 @@ onMounted(load);
   border: 1px solid var(--k-line-2);
   border-radius: 6px;
   padding: 4px 8px;
-  font-size: 13px;
 }
 </style>

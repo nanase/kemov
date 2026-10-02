@@ -3,7 +3,9 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 
 import MarkDown from '../../components/genet/MarkDown.vue';
+import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, getJson, postJson, putJson } from '../lib/api';
+import { useCrumbDetail } from '../lib/crumb';
 import { insertAt, mdSnippet, clock, type MdLinkKind } from '../lib/genet-markdown';
 import { type GenetPerson } from '../lib/genet-people';
 import {
@@ -564,6 +566,8 @@ onMounted(async () => {
 });
 
 watch(statusFilter, load);
+
+useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.value.title : null));
 </script>
 
 <template>
@@ -574,7 +578,7 @@ watch(statusFilter, load);
         <span class="grow"></span>
         <span class="sub num">{{ filteredStreams.length }} / {{ streams.length }}</span>
       </div>
-      <div style="padding: 8px 12px; border-bottom: 1px solid var(--k-line)">
+      <div class="setlist-filter">
         <div class="seg" role="group" aria-label="状態で絞る">
           <button
             v-for="opt in STATUS_OPTIONS"
@@ -587,7 +591,7 @@ watch(statusFilter, load);
           </button>
         </div>
       </div>
-      <div style="overflow: auto; min-height: 0">
+      <div class="setlist-items">
         <div v-if="loadError" class="empty">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
@@ -613,9 +617,10 @@ watch(statusFilter, load);
     </div>
 
     <div v-if="selected" class="editor">
+      <SplitHandle />
       <div class="toolbar">
         <button class="btn quiet back" type="button" @click="detail = false">← 一覧</button>
-        <h2 style="min-width: 0; overflow: hidden; text-overflow: ellipsis">
+        <h2>
           {{ selected.shortTitle || selected.title }}
         </h2>
         <span class="chip" :class="streamMarkFor(selected.status, selected.videoId, pending).tone">{{
@@ -630,7 +635,7 @@ watch(statusFilter, load);
       </div>
 
       <div class="scroller">
-        <div v-if="selectedWaiting" style="padding: 12px 18px 0">
+        <div v-if="selectedWaiting" class="editor-notice">
           <div class="panel">
             <h4>{{ waitingNoticeFor(selected.status).title }}</h4>
             <div class="hint">{{ waitingNoticeFor(selected.status).body }}</div>
@@ -640,14 +645,14 @@ watch(statusFilter, load);
           </div>
         </div>
 
-        <div v-if="selectedChanged" style="padding: 12px 18px 0">
+        <div v-if="selectedChanged" class="editor-notice">
           <div class="panel flag">
             <h4>{{ CHANGED_NOTICE.title }}</h4>
             <div class="hint">{{ CHANGED_NOTICE.body }}</div>
           </div>
         </div>
 
-        <div v-if="streamError" style="padding: 12px 18px 0">
+        <div v-if="streamError" class="editor-notice">
           <div class="panel flag">
             <h4>保存できません</h4>
             <div class="hint">{{ streamError }}</div>
@@ -901,11 +906,7 @@ watch(statusFilter, load);
                   </div>
                   <div class="rows">
                     <span v-if="tuneFieldsByIndex.get(pi)!.attributes.length === 0" class="sub">なし</span>
-                    <div
-                      v-for="(attr, ai) in tuneFieldsByIndex.get(pi)!.attributes"
-                      :key="ai"
-                      style="display: grid; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--k-line)"
-                    >
+                    <div v-for="(attr, ai) in tuneFieldsByIndex.get(pi)!.attributes" :key="ai" class="attr-block">
                       <div class="row-item">
                         <select
                           :value="attr.name ?? '（名前なし）'"
@@ -925,7 +926,7 @@ watch(statusFilter, load);
                           &times;
                         </button>
                       </div>
-                      <div style="display: flex; align-items: center; gap: 9px">
+                      <div class="switch-row">
                         <button
                           class="toggle"
                           type="button"
@@ -969,9 +970,9 @@ watch(statusFilter, load);
                           >
                             &times;
                           </button>
-                          <span class="sub num" style="grid-column: 1 / -1">person_id {{ person.personId }}</span>
+                          <span class="sub num full">person_id {{ person.personId }}</span>
                         </div>
-                        <div style="display: flex; gap: 6px">
+                        <div class="row-actions">
                           <button class="md-ins" type="button" @click="addAttributePerson(attr)">＋ 人を足す</button>
                           <button class="md-ins" type="button" @click="addNewPerson">＋ 新しい人物を登録</button>
                         </div>
@@ -1024,7 +1025,7 @@ watch(statusFilter, load);
                   </div>
                 </div>
 
-                <div style="display: flex; gap: 8px">
+                <div class="actions">
                   <button class="btn primary" type="button" :disabled="tuneSaving" @click="saveTune(pi)">
                     この曲を保存
                   </button>

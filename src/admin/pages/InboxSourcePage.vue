@@ -87,7 +87,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="main" :class="{ detail, solo: selected === null }">
+  <div class="main" :class="{ detail }">
     <div class="pane">
       <div class="toolbar">
         <h2>出典の確認待ち</h2>

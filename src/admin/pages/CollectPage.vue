@@ -83,7 +83,7 @@ onMounted(load);
 
 <template>
   <div class="main">
-    <div class="pane" style="flex: 1 1 auto">
+    <div class="pane">
       <div class="toolbar">
         <h2>収集の失敗</h2>
         <span class="grow"></span>
@@ -110,7 +110,7 @@ onMounted(load);
           </thead>
           <tbody>
             <tr v-for="task in tasks" :key="rowKey(task)">
-              <td style="white-space: nowrap">
+              <td class="nowrap">
                 <span class="sub">{{ kindLabel(task.kind) }}</span>
               </td>
               <td>

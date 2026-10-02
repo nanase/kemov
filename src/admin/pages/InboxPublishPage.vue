@@ -97,7 +97,7 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="main solo">
+  <div class="main">
     <div class="pane">
       <div class="toolbar">
         <h2>公開待ち</h2>
