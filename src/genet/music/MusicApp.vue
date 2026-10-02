@@ -1,14 +1,14 @@
 <script setup lang="ts">
+import './board.css';
+
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { unescapeHtml } from '@nanase/alnilam/string';
 
 import ThumbnailFallback from '@/parts/ThumbnailFallback.vue';
 import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt, { type UpdatedAtState } from '@/shell/UpdatedAt.vue';
-import { relayVideoThumbnailURL } from '@/lib/relay';
 import { channelIconURL } from '@/lib/genet/musicChannelIcon';
-import { getEmbedURL } from '@/lib/youtube';
-import { expandLink, lexMarkdown, parseYoutubeHref, plainText } from '@/lib/genet/musicMarkdown';
+import { plainText } from '@/lib/genet/musicMarkdown';
 import {
   countText,
   publishedDateText,
@@ -30,8 +30,11 @@ import {
   type PreparedPerformance,
   type PreparedStream,
 } from '@/lib/genet/musicSearch';
-import type { GenetMusicData, GenetScene, GenetStream } from '@/lib/genet/musicTypes';
+import { escapeHtml, tuneOccurrences, type SongPlay } from '@/lib/genet/musicSong';
+import type { GenetMusicData, GenetScene } from '@/lib/genet/musicTypes';
+import SongDetail from './SongDetail.vue';
 import { useSheetDialog } from './useSheetDialog';
+import { thumbSrc, useThumbFallback } from './useThumbFallback';
 
 /**
  * ジェネット楽曲一覧 (#139, #144's task 15). The confirmed mock
@@ -156,12 +159,7 @@ function ensureSelection(): void {
 
 watch([filters, ascending], ensureSelection);
 
-interface PlayState {
-  videoId: string;
-  seconds: number;
-}
-
-const play = ref<PlayState | null>(null);
+const play = ref<SongPlay | null>(null);
 const zoom = ref<{ videoId: string; title: string; dateText: string } | null>(null);
 
 async function load(): Promise<void> {
@@ -309,29 +307,13 @@ function goToOccurrence(videoId: string, tuneId: number): void {
 
 /* ---- 曲を演奏した回 --------------------------------------------------- */
 
-interface Occurrence {
-  stream: GenetStream;
-  scenes: GenetScene[];
-  isCurrent: boolean;
-}
-
-const occurrences = computed<Occurrence[]>(() => {
+const occurrences = computed(() => {
   const tuneId = selectedPerformance.value?.tune.tune_id;
   if (tuneId === undefined || !data.value) return [];
 
-  const seen = new Map<string, Occurrence>();
   const source = ascending.value ? [...data.value.streams].reverse() : data.value.streams;
 
-  for (const stream of source) {
-    for (const perf of stream.performances) {
-      if (perf.tune_id !== tuneId) continue;
-      const isCurrent = stream.video_id === selectedVideoId.value;
-      const existing = seen.get(stream.video_id);
-      if (!existing || isCurrent) seen.set(stream.video_id, { stream, scenes: perf.scenes, isCurrent });
-    }
-  }
-
-  return [...seen.values()];
+  return tuneOccurrences(source, tuneId, selectedVideoId.value);
 });
 
 /* ---- カテゴリのチップ・演奏のしかたのボタン ------------------------------- */
@@ -344,84 +326,9 @@ function toggleForm(id: FormId): void {
   form.value = form.value === id ? null : id;
 }
 
-/* ---- Markdown -------------------------------------------------------- */
-
-interface MdContext {
-  videoId: string;
-  tuneId: number;
-}
-
-function esc(text: string): string {
-  return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-}
-
-function renderMarkdown(source: string | null, ctx?: MdContext): string {
-  if (!source) return '';
-
-  const terms = filters.value.terms;
-  const highlight = (text: string) => highlightRanges(text, terms, esc);
-
-  return lexMarkdown(source)
-    .map((token) => {
-      if (token.type === 'br') return '<br>';
-      if (token.type === 'text') return highlight(token.text);
-
-      const url = expandLink(token.href);
-
-      if (!url) return highlight(token.text);
-
-      let html = `<a href="${esc(url)}" target="_blank" rel="noopener">${highlight(token.text)}</a>`;
-      const yt = parseYoutubeHref(token.href);
-
-      if (yt && ctx) {
-        const on = play.value?.videoId === yt.videoId && play.value?.seconds === yt.seconds;
-        html += ` <button type="button" class="tbtn" data-vid="${esc(yt.videoId)}" data-at="${yt.seconds}" aria-pressed="${on}" aria-label="${videoTimeText(yt.seconds)} から聴く" title="${videoTimeText(yt.seconds)} から聴く">${videoTimeText(yt.seconds)}</button>`;
-      }
-
-      return html;
-    })
-    .join('');
-}
-
-function onMarkdownClick(event: MouseEvent): void {
-  const target = (event.target as HTMLElement).closest('button.tbtn') as HTMLButtonElement | null;
-
-  if (!target) return;
-
-  const videoId = target.dataset.vid;
-  const at = Number(target.dataset.at ?? '0');
-
-  if (!videoId) return;
-
-  play.value = play.value?.videoId === videoId && play.value.seconds === at ? null : { videoId, seconds: at };
-}
-
 /* ---- サムネイル -------------------------------------------------------- */
 
-function thumbSrc(videoId: string, size: 'mq' | 'hq' | 'max' = 'mq'): string {
-  return relayVideoThumbnailURL(videoId, size);
-}
-
-/**
- * Videos whose thumbnail did not arrive even at `hq`. Their `<img>` is
- * replaced by `ThumbnailFallback` (#180): the step down to `hq` below is the
- * only retry, so a failure after it is final for this page.
- */
-const failedThumbs = ref<ReadonlySet<string>>(new Set());
-
-function onThumbError(event: Event): void {
-  const img = event.target as HTMLImageElement;
-  const videoId = img.dataset.videoId ?? '';
-
-  if (img.dataset.fallback) {
-    failedThumbs.value = new Set(failedThumbs.value).add(videoId);
-
-    return;
-  }
-
-  img.dataset.fallback = '1';
-  img.src = thumbSrc(videoId, 'hq');
-}
+const { failed: failedThumbs, onError: onThumbError } = useThumbFallback();
 
 function onZoomImgLoad(event: Event): void {
   const img = event.target as HTMLImageElement;
@@ -472,7 +379,7 @@ function decodedPlain(source: string | null): string {
 }
 
 function highlightPlain(text: string): string {
-  return highlightRanges(text, filters.value.terms, esc);
+  return highlightRanges(text, filters.value.terms, escapeHtml);
 }
 
 function snippetText(text: string): string {
@@ -654,7 +561,7 @@ function snippetText(text: string): string {
                 </svg>
               </button>
             </div>
-            <div class="pb" @click="onMarkdownClick">
+            <div class="pb">
               <template v-if="result.streams.length === 0">
                 <div class="rest">
                   <svg viewBox="0 0 110 40" aria-hidden="true" focusable="false">
@@ -762,7 +669,7 @@ function snippetText(text: string): string {
               <div v-if="!selectedStream" class="pb">
                 <div class="quiet">—</div>
               </div>
-              <div v-else class="pb" @click="onMarkdownClick">
+              <div v-else class="pb">
                 <div class="phead">
                   <figure v-if="selectedStream.stream.platform === 'youtube'" class="frame">
                     <button
@@ -928,133 +835,16 @@ function snippetText(text: string): string {
                 <div v-if="!selectedPerformance" class="pb">
                   <div class="quiet">—</div>
                 </div>
-                <div v-else class="pb" @click="onMarkdownClick">
-                  <div class="td">
-                    <div class="tdt" v-html="renderMarkdown(selectedPerformance.tune.title)"></div>
-                    <div v-if="selectedPerformance.tune.original_title" class="tdo">
-                      {{ unesc(selectedPerformance.tune.original_title) }}
-                    </div>
-
-                    <dl v-if="selectedPerformance.tune.attributes.length > 0" class="attrs">
-                      <template v-for="(a, ai) in selectedPerformance.tune.attributes" :key="ai">
-                        <template v-if="a.name">
-                          <dt>{{ a.name }}</dt>
-                          <dd class="v">
-                            <span v-if="a.text" v-html="renderMarkdown(a.text)"></span>
-                            <span v-else>{{
-                              a.people
-                                .map(
-                                  (p) =>
-                                    unesc(data!.people.find((pp) => pp.person_id === p.person_id)?.name ?? '') +
-                                    (p.note ? `（${unesc(p.note)}）` : ''),
-                                )
-                                .join('、')
-                            }}</span>
-                          </dd>
-                        </template>
-                        <dd v-else class="solo" v-html="renderMarkdown(a.text)"></dd>
-                      </template>
-                    </dl>
-
-                    <ul v-if="selectedPerformance.tune.subtunes.length > 0" class="subs">
-                      <li
-                        v-for="(s, si) in selectedPerformance.tune.subtunes"
-                        :key="si"
-                        v-html="renderMarkdown(s)"
-                      ></li>
-                    </ul>
-
-                    <div
-                      v-if="selectedPerformance.description"
-                      class="desc"
-                      v-html="
-                        renderMarkdown(selectedPerformance.description, {
-                          videoId: selectedStream!.stream.video_id,
-                          tuneId: selectedPerformance.tune.tune_id,
-                        })
-                      "
-                    ></div>
-
-                    <div v-if="play" class="vplay lead">
-                      <figure class="frame">
-                        <span class="mat"
-                          ><iframe
-                            class="video-embed"
-                            :src="`${getEmbedURL(play.videoId)}?start=${play.seconds}`"
-                            allow="
-                              accelerometer;
-                              autoplay;
-                              clipboard-write;
-                              encrypted-media;
-                              gyroscope;
-                              picture-in-picture;
-                              web-share;
-                            "
-                            allowfullscreen
-                            frameborder="0"
-                          ></iframe
-                        ></span>
-                        <button class="pclose" type="button" aria-label="閉じる" @click="play = null">
-                          <svg
-                            viewBox="0 0 16 16"
-                            aria-hidden="true"
-                            focusable="false"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.3"
-                          >
-                            <path d="M4 4l8 8M12 4l-8 8" />
-                          </svg>
-                        </button>
-                      </figure>
-                    </div>
-
-                    <div v-if="selectedPerformance.tune.videos.length > 0" class="sec">
-                      <div class="sech">原曲などの動画</div>
-                      <div v-for="v in selectedPerformance.tune.videos" :key="v.video_id" class="vrow">
-                        <ThumbnailFallback v-if="failedThumbs.has(v.video_id)" class="vthumb" />
-                        <img
-                          v-else
-                          class="vthumb"
-                          :src="thumbSrc(v.video_id)"
-                          :data-video-id="v.video_id"
-                          loading="lazy"
-                          decoding="async"
-                          alt=""
-                          @error="onThumbError"
-                        />
-                        <div class="vt">{{ unesc(v.title) }}</div>
-                        <a
-                          class="ibtn"
-                          :href="`https://www.youtube.com/watch?v=${v.video_id}`"
-                          target="_blank"
-                          rel="noopener"
-                          >YouTube で開く</a
-                        >
-                      </div>
-                    </div>
-
-                    <div v-if="selectedPerformance.tune.scores.length > 0" class="sec">
-                      <div class="sech">楽譜</div>
-                      <div v-for="(sc, si) in selectedPerformance.tune.scores" :key="si" class="rrow">
-                        <a :href="sc.url" target="_blank" rel="noopener">{{ unesc(sc.title) }}</a>
-                      </div>
-                    </div>
-
-                    <div class="sec">
-                      <div class="sech">演奏した回数: {{ occurrences.length }}</div>
-                      <div v-for="o in occurrences" :key="o.stream.video_id" class="orow" :class="{ cur: o.isCurrent }">
-                        <span class="od">{{ publishedDateText(o.stream.published_at) }}</span>
-                        <button
-                          class="ot"
-                          type="button"
-                          @click="goToOccurrence(o.stream.video_id, selectedPerformance.tune.tune_id)"
-                        >
-                          {{ unesc(o.stream.short_title || o.stream.title) }}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                <div v-else class="pb">
+                  <SongDetail
+                    v-model:play="play"
+                    :tune="selectedPerformance.tune"
+                    :description="selectedPerformance.description"
+                    :people="data!.people"
+                    :occurrences="occurrences"
+                    :terms="filters.terms"
+                    @occurrence="(videoId) => goToOccurrence(videoId, selectedPerformance!.tune.tune_id)"
+                  />
                 </div>
               </div>
             </div>
@@ -1129,9 +919,9 @@ function snippetText(text: string): string {
  * class names keep the mock's own shorthand so the two stay easy to
  * compare, prefixed `.gm` in place of the mock's own `.gd` root. Colours
  * come from `src/shell/palette-genet.css`'s `--k-*` tokens (already built
- * for this page); `--gm-*` below fills the few things that set - the frame's
- * wood gradient, the arrow accent and the title icon's own fixed colour -
- * which have no shared token because nothing else on the site uses them.
+ * for this page). What SongDetail.vue and the admin preview draw as well -
+ * the panels, the buttons, the picture frame, the 楽曲 panel and the
+ * page's own `--gm-*` colours - is in `board.css`.
  */
 
 .gm-icon {
@@ -1146,43 +936,8 @@ function snippetText(text: string): string {
 }
 
 .gm {
-  --gm-arrow: #c0622b;
-  --gm-mat: #1b120c;
-  --gm-wood-1: #a86b3c;
-  --gm-wood-2: #74401f;
-  --gm-wood-3: #93592d;
-  --gm-wood-4: #5c3016;
-
   position: relative;
   display: block;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .gm {
-    --gm-arrow: #f3b27c;
-    --gm-mat: #0b0806;
-    --gm-wood-1: #8d5630;
-    --gm-wood-2: #5c3119;
-    --gm-wood-3: #7a4725;
-    --gm-wood-4: #45230f;
-  }
-}
-
-:root[data-theme='dark'] .gm {
-  --gm-arrow: #f3b27c;
-  --gm-mat: #0b0806;
-  --gm-wood-1: #8d5630;
-  --gm-wood-2: #5c3119;
-  --gm-wood-3: #7a4725;
-  --gm-wood-4: #45230f;
-}
-
-.gm * {
-  box-sizing: border-box;
-}
-
-.gm .n {
-  font-variant-numeric: tabular-nums;
 }
 
 /* ---- 印 -------------------------------------------------------------- */
@@ -1325,36 +1080,6 @@ function snippetText(text: string): string {
   min-width: 0;
 }
 
-.gm .ibtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: 24px;
-  min-width: 26px;
-  padding: 0 6px;
-  border: 1px solid var(--k-line-2);
-  border-radius: 5px;
-  background: var(--k-surface);
-  color: var(--k-text-2);
-  cursor: pointer;
-  font-size: 11px;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.gm .ibtn:hover {
-  border-color: var(--k-accent);
-  color: var(--k-text);
-}
-
-.gm .ibtn svg {
-  width: 13px;
-  height: 13px;
-  display: block;
-  flex: none;
-}
-
 /* ---- 盤。配信 → 曲目 → 曲 -------------------------------------------- */
 .board {
   display: grid;
@@ -1382,44 +1107,11 @@ function snippetText(text: string): string {
   display: none;
 }
 
-.gm .panel {
-  background: var(--k-surface);
-  border: 1px solid var(--k-line);
-  border-radius: 8px;
-  box-shadow: var(--k-shadow);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  min-width: 0;
-  min-height: 0;
-}
-
-.gm .ph {
-  display: flex;
-  align-items: center;
-  gap: 5px 10px;
-  flex-wrap: wrap;
-  padding: 6px 12px;
-  min-height: 35px;
-  background: var(--k-surface-2);
-  border-bottom: 1px solid var(--k-line);
-  font-size: 11px;
-  color: var(--k-text-3);
-  flex: none;
-}
-
 .gm .quiet {
   padding: 40px 14px;
   text-align: center;
   font-size: 12px;
   color: var(--k-text-3);
-}
-
-.gm .ph b {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--k-text-2);
-  letter-spacing: 0.02em;
 }
 
 .gm .pb {
@@ -1676,58 +1368,6 @@ function snippetText(text: string): string {
   margin-top: 2px;
 }
 
-/* 額縁。このページでいちばん強い飾りは、ここだけに置く */
-.gm .frame {
-  position: relative;
-  margin: 0;
-  padding: 7px;
-  border-radius: 4px;
-  background:
-    repeating-linear-gradient(
-      97deg,
-      rgb(30 12 3 / 0%) 0 2px,
-      rgb(30 12 3 / 12%) 2px 3px,
-      rgb(255 228 196 / 5%) 3px 6px,
-      rgb(30 12 3 / 0%) 6px 9px
-    ),
-    linear-gradient(155deg, var(--gm-wood-1), var(--gm-wood-2) 42%, var(--gm-wood-3) 68%, var(--gm-wood-4));
-  box-shadow:
-    inset 0 0 0 1px rgb(0 0 0 / 30%),
-    inset 0 1px 0 rgb(255 234 208 / 22%),
-    0 8px 18px -14px rgb(30 12 3 / 90%);
-}
-
-.gm .mat {
-  position: relative;
-  aspect-ratio: 16 / 9;
-  width: 100%;
-  display: grid;
-
-  /* The track is the box's own size, not its content's. An `auto` track grows
-     to the picture (a 4:3 `hqdefault` is taller than this 16:9 box), so the
-     picture's `height: 100%` resolved against that taller track and `cover`
-     had nothing to crop: the picture sat at the top with its black bands. */
-  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
-  place-items: center;
-  overflow: hidden;
-  background: var(--gm-mat);
-  border-radius: 1px;
-  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 55%);
-}
-
-.gm .mat .fimg {
-  display: block;
-  max-width: none;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.gm .mat .fnone {
-  font-size: 11px;
-  color: #cdbeb0;
-}
-
 .gm .zoom {
   display: block;
   width: 100%;
@@ -1817,35 +1457,6 @@ function snippetText(text: string): string {
   gap: 3px;
 }
 
-.gm :deep(.tbtn) {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  height: 20px;
-  padding: 0 7px;
-  border-radius: 999px;
-  border: 1px solid var(--k-line-2);
-  background: var(--k-surface);
-  color: var(--k-accent);
-  font-size: 11px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  white-space: nowrap;
-  vertical-align: 1px;
-}
-
-.gm :deep(.tbtn:hover) {
-  background: var(--k-accent-soft);
-  border-color: var(--k-accent);
-}
-
-.gm :deep(.tbtn[aria-pressed='true']) {
-  background: var(--k-accent);
-  border-color: var(--k-accent);
-  color: var(--k-on-accent);
-}
-
 .gm .pnav {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1933,261 +1544,6 @@ function snippetText(text: string): string {
 
 .gm .pn[disabled] {
   visibility: hidden;
-}
-
-/* ---- 面3 曲 ----------------------------------------------------------- */
-.gm .td {
-  display: grid;
-  gap: 12px;
-  padding: 14px 14px 18px;
-  min-width: 0;
-}
-
-.gm .tdt {
-  font-size: 17px;
-  font-weight: 700;
-  line-height: 1.45;
-  text-wrap: pretty;
-  overflow-wrap: anywhere;
-}
-
-.gm .tdo {
-  font-size: 12px;
-  color: var(--k-text-2);
-  margin-top: 3px;
-  overflow-wrap: anywhere;
-}
-
-.gm :deep(.td a:not(.ibtn)) {
-  color: inherit;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-decoration-color: var(--k-line-2);
-  text-underline-offset: 3px;
-}
-
-.gm :deep(.td a:not(.ibtn):hover) {
-  color: var(--k-accent);
-  text-decoration-color: var(--k-accent);
-}
-
-.gm .attrs {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 3px 12px;
-  font-size: 12px;
-}
-
-.gm .attrs dt {
-  font-size: 11px;
-  color: var(--k-text-3);
-  padding-top: 1px;
-  white-space: nowrap;
-}
-
-.gm .attrs .v {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.gm .attrs .solo {
-  grid-column: 1 / -1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.gm .subs {
-  margin: 0;
-  padding: 0 0 0 16px;
-  font-size: 12px;
-  color: var(--k-text-2);
-  display: grid;
-  gap: 1px;
-}
-
-.gm .desc {
-  font-size: 12.5px;
-  line-height: 1.9;
-  overflow-wrap: anywhere;
-  padding-top: 10px;
-  border-top: 1px dashed var(--k-line);
-}
-
-.gm .sec {
-  display: grid;
-  gap: 4px;
-  padding-top: 10px;
-  border-top: 1px solid var(--k-line);
-  min-width: 0;
-}
-
-.gm .sech {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--k-text-3);
-}
-
-.gm .vrow {
-  display: grid;
-  grid-template-columns: 112px minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  padding: 5px 0;
-  border-top: 1px dashed var(--k-line);
-  min-width: 0;
-}
-
-.gm .sech + .vrow,
-.gm .sech + .vplay {
-  border-top: 0;
-}
-
-.gm .vthumb {
-  width: 112px;
-  height: 63px;
-  display: block;
-  object-fit: cover;
-  border-radius: 3px;
-  border: 1px solid var(--k-line);
-  background: var(--k-track);
-}
-
-.gm .vt {
-  min-width: 0;
-  font-size: 12px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.gm .vplay {
-  display: grid;
-  gap: 6px;
-  padding: 6px 0;
-}
-
-.gm .vplay .frame {
-  padding: 9px;
-}
-
-.gm .vplay.lead {
-  padding: 0;
-}
-
-.video-embed {
-  display: block;
-  width: 100%;
-  height: 100%;
-  aspect-ratio: 16 / 9;
-  background: #000;
-  border: 0;
-}
-
-.gm .rrow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 3px 0;
-  font-size: 12px;
-}
-
-.gm .rrow a {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.gm .orow {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  padding: 5px 8px;
-  border-top: 1px dashed var(--k-line);
-  min-width: 0;
-  border-radius: 3px;
-}
-
-.gm .orow.cur {
-  background: var(--k-accent-soft);
-  box-shadow: inset 3px 0 0 var(--k-accent);
-  border-top-color: transparent;
-}
-
-.gm .orow.cur + .orow {
-  border-top-color: transparent;
-}
-
-.gm .orow.cur .od {
-  color: var(--k-accent);
-  font-weight: 600;
-}
-
-.gm .orow.cur .ot {
-  font-weight: 600;
-  text-decoration: none;
-  cursor: default;
-}
-
-.gm .sech + .orow {
-  border-top: 0;
-}
-
-.gm .orow .od {
-  font-size: 11px;
-  color: var(--k-text-3);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.gm .orow .ot {
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  text-align: left;
-  cursor: pointer;
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-decoration-color: var(--k-line-2);
-  text-underline-offset: 3px;
-}
-
-.gm .orow .ot:hover {
-  color: var(--k-accent);
-}
-
-.gm .pclose {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 24px;
-  padding: 0;
-  border-radius: 4px;
-  border: 1px solid rgb(255 234 208 / 35%);
-  background: rgb(20 10 4 / 55%);
-  color: #fff8f2;
-  cursor: pointer;
-}
-
-.gm .pclose:hover {
-  background: rgb(20 10 4 / 85%);
-}
-
-.gm .pclose svg {
-  width: 13px;
-  height: 13px;
-  display: block;
 }
 
 /* サムネイルの拡大。position: fixed は使わず、.gm の上に重ねる */
@@ -2431,15 +1787,6 @@ function snippetText(text: string): string {
 
   .gm .phead {
     grid-template-columns: 132px minmax(0, 1fr);
-  }
-
-  .gm .vrow {
-    grid-template-columns: 96px minmax(0, 1fr) auto;
-  }
-
-  .gm .vthumb {
-    width: 96px;
-    height: 54px;
   }
 
   .gm .sheet {
