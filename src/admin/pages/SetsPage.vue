@@ -592,7 +592,7 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
         </div>
       </div>
       <div class="setlist-items">
-        <div v-if="loadError" class="empty">
+        <div v-if="loadError" class="empty-note">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
         </div>

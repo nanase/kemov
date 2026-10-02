@@ -15,7 +15,7 @@ const name = computed(() => pageTitle(props.page));
       <div class="toolbar">
         <h2>{{ name }}</h2>
       </div>
-      <div class="empty">
+      <div class="empty-note">
         <b>{{ name }}</b>
         <div class="sub">後続のタスクで作成</div>
       </div>

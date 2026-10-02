@@ -188,6 +188,18 @@ onMounted(async () => {
 });
 
 useCrumbDetail(() => (selectedTick.value ? jstClock(selectedTick.value.fetchedAt) : openDay.value));
+
+/**
+ * Whether the selected tick is the newest one there is: today's, and no
+ * later tick on the day. Leaving out that one changes the counts the public
+ * pages show now, not only how a change over time is measured.
+ */
+const selectedIsNewest = computed(
+  () =>
+    selectedTick.value !== null &&
+    openDay.value === todayJst() &&
+    ticks.value.every((t) => t.fetchedAt <= selectedTick.value!.fetchedAt),
+);
 </script>
 
 <template>
@@ -203,7 +215,7 @@ useCrumbDetail(() => (selectedTick.value ? jstClock(selectedTick.value.fetchedAt
         <span v-if="troubleDays > 0" class="chip alarm">処置が必要な日 {{ troubleDays }} 日</span>
       </div>
       <div class="scroller">
-        <div v-if="loadError || memberLoadError" class="empty">
+        <div v-if="loadError || memberLoadError" class="empty-note">
           <b>読み込めません</b>
           <div class="sub">{{ loadError ?? memberLoadError }}</div>
         </div>
@@ -308,6 +320,17 @@ useCrumbDetail(() => (selectedTick.value ? jstClock(selectedTick.value.fetchedAt
             @click="toggleExcluded"
           ></button>
           <span class="sub">集計から除く</span>
+        </div>
+
+        <div class="panel wide">
+          <h4>公開ページへの効き方</h4>
+          <div class="hint">
+            集計から除いた tick は、公開ページの登録者数・再生数と、1 時間・24 時間・30 日の増減に使われません。
+            <template v-if="selectedIsNewest"
+              >この tick はいま読める中でいちばん新しい記録なので、除くと公開ページの数は 1 つ前の tick
+              の値になります。</template
+            >
+          </div>
         </div>
 
         <div class="field">

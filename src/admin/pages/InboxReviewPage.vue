@@ -192,7 +192,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
         </div>
       </div>
       <div class="scroller">
-        <div v-if="loadError" class="empty">
+        <div v-if="loadError" class="empty-note">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
           <button class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
@@ -230,7 +230,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
           <tbody>
             <tr v-if="!loading && inbox !== null && rows.length === 0">
               <td colspan="6">
-                <div class="empty"><b>確認を待っている行はありません</b></div>
+                <div class="empty-note"><b>確認を待っている行はありません</b></div>
               </td>
             </tr>
             <tr

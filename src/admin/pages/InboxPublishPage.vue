@@ -104,7 +104,7 @@ onMounted(load);
         <span class="chip review num">{{ items.length }} 件</span>
       </div>
       <div class="scroller">
-        <div v-if="loadError" class="empty">
+        <div v-if="loadError" class="empty-note">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
           <button class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
@@ -122,7 +122,7 @@ onMounted(load);
           <tbody>
             <tr v-if="inbox !== null && items.length === 0">
               <td colspan="5">
-                <div class="empty"><b>公開を待っているものはありません</b></div>
+                <div class="empty-note"><b>公開を待っているものはありません</b></div>
               </td>
             </tr>
             <tr v-for="item in items" :key="`${item.entity}:${item.key}`" class="still">

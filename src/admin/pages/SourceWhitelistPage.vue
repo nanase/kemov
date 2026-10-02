@@ -183,12 +183,12 @@ onMounted(load);
             </div>
           </form>
 
-          <div v-if="loadError" class="empty">
+          <div v-if="loadError" class="empty-note">
             <b>読み込めません</b>
             <div class="sub">{{ loadError }}</div>
             <button class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
           </div>
-          <div v-else-if="!loading && entries.length === 0" class="empty">
+          <div v-else-if="!loading && entries.length === 0" class="empty-note">
             <b>登録されている URL はありません。</b>
           </div>
           <div v-if="entries.length > 0" class="table-wrap">

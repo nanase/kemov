@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, getJson, putJson } from '../lib/api';
@@ -18,6 +18,7 @@ import {
   type NewMemberFields,
 } from '../lib/members';
 import { clearDraft, draft } from '../lib/members-draft';
+import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
 import { showToast } from '../lib/toast';
 
 /**
@@ -273,6 +274,11 @@ onMounted(() => {
 onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnload));
 
 useCrumbDetail(() => (newForm.value ? MEMBER_TEXT.addHeading : activeFields.value ? activeName.value : null));
+
+import PreviewButton from '../components/PreviewButton.vue';
+import PreviewPane from '../components/PreviewPane.vue';
+
+const MemberPreview = defineAsyncComponent(() => import('../components/previews/MemberPreview.vue'));
 </script>
 
 <template>
@@ -294,7 +300,7 @@ useCrumbDetail(() => (newForm.value ? MEMBER_TEXT.addHeading : activeFields.valu
         <button class="btn" type="button" :disabled="listSaving" @click="addMember">＋ メンバーを足す</button>
       </div>
       <div class="scroller">
-        <div v-if="loadError" class="empty">
+        <div v-if="loadError" class="empty-note">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
         </div>
@@ -378,138 +384,148 @@ useCrumbDetail(() => (newForm.value ? MEMBER_TEXT.addHeading : activeFields.valu
             <span v-if="selectedAdded" class="chip waiting">{{ MEMBER_TEXT.unsaved }}</span>
           </div>
         </div>
+        <PreviewButton />
       </div>
 
-      <div class="inspector-body">
-        <div v-if="errorMessage" class="panel flag">
-          <h4>保存できません</h4>
-          <div class="hint">{{ errorMessage }}</div>
-        </div>
-
-        <div class="field">
-          <label for="f-cid">channel_id</label>
-          <input v-if="newForm" id="f-cid" v-model="newForm.channelId" type="text" placeholder="UC…" />
-          <input v-else id="f-cid" type="text" :value="selectedId" readonly />
-        </div>
-
-        <div class="row2">
-          <div class="field">
-            <label for="f-name">名前</label>
-            <input id="f-name" v-model="activeFields.name" type="text" :aria-invalid="errorField === 'name'" />
+      <div class="inspector-main" :class="{ 'with-preview': previewOpen }">
+        <div class="inspector-body">
+          <div v-if="errorMessage" class="panel flag">
+            <h4>保存できません</h4>
+            <div class="hint">{{ errorMessage }}</div>
           </div>
+
           <div class="field">
-            <label for="f-fullname">fullname</label>
+            <label for="f-cid">channel_id</label>
+            <input v-if="newForm" id="f-cid" v-model="newForm.channelId" type="text" placeholder="UC…" />
+            <input v-else id="f-cid" type="text" :value="selectedId" readonly />
+          </div>
+
+          <div class="row2">
+            <div class="field">
+              <label for="f-name">名前</label>
+              <input id="f-name" v-model="activeFields.name" type="text" :aria-invalid="errorField === 'name'" />
+            </div>
+            <div class="field">
+              <label for="f-fullname">fullname</label>
+              <input
+                id="f-fullname"
+                v-model="activeFields.fullname"
+                type="text"
+                :aria-invalid="errorField === 'fullname'"
+              />
+            </div>
+          </div>
+
+          <div class="row2">
+            <div class="field">
+              <label for="f-globalname">globalname</label>
+              <input
+                id="f-globalname"
+                type="text"
+                :value="activeFields.globalname ?? ''"
+                :aria-invalid="errorField === 'globalname'"
+                @input="setNullable('globalname', $event)"
+              />
+            </div>
+            <div class="field">
+              <label for="f-twitter">twitter</label>
+              <input
+                id="f-twitter"
+                type="text"
+                :value="activeFields.twitter ?? ''"
+                :aria-invalid="errorField === 'twitter'"
+                @input="setNullable('twitter', $event)"
+              />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="f-twitch">twitch</label>
             <input
-              id="f-fullname"
-              v-model="activeFields.fullname"
+              id="f-twitch"
               type="text"
-              :aria-invalid="errorField === 'fullname'"
+              :value="activeFields.twitch ?? ''"
+              :aria-invalid="errorField === 'twitch'"
+              @input="setNullable('twitch', $event)"
             />
           </div>
-        </div>
 
-        <div class="row2">
-          <div class="field">
-            <label for="f-globalname">globalname</label>
-            <input
-              id="f-globalname"
-              type="text"
-              :value="activeFields.globalname ?? ''"
-              :aria-invalid="errorField === 'globalname'"
-              @input="setNullable('globalname', $event)"
-            />
+          <div class="row2">
+            <div class="field">
+              <label for="f-start">活動開始</label>
+              <input
+                id="f-start"
+                v-model="activeFields.activityStartDate"
+                type="text"
+                placeholder="YYYY-MM-DD"
+                :aria-invalid="errorField === 'activityStartDate'"
+              />
+            </div>
+            <div class="field">
+              <label for="f-end">活動終了</label>
+              <input
+                id="f-end"
+                type="text"
+                :value="activeFields.activityEndDate ?? ''"
+                placeholder="活動中"
+                :aria-invalid="errorField === 'activityEndDate'"
+                @input="setNullable('activityEndDate', $event)"
+              />
+            </div>
           </div>
-          <div class="field">
-            <label for="f-twitter">twitter</label>
-            <input
-              id="f-twitter"
-              type="text"
-              :value="activeFields.twitter ?? ''"
-              :aria-invalid="errorField === 'twitter'"
-              @input="setNullable('twitter', $event)"
-            />
+
+          <div
+            class="panel"
+            :class="{
+              flag:
+                errorField === 'colorKey' ||
+                errorField === 'colorSub' ||
+                errorField === 'colorLight' ||
+                errorField === 'colorBack',
+            }"
+          >
+            <h4>色</h4>
+            <div class="row2">
+              <div class="field">
+                <label for="f-color-key">key</label>
+                <div class="color-input">
+                  <input id="f-color-key" v-model="activeFields.colorKey" type="text" placeholder="#RRGGBB" />
+                  <span class="who-chip"><i :style="{ background: activeFields.colorKey }"></i></span>
+                </div>
+              </div>
+              <div class="field">
+                <label for="f-color-sub">sub</label>
+                <div class="color-input">
+                  <input id="f-color-sub" v-model="activeFields.colorSub" type="text" placeholder="#RRGGBB" />
+                  <span class="who-chip"><i :style="{ background: activeFields.colorSub }"></i></span>
+                </div>
+              </div>
+            </div>
+            <div class="row2">
+              <div class="field">
+                <label for="f-color-light">light</label>
+                <div class="color-input">
+                  <input id="f-color-light" v-model="activeFields.colorLight" type="text" placeholder="#RRGGBB" />
+                  <span class="who-chip"><i :style="{ background: activeFields.colorLight }"></i></span>
+                </div>
+              </div>
+              <div class="field">
+                <label for="f-color-back">back</label>
+                <div class="color-input">
+                  <input id="f-color-back" v-model="activeFields.colorBack" type="text" placeholder="#RRGGBB" />
+                  <span class="who-chip"><i :style="{ background: activeFields.colorBack }"></i></span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-
-        <div class="field">
-          <label for="f-twitch">twitch</label>
-          <input
-            id="f-twitch"
-            type="text"
-            :value="activeFields.twitch ?? ''"
-            :aria-invalid="errorField === 'twitch'"
-            @input="setNullable('twitch', $event)"
+        <PreviewPane v-if="previewOpen" :note="PREVIEW_NOTES.live">
+          <MemberPreview
+            :fields="activeFields"
+            :channel-id="newForm ? newForm.channelId : (selectedId ?? '')"
+            :has-icon="(selected?.thumbnailUrl ?? null) !== null"
           />
-        </div>
-
-        <div class="row2">
-          <div class="field">
-            <label for="f-start">活動開始</label>
-            <input
-              id="f-start"
-              v-model="activeFields.activityStartDate"
-              type="text"
-              placeholder="YYYY-MM-DD"
-              :aria-invalid="errorField === 'activityStartDate'"
-            />
-          </div>
-          <div class="field">
-            <label for="f-end">活動終了</label>
-            <input
-              id="f-end"
-              type="text"
-              :value="activeFields.activityEndDate ?? ''"
-              placeholder="活動中"
-              :aria-invalid="errorField === 'activityEndDate'"
-              @input="setNullable('activityEndDate', $event)"
-            />
-          </div>
-        </div>
-
-        <div
-          class="panel"
-          :class="{
-            flag:
-              errorField === 'colorKey' ||
-              errorField === 'colorSub' ||
-              errorField === 'colorLight' ||
-              errorField === 'colorBack',
-          }"
-        >
-          <h4>色</h4>
-          <div class="row2">
-            <div class="field">
-              <label for="f-color-key">key</label>
-              <div class="color-input">
-                <input id="f-color-key" v-model="activeFields.colorKey" type="text" placeholder="#RRGGBB" />
-                <span class="who-chip"><i :style="{ background: activeFields.colorKey }"></i></span>
-              </div>
-            </div>
-            <div class="field">
-              <label for="f-color-sub">sub</label>
-              <div class="color-input">
-                <input id="f-color-sub" v-model="activeFields.colorSub" type="text" placeholder="#RRGGBB" />
-                <span class="who-chip"><i :style="{ background: activeFields.colorSub }"></i></span>
-              </div>
-            </div>
-          </div>
-          <div class="row2">
-            <div class="field">
-              <label for="f-color-light">light</label>
-              <div class="color-input">
-                <input id="f-color-light" v-model="activeFields.colorLight" type="text" placeholder="#RRGGBB" />
-                <span class="who-chip"><i :style="{ background: activeFields.colorLight }"></i></span>
-              </div>
-            </div>
-            <div class="field">
-              <label for="f-color-back">back</label>
-              <div class="color-input">
-                <input id="f-color-back" v-model="activeFields.colorBack" type="text" placeholder="#RRGGBB" />
-                <span class="who-chip"><i :style="{ background: activeFields.colorBack }"></i></span>
-              </div>
-            </div>
-          </div>
-        </div>
+        </PreviewPane>
       </div>
 
       <div class="inspector-foot">
