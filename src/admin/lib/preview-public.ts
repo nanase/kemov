@@ -22,6 +22,7 @@ import type { MilestoneFormFields } from './subscriber-milestones';
 /** The value, or the field (as the published JSON names it) the page could not read. */
 export type PreviewReadout<T> = { ok: true; value: T } | { ok: false; field: string };
 
+/** `read`'s value, or the last segment of the path a ShapeError names (`body.events[0].start_date` is `start_date`). */
 function readOne<T>(read: () => T): PreviewReadout<T> {
   try {
     return { ok: true, value: read() };

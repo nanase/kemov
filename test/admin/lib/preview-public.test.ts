@@ -3,6 +3,7 @@ import { milestonesWithDraft, publicEventOf, publicMilestoneOf } from '@/admin/l
 import type { MilestoneFormFields } from '@/admin/lib/subscriber-milestones';
 import type { SubscriberMilestone } from '@/type/api';
 
+/** An あしあと panel's fields for a published event, with `overrides` on top. */
 function eventFields(overrides: Partial<EventFormFields> = {}): EventFormFields {
   return {
     datePrecision: 'day',
@@ -51,6 +52,7 @@ describe('publicEventOf', () => {
   });
 });
 
+/** A milestone panel's fields, with `overrides` on top. */
 function milestoneFields(overrides: Partial<MilestoneFormFields> = {}): MilestoneFormFields {
   return {
     channelId: 'UCMpw36mXEu3SLsqdrJxUKNA',
@@ -93,6 +95,7 @@ describe('publicMilestoneOf', () => {
   });
 });
 
+/** A published milestone of `milestoneId` × 1,000 subscribers. */
 function published(
   milestoneId: number,
   reachedDate: string,
