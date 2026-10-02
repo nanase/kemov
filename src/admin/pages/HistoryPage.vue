@@ -154,7 +154,7 @@ useCrumbDetail(() => (selectedId.value === null ? null : `版 #${selectedId.valu
         <span class="sub num">{{ revisions.length }} 件</span>
       </div>
       <div class="scroller">
-        <div v-if="loadError" class="empty">
+        <div v-if="loadError" class="empty-note">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
         </div>

@@ -171,7 +171,7 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
-    <div class="body" :class="{ folded }">
+    <div class="shell-body" :class="{ folded }">
       <nav v-if="folded" class="rail" aria-label="ページ">
         <button
           class="side-btn"
@@ -235,7 +235,7 @@ onUnmounted(() => {
               "
             >
               <span class="name">{{ item.name }}</span>
-              <span v-if="(badgeFor(item.page) ?? 0) > 0" class="count due">{{ badgeFor(item.page) }}</span>
+              <span v-if="(badgeFor(item.page) ?? 0) > 0" class="nav-count due">{{ badgeFor(item.page) }}</span>
             </button>
           </router-link>
         </div>

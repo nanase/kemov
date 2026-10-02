@@ -94,7 +94,7 @@ onMounted(() => {
         <span class="chip alarm num">{{ events.length }} 件</span>
       </div>
       <div class="scroller">
-        <div v-if="loadError" class="empty">
+        <div v-if="loadError" class="empty-note">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
           <button class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
@@ -113,7 +113,7 @@ onMounted(() => {
           <tbody>
             <tr v-if="loaded && events.length === 0">
               <td colspan="6">
-                <div class="empty"><b>出典の確認を待っている行はありません</b></div>
+                <div class="empty-note"><b>出典の確認を待っている行はありません</b></div>
               </td>
             </tr>
             <tr

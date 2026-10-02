@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 
 import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, getJson, putJson } from '../lib/api';
@@ -19,6 +19,7 @@ import {
   type VideoOverride,
 } from '../lib/videos';
 import { showToast } from '../lib/toast';
+import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
 
 /**
  * 配信・動画 (#144's data screens task). The table lists every collected
@@ -188,6 +189,11 @@ watch(q, () => {
 onMounted(load);
 
 useCrumbDetail(() => (selected.value ? (selectedOverride.value?.title ?? selected.value.title) : null));
+
+import PreviewButton from '../components/PreviewButton.vue';
+import PreviewPane from '../components/PreviewPane.vue';
+
+const VideoPreview = defineAsyncComponent(() => import('../components/previews/VideoPreview.vue'));
 </script>
 
 <template>
@@ -201,7 +207,7 @@ useCrumbDetail(() => (selected.value ? (selectedOverride.value?.title ?? selecte
         <span class="sub num">{{ videos.length }} 件</span>
       </div>
       <div class="scroller">
-        <div v-if="loadError" class="empty">
+        <div v-if="loadError" class="empty-note">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
           <button class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
@@ -252,80 +258,86 @@ useCrumbDetail(() => (selected.value ? (selectedOverride.value?.title ?? selecte
             <span class="num sub">{{ selected.videoId }}</span>
           </div>
         </div>
+        <PreviewButton />
       </div>
 
-      <div class="inspector-body">
-        <div v-if="errorMessage" class="panel flag">
-          <h4>保存できません</h4>
-          <div class="hint">{{ errorMessage }}</div>
-        </div>
-
-        <div v-if="!overridesNothing(fields)" class="hint">3つとも外して保存すると、上書きが消されます</div>
-
-        <div
-          class="panel"
-          :class="{ flag: errorField === 'title' || errorField === 'type' || errorField === 'availability' }"
-        >
-          <h4>収集した値と、上書き</h4>
-
-          <div class="ov">
-            <span class="k">タイトル</span>
-            <span class="vals">
-              <span class="collected" :class="{ struck: fields.title !== null }">{{ selected.title }}</span>
-              <input v-if="fields.title !== null" v-model="fields.title" type="text" aria-label="タイトルの上書き" />
-            </span>
-            <button
-              class="toggle"
-              type="button"
-              :aria-pressed="fields.title !== null"
-              aria-label="タイトルを上書きする"
-              @click="toggle('title', selected.title)"
-            ></button>
+      <div class="inspector-main" :class="{ 'with-preview': previewOpen }">
+        <div class="inspector-body">
+          <div v-if="errorMessage" class="panel flag">
+            <h4>保存できません</h4>
+            <div class="hint">{{ errorMessage }}</div>
           </div>
 
-          <div class="ov">
-            <span class="k">種別</span>
-            <span class="vals">
-              <span class="collected" :class="{ struck: fields.type !== null }">{{
-                selected.type ? TYPE_LABEL[selected.type] : '—'
-              }}</span>
-              <select v-if="fields.type !== null" v-model="fields.type" aria-label="種別の上書き">
-                <option v-for="t in TYPES" :key="t" :value="t">{{ TYPE_LABEL[t] }}</option>
-              </select>
-            </span>
-            <button
-              class="toggle"
-              type="button"
-              :aria-pressed="fields.type !== null"
-              aria-label="種別を上書きする"
-              @click="toggle('type', selected.type)"
-            ></button>
+          <div v-if="!overridesNothing(fields)" class="hint">3つとも外して保存すると、上書きが消されます</div>
+
+          <div
+            class="panel"
+            :class="{ flag: errorField === 'title' || errorField === 'type' || errorField === 'availability' }"
+          >
+            <h4>収集した値と、上書き</h4>
+
+            <div class="ov">
+              <span class="k">タイトル</span>
+              <span class="vals">
+                <span class="collected" :class="{ struck: fields.title !== null }">{{ selected.title }}</span>
+                <input v-if="fields.title !== null" v-model="fields.title" type="text" aria-label="タイトルの上書き" />
+              </span>
+              <button
+                class="toggle"
+                type="button"
+                :aria-pressed="fields.title !== null"
+                aria-label="タイトルを上書きする"
+                @click="toggle('title', selected.title)"
+              ></button>
+            </div>
+
+            <div class="ov">
+              <span class="k">種別</span>
+              <span class="vals">
+                <span class="collected" :class="{ struck: fields.type !== null }">{{
+                  selected.type ? TYPE_LABEL[selected.type] : '—'
+                }}</span>
+                <select v-if="fields.type !== null" v-model="fields.type" aria-label="種別の上書き">
+                  <option v-for="t in TYPES" :key="t" :value="t">{{ TYPE_LABEL[t] }}</option>
+                </select>
+              </span>
+              <button
+                class="toggle"
+                type="button"
+                :aria-pressed="fields.type !== null"
+                aria-label="種別を上書きする"
+                @click="toggle('type', selected.type)"
+              ></button>
+            </div>
+
+            <div class="ov">
+              <span class="k">公開状況</span>
+              <span class="vals">
+                <span class="collected" :class="{ struck: fields.availability !== null }">{{
+                  AVAILABILITY_LABEL[selected.availability]
+                }}</span>
+                <select v-if="fields.availability !== null" v-model="fields.availability" aria-label="公開状況の上書き">
+                  <option v-for="a in AVAILABILITIES" :key="a" :value="a">{{ AVAILABILITY_LABEL[a] }}</option>
+                </select>
+              </span>
+              <button
+                class="toggle"
+                type="button"
+                :aria-pressed="fields.availability !== null"
+                aria-label="公開状況を上書きする"
+                @click="toggle('availability', selected.availability)"
+              ></button>
+            </div>
           </div>
 
-          <div class="ov">
-            <span class="k">公開状況</span>
-            <span class="vals">
-              <span class="collected" :class="{ struck: fields.availability !== null }">{{
-                AVAILABILITY_LABEL[selected.availability]
-              }}</span>
-              <select v-if="fields.availability !== null" v-model="fields.availability" aria-label="公開状況の上書き">
-                <option v-for="a in AVAILABILITIES" :key="a" :value="a">{{ AVAILABILITY_LABEL[a] }}</option>
-              </select>
-            </span>
-            <button
-              class="toggle"
-              type="button"
-              :aria-pressed="fields.availability !== null"
-              aria-label="公開状況を上書きする"
-              @click="toggle('availability', selected.availability)"
-            ></button>
+          <div class="field">
+            <label for="f-memo">メモ（公開されません）</label>
+            <textarea id="f-memo" v-model="fields.memo"></textarea>
           </div>
         </div>
-
-        <div class="field">
-          <label for="f-memo">メモ（公開されません）</label>
-          <textarea id="f-memo" v-model="fields.memo"></textarea>
-        </div>
+        <PreviewPane v-if="previewOpen" :note="PREVIEW_NOTES.live">
+          <VideoPreview :video="selected" :fields="fields" />
+        </PreviewPane>
       </div>
 
       <div class="inspector-foot">

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 
 import { AdminApiError, deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
 import type { FootprintsEvent, FootprintsMember } from '../lib/footprints';
 import { CHANGED_NOTICE, PUBLISH_QUEUED_TOAST, waitingNoticeFor, WITHDRAW_QUEUED_TOAST } from '../lib/publish-mark';
+import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
 import {
   ANNOUNCERS,
   announcerLabel,
@@ -208,6 +209,18 @@ function remove(): Promise<void> {
 }
 
 useCrumbDetail(() => heading.value);
+
+import PreviewButton from './PreviewButton.vue';
+import PreviewPane from './PreviewPane.vue';
+
+const MilestonePreview = defineAsyncComponent(() => import('./previews/MilestonePreview.vue'));
+
+/** The linked event as the preview writes it, from the events this panel was handed. */
+const previewEvent = computed(() => {
+  const event = props.events.find((e) => e.eventId === fields.value.eventId);
+
+  return event === undefined ? null : { eventId: event.eventId, title: event.title, startDate: event.startDate };
+});
 </script>
 
 <template>
@@ -221,117 +234,123 @@ useCrumbDetail(() => heading.value);
           <span class="chip kind">{{ announcerLabel(milestone.announcedBy) }}</span>
         </div>
       </div>
+      <PreviewButton />
     </div>
 
-    <div class="inspector-body">
-      <div v-if="errorMessage" class="panel flag">
-        <h4>保存できません</h4>
-        <div class="hint">{{ errorMessage }}</div>
-      </div>
-
-      <div v-if="milestone && waiting" class="panel">
-        <h4>{{ waitingNoticeFor(milestone.status).title }}</h4>
-        <div class="hint">{{ waitingNoticeFor(milestone.status).body }}</div>
-        <div>
-          <RouterLink class="btn" to="/publish">公開画面へ</RouterLink>
+    <div class="inspector-main" :class="{ 'with-preview': previewOpen }">
+      <div class="inspector-body">
+        <div v-if="errorMessage" class="panel flag">
+          <h4>保存できません</h4>
+          <div class="hint">{{ errorMessage }}</div>
         </div>
-      </div>
 
-      <div v-if="changedSincePublish" class="panel flag">
-        <h4>{{ CHANGED_NOTICE.title }}</h4>
-        <div class="hint">{{ CHANGED_NOTICE.body }}</div>
-      </div>
-
-      <div v-if="eventChanged" class="panel">
-        <h4>つないだ出来事が変わりました</h4>
-        <div class="hint">
-          本番の節目には、変わる前の出来事の題と日付が出ています。「公開」画面で「いま公開する」を押すと反映されます
+        <div v-if="milestone && waiting" class="panel">
+          <h4>{{ waitingNoticeFor(milestone.status).title }}</h4>
+          <div class="hint">{{ waitingNoticeFor(milestone.status).body }}</div>
+          <div>
+            <RouterLink class="btn" to="/publish">公開画面へ</RouterLink>
+          </div>
         </div>
-        <div>
-          <RouterLink class="btn" to="/publish">公開画面へ</RouterLink>
+
+        <div v-if="changedSincePublish" class="panel flag">
+          <h4>{{ CHANGED_NOTICE.title }}</h4>
+          <div class="hint">{{ CHANGED_NOTICE.body }}</div>
         </div>
-      </div>
 
-      <div class="field">
-        <label for="m-member">メンバー</label>
-        <select id="m-member" v-model="fields.channelId" :aria-invalid="errorField === 'channelId'">
-          <option v-for="m in memberOptions" :key="m.channelId" :value="m.channelId">{{ m.name }}</option>
-        </select>
-      </div>
+        <div v-if="eventChanged" class="panel">
+          <h4>つないだ出来事が変わりました</h4>
+          <div class="hint">
+            本番の節目には、変わる前の出来事の題と日付が出ています。「公開」画面で「いま公開する」を押すと反映されます
+          </div>
+          <div>
+            <RouterLink class="btn" to="/publish">公開画面へ</RouterLink>
+          </div>
+        </div>
 
-      <div class="row2">
         <div class="field">
-          <label for="m-date">達成の日</label>
-          <input
-            id="m-date"
-            v-model="fields.reachedDate"
-            type="text"
-            :placeholder="fields.datePrecision === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD'"
-            :aria-invalid="errorField === 'reachedDate'"
-          />
-        </div>
-        <div class="field">
-          <label for="m-prec">日付の細かさ</label>
-          <select id="m-prec" v-model="fields.datePrecision" :aria-invalid="errorField === 'datePrecision'">
-            <option value="day">日まで</option>
-            <option value="month">月まで</option>
+          <label for="m-member">メンバー</label>
+          <select id="m-member" v-model="fields.channelId" :aria-invalid="errorField === 'channelId'">
+            <option v-for="m in memberOptions" :key="m.channelId" :value="m.channelId">{{ m.name }}</option>
           </select>
         </div>
-      </div>
 
-      <div class="row2">
-        <div class="field">
-          <label for="m-count">人数</label>
-          <input
-            id="m-count"
-            v-model="fields.subscriberCount"
-            type="text"
-            inputmode="numeric"
-            :aria-invalid="errorField === 'subscriberCount'"
-          />
+        <div class="row2">
+          <div class="field">
+            <label for="m-date">達成の日</label>
+            <input
+              id="m-date"
+              v-model="fields.reachedDate"
+              type="text"
+              :placeholder="fields.datePrecision === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD'"
+              :aria-invalid="errorField === 'reachedDate'"
+            />
+          </div>
+          <div class="field">
+            <label for="m-prec">日付の細かさ</label>
+            <select id="m-prec" v-model="fields.datePrecision" :aria-invalid="errorField === 'datePrecision'">
+              <option value="day">日まで</option>
+              <option value="month">月まで</option>
+            </select>
+          </div>
         </div>
+
+        <div class="row2">
+          <div class="field">
+            <label for="m-count">人数</label>
+            <input
+              id="m-count"
+              v-model="fields.subscriberCount"
+              type="text"
+              inputmode="numeric"
+              :aria-invalid="errorField === 'subscriberCount'"
+            />
+          </div>
+          <div class="field">
+            <label for="m-by">誰の公表か</label>
+            <select id="m-by" v-model="fields.announcedBy" :aria-invalid="errorField === 'announcedBy'">
+              <option v-for="a in ANNOUNCERS" :key="a.value" :value="a.value">{{ a.label }}</option>
+            </select>
+          </div>
+        </div>
+
         <div class="field">
-          <label for="m-by">誰の公表か</label>
-          <select id="m-by" v-model="fields.announcedBy" :aria-invalid="errorField === 'announcedBy'">
-            <option v-for="a in ANNOUNCERS" :key="a.value" :value="a.value">{{ a.label }}</option>
+          <label for="m-event">つなぐ出来事</label>
+          <select id="m-event" v-model="fields.eventId" :aria-invalid="errorField === 'eventId'">
+            <option :value="null">つながない</option>
+            <option v-for="e in events" :key="e.eventId" :value="e.eventId">{{ e.startDate }} {{ e.title }}</option>
+            <option v-if="unlistedEventId !== null" :value="unlistedEventId">event_id {{ unlistedEventId }}</option>
           </select>
+          <div class="hint">あしあとの「節目」の出来事から選びます</div>
+        </div>
+
+        <div class="panel" :class="{ flag: errorField === 'sources' }">
+          <h4>出典</h4>
+          <div v-if="fields.announcedBy === 'listener'" class="hint">
+            リスナーの投稿の URL は公開サイトに出ません。管理サイトにだけ残ります
+          </div>
+          <div v-for="(source, i) in fields.sources" :key="i" class="source-row">
+            <input v-model="source.url" type="text" placeholder="https://..." aria-label="出典の URL" />
+            <input v-model="source.title" type="text" placeholder="題（省略可）" aria-label="出典の題" />
+            <button class="row-del" type="button" aria-label="この出典を外す" @click="removeSource(i)">&times;</button>
+          </div>
+          <div>
+            <button class="btn quiet" type="button" @click="addSource">＋ 出典を足す</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="m-memo">メモ（公開されません）</label>
+          <textarea id="m-memo" v-model="fields.memo"></textarea>
+        </div>
+
+        <div v-if="milestone" class="field">
+          <label for="m-id">milestone_id</label>
+          <input id="m-id" type="text" :value="milestone.milestoneId" readonly />
         </div>
       </div>
-
-      <div class="field">
-        <label for="m-event">つなぐ出来事</label>
-        <select id="m-event" v-model="fields.eventId" :aria-invalid="errorField === 'eventId'">
-          <option :value="null">つながない</option>
-          <option v-for="e in events" :key="e.eventId" :value="e.eventId">{{ e.startDate }} {{ e.title }}</option>
-          <option v-if="unlistedEventId !== null" :value="unlistedEventId">event_id {{ unlistedEventId }}</option>
-        </select>
-        <div class="hint">あしあとの「節目」の出来事から選びます</div>
-      </div>
-
-      <div class="panel" :class="{ flag: errorField === 'sources' }">
-        <h4>出典</h4>
-        <div v-if="fields.announcedBy === 'listener'" class="hint">
-          リスナーの投稿の URL は公開サイトに出ません。管理サイトにだけ残ります
-        </div>
-        <div v-for="(source, i) in fields.sources" :key="i" class="source-row">
-          <input v-model="source.url" type="text" placeholder="https://..." aria-label="出典の URL" />
-          <input v-model="source.title" type="text" placeholder="題（省略可）" aria-label="出典の題" />
-          <button class="row-del" type="button" aria-label="この出典を外す" @click="removeSource(i)">&times;</button>
-        </div>
-        <div>
-          <button class="btn quiet" type="button" @click="addSource">＋ 出典を足す</button>
-        </div>
-      </div>
-
-      <div class="field">
-        <label for="m-memo">メモ（公開されません）</label>
-        <textarea id="m-memo" v-model="fields.memo"></textarea>
-      </div>
-
-      <div v-if="milestone" class="field">
-        <label for="m-id">milestone_id</label>
-        <input id="m-id" type="text" :value="milestone.milestoneId" readonly />
-      </div>
+      <PreviewPane v-if="previewOpen" :note="PREVIEW_NOTES.published">
+        <MilestonePreview :fields="fields" :milestone-id="milestoneId" :event="previewEvent" />
+      </PreviewPane>
     </div>
 
     <div class="inspector-foot">
