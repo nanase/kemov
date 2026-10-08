@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
 
 import SegmentGroup from '@/parts/SegmentGroup.vue';
+import { zoomOf } from '@/shell/textSize';
 import { formatCount } from '@/lib/numberFormat';
 import { HEATMAP_STEP_MINUTES } from '@/lib/heatmap';
 
@@ -119,8 +120,11 @@ function draw() {
 
   if (element == null || box === undefined || box.width === 0) return;
 
-  const ratio = Math.min(2, window.devicePixelRatio || 1);
-  const width = box.width;
+  // Drawn in the canvas's own CSS pixels, which the reader's text size
+  // (@/shell/textSize.ts) makes larger than the viewport's.
+  const zoom = zoomOf(element);
+  const ratio = Math.min(2, window.devicePixelRatio || 1) * zoom;
+  const width = box.width / zoom;
   const height = ROW_HEIGHT * 7;
 
   element.width = Math.round(width * ratio);
@@ -213,8 +217,9 @@ function drawColumns() {
 
   if (element == null || box === undefined || box.width === 0) return;
 
-  const ratio = Math.min(2, window.devicePixelRatio || 1);
-  const width = box.width;
+  const zoom = zoomOf(element);
+  const ratio = Math.min(2, window.devicePixelRatio || 1) * zoom;
+  const width = box.width / zoom;
   const height = 30;
 
   element.width = Math.round(width * ratio);
@@ -261,9 +266,10 @@ function redraw() {
 }
 
 function cellAt(event: PointerEvent): { weekday: number; column: number } | null {
-  const box = canvas.value?.getBoundingClientRect();
+  const element = canvas.value;
+  const box = element?.getBoundingClientRect();
 
-  if (box === undefined || box.width === 0) return null;
+  if (element == null || box === undefined || box.width === 0) return null;
 
   const x = event.clientX - box.left;
   const y = event.clientY - box.top;
@@ -271,7 +277,7 @@ function cellAt(event: PointerEvent): { weekday: number; column: number } | null
   if (x < 0 || y < 0 || x > box.width || y > box.height) return null;
 
   return {
-    weekday: Math.min(6, Math.max(0, Math.floor(y / ROW_HEIGHT))),
+    weekday: Math.min(6, Math.max(0, Math.floor(y / zoomOf(element) / ROW_HEIGHT))),
     column: Math.min(heat.value.columns - 1, Math.max(0, Math.floor((x / box.width) * heat.value.columns))),
   };
 }

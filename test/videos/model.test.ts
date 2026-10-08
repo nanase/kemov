@@ -9,6 +9,7 @@ import {
   matchRanges,
   NO_FILTERS,
   nonEmptyAlternatives,
+  orderEntries,
   passesLength,
   periodLabel,
   rowsFrom,
@@ -218,6 +219,53 @@ describe('universeOf', () => {
     expect(universe.byId.has('no-views')).toBe(false);
     expect(universe.total).toEqual(1);
   });
+});
+
+describe('orderEntries', () => {
+  const rows = [
+    row({ videoId: 'old-top', viewCount: 30, publishedAt: '2026-01-01T00:00:00Z' }),
+    row({ videoId: 'new-low', viewCount: 10, publishedAt: '2026-09-01T00:00:00Z' }),
+    row({ videoId: 'mid', viewCount: 20, publishedAt: '2026-05-01T00:00:00Z' }),
+  ];
+  const universe = universeOf(rows, 'viewCount', 'streaming', 'all', NOW);
+
+  test('by rank is the ranking as it stands', () => {
+    expect(orderEntries(universe.entries, 'rank')).toBe(universe.entries);
+  });
+
+  // #135's rule holds here too: the order moves, the ranks do not.
+  test('newest first puts the latest video on top, and every row keeps its rank', () => {
+    const ordered = orderEntries(universe.entries, 'newest');
+
+    expect(ordered.map((e) => e.row.videoId)).toEqual(['new-low', 'mid', 'old-top']);
+    expect(ordered.map((e) => e.rank)).toEqual([3, 2, 1]);
+  });
+
+  test('oldest first is the same list the other way up', () => {
+    const ordered = orderEntries(universe.entries, 'oldest');
+
+    expect(ordered.map((e) => e.row.videoId)).toEqual(['old-top', 'mid', 'new-low']);
+    expect(ordered.map((e) => e.rank)).toEqual([1, 2, 3]);
+  });
+
+  test.each(['newest', 'oldest'] as const)(
+    'two videos published at the same moment fall back on their rank (%s)',
+    (order) => {
+      const at = '2026-09-01T00:00:00Z';
+      const tied = universeOf(
+        [
+          row({ videoId: 'second', viewCount: 10, publishedAt: at }),
+          row({ videoId: 'first', viewCount: 20, publishedAt: at }),
+        ],
+        'viewCount',
+        'streaming',
+        'all',
+        NOW,
+      );
+
+      expect(orderEntries(tied.entries, order).map((e) => e.row.videoId)).toEqual(['first', 'second']);
+    },
+  );
 });
 
 describe('kindStages', () => {

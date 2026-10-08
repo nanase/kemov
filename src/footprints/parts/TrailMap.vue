@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
 
 import MemberAvatar from '@/parts/MemberAvatar.vue';
+import { zoomOf } from '@/shell/textSize';
 
 import { buildTrailMap, monthIndex, trailLayout, trailX, trailY } from '../map';
 import type { AsideItem, EventItem, Filters } from '../model';
@@ -126,7 +127,7 @@ const heads = computed(() =>
 
 function measure() {
   width.value = box.value?.clientWidth ?? 0;
-  room.value = available ?? Math.max(240, window.innerHeight - 300);
+  room.value = available ?? Math.max(240, window.innerHeight / zoomOf(document.documentElement) - 300);
 }
 
 onMounted(() => {

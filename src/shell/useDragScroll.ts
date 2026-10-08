@@ -1,4 +1,5 @@
 import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue';
+import { zoomOf } from './textSize';
 
 /**
  * Horizontal scrolling for SiteNav's band of links when they do not fit.
@@ -91,7 +92,10 @@ export function useDragScroll(scroller: Ref<HTMLElement | null>) {
   function reveal(item: Element, inset: number) {
     const el = scroller.value;
     if (!el) return;
-    el.scrollLeft = revealScrollLeft(spanOf(item), spanOf(el), el.scrollLeft, inset);
+    // The spans are in the viewport's pixels and scrollLeft is in the band's
+    // own, which differ by the reader's text size (./textSize.ts).
+    const zoom = zoomOf(el);
+    el.scrollLeft = revealScrollLeft(spanOf(item), spanOf(el), el.scrollLeft * zoom, inset * zoom) / zoom;
   }
 
   /** Scrolls the link marked as the current page into view from the start of the band. */
@@ -122,7 +126,7 @@ export function useDragScroll(scroller: Ref<HTMLElement | null>) {
       el.setPointerCapture(event.pointerId);
     }
     event.preventDefault();
-    el.scrollLeft = draggedScrollLeft(drag.startLeft, dx);
+    el.scrollLeft = draggedScrollLeft(drag.startLeft, dx / zoomOf(el));
   }
 
   function onPointerEnd(event: PointerEvent) {

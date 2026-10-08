@@ -180,6 +180,9 @@ thead th.val {
 tbody tr {
   border-bottom: 1px solid var(--k-line);
   cursor: pointer;
+
+  /* Clear of the navigation band when ↑ and ↓ scroll a row into view. */
+  scroll-margin: calc(var(--shell-nav-height, 44px) + 8px) 0 8px;
 }
 
 tbody tr:hover {

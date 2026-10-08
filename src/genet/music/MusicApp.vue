@@ -1838,7 +1838,7 @@ function snippetText(text: string): string {
     /* Focus is put here when the sheet opens, so it is no control to outline. */
     outline: none;
     top: 92px;
-    height: calc(100vh - 92px);
+    height: calc(100vh / var(--k-zoom, 1) - 92px);
     margin: 0 6px;
     overflow: hidden;
     border-radius: 12px 12px 0 0;
@@ -1848,7 +1848,7 @@ function snippetText(text: string): string {
   .gm .s2 > .panel,
   .gm[data-sheet='song'] .s2 > .side {
     top: 150px;
-    height: calc(100vh - 150px);
+    height: calc(100vh / var(--k-zoom, 1) - 150px);
   }
 
   .gm .sheet > .panel > .ph {
