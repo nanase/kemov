@@ -1830,6 +1830,11 @@ function snippetText(text: string): string {
 
   .gm .sheet > .panel,
   .gm[data-sheet='song'] .s2 > .side {
+    /* A large text size leaves a short screen few CSS pixels (see
+       @/shell/base.css), so the sheets come up higher there rather than
+       leaving a sliver too small to hold their heads. */
+    --gm-sheet-top: clamp(calc(var(--shell-nav-height) + 8px), 25vh / var(--k-zoom, 1), 92px);
+
     display: flex;
     position: sticky;
     z-index: 27;
@@ -1837,8 +1842,8 @@ function snippetText(text: string): string {
 
     /* Focus is put here when the sheet opens, so it is no control to outline. */
     outline: none;
-    top: 92px;
-    height: calc(100vh / var(--k-zoom, 1) - 92px);
+    top: var(--gm-sheet-top);
+    height: calc(100vh / var(--k-zoom, 1) - var(--gm-sheet-top));
     margin: 0 6px;
     overflow: hidden;
     border-radius: 12px 12px 0 0;
@@ -1847,8 +1852,7 @@ function snippetText(text: string): string {
 
   .gm .s2 > .panel,
   .gm[data-sheet='song'] .s2 > .side {
-    top: 150px;
-    height: calc(100vh / var(--k-zoom, 1) - 150px);
+    --gm-sheet-top: clamp(calc(var(--shell-nav-height) + 36px), 40vh / var(--k-zoom, 1), 150px);
   }
 
   .gm .sheet > .panel > .ph {
