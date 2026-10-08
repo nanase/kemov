@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
 
 import MemberAvatar from '@/parts/MemberAvatar.vue';
+import { zoomOf } from '@/shell/textSize';
 import { formatCount } from '@/lib/numberFormat';
 
 import { formatDate, formatDayOfMonth, formatMonthDay, formatTime, formatWeekday } from '../draw';
@@ -51,9 +52,12 @@ function measureSpans() {
 
   if (element === null) return;
 
+  // Read in the viewport's pixels, and placed in the timeline's own, which
+  // differ by the reader's text size (@/shell/textSize.ts).
   const top = element.getBoundingClientRect().top;
+  const zoom = zoomOf(element);
   const anchors: Anchor[] = [...element.querySelectorAll<HTMLElement>('.row[data-at]')]
-    .map((row) => ({ at: Number(row.dataset.at), y: row.getBoundingClientRect().top - top }))
+    .map((row) => ({ at: Number(row.dataset.at), y: (row.getBoundingClientRect().top - top) / zoom }))
     .filter((anchor) => Number.isFinite(anchor.at))
     .sort((a, b) => a.y - b.y);
 
@@ -69,7 +73,7 @@ function measureSpans() {
         title: row.dataset.title ?? '',
         from,
         to,
-        y: row.getBoundingClientRect().top - top + 22,
+        y: (row.getBoundingClientRect().top - top) / zoom + 22,
       },
     ];
   });

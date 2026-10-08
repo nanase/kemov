@@ -69,5 +69,19 @@
       // Storage can be unavailable; following the OS is the fallback.
     }
   })();
+
+  // The reader's text size, for the same reason: base.css zooms the page by
+  // it, and a page drawn at 100% first would jump once it arrived.
+  // TextSizeMenu writes the key; anything but these three means 100%.
+  (function applyStoredTextSize() {
+    try {
+      const size = localStorage.getItem('kemov-text-size');
+      if (size === '125' || size === '150' || size === '200') {
+        document.documentElement.dataset.textSize = size;
+      }
+    } catch {
+      // Storage can be unavailable; 100% is the fallback.
+    }
+  })();
 </script>
 <title>{=$title}</title>

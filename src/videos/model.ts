@@ -89,6 +89,36 @@ export function passesLength(durationSeconds: number | null, band: LengthBand): 
   return true;
 }
 
+/**
+ * The order the list is read in: by rank, or by when each video was
+ * published, newest or oldest first.
+ *
+ * Only the order changes. Every row keeps the rank `universeOf` gave it, so
+ * the list read by date shows the same numbers it does by rank, out of
+ * sequence (#135's rule).
+ */
+export type ListOrder = 'rank' | 'newest' | 'oldest';
+
+export const LIST_ORDERS: readonly { id: ListOrder; name: string }[] = [
+  { id: 'rank', name: '順位順' },
+  { id: 'newest', name: '新しい順' },
+  { id: 'oldest', name: '古い順' },
+];
+
+export const DEFAULT_ORDER: ListOrder = 'rank';
+
+/** `entries` in `order`. A tie on the date falls back on the rank. */
+export function orderEntries(entries: readonly UniverseEntry[], order: ListOrder): readonly UniverseEntry[] {
+  if (order === 'rank') return entries;
+
+  const sign = order === 'newest' ? -1 : 1;
+
+  return entries
+    .map((entry) => ({ entry, at: new Date(entry.row.publishedAt).getTime() }))
+    .sort((a, b) => sign * (a.at - b.at) || a.entry.rank - b.entry.rank)
+    .map(({ entry }) => entry);
+}
+
 /** How many rows a page shows before "もっと見る" is pressed again. */
 export const PAGE_SIZE = 100;
 

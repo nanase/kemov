@@ -542,7 +542,7 @@ onBeforeUnmount(() => {
   top: 56px;
   gap: 12px;
   align-content: start;
-  max-height: calc(100vh - 68px);
+  max-height: calc(100vh / var(--k-zoom, 1) - 68px);
 }
 
 .failed {

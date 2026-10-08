@@ -17,6 +17,7 @@ import {
 import { buildTrailMap, monthIndex } from '../map';
 import TrailMap from './TrailMap.vue';
 import { useDialogFocus } from '../useDialogFocus';
+import { zoomOf } from '@/shell/textSize';
 import type { AsideItem, EventItem, Filters } from '../model';
 import type { VideoTableRow } from '@/lib/ranking';
 import type { Channel } from '@/type/api';
@@ -175,7 +176,7 @@ const stripMarks = computed(() => {
 
 function measure() {
   view.value = Math.max(320, card.value?.clientWidth ?? 900);
-  available.value = Math.max(220, globalThis.innerHeight - 260);
+  available.value = Math.max(220, globalThis.innerHeight / zoomOf(document.documentElement) - 260);
 }
 
 function onScroll() {
@@ -203,7 +204,11 @@ watch(zoom, (to, from) => {
 let grab: { pointerId: number; offset: number } | null = null;
 
 function stripAt(event: PointerEvent): number {
-  return event.clientX - (strip.value?.getBoundingClientRect().left ?? 0);
+  const element = strip.value;
+
+  if (element === null) return event.clientX;
+
+  return (event.clientX - element.getBoundingClientRect().left) / zoomOf(element);
 }
 
 function onStripDown(event: PointerEvent) {
@@ -276,7 +281,7 @@ function onChartMove(event: PointerEvent) {
 
   const element = scroller.value;
 
-  if (element !== null) element.scrollLeft = pan.from - (event.clientX - pan.x);
+  if (element !== null) element.scrollLeft = pan.from - (event.clientX - pan.x) / zoomOf(element);
 }
 
 function onChartUp(event: PointerEvent) {
@@ -317,11 +322,11 @@ function monthAt(offset: number): string {
 function onChartClick(event: MouseEvent) {
   if (!tapped()) return;
 
-  const box = scroller.value?.getBoundingClientRect();
+  const element = scroller.value;
 
-  if (box === undefined) return;
+  if (element === null) return;
 
-  emit('month', monthAt(event.clientX - box.left));
+  emit('month', monthAt((event.clientX - element.getBoundingClientRect().left) / zoomOf(element)));
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -593,7 +598,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   width: min(1180px, 100%);
-  max-height: calc(100vh - 60px);
+  max-height: calc(100vh / var(--k-zoom, 1) - 60px);
   overflow: hidden;
   border: 1px solid var(--k-line);
   border-radius: 8px;

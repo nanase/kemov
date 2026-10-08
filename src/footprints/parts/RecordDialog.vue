@@ -373,7 +373,7 @@ onBeforeUnmount(() => globalThis.removeEventListener('keydown', onKeydown));
   display: flex;
   flex-direction: column;
   width: min(920px, 100%);
-  max-height: calc(100vh - 60px);
+  max-height: calc(100vh / var(--k-zoom, 1) - 60px);
   overflow: auto;
   border: 1px solid var(--k-line);
   border-radius: 8px;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useTemplateRef } from 'vue';
+import TextSizeMenu from './TextSizeMenu.vue';
 import ThemeToggle from './ThemeToggle.vue';
 import { SITE_PAGES, type NavItem } from './pages';
 import { useDragScroll } from './useDragScroll';
@@ -28,6 +29,7 @@ const { fadeLeft, fadeRight, dragging } = useDragScroll(links);
         >
       </div>
     </div>
+    <TextSizeMenu />
     <ThemeToggle />
   </nav>
 </template>

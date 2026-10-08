@@ -46,6 +46,12 @@ describe('stateToQuery', () => {
     expect(params.get('year')).toEqual('2021');
   });
 
+  test('the list read by date writes which way, and by rank writes nothing', () => {
+    expect(stateToQuery({ ...defaultState(), order: 'newest' }).get('sort')).toEqual('newest');
+    expect(stateToQuery({ ...defaultState(), order: 'oldest' }).get('sort')).toEqual('oldest');
+    expect(stateToQuery({ ...defaultState(), order: 'rank' }).get('sort')).toBeNull();
+  });
+
   test('writes the title search, the length band and every selected channel', () => {
     const state: PageState = {
       ...defaultState(),
@@ -69,6 +75,7 @@ describe('queryToState', () => {
       metric: 'chatMessageCountPerSecond',
       kind: 'shorts',
       period: { year: 2022 },
+      order: 'oldest',
       filters: filters({ query: 'マイクラ', lengthBandId: 'b', channelIds: new Set(['UCaaa', 'UCbbb']) }),
     };
 
@@ -117,6 +124,12 @@ describe('queryToState', () => {
 
   test('a period this page does not have falls back to the default', () => {
     expect(queryToState(new URLSearchParams('period=lastWeek')).period).toEqual('all');
+  });
+
+  test('an order this page does not have falls back to what the reader kept', () => {
+    const kept: PageState = { ...defaultState(), order: 'oldest' };
+
+    expect(queryToState(new URLSearchParams('sort=views'), kept).order).toEqual('oldest');
   });
 
   test('a length band this page does not have falls back to "any"', () => {

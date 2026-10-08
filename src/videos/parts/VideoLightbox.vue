@@ -98,7 +98,7 @@ onBeforeUnmount(() => {
 
 .lbimg {
   display: flex;
-  max-height: calc(100vh - 100px);
+  max-height: calc(100vh / var(--k-zoom, 1) - 100px);
   background: var(--k-sunken);
 }
 

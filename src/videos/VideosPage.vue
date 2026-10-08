@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
 import { formatCount } from '@/lib/numberFormat';
 
+import SegmentGroup from '@/parts/SegmentGroup.vue';
 import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt from '@/shell/UpdatedAt.vue';
+import { zoomOf } from '@/shell/textSize';
 import type { VideoType } from '@/type/api';
 import type { VideoProperty } from '@/type/video';
 import type { RankingPeriod } from '@/lib/ranking';
@@ -12,8 +14,10 @@ import {
   filterUniverse,
   funnelSteps,
   lengthBandOf,
+  LIST_ORDERS,
   NO_FILTERS,
   nonEmptyAlternatives,
+  orderEntries,
   PAGE_SIZE,
   PERIOD_CHIPS,
   scopeName,
@@ -22,6 +26,7 @@ import {
   universeOf,
   yearsIn,
   type Filters,
+  type ListOrder,
 } from './model';
 import { queryToState, stateToQuery, defaultState } from './query';
 import { useStoredChoice } from '@/lib/useStoredChoice';
@@ -78,19 +83,27 @@ const storedPeriod = useStoredChoice<(typeof RANKING_PERIODS)[number]>(
   RANKING_PERIODS,
   defaultState().period as (typeof RANKING_PERIODS)[number],
 );
+const storedOrder = useStoredChoice<ListOrder>(
+  'kemov/videos/order',
+  LIST_ORDERS.map((o) => o.id),
+  defaultState().order,
+);
 const fromQuery = queryToState(params, {
   ...defaultState(),
   metric: storedMetric.value,
   kind: storedKind.value,
   period: storedPeriod.value,
+  order: storedOrder.value,
 });
 
 const metric = ref<VideoProperty>(fromQuery.metric);
 const kind = ref<VideoType>(fromQuery.kind);
 const period = ref<RankingPeriod>(fromQuery.period);
+const order = ref<ListOrder>(fromQuery.order);
 
 watch(metric, (value) => (storedMetric.value = value), { flush: 'sync' });
 watch(kind, (value) => (storedKind.value = value), { flush: 'sync' });
+watch(order, (value) => (storedOrder.value = value), { flush: 'sync' });
 watch(
   period,
   (value) => {
@@ -102,6 +115,13 @@ const filters = ref<Filters>(fromQuery.filters);
 const shown = ref<number>(PAGE_SIZE);
 /** Null until a row is pressed - #137's decision that opening `/videos/` selects nothing by default. */
 const selectedId = ref<string | null>(videoIdFromPath(window.location.pathname));
+/**
+ * The video the record shows, and the address names. It is the selection,
+ * except while ↑ or ↓ is held down: the list's mark keeps up with the key,
+ * and the record and its thumbnail follow once the key is let go (see
+ * `selectVideo`).
+ */
+const recordId = ref<string | null>(selectedId.value);
 const lightboxOpen = ref(false);
 const sheetOpen = ref(false);
 const dark = ref(false);
@@ -114,14 +134,23 @@ const channelsById = computed(() => new Map(data.channels.value.map((c) => [c.ch
 const years = computed(() => yearsIn(data.rows.value));
 const candidatePeriods = computed(() => [...PERIOD_CHIPS, ...years.value.map((y) => y.period)]);
 
-const universe = computed(() =>
-  universeOf(data.rows.value, metric.value, kind.value, period.value, new Date(now.value)),
-);
+/**
+ * `now` as a Date that only changes when the clock does. The record panel
+ * ranks the selected video in all eleven metrics against it, so a Date built
+ * afresh in the template would redo all eleven rankings on every render of
+ * this page - every step of ↑ and ↓ included.
+ */
+const nowDate = computed(() => new Date(now.value));
+
+const universe = computed(() => universeOf(data.rows.value, metric.value, kind.value, period.value, nowDate.value));
 const view = computed(() => filterUniverse(universe.value, filters.value));
 const tokens = computed(() => searchTokens(filters.value.query));
 
+const orderedRows = computed(() => orderEntries(view.value.rows, order.value));
+const orderItems = LIST_ORDERS.map((o) => ({ id: o.id, label: o.name }));
+
 const shownCount = computed(() => shownCountOf(view.value.rows.length, shown.value));
-const shownEntries = computed(() => view.value.rows.slice(0, shownCount.value));
+const shownEntries = computed(() => orderedRows.value.slice(0, shownCount.value));
 const remainingCount = computed(() => view.value.rows.length - shownCount.value);
 
 const selectedRow = computed(() => {
@@ -129,15 +158,18 @@ const selectedRow = computed(() => {
 
   return data.rows.value.find((row) => row.videoId === selectedId.value) ?? null;
 });
-const selectedChannel = computed(() =>
-  selectedRow.value ? channelsById.value.get(selectedRow.value.channelId) : undefined,
-);
+const recordRow = computed(() => {
+  if (recordId.value === null) return null;
+
+  return data.rows.value.find((row) => row.videoId === recordId.value) ?? null;
+});
+const recordChannel = computed(() => (recordRow.value ? channelsById.value.get(recordRow.value.channelId) : undefined));
 const selectedInView = computed(() => shownEntries.value.some((e) => e.row.videoId === selectedId.value));
-const selectedFiltered = computed(
+const recordFiltered = computed(
   () =>
-    selectedId.value !== null &&
-    universe.value.byId.has(selectedId.value) &&
-    !view.value.rows.some((e) => e.row.videoId === selectedId.value),
+    recordId.value !== null &&
+    universe.value.byId.has(recordId.value) &&
+    !view.value.rows.some((e) => e.row.videoId === recordId.value),
 );
 
 const pinned = computed(() => {
@@ -218,7 +250,7 @@ const alternatives = computed(() =>
         kind.value,
         period.value,
         candidatePeriods.value,
-        new Date(now.value),
+        nowDate.value,
       )
     : [],
 );
@@ -259,9 +291,35 @@ function resetPage() {
   shown.value = PAGE_SIZE;
 }
 
-function selectVideo(videoId: string) {
+/** How long the record waits for a held ↑ or ↓ to be let go, should its keyup never arrive. */
+const RECORD_DELAY_MS = 300;
+let recordTimer: ReturnType<typeof setTimeout> | undefined;
+
+function showRecord() {
+  clearTimeout(recordTimer);
+  recordTimer = undefined;
+  recordId.value = selectedId.value;
+}
+
+/**
+ * Selects `videoId` in the list, and shows its record now or, with `later`,
+ * once the key that is being held down is let go.
+ *
+ * A held key steps through the list at the keyboard's repeat rate, and
+ * drawing every record it passes - fetching every thumbnail with it - would
+ * leave the list behind the key.
+ */
+function selectVideo(videoId: string, later = false) {
   selectedId.value = videoId;
   if (narrow.value) sheetOpen.value = true;
+  if (!later) return showRecord();
+
+  clearTimeout(recordTimer);
+  recordTimer = setTimeout(showRecord, RECORD_DELAY_MS);
+}
+
+function onArrowKeyUp(event: KeyboardEvent) {
+  if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && recordTimer !== undefined) showRecord();
 }
 
 function onMetric(next: VideoProperty) {
@@ -274,6 +332,10 @@ function onKind(next: string) {
 }
 function onPeriod(next: RankingPeriod) {
   period.value = next;
+  resetPage();
+}
+function onOrder(next: string) {
+  order.value = next as ListOrder;
   resetPage();
 }
 function onQuery(next: string) {
@@ -315,6 +377,51 @@ function closeRecord() {
   sheetOpen.value = false;
 }
 
+/**
+ * Where ↑ and ↓ keep their own meaning: moving through a field's text, a
+ * select's options or a menu, and anything laid over the page.
+ */
+const ARROWS_TAKEN = 'input, textarea, select, [contenteditable="true"], [role="menu"], [role="dialog"]';
+
+/**
+ * ↑ and ↓ step the selection through the list in the order it is drawn, so
+ * one record after another can be read without going back to the list.
+ *
+ * ↓ with nothing selected, or with a selection the list does not show,
+ * starts from the top. Stepping past the last row shown shows the next page
+ * of rows, the same as "もっと見る". At either end the key is left to scroll
+ * the page.
+ */
+function onArrowKey(event: KeyboardEvent) {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  if (lightboxOpen.value || phase.value !== 'normal') return;
+  if (event.target instanceof Element && event.target.closest(ARROWS_TAKEN) !== null) return;
+
+  const down = event.key === 'ArrowDown';
+  const at = shownEntries.value.findIndex((entry) => entry.row.videoId === selectedId.value);
+  const next = at < 0 ? (down ? 0 : -1) : at + (down ? 1 : -1);
+  const entry = orderedRows.value[next];
+
+  if (entry === undefined) return;
+
+  event.preventDefault();
+  if (next >= shownCount.value) onMore();
+
+  // A row that had the focus hands it on, so Enter and Tab carry on from the
+  // row now selected rather than the one left behind.
+  const fromRow = event.target instanceof HTMLElement && event.target.closest('tbody tr') !== null;
+
+  selectVideo(entry.row.videoId, event.repeat);
+  void nextTick(() => {
+    const row = root.value?.querySelector<HTMLElement>('.leaf.left tbody tr[aria-current="true"]');
+
+    if (row == null) return;
+    if (fromRow) row.focus({ preventScroll: true });
+    row.scrollIntoView({ block: 'nearest' });
+  });
+}
+
 /** #135's own width steps: 860px folds the record behind the list, 1000px switches to a taller list. */
 const root = useTemplateRef<HTMLElement>('root');
 const narrow = ref(false);
@@ -343,15 +450,16 @@ let themeObserver: MutationObserver | undefined;
  * ever lags the other by a frame.
  */
 watch(
-  [metric, kind, period, filters, selectedId],
+  [metric, kind, period, order, filters, recordId],
   () => {
     const query = stateToQuery({
       metric: metric.value,
       kind: kind.value,
       period: period.value,
+      order: order.value,
       filters: filters.value,
     });
-    const path = selectedId.value === null ? PATH_PREFIX : `${PATH_PREFIX}${encodeURIComponent(selectedId.value)}`;
+    const path = recordId.value === null ? PATH_PREFIX : `${PATH_PREFIX}${encodeURIComponent(recordId.value)}`;
     const search = query.toString();
     const url = search === '' ? path : `${path}?${search}`;
 
@@ -363,7 +471,7 @@ watch(
 );
 
 /** The tab's own title, distinct from the page's visible one (#136: no name on screen). */
-const tabTitle = computed(() => (selectedRow.value === null ? undefined : videoPageTitle(selectedRow.value.title)));
+const tabTitle = computed(() => (recordRow.value === null ? undefined : videoPageTitle(recordRow.value.title)));
 
 onMounted(async () => {
   readTheme();
@@ -375,10 +483,13 @@ onMounted(async () => {
     now.value = Date.now();
   }, 30_000);
 
+  window.addEventListener('keydown', onArrowKey);
+  window.addEventListener('keyup', onArrowKeyUp);
+
   if (root.value && typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver((entries) => measure(entries[0]!.contentRect.width));
     resizeObserver.observe(root.value);
-    measure(root.value.getBoundingClientRect().width);
+    measure(root.value.getBoundingClientRect().width / zoomOf(root.value));
   }
 
   await data.start();
@@ -387,6 +498,9 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   data.stop();
   clearInterval(clock);
+  window.removeEventListener('keydown', onArrowKey);
+  window.removeEventListener('keyup', onArrowKeyUp);
+  clearTimeout(recordTimer);
   resizeObserver?.disconnect();
   themeObserver?.disconnect();
   systemTheme.removeEventListener('change', readTheme);
@@ -423,6 +537,7 @@ onBeforeUnmount(() => {
         <div class="leaf left">
           <div class="leafhead">
             <span class="count">{{ countSentence }}</span>
+            <SegmentGroup class="order" :items="orderItems" :value="order" label="並び順" @pick="onOrder" />
           </div>
           <div class="scroll">
             <EmptyRanking
@@ -455,19 +570,19 @@ onBeforeUnmount(() => {
         <div class="leaf right" aria-label="選んだ 1 本の記録">
           <div class="leafhead">
             <span class="tag">記録</span>
-            <span class="count">{{ selectedRow ? `${scopeName(kind, period)}のうちの順位` : '' }}</span>
+            <span class="count">{{ recordRow ? `${scopeName(kind, period)}のうちの順位` : '' }}</span>
             <button type="button" class="closerec" @click="closeRecord">閉じる</button>
           </div>
           <div class="scroll">
             <VideoRecordPanel
-              :video="selectedRow"
-              :channel="selectedChannel"
+              :video="recordRow"
+              :channel="recordChannel"
               :metric
               :kind
               :period
               :rows="data.rows.value"
-              :now="new Date(now)"
-              :hidden="selectedFiltered"
+              :now="nowDate"
+              :hidden="recordFiltered"
               :dark
               @metric="onMetric"
               @open-lightbox="lightboxOpen = true"
@@ -477,9 +592,9 @@ onBeforeUnmount(() => {
       </div>
 
       <VideoLightbox
-        v-if="lightboxOpen && selectedRow"
-        :video-id="selectedRow.videoId"
-        :title="selectedRow.title"
+        v-if="lightboxOpen && recordRow"
+        :video-id="recordRow.videoId"
+        :title="recordRow.title"
         @close="lightboxOpen = false"
       />
     </div>
@@ -547,6 +662,10 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+
+  /* The list's head holds the order buttons and the record's does not; both
+     are this tall so the two leaves still start their rows level. */
+  min-height: 33px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--k-line);
   background: var(--k-surface-2);
@@ -568,7 +687,27 @@ onBeforeUnmount(() => {
 .leaf .scroll {
   overflow: hidden auto;
   flex: 1 1 auto;
+  min-height: 0;
   scrollbar-width: thin;
+}
+
+.leafhead .order {
+  margin: -3px 0 -3px auto;
+}
+
+.leafhead .order :deep(button) {
+  padding: 1px 8px;
+  font-size: 11.5px;
+}
+
+/* The record stays beside whichever row was picked, however far down the
+   list that is, and scrolls on its own when it is taller than the window.
+   The narrow fold below lays it over the list instead. */
+.leaf.right {
+  position: sticky;
+  top: calc(var(--shell-nav-height) + 10px);
+  align-self: start;
+  max-height: calc(100vh / var(--k-zoom, 1) - var(--shell-nav-height) - 20px);
 }
 
 .leaf.right .scroll {
@@ -603,6 +742,8 @@ onBeforeUnmount(() => {
   .leaf.right {
     position: absolute;
     inset: 0;
+    align-self: stretch;
+    max-height: none;
     z-index: 6;
     transform: translateX(100%);
     visibility: hidden;

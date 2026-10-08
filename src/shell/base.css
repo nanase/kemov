@@ -4,6 +4,33 @@
   box-sizing: border-box;
 }
 
+/*
+ * The reader's text size from TextSizeMenu, which head.html applies before
+ * the first paint. The whole page is zoomed rather than its text alone: see
+ * textSize.ts.
+ *
+ * A viewport unit is zoomed along with everything else, so `100vh` inside the
+ * page is taller than the window by this factor. A height measured against
+ * the window divides it back out: `calc(100vh / var(--k-zoom) - 60px)`.
+ */
+:root {
+  --k-zoom: 1;
+
+  zoom: var(--k-zoom);
+}
+
+:root[data-text-size='125'] {
+  --k-zoom: 1.25;
+}
+
+:root[data-text-size='150'] {
+  --k-zoom: 1.5;
+}
+
+:root[data-text-size='200'] {
+  --k-zoom: 2;
+}
+
 body {
   margin: 0;
   background: var(--k-bg);

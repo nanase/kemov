@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { THEME_STORAGE_KEY, colorSchemeContent, themeCookie } from '@/shell/theme';
+import { TEXT_SIZES, TEXT_SIZE_STORAGE_KEY, parseTextSize } from '@/shell/textSize';
 
 // Read from disk rather than imported with ?raw: vitest empties CSS imports,
 // ?raw included, unless its css option is turned on.
@@ -94,5 +95,31 @@ describe("head.html's script before the first paint", () => {
 
   test.each([null, 'system', 'Dark', ''])('leaves a stored %s, and the cookie, alone', (stored) => {
     expect(run(stored, `${THEME_STORAGE_KEY}=dark`)).toEqual({ written: [], theme: undefined, colorScheme: '' });
+  });
+});
+
+describe("head.html's text size before the first paint", () => {
+  const script = head.match(/<script>([\s\S]*?)<\/script>/)![1]!;
+
+  /** The `data-text-size` the script leaves on <html> when storage holds `stored`. */
+  function run(stored: string | null): string | undefined {
+    const root = { dataset: {} as Record<string, string>, style: { colorScheme: '' } };
+    const document = { documentElement: root, cookie: '' };
+    const localStorage = { getItem: (key: string) => (key === TEXT_SIZE_STORAGE_KEY ? stored : null) };
+
+    runInNewContext(script, { document, localStorage });
+
+    return root.dataset.textSize;
+  }
+
+  // The script cannot import parseTextSize, so this is what keeps its copy
+  // reading the same sizes TextSizeMenu offers.
+  test.each(TEXT_SIZES.filter((size) => size !== 100))('applies a stored %s', (size) => {
+    expect(run(String(size))).toBe(String(size));
+  });
+
+  test.each([null, '100', '175', ''])('leaves <html> alone for a stored %s', (stored) => {
+    expect(run(stored)).toBeUndefined();
+    expect(parseTextSize(stored)).toBe(100);
   });
 });

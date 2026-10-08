@@ -1,7 +1,16 @@
 import type { RankingPeriod } from '@/lib/ranking';
 import { VIDEO_PROPERTIES, type VideoProperty } from '@/type/video';
 import { VIDEO_TYPES, type VideoType } from '@/type/api';
-import { DEFAULT_KIND, DEFAULT_METRIC, LENGTH_BANDS, NO_FILTERS, type Filters } from './model';
+import {
+  DEFAULT_KIND,
+  DEFAULT_METRIC,
+  DEFAULT_ORDER,
+  LENGTH_BANDS,
+  LIST_ORDERS,
+  NO_FILTERS,
+  type Filters,
+  type ListOrder,
+} from './model';
 
 /**
  * The URL query #135 asks for: a reload, or a link someone was handed, opens
@@ -11,7 +20,8 @@ import { DEFAULT_KIND, DEFAULT_METRIC, LENGTH_BANDS, NO_FILTERS, type Filters } 
  *
  * The vocabulary is this page's own choice (#135's body left it open): a key
  * per control, `all` / `1y` / `90d` / `30d` / `year` for the period chips,
- * and `year` alongside `period=year` for which year. Absent means the
+ * `year` alongside `period=year` for which year, and `sort=newest` /
+ * `sort=oldest` for the list read by publish date. Absent means the
  * default, so the common case - the page opened with nothing narrowed - has
  * no query string at all.
  */
@@ -20,11 +30,12 @@ export interface PageState {
   metric: VideoProperty;
   kind: VideoType;
   period: RankingPeriod;
+  order: ListOrder;
   filters: Filters;
 }
 
 export function defaultState(): PageState {
-  return { metric: DEFAULT_METRIC, kind: DEFAULT_KIND, period: 'all', filters: NO_FILTERS };
+  return { metric: DEFAULT_METRIC, kind: DEFAULT_KIND, period: 'all', order: DEFAULT_ORDER, filters: NO_FILTERS };
 }
 
 const PERIOD_QUERY_IDS = ['all', '1y', '90d', '30d', 'year'] as const;
@@ -86,6 +97,7 @@ export function stateToQuery(state: PageState): URLSearchParams {
 
   if (period !== 'all') params.set('period', period);
   if (year !== null) params.set('year', String(year));
+  if (state.order !== defaults.order) params.set('sort', state.order);
 
   if (state.filters.query !== '') params.set('q', state.filters.query);
   if (state.filters.lengthBandId !== defaults.filters.lengthBandId) params.set('duration', state.filters.lengthBandId);
@@ -119,6 +131,9 @@ export function queryToState(params: URLSearchParams, defaults: PageState = defa
 
   const period = queryToPeriod(params.get('period'), params.get('year')) ?? defaults.period;
 
+  const orderText = params.get('sort');
+  const order = LIST_ORDERS.find((o) => o.id === orderText)?.id ?? defaults.order;
+
   const durationText = params.get('duration');
   const lengthBandId = durationText !== null && LENGTH_BAND_IDS.has(durationText) ? durationText : 'any';
 
@@ -126,6 +141,7 @@ export function queryToState(params: URLSearchParams, defaults: PageState = defa
     metric,
     kind,
     period,
+    order,
     filters: {
       query: params.get('q') ?? '',
       lengthBandId,
