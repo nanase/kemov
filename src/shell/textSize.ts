@@ -29,11 +29,17 @@ export function parseTextSize(value: string | null | undefined): TextSize {
  * Under base.css's zoom, `getBoundingClientRect()` and a pointer's `clientX`
  * are in the viewport's pixels while the element lays itself out in its own,
  * so a distance read from either has to be divided by this before it is
- * compared with a width in CSS. A browser without `currentCSSZoom` is taken
- * to apply no zoom.
+ * compared with a width in CSS. A browser that has `zoom` but not
+ * `currentCSSZoom`, which came later, is read the zoom base.css puts on the
+ * root, the only one the site applies.
  */
 export function zoomOf(element: Element): number {
   const zoom = (element as Element & { currentCSSZoom?: number }).currentCSSZoom;
 
-  return typeof zoom === 'number' && zoom > 0 ? zoom : 1;
+  if (typeof zoom === 'number' && zoom > 0) return zoom;
+
+  const root = element.ownerDocument?.documentElement;
+  const rootZoom = root ? Number.parseFloat(getComputedStyle(root).zoom) : NaN;
+
+  return rootZoom > 0 ? rootZoom : 1;
 }

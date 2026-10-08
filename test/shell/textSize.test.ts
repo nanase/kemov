@@ -26,8 +26,26 @@ describe('zoomOf', () => {
     expect(zoomOf({ currentCSSZoom: 1.5 } as unknown as Element)).toBe(1.5);
   });
 
-  test('a browser that does not report one is taken to apply none', () => {
-    expect(zoomOf({} as Element)).toBe(1);
-    expect(zoomOf({ currentCSSZoom: 0 } as unknown as Element)).toBe(1);
+  describe('in a browser that does not report one', () => {
+    const root = {};
+    const element = { ownerDocument: { documentElement: root } } as unknown as Element;
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    test('reads the zoom on the root, which is the one the site applies', () => {
+      vi.stubGlobal('getComputedStyle', (target: unknown) => ({ zoom: target === root ? '1.5' : '1' }));
+
+      expect(zoomOf(element)).toBe(1.5);
+    });
+
+    test('takes no zoom when the root has none either', () => {
+      vi.stubGlobal('getComputedStyle', () => ({ zoom: 'normal' }));
+
+      expect(zoomOf(element)).toBe(1);
+    });
+
+    test('takes no zoom for an element outside a document', () => {
+      expect(zoomOf({} as Element)).toBe(1);
+    });
   });
 });
