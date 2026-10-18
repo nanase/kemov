@@ -84,6 +84,12 @@ bun wrangler r2 object get kemov-backup/channel/2026-09-08.sql --file channel.sq
 bun wrangler d1 execute kemov-restore --remote --file channel.sql
 ```
 
+`footprints_event_member` のファイルが列 `lead` を持たないときは、マイグレーション `0011` より前のバックアップです。`lead` は既定の 0 で戻るので、デビューの主役が消えます。主役の無いデビューは公開できません。このファイルを適用した後で、`0011` の `UPDATE` と同じ文を流し、主役を付け直します。
+
+```sh
+bun wrangler d1 execute kemov-restore --remote --command "UPDATE footprints_event_member SET lead = 1 WHERE EXISTS (SELECT 1 FROM footprints_event e JOIN channel c ON c.channel_id = footprints_event_member.channel_id WHERE e.event_id = footprints_event_member.event_id AND e.kind = 'debut' AND e.date_precision = 'day' AND e.start_date = c.activity_start_date)"
+```
+
 ### 3. 確かめる
 
 戻した先で、表ごとの行の数を `count(*)` で数えます。元のデータベースがまだ読めるなら、同じように数えて比べます。
