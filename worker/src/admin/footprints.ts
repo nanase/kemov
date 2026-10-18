@@ -29,6 +29,7 @@ export const KINDS = [
   'milestone',
   'graduation',
   'anniversary',
+  'memorial_day',
   'other',
 ] as const;
 

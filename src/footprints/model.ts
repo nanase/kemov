@@ -31,6 +31,7 @@ export const KIND_LABELS: Readonly<Record<EventKind, string>> = {
   milestone: '節目',
   graduation: '卒業・活動終了',
   anniversary: '周年',
+  memorial_day: '記念日',
   other: 'その他',
 };
 
@@ -603,11 +604,12 @@ export function upcoming(
   }
 
   // A day a member keeps every year. There is no separate field saying so:
-  // the kind `anniversary` is what says it, and holding the same fact in two
-  // places would let the two disagree. A date known only to the month is left
-  // out, because there is no day to keep.
+  // the kind `memorial_day` is what says it, and holding the same fact in two
+  // places would let the two disagree. `anniversary` is not one: it is a
+  // single anniversary stream, which happens once. A date known only to the
+  // month is left out, because there is no day to keep.
   for (const item of events) {
-    if (item.event.kind !== 'anniversary' || item.event.datePrecision !== 'day') continue;
+    if (item.event.kind !== 'memorial_day' || item.event.datePrecision !== 'day') continue;
 
     const [year, month, day] = item.event.startDate.split('-').map(Number) as [number, number, number];
 
