@@ -100,6 +100,7 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
   - 編集の欄では、読む・保存・公開待ちにする/下書きに戻す・削除ができる
   - 公開の画面で「いま公開する」が JSON を書くまで、状態の表示は「公開待ち」のまま（`src/admin/lib/footprints-publish.ts`）
   - 保存の 400 は編集の欄の帯に出す。`src/admin/lib/footprints.ts` の `fieldForSaveError` が、worker のメッセージを読んで、どの欄の話かを示す。worker の検証をここにもう 1 つ写すことはしない
+  - 「主役」の欄で、関わったメンバーのうち出来事の主役を選ぶ。デビューで主役が無いときは、欄に注意を出す
 - 公開（`src/admin/pages/PublishPage.vue`）
   - あしあととジェネット楽曲一覧は、それぞれ `GET .../pending` の 2 つの一覧と「いま公開する」を持つ
   - 登録者数の節目も同じ形で並べます。一覧は、公開待ち・公開後の変更・つないだ出来事の変更（`eventChanged`）の 3 つです。「いま公開する」を押せるのは、worker が JSON を作り直す場合と同じく、公開待ち・`eventChanged`・古い形の JSON のどれかがあるときです（`src/admin/lib/subscriber-milestones-publish.ts`）

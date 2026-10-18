@@ -41,6 +41,7 @@ const event = (over: Partial<FootprintEvent> = {}): FootprintEvent => ({
   videoId: null,
   sourcePending: false,
   channelIds: [],
+  leadChannelIds: [],
   sources: [],
   ...over,
 });
@@ -237,6 +238,7 @@ const DEBUT = event({
   startDate: '2021-04-28',
   title: 'フンボルトペンギン',
   channelIds: ['UCa'],
+  leadChannelIds: ['UCa'],
 });
 
 const items = (list: FootprintEvent[], now = NOW) => eventItems(list, new Map(), now);
@@ -268,6 +270,7 @@ describe('upcoming', () => {
       startDate: '2021-04-28',
       title: 'ケープとフンボルトが初配信',
       channelIds: ['UCa', 'UCb'],
+      leadChannelIds: ['UCa', 'UCb'],
     });
     const named = (id: string, name: string) => ({ channelId: id, name }) as Channel;
     const list = upcoming(
@@ -279,6 +282,51 @@ describe('upcoming', () => {
     );
 
     expect(list[0]?.title).toContain('ケープペンギン・フンボルトペンギンのデビュー');
+  });
+
+  // シマハイイロギツネ's debut had ケープペンギン and フンボルトペンギン in it.
+  // Their own debuts were other days, and counting from this one too gave
+  // them a second 2,000th day.
+  test('counts a debut for its leads, not for the guests in it', () => {
+    const guested = event({
+      eventId: 15,
+      kind: 'debut',
+      startDate: '2021-06-11',
+      title: 'シマハイイロギツネが初配信',
+      channelIds: ['UCa', 'UCb'],
+      leadChannelIds: ['UCb'],
+    });
+    const named = (id: string, name: string) => ({ channelId: id, name }) as Channel;
+    const list = upcoming(
+      items([DEBUT, guested]),
+      [],
+      [named('UCa', 'フンボルトペンギン'), named('UCb', 'シマハイイロギツネ')],
+      filters(),
+      NOW,
+    ).filter((entry) => entry.label === '日数');
+
+    expect(list.map((entry) => [jstDay(entry.at), entry.title, entry.channelIds])).toEqual([
+      ['2026-10-19', 'フンボルトペンギンのデビューから 2,000 日', ['UCa']],
+      ['2026-12-02', 'シマハイイロギツネのデビューから 2,000 日', ['UCb']],
+    ]);
+  });
+
+  // Nothing says whose debut a debut without a lead is, so it counts for
+  // nobody rather than for everybody in it.
+  test('counts nothing from a debut with no lead', () => {
+    const unmarked = event({ eventId: 16, kind: 'debut', startDate: '2021-04-28', channelIds: ['UCa'] });
+    const list = upcoming(items([unmarked]), [], [], filters(), NOW);
+
+    expect(list.filter((entry) => entry.label === '日数' || entry.label === '周年')).toEqual([]);
+  });
+
+  // The announcement is けもV's, whoever was named in it, so narrowing to a
+  // member who was not still shows it.
+  test('keeps the count from the announcement under any member filter', () => {
+    const announced = event({ eventId: 17, kind: 'project', startDate: '2021-04-25', channelIds: ['UCa'] });
+    const list = upcoming(items([announced]), [], [], filters({ members: new Set(['UCz']) }), NOW);
+
+    expect(list.find((entry) => entry.label === '周年')?.title).toEqual('けもVの発表 6 周年');
   });
 
   // A project is announced once. A later announcement is an event, not a

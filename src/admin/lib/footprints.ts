@@ -71,6 +71,7 @@ export type EventFieldKey =
   | 'videoId'
   | 'sources'
   | 'channelIds'
+  | 'leadChannelIds'
   | 'emphasized'
   | 'sourcePending';
 
@@ -85,6 +86,8 @@ const FIELD_MARKERS: readonly [RegExp, EventFieldKey][] = [
   [/\btitle\b/, 'title'],
   [/\bvideoId\b/, 'videoId'],
   [/\bsource(s|Pending)?\b/, 'sources'],
+  // Before channelIds: "every leadChannelIds entry must also be in channelIds" names both.
+  [/\bleadChannelIds\b/, 'leadChannelIds'],
   [/\bchannelId(s)?\b/, 'channelIds'],
   [/\bemphasized\b/, 'emphasized'],
 ];
@@ -158,6 +161,8 @@ export interface FootprintsEvent {
   createdAt: string;
   updatedAt: string;
   channelIds: string[];
+  /** The members among `channelIds` the event is about: a debut's own member, not its guests. */
+  leadChannelIds: string[];
   sources: FootprintsSource[];
 }
 
@@ -176,6 +181,8 @@ export interface EventFormFields {
   sourcePending: boolean;
   memo: string | null;
   channelIds: string[];
+  /** The members among `channelIds` the event is about: a debut's own member, not its guests. */
+  leadChannelIds: string[];
   sources: FootprintsSource[];
 }
 
@@ -195,6 +202,7 @@ export function toFormFields(event: FootprintsEvent): EventFormFields {
     sourcePending: event.sourcePending,
     memo: event.memo,
     channelIds: [...event.channelIds],
+    leadChannelIds: [...event.leadChannelIds],
     sources: event.sources.map((s) => ({ ...s })),
   };
 }
@@ -215,6 +223,7 @@ export function emptyFormFields(today: string): EventFormFields {
     sourcePending: true,
     memo: null,
     channelIds: [],
+    leadChannelIds: [],
     sources: [],
   };
 }

@@ -62,6 +62,8 @@ export interface SourceRow {
 export interface FootprintsEvent {
   event: EventRow;
   channelIds: string[];
+  /** The members among `channelIds` the event is about, rather than ones who took part: a debut's own member, not its guests. */
+  leadChannelIds: string[];
   sources: SourceRow[];
 }
 
@@ -86,6 +88,7 @@ export function present(saved: FootprintsEvent) {
     createdAt: event.created_at,
     updatedAt: event.updated_at,
     channelIds: saved.channelIds,
+    leadChannelIds: saved.leadChannelIds,
     sources: saved.sources.map((source) => ({ url: source.url, title: source.title })),
   };
 }
@@ -116,6 +119,7 @@ export function publicShapeOf(saved: FootprintsEvent) {
     video_id: event.video_id,
     source_pending: event.source_pending === 1,
     channel_ids: [...saved.channelIds].sort(),
+    lead_channel_ids: [...saved.leadChannelIds].sort(),
     sources: saved.sources.map((source) => ({ url: source.url, title: source.title })),
   };
 }
@@ -138,15 +142,20 @@ export async function readEvent(env: Env, eventId: number): Promise<FootprintsEv
   if (event === null) return null;
 
   const [members, sources] = await Promise.all([
-    env.DB.prepare('SELECT channel_id FROM footprints_event_member WHERE event_id = ?1 ORDER BY channel_id')
+    env.DB.prepare('SELECT channel_id, lead FROM footprints_event_member WHERE event_id = ?1 ORDER BY channel_id')
       .bind(eventId)
-      .all<{ channel_id: string }>(),
+      .all<{ channel_id: string; lead: number }>(),
     env.DB.prepare('SELECT url, title FROM footprints_event_source WHERE event_id = ?1 ORDER BY position')
       .bind(eventId)
       .all<SourceRow>(),
   ]);
 
-  return { event, channelIds: members.results.map((row) => row.channel_id), sources: sources.results };
+  return {
+    event,
+    channelIds: members.results.map((row) => row.channel_id),
+    leadChannelIds: members.results.flatMap((row) => (row.lead === 1 ? [row.channel_id] : [])),
+    sources: sources.results,
+  };
 }
 
 /**
@@ -174,10 +183,10 @@ export async function readEvents(env: Env, eventIds: readonly number[]): Promise
     queryInChunks(eventIds, async (chunk) => {
       const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
       const { results } = await env.DB.prepare(
-        `SELECT event_id, channel_id FROM footprints_event_member WHERE event_id IN (${placeholders}) ORDER BY event_id, channel_id`,
+        `SELECT event_id, channel_id, lead FROM footprints_event_member WHERE event_id IN (${placeholders}) ORDER BY event_id, channel_id`,
       )
         .bind(...chunk)
-        .all<{ event_id: number; channel_id: string }>();
+        .all<{ event_id: number; channel_id: string; lead: number }>();
 
       return results;
     }),
@@ -194,11 +203,12 @@ export async function readEvents(env: Env, eventIds: readonly number[]): Promise
   ]);
 
   const result = new Map<number, FootprintsEvent>(
-    eventRows.map((event) => [event.event_id, { event, channelIds: [], sources: [] }]),
+    eventRows.map((event) => [event.event_id, { event, channelIds: [], leadChannelIds: [], sources: [] }]),
   );
 
-  for (const { event_id: eventId, channel_id: channelId } of memberRows) {
+  for (const { event_id: eventId, channel_id: channelId, lead } of memberRows) {
     result.get(eventId)?.channelIds.push(channelId);
+    if (lead === 1) result.get(eventId)?.leadChannelIds.push(channelId);
   }
 
   for (const { event_id: eventId, ...source } of sourceRows) {
@@ -326,6 +336,12 @@ function eventFieldsProblem(fields: EventFields): string | null {
 
   if (fields.videoId !== null && typeof fields.videoId !== 'string') return 'videoId must be a string or null';
 
+  // A lead is a member, marked: the column lives on footprints_event_member,
+  // so a lead who is not among the members has no row to be marked on.
+  if (fields.leadChannelIds.some((id) => !fields.channelIds.includes(id))) {
+    return 'every leadChannelIds entry must also be in channelIds';
+  }
+
   for (const source of fields.sources) {
     if (!source.url.startsWith('https://')) return 'every source url must start with https://';
   }
@@ -347,12 +363,13 @@ export interface EventFields {
   sourcePending: boolean;
   memo: string | null;
   channelIds: string[];
+  leadChannelIds: string[];
   sources: SourceRow[];
 }
 
 /**
  * Reads the fields a POST or PUT body carries, defaulting a field it leaves
- * out to null (or `[]` for the two arrays) - the same full-replace reading
+ * out to null (or `[]` for the arrays) - the same full-replace reading
  * #158 gives a PUT body, extended to POST here because there is no partial
  * form of creating an event either.
  *
@@ -361,17 +378,22 @@ export interface EventFields {
  * against its own value alone, with no way to see a sibling field, but
  * `eventFieldsProblem` below needs several at once - `startsAt` is only
  * valid when `datePrecision` is `day`, and its Japan-time date must match
- * `startDate`. `channelIds` and `sources` are arrays besides, which
+ * `startDate`. `channelIds`, `leadChannelIds` and `sources` are arrays besides, which
  * `readEditableBody` has no shape for. `editable-body.ts`'s own comment
  * already says as much: it exists for the shape of the check members.ts and
  * video-overrides.ts share, not to force every resource through it.
  */
 function readEventFields(body: Record<string, unknown>): EventFields | { error: string } {
   const channelIds = body.channelIds ?? [];
+  const leadChannelIds = body.leadChannelIds ?? [];
   const sources = body.sources ?? [];
 
   if (!Array.isArray(channelIds) || channelIds.some((id) => typeof id !== 'string')) {
     return { error: 'channelIds must be an array of strings' };
+  }
+
+  if (!Array.isArray(leadChannelIds) || leadChannelIds.some((id) => typeof id !== 'string')) {
+    return { error: 'leadChannelIds must be an array of strings' };
   }
 
   if (
@@ -417,6 +439,7 @@ function readEventFields(body: Record<string, unknown>): EventFields | { error: 
     // so a repeated id would otherwise fail the whole batch with a
     // constraint error instead of a 400.
     channelIds: [...new Set(channelIds as string[])],
+    leadChannelIds: [...new Set(leadChannelIds as string[])],
     sources: (sources as { url: string; title?: string | null }[]).map((source) => ({
       url: source.url,
       title: source.title ?? null,
@@ -463,11 +486,12 @@ async function validatedFields(env: Env, body: Record<string, unknown>): Promise
   return fields;
 }
 
-function memberStatements(env: Env, eventId: number, channelIds: readonly string[]): D1PreparedStatement[] {
-  return channelIds.map((channelId) =>
-    env.DB.prepare('INSERT INTO footprints_event_member (event_id, channel_id) VALUES (?1, ?2)').bind(
+function memberStatements(env: Env, eventId: number, fields: EventFields): D1PreparedStatement[] {
+  return fields.channelIds.map((channelId) =>
+    env.DB.prepare('INSERT INTO footprints_event_member (event_id, channel_id, lead) VALUES (?1, ?2, ?3)').bind(
       eventId,
       channelId,
+      fields.leadChannelIds.includes(channelId) ? 1 : 0,
     ),
   );
 }
@@ -492,11 +516,11 @@ function sourceStatements(env: Env, eventId: number, sources: readonly SourceRow
  * moves what `last_insert_rowid()` reports; it keeps naming the row the
  * batch's INSERT created through every statement after it.
  */
-function memberStatementsForNewEvent(env: Env, channelIds: readonly string[]): D1PreparedStatement[] {
-  return channelIds.map((channelId) =>
-    env.DB.prepare('INSERT INTO footprints_event_member (event_id, channel_id) VALUES (last_insert_rowid(), ?1)').bind(
-      channelId,
-    ),
+function memberStatementsForNewEvent(env: Env, fields: EventFields): D1PreparedStatement[] {
+  return fields.channelIds.map((channelId) =>
+    env.DB.prepare(
+      'INSERT INTO footprints_event_member (event_id, channel_id, lead) VALUES (last_insert_rowid(), ?1, ?2)',
+    ).bind(channelId, fields.leadChannelIds.includes(channelId) ? 1 : 0),
   );
 }
 
@@ -542,7 +566,7 @@ export async function createEvent(env: Env, body: Record<string, unknown>): Prom
       fields.sourcePending ? 1 : 0,
       fields.memo,
     ),
-    ...memberStatementsForNewEvent(env, fields.channelIds),
+    ...memberStatementsForNewEvent(env, fields),
     ...sourceStatementsForNewEvent(env, fields.sources),
   ]);
 
@@ -591,7 +615,7 @@ export async function updateEvent(env: Env, eventId: number, body: Record<string
     ),
     env.DB.prepare('DELETE FROM footprints_event_member WHERE event_id = ?1').bind(eventId),
     env.DB.prepare('DELETE FROM footprints_event_source WHERE event_id = ?1').bind(eventId),
-    ...memberStatements(env, eventId, fields.channelIds),
+    ...memberStatements(env, eventId, fields),
     ...sourceStatements(env, eventId, fields.sources),
   ]);
 

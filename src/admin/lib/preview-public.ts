@@ -60,6 +60,7 @@ export function publicEventOf(fields: EventFormFields, eventId: number): Preview
         video_id: fields.videoId,
         source_pending: fields.sourcePending,
         channel_ids: [...fields.channelIds].sort(),
+        lead_channel_ids: [...fields.leadChannelIds].sort(),
         sources: fields.sources.map((source) => ({ url: source.url, title: source.title })),
       },
     ],

@@ -490,37 +490,48 @@ function membersPass(channelIds: readonly string[], filters: Filters): boolean {
  * each kind counts - a project is announced once, and a member debuts once -
  * so a later announcement does not start a second count of its own.
  *
+ * A debut counts for its leads alone. The members it involved include the
+ * guests who appeared in it, and a guest's own debut is another day.
+ *
  * The row is named after whoever it belongs to rather than after the event's
  * own title, because the title is a sentence ("ケープとフンボルトが初配信")
- * and this row is a count.
+ * and this row is a count. The project's count belongs to けもV as a whole,
+ * so it names no member and every member filter keeps it.
  */
 function origins(
   events: readonly EventItem[],
   channels: readonly Channel[],
-): { item: EventItem; name: string; what: string }[] {
+): { item: EventItem; name: string; what: string; channelIds: string[] }[] {
   const names = new Map(channels.map((channel) => [channel.channelId, channel.name]));
-  const found: { item: EventItem; name: string; what: string }[] = [];
+  const found: { item: EventItem; name: string; what: string; channelIds: string[] }[] = [];
   const taken = new Set<string>();
 
   for (const item of events) {
-    const { kind, channelIds } = item.event;
+    const { kind } = item.event;
 
     if (item.event.datePrecision !== 'day') continue;
-    if (kind !== 'debut' && kind !== 'project') continue;
 
-    const who =
-      kind === 'project'
-        ? 'けもV'
-        : channelIds
-            .map((id) => names.get(id) ?? '')
-            .filter(Boolean)
-            .join('・');
-    const name = who === '' ? item.event.title : who;
+    if (kind === 'project') {
+      if (taken.has('project')) continue;
 
-    if (taken.has(name)) continue;
+      taken.add('project');
+      found.push({ item, name: 'けもV', what: '発表', channelIds: [] });
+    }
 
-    taken.add(name);
-    found.push({ item, name, what: kind === 'debut' ? 'デビュー' : '発表' });
+    if (kind !== 'debut') continue;
+
+    const leads = item.event.leadChannelIds.filter((id) => !taken.has(id));
+
+    if (leads.length === 0) continue;
+
+    for (const id of leads) taken.add(id);
+
+    const who = leads
+      .map((id) => names.get(id) ?? '')
+      .filter(Boolean)
+      .join('・');
+
+    found.push({ item, name: who === '' ? item.event.title : who, what: 'デビュー', channelIds: leads });
   }
 
   return found;
@@ -547,8 +558,7 @@ export function upcoming(
   const claimed = new Set(events.flatMap((item) => (item.row === null ? [] : [item.row.videoId])));
   const out: AsideItem[] = [];
 
-  for (const { item, name, what } of origins(events, channels)) {
-    const { channelIds } = item.event;
+  for (const { item, name, what, channelIds } of origins(events, channels)) {
     const [year, month, day] = item.event.startDate.split('-').map(Number) as [number, number, number];
 
     for (let round = year + 1; dayNumber(dayAt(round, month, day)) <= end; round += 1) {

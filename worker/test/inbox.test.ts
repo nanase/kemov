@@ -33,7 +33,7 @@ async function createValidEvent(overrides: Record<string, unknown> = {}): Promis
     startDate: '2025-01-01',
     startsAt: null,
     endDate: null,
-    kind: 'debut',
+    kind: 'other',
     emphasized: false,
     title: 'デビュー',
     place: null,

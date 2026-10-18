@@ -33,6 +33,7 @@ function event(eventId: number, startDate: string, status = 'draft'): Footprints
     createdAt: '2026-10-01T00:00:00Z',
     updatedAt: '2026-10-01T00:00:00Z',
     channelIds: [],
+    leadChannelIds: [],
     sources: [],
   };
 }

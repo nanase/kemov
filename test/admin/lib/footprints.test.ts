@@ -70,6 +70,8 @@ describe('fieldForSaveError', () => {
     ['every source url must start with https://', 'sources'],
     ['sourcePending is false but there are no sources', 'sources'],
     ['unknown channelIds: UCnope', 'channelIds'],
+    ['every leadChannelIds entry must also be in channelIds', 'leadChannelIds'],
+    ['a debut needs at least one leadChannelIds entry', 'leadChannelIds'],
     ['emphasized must be a boolean', 'emphasized'],
   ])('maps %s to %s', (message, field) => {
     expect(fieldForSaveError(message)).toEqual(field);
@@ -105,6 +107,7 @@ describe('toFormFields', () => {
     createdAt: '2025-01-01T00:00:00Z',
     updatedAt: '2025-01-01T00:00:00Z',
     channelIds: ['UCaaa'],
+    leadChannelIds: ['UCaaa'],
     sources: [{ url: 'https://example.com', title: null }],
   };
 
@@ -123,17 +126,20 @@ describe('toFormFields', () => {
       sourcePending: false,
       memo: null,
       channelIds: ['UCaaa'],
+      leadChannelIds: ['UCaaa'],
       sources: [{ url: 'https://example.com', title: null }],
     });
   });
 
-  test('deep-copies channelIds and sources, so editing the result leaves the row untouched', () => {
+  test('deep-copies channelIds, leadChannelIds and sources, so editing the result leaves the row untouched', () => {
     const fields = toFormFields(event);
 
     fields.channelIds.push('UCbbb');
+    fields.leadChannelIds.push('UCbbb');
     fields.sources[0]!.url = 'https://changed.example.com';
 
     expect(event.channelIds).toEqual(['UCaaa']);
+    expect(event.leadChannelIds).toEqual(['UCaaa']);
     expect(event.sources).toEqual([{ url: 'https://example.com', title: null }]);
   });
 });
@@ -154,6 +160,7 @@ describe('emptyFormFields', () => {
       sourcePending: true,
       memo: null,
       channelIds: [],
+      leadChannelIds: [],
       sources: [],
     });
   });

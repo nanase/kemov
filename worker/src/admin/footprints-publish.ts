@@ -40,6 +40,13 @@ function publishProblems(saved: FootprintsEvent, whitelist: readonly string[]): 
 
   if (event.title === '') problems.push('title must not be empty');
 
+  // The upcoming list counts days and years from a debut for its leads
+  // alone. A debut with none would count for nobody, and saying so here is
+  // what keeps that from passing unnoticed.
+  if (event.kind === 'debut' && saved.leadChannelIds.length === 0) {
+    problems.push('a debut needs at least one leadChannelIds entry');
+  }
+
   if (event.source_pending === 0) {
     const problem = sourcesProblem(sources, whitelist);
 
@@ -163,6 +170,33 @@ interface LatestRevisionRow {
   body: string | null;
 }
 
+/**
+ * A `publish` revision's body in the shape `publicShapeOf` gives one now.
+ *
+ * `lead_channel_ids` came after the first publishes (migration 0011), and a
+ * revision is never rewritten, so a body from before it has no such key. It
+ * read as no lead then and still does: an event published before that has
+ * not been republished since.
+ */
+function currentShape(body: string): Record<string, unknown> {
+  const parsed = JSON.parse(body) as Record<string, unknown>;
+
+  if ('lead_channel_ids' in parsed) return parsed;
+
+  // Rebuilt rather than assigned, so the key lands where publicShapeOf puts
+  // it: pendingFootprints compares the two as JSON text.
+  return Object.fromEntries(
+    Object.entries(parsed).flatMap(([key, value]) =>
+      key === 'channel_ids'
+        ? [
+            [key, value],
+            ['lead_channel_ids', []],
+          ]
+        : [[key, value]],
+    ),
+  );
+}
+
 /** The latest `revision` row for every `footprints_event` entity_key that has one, oldest concerns first. */
 async function latestRevisions(env: Env): Promise<LatestRevisionRow[]> {
   const { results } = await env.DB.prepare(
@@ -228,7 +262,7 @@ export async function pendingFootprints(env: Env): Promise<Response> {
     if (saved === undefined) continue;
 
     const current = JSON.stringify(publicShapeOf(saved));
-    const publishedBody = JSON.stringify(JSON.parse(revision.body));
+    const publishedBody = JSON.stringify(currentShape(revision.body));
 
     if (current !== publishedBody) changed.push({ eventId, title: saved.event.title });
   }
@@ -291,7 +325,7 @@ export async function publishFootprintsNow(env: Env, now: Date): Promise<Respons
 
   const events = latest
     .filter((row) => row.action !== 'withdraw' && row.body !== null)
-    .map((row) => JSON.parse(row.body!) as { event_id: number; start_date: string });
+    .map((row) => currentShape(row.body!) as { event_id: number; start_date: string });
 
   events.sort((a, b) =>
     a.start_date === b.start_date ? a.event_id - b.event_id : a.start_date < b.start_date ? -1 : 1,

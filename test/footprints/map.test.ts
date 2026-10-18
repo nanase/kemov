@@ -26,6 +26,7 @@ const event = (over: Partial<FootprintEvent> = {}): FootprintEvent => ({
   videoId: null,
   sourcePending: false,
   channelIds: [],
+  leadChannelIds: [],
   sources: [],
   ...over,
 });
