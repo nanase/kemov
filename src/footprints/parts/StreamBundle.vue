@@ -7,7 +7,7 @@ import { formatCount } from '@/lib/numberFormat';
 import { relayVideoThumbnailURL } from '@/lib/relay';
 
 import { formatDate, formatTime, openMs } from '../draw';
-import { isKeyStream, jstDay, rowAt, VIDEO_LABELS, type BundleItem } from '../model';
+import { isKeyStream, jstDay, rowAt, NAMED_OCCASIONS, OPEN_RUN_MAX, VIDEO_LABELS, type BundleItem } from '../model';
 import type { Channel } from '@/type/api';
 
 /**
@@ -27,11 +27,8 @@ const { item, channels, open, dark } = defineProps<{
 
 const emit = defineEmits<{ toggle: [key: string]; open: [key: string] }>();
 
-/** How many titles a folded run names before it starts counting. */
-const NAMED = 4;
-
 const count = computed(() => item.rows.length);
-const foldable = computed(() => count.value > 3);
+const foldable = computed(() => count.value > OPEN_RUN_MAX);
 const shown = computed(() => open || !foldable.value);
 
 const kinds = computed(() => [...new Set(item.rows.map((row) => row.type))]);
@@ -49,7 +46,7 @@ const faces = computed(() =>
 
 /** The occasions inside a folded run, which is what it names instead of all. */
 const occasions = computed(() => item.rows.filter((row) => isKeyStream(row.title)));
-const named = computed(() => occasions.value.slice(0, NAMED));
+const named = computed(() => occasions.value.slice(0, NAMED_OCCASIONS));
 
 /** Every stream in the run, grouped by the day it began on. */
 const days = computed(() => {

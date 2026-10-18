@@ -63,6 +63,17 @@ export function isKeyStream(title: string): boolean {
   return KEY_TITLE.test(title);
 }
 
+/**
+ * The most streams a run can hold and still be shown open from the start.
+ *
+ * Here rather than in the run's component, because guessing how tall a month
+ * will be before it is drawn has to give the same answer as drawing it.
+ */
+export const OPEN_RUN_MAX = 3;
+
+/** How many occasions a folded run names before it starts counting. */
+export const NAMED_OCCASIONS = 4;
+
 /** The JST calendar day an instant falls on, as `YYYY-MM-DD`. */
 export function jstDay(ms: number): string {
   return new Date(ms + JST_OFFSET_MS).toISOString().slice(0, 10);
@@ -245,9 +256,29 @@ export function streamPasses(row: VideoTableRow, filters: Filters, claimed: Read
   return filters.members.size === 0 || filters.members.has(row.channelId);
 }
 
+/**
+ * Each row's instant, read once.
+ *
+ * Sorting the archive and cutting it into months asks for the same row's time
+ * many times over, and reading a date from its text each time came to 0.2
+ * seconds at 390px wide with the CPU slowed four times (2026-10-18).
+ *
+ * Kept against the row object itself: a row read afresh is read again, and
+ * only one changed in place would keep the instant it had.
+ */
+const ROW_AT = new WeakMap<VideoTableRow, number>();
+
 /** When a stream or video belongs on the timeline. */
 export function rowAt(row: VideoTableRow): number {
-  return new Date(row.actualStartTime ?? row.publishedAt).getTime();
+  const found = ROW_AT.get(row);
+
+  if (found !== undefined) return found;
+
+  const at = new Date(row.actualStartTime ?? row.publishedAt).getTime();
+
+  ROW_AT.set(row, at);
+
+  return at;
 }
 
 /**

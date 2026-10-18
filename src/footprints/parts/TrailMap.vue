@@ -130,8 +130,10 @@ function measure() {
   room.value = available ?? Math.max(240, window.innerHeight / zoomOf(document.documentElement) - 300);
 }
 
+// Measured when the observer first reports rather than here: reading the
+// width while the map is being put into the page lays the page out on top of
+// that work. The first report comes before the first paint all the same.
 onMounted(() => {
-  measure();
   observer = new ResizeObserver(measure);
   if (box.value !== null) observer.observe(box.value);
   window.addEventListener('resize', measure);
