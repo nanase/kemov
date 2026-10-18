@@ -561,13 +561,19 @@ onBeforeUnmount(() => {
               v-model="query"
               type="search"
               class="search-input"
-              placeholder="題名・補足でさがす"
-              aria-label="題名・補足でさがす"
+              placeholder="タイトル・補足でさがす"
+              aria-label="タイトル・補足でさがす"
               autocomplete="off"
               enterkeyhint="search"
               @keydown.esc="clearSearch"
             />
-            <button v-if="query !== ''" type="button" class="search-clear" aria-label="検索を消す" @click="clearSearch">
+            <button
+              v-if="query !== ''"
+              type="button"
+              class="search-clear"
+              aria-label="検索文字列を消す"
+              @click="clearSearch"
+            >
               ×
             </button>
           </label>
@@ -594,7 +600,7 @@ onBeforeUnmount(() => {
       <p v-else-if="data.loading.value" class="fp-panel fp-empty">読み込んでいます</p>
       <div v-else class="main">
         <div v-if="timeline.events === 0 && timeline.streams === 0" class="fp-panel fp-empty">
-          <p v-if="searching">「{{ searched.trim() }}」に合う記録はありません</p>
+          <p v-if="searching">「{{ searched.trim() }}」に合うあしあとはありません</p>
           <p v-else>条件に合う記録はありません</p>
           <p v-if="hidden > 0">
             {{ formatCount(hidden) }} 件が絞り込みで隠れています
