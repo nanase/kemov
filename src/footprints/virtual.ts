@@ -116,18 +116,42 @@ export function estimateMonthHeight(month: MonthGroup, open: ReadonlySet<string>
   );
 }
 
+/** What in one row can change the height it is drawn at. */
+function itemShape(item: TimelineItem, open: ReadonlySet<string>): unknown {
+  if (item.kind === 'now') return item.key;
+
+  if (item.kind === 'event') {
+    const { event } = item;
+
+    return [
+      item.key,
+      event.title,
+      event.supplement,
+      event.emphasized,
+      event.place,
+      event.sourcePending,
+      event.videoId,
+      event.channelIds,
+      item.endAt,
+      item.future,
+      item.timed,
+    ];
+  }
+
+  return [item.key, open.has(item.key), item.rows.map((row) => [row.videoId, row.title, row.channelId, row.type])];
+}
+
 /**
  * What a measured height is remembered under.
  *
- * A month measured with other rows in it, or with a run opened since, is not
- * the same month to measure: the count and the open runs are what change its
- * height without changing its name. The layout is left out on purpose - the
- * caller forgets every height when the width or the text size moves.
+ * Everything in the month that can change how tall it is drawn: which rows it
+ * holds, what each of them says, and which of its runs are open. A month whose
+ * archive was fetched again with one title changed is not the month that was
+ * measured. The layout is left out on purpose - the caller forgets every
+ * height when the width or the text size moves.
  */
 export function monthSignature(month: MonthGroup, open: ReadonlySet<string>): string {
-  const opened = month.items.filter((item) => item.kind === 'bundle' && open.has(item.key)).length;
-
-  return `${month.month}|${month.items.length}|${opened}`;
+  return JSON.stringify([month.month, month.items.map((item) => itemShape(item, open))]);
 }
 
 /** The first and last instants of a `YYYY-MM`, in JST. */

@@ -170,6 +170,23 @@ describe('monthSignature', () => {
     expect(monthSignature(month([run]), new Set([run.key]))).not.toEqual(before);
   });
 
+  // A month fetched again can keep its count and still say something else.
+  test('changes when what a row says changes, though the count does not', () => {
+    const before = monthSignature(month([eventItem({ title: 'できごと' })]), new Set());
+
+    expect(monthSignature(month([eventItem({ title: '長い題名のできごと' })]), new Set())).not.toEqual(before);
+    expect(monthSignature(month([eventItem({ supplement: '補足' })]), new Set())).not.toEqual(before);
+  });
+
+  test('tells apart which run is open, not only how many', () => {
+    const other = bundle(Array.from({ length: 5 }, (_, i) => row(`w${i}`, `2026-09-1${i}`)));
+    const items = [run, other];
+
+    expect(monthSignature(month(items), new Set([run.key]))).not.toEqual(
+      monthSignature(month(items), new Set([other.key])),
+    );
+  });
+
   test('ignores a run opened in another month', () => {
     expect(monthSignature(month([run]), new Set(['b:elsewhere']))).toEqual(monthSignature(month([run]), new Set()));
   });

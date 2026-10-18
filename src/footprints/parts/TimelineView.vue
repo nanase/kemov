@@ -121,12 +121,23 @@ const estimates = computed(() => {
   return new Map([...monthGroups.value].map(([key, month]) => [key, estimateMonthHeight(month, open, profile)]));
 });
 
+/**
+ * Every month's signature, worked out once for the records and the open runs,
+ * for the same reason as the estimates.
+ */
+const signatures = computed(
+  () => new Map([...monthGroups.value].map(([key, month]) => [key, monthSignature(month, open)])),
+);
+
 /** The height an undrawn month stands at. */
 function standInHeight(month: MonthGroup): number {
   // Read so that forgetting the heights draws the frames again.
   void layout.value;
 
-  return heights.get(monthSignature(month, open)) ?? estimates.value.get(month.month) ?? 0;
+  const signature = signatures.value.get(month.month);
+  const remembered = signature === undefined ? undefined : heights.get(signature);
+
+  return remembered ?? estimates.value.get(month.month) ?? 0;
 }
 
 /** The `YYYY-MM` a frame stands for. */
@@ -165,9 +176,9 @@ function onFar(entries: IntersectionObserverEntry[]) {
 
 /** Notes the height a drawn month measured, for when it is let go. */
 function remember(element: HTMLElement, height: number) {
-  const month = monthGroups.value.get(monthOf(element));
+  const signature = signatures.value.get(monthOf(element));
 
-  if (month !== undefined) heights.set(monthSignature(month, open), height);
+  if (signature !== undefined) heights.set(signature, height);
 }
 
 /**
