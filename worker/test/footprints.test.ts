@@ -174,6 +174,45 @@ describe('createEvent', () => {
 
     expect(body.event.channelIds).toEqual(['UCaaa']);
   });
+
+  test('marks the leads among the members', async () => {
+    await insertChannel('UCaaa');
+    await insertChannel('UCbbb');
+
+    const response = await createEvent(
+      env,
+      validBody({ channelIds: ['UCaaa', 'UCbbb'], leadChannelIds: ['UCbbb', 'UCbbb'] }),
+    );
+    const body = (await response.json()) as { event: { channelIds: string[]; leadChannelIds: string[] } };
+
+    expect(response.status).toEqual(201);
+    expect(body.event.channelIds).toEqual(['UCaaa', 'UCbbb']);
+    expect(body.event.leadChannelIds).toEqual(['UCbbb']);
+  });
+
+  // The lead is a column on the member's row, so there is no row to mark.
+  test('refuses a lead who is not among the members', async () => {
+    await insertChannel('UCaaa');
+    await insertChannel('UCbbb');
+
+    const response = await createEvent(env, validBody({ channelIds: ['UCaaa'], leadChannelIds: ['UCbbb'] }));
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ error: 'every leadChannelIds entry must also be in channelIds' });
+  });
+
+  test('refuses leadChannelIds that is not an array of strings', async () => {
+    const response = await createEvent(env, validBody({ leadChannelIds: 'UCaaa' }));
+
+    expect(response.status).toEqual(400);
+  });
+
+  // Saving is not publishing: a draft debut may still be waiting for its lead.
+  test('saves a debut with no lead as a draft', async () => {
+    const response = await createEvent(env, validBody({ kind: 'debut' }));
+
+    expect(response.status).toEqual(201);
+  });
 });
 
 describe('updateEvent', () => {
@@ -203,6 +242,20 @@ describe('updateEvent', () => {
     expect(body.event.title).toEqual('updated');
     expect(body.event.channelIds).toEqual(['UCbbb']);
     expect(await revisionCount()).toEqual(0);
+  });
+
+  test('replaces the leads with the members', async () => {
+    await insertChannel('UCaaa');
+    await insertChannel('UCbbb');
+
+    const created = await createEvent(env, validBody({ channelIds: ['UCaaa', 'UCbbb'], leadChannelIds: ['UCaaa'] }));
+    const { event } = (await created.json()) as { event: { eventId: number } };
+
+    await updateEvent(env, event.eventId, validBody({ channelIds: ['UCaaa', 'UCbbb'], leadChannelIds: ['UCbbb'] }));
+
+    const [saved] = [...(await readEvents(env, [event.eventId])).values()];
+
+    expect(saved!.leadChannelIds).toEqual(['UCbbb']);
   });
 
   test('never changes status', async () => {

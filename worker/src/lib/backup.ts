@@ -272,7 +272,7 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
   },
   {
     name: 'footprints_event_member',
-    columns: ['event_id', 'channel_id'],
+    columns: ['event_id', 'channel_id', 'lead'],
     conflict: ['event_id', 'channel_id'],
   },
   {

@@ -34,7 +34,7 @@ function validBody(overrides: Record<string, unknown> = {}) {
     startDate: '2025-01-01',
     startsAt: null,
     endDate: null,
-    kind: 'debut',
+    kind: 'other',
     emphasized: false,
     title: 'デビュー',
     place: null,
@@ -53,6 +53,35 @@ async function createValidEvent(overrides: Record<string, unknown> = {}): Promis
   const body = (await response.json()) as { event: { eventId: number } };
 
   return body.event.eventId;
+}
+
+async function insertChannel(channelId: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO channel (channel_id, name, fullname, color_key, color_sub, color_light, color_back, activity_start_date)
+     VALUES (?1, ?1, ?1, '#000000', '#000000', '#000000', '#000000', '2021-01-01')`,
+  )
+    .bind(channelId)
+    .run();
+}
+
+/**
+ * Publishes `eventId`, then logs a second `publish` whose body has no
+ * `lead_channel_ids` - what every event published before migration 0011
+ * still has as its latest revision.
+ */
+async function publishAsBeforeLeads(eventId: number): Promise<void> {
+  await publishEvent(env, eventId);
+
+  const rows = await revisionRows();
+  const body = JSON.parse(rows.at(-1)!.body!) as Record<string, unknown>;
+
+  delete body.lead_channel_ids;
+
+  await env.DB.prepare(
+    `INSERT INTO revision (entity, entity_key, action, body, created_via) VALUES ('footprints_event', ?1, 'publish', ?2, 'admin')`,
+  )
+    .bind(String(eventId), JSON.stringify(body))
+    .run();
 }
 
 async function revisionRows(): Promise<{ entity_key: string; action: string; body: string | null }[]> {
@@ -214,6 +243,29 @@ describe('publishEvent', () => {
     expect(await response.json()).toEqual({ errors: ['videoId must be 11 characters'] });
   });
 
+  test('refuses a debut with no lead', async () => {
+    await insertChannel('UCa');
+
+    const eventId = await createValidEvent({ kind: 'debut', channelIds: ['UCa'] });
+    const response = await publishEvent(env, eventId);
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ errors: ['a debut needs at least one leadChannelIds entry'] });
+  });
+
+  test('publishes a debut with its lead, and the guests stay members only', async () => {
+    await insertChannel('UCa');
+    await insertChannel('UCb');
+
+    const eventId = await createValidEvent({ kind: 'debut', channelIds: ['UCb', 'UCa'], leadChannelIds: ['UCb'] });
+
+    expect((await publishEvent(env, eventId)).status).toEqual(200);
+    expect(JSON.parse((await revisionRows())[0].body!)).toMatchObject({
+      channel_ids: ['UCa', 'UCb'],
+      lead_channel_ids: ['UCb'],
+    });
+  });
+
   test('collects every failing condition in one answer', async () => {
     const eventId = await createValidEvent({ title: '', videoId: 'short', sources: [] });
 
@@ -327,6 +379,30 @@ describe('pendingFootprints', () => {
     expect(body.changed).toEqual([]);
   });
 
+  test('does not report an event published before leads as changed', async () => {
+    const eventId = await createValidEvent();
+
+    await publishAsBeforeLeads(eventId);
+
+    const body = (await pendingFootprints(env).then((r) => r.json())) as { changed: unknown[] };
+
+    expect(body.changed).toEqual([]);
+  });
+
+  // What migration 0011 leaves each debut it gave a lead to: the row has one
+  // and its last publish does not, until it is published again.
+  test('reports a debut published before leads as changed once it has one', async () => {
+    await insertChannel('UCa');
+
+    const eventId = await createValidEvent({ kind: 'debut', channelIds: ['UCa'], leadChannelIds: ['UCa'] });
+
+    await publishAsBeforeLeads(eventId);
+
+    const body = (await pendingFootprints(env).then((r) => r.json())) as { changed: { eventId: number }[] };
+
+    expect(body.changed).toEqual([{ eventId, title: 'デビュー' }]);
+  });
+
   test('reports a title edit as changed', async () => {
     const eventId = await createValidEvent();
 
@@ -410,6 +486,18 @@ describe('publishFootprintsNow', () => {
     expect(published!.events.map((event) => event.event_id)).toEqual(
       [earlierA, earlierB].sort((a, b) => a - b).concat(later),
     );
+  });
+
+  test('writes lead_channel_ids for an event published before leads, as none', async () => {
+    const eventId = await createValidEvent();
+
+    await publishAsBeforeLeads(eventId);
+    await publishFootprintsNow(env, NOW);
+
+    const published = await readPublished();
+
+    expect(Object.keys(published!.events[0]!)).toContain('lead_channel_ids');
+    expect(published!.events[0]).toMatchObject({ channel_ids: [], lead_channel_ids: [] });
   });
 
   test('emphasized and sourcePending are booleans in the published JSON', async () => {

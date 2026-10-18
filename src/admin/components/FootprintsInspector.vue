@@ -90,8 +90,22 @@ function toggleMember(channelId: string): void {
   const at = fields.value.channelIds.indexOf(channelId);
 
   if (at === -1) fields.value.channelIds.push(channelId);
-  else fields.value.channelIds.splice(at, 1);
+  else {
+    fields.value.channelIds.splice(at, 1);
+    // A lead is one of the members, so leaving the members leaves the leads too.
+    fields.value.leadChannelIds = fields.value.leadChannelIds.filter((id) => id !== channelId);
+  }
 }
+
+function toggleLead(channelId: string): void {
+  const at = fields.value.leadChannelIds.indexOf(channelId);
+
+  if (at === -1) fields.value.leadChannelIds.push(channelId);
+  else fields.value.leadChannelIds.splice(at, 1);
+}
+
+/** A debut with no lead cannot be published (footprints-publish.ts), so the panel says so before 公開待ちにする does. */
+const needsLead = computed(() => fields.value.kind === 'debut' && fields.value.leadChannelIds.length === 0);
 
 function addSource(): void {
   fields.value.sources.push({ url: '', title: null });
@@ -292,6 +306,32 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
               <span class="sub">{{ entry.member?.name ?? entry.channelId }}</span>
             </span>
             <button class="btn quiet" type="button" @click="memberPickerOpen = true">＋ 選ぶ</button>
+          </div>
+        </div>
+
+        <div
+          v-if="selectedMembers.length > 0 || fields.kind === 'debut'"
+          class="panel span2"
+          :class="{ flag: needsLead || errorField === 'leadChannelIds' }"
+        >
+          <h4>主役</h4>
+          <div v-if="selectedMembers.length > 0" class="stack">
+            <div class="seg" role="group" aria-label="主役">
+              <button
+                v-for="entry in selectedMembers"
+                :key="entry.channelId"
+                type="button"
+                :aria-pressed="fields.leadChannelIds.includes(entry.channelId)"
+                @click="toggleLead(entry.channelId)"
+              >
+                {{ entry.member?.name ?? entry.channelId }}
+              </button>
+            </div>
+          </div>
+          <div class="hint">
+            <template v-if="selectedMembers.length === 0">先に関わったメンバーを選んでください。</template>
+            <template v-else-if="needsLead">デビューは、主役を 1 人以上選ばないと公開待ちにできません。</template>
+            <template v-else>この出来事が誰のものかを選びます。デビューでは本人を選び、ゲストは選びません。</template>
           </div>
         </div>
 

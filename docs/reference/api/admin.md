@@ -62,10 +62,15 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 - `title` が空でない
 - `sourcePending: false` なら、数に入る出典がある（[出典のホワイトリスト](#出典のホワイトリスト)）
 - `videoId` が 11 文字
+- `kind` が `debut` なら、`leadChannelIds` が 1 つ以上ある
+
+`leadChannelIds` は、`channelIds` のうち出来事の主役のメンバーです。`channelIds` に無い ID を含めると、保存の時点で 400 を返します。主役が無いデビューも、下書きとしては保存できます。
 
 公開済みのできごとをもう一度公開しても構いません。`GET .../pending` が「変わった」と報告したできごとは、こうして今の行に合った `publish` の版を得ます。
 
 `POST /admin/api/footprints/publish` は、最新の操作が `withdraw` でないできごとそれぞれの最新の `revision` から `footprints/events.json` を作り、`PUBLIC_DATA` に書きます。そのうえで、読んだ中で最も新しい `revision_id` を記録した `publication` の行を 1 つ足します。前回より新しいものが無ければ、何も書きません。
+
+主役（`lead_channel_ids`）は、migration 0011 で足しました。それより前の `publish` の版は、このキーを持ちません。JSON を作るときと `GET .../pending` が比べるときは、この版を主役なし（`[]`）として読みます。
 
 ## 出典のホワイトリスト
 

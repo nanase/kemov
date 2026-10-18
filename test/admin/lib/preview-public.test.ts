@@ -28,6 +28,7 @@ function eventFields(overrides: Partial<EventFormFields> = {}): EventFormFields 
     sourcePending: false,
     memo: '公開されないメモ',
     channelIds: ['UCxm7yNjJsSvyvcG96-Cvmpw', 'UCnyE-wD1pE2GZOxA6OHjW9g'],
+    leadChannelIds: [],
     sources: [{ url: 'https://www.youtube.com/watch?v=kRcm24dPi44', title: null }],
     ...overrides,
   };

@@ -187,7 +187,7 @@ describe('handleAdminRequest routing to footprints', () => {
     startDate: '2025-01-01',
     startsAt: null,
     endDate: null,
-    kind: 'debut',
+    kind: 'other',
     emphasized: false,
     title: 'x',
     place: null,

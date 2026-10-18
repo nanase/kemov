@@ -598,6 +598,8 @@ export interface FootprintEvent {
   sourcePending: boolean;
   /** Who it involved. An empty list means けもV as a whole, not nobody. */
   channelIds: string[];
+  /** Who among `channelIds` it is about, rather than took part in: a debut's own member, not its guests. */
+  leadChannelIds: string[];
   sources: { url: string; title: string | null }[];
 }
 
@@ -637,6 +639,12 @@ function readFootprintEvent(value: unknown, path: string): FootprintEvent {
     videoId: readOrNull(field(value, 'video_id', path), `${path}.video_id`, readString),
     sourcePending: readBoolean(field(value, 'source_pending', path), `${path}.source_pending`),
     channelIds: readEach(field(value, 'channel_ids', path), `${path}.channel_ids`, readString),
+    // Missing from a file published before leads were recorded, which said
+    // nothing about any lead.
+    leadChannelIds:
+      field(value, 'lead_channel_ids', path) === undefined
+        ? []
+        : readEach(field(value, 'lead_channel_ids', path), `${path}.lead_channel_ids`, readString),
     sources: readEach(field(value, 'sources', path), `${path}.sources`, (source, at) => ({
       url: readString(field(source, 'url', at), `${at}.url`),
       title: readOrNull(field(source, 'title', at), `${at}.title`, readString),

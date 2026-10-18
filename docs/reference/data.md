@@ -63,6 +63,7 @@ erDiagram
   footprints_event_member {
     INTEGER event_id PK, FK
     TEXT channel_id PK, FK
+    INTEGER lead "主役なら 1"
   }
   footprints_event_source {
     INTEGER event_id PK, FK
@@ -75,6 +76,12 @@ erDiagram
     TEXT prefix PK
   }
 ```
+
+`footprints_event_member` は、出来事に関わったメンバーを持ちます。`lead` は、そのメンバーが出来事の主役かどうかです。
+
+- デビュー配信に出たゲストは、関わったメンバーに入るが、主役ではない
+- 公開サイトの「これからのあしあと」は、デビューからの日数と周年を、主役についてだけ数える
+- デビューは、主役が 1 人以上いないと公開できない（[管理サイトの API](api/admin.md#あしあと)）
 
 ### 登録者数の節目
 

@@ -414,6 +414,7 @@ textarea {
   border-right: 1px solid var(--k-line);
   background: none;
   color: var(--k-text-2);
+  white-space: nowrap;
   cursor: pointer;
 }
 
