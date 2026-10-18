@@ -5,20 +5,16 @@
  */
 import { unescapeHtml } from '@nanase/alnilam/string';
 
+import { escapeHtml, highlightRanges, type SearchTerm } from '@/lib/search';
+
 import { videoTimeText } from './musicFormat';
 import { expandLink, lexMarkdown, parseYoutubeHref } from './musicMarkdown';
-import { highlightRanges, type SearchTerm } from './musicSearch';
 import type { GenetAttributePerson, GenetPerformance, GenetPerson, GenetStream } from './musicTypes';
 
 /** Where the embedded player is: one video, from one second. */
 export interface SongPlay {
   videoId: string;
   seconds: number;
-}
-
-/** `text` with `&<>"'` escaped, for HTML built as a string. */
-export function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
 /**

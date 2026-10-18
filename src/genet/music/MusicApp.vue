@@ -18,11 +18,10 @@ import {
 } from '@/lib/genet/musicFormat';
 import { readGenetMusicData } from '@/lib/genet/musicRead';
 import { useStoredChoice } from '@/lib/useStoredChoice';
+import { escapeHtml, highlightRanges, parseQuery } from '@/lib/search';
 import {
   computeResults,
-  highlightRanges,
   isFiltering,
-  parseQuery,
   prepareStreams,
   snippet,
   yearOf,
@@ -30,7 +29,7 @@ import {
   type PreparedPerformance,
   type PreparedStream,
 } from '@/lib/genet/musicSearch';
-import { escapeHtml, tuneOccurrences, type SongPlay } from '@/lib/genet/musicSong';
+import { tuneOccurrences, type SongPlay } from '@/lib/genet/musicSong';
 import type { GenetMusicData, GenetScene } from '@/lib/genet/musicTypes';
 import SongDetail from './SongDetail.vue';
 import { useSheetDialog } from './useSheetDialog';

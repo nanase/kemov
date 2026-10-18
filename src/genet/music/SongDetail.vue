@@ -5,7 +5,7 @@ import { unescapeHtml } from '@nanase/alnilam/string';
 
 import ThumbnailFallback from '@/parts/ThumbnailFallback.vue';
 import { publishedDateText } from '@/lib/genet/musicFormat';
-import type { SearchTerm } from '@/lib/genet/musicSearch';
+import type { SearchTerm } from '@/lib/search';
 import { creditText, markdownHtml, type SongPlay, type TuneOccurrence } from '@/lib/genet/musicSong';
 import type { GenetPerson, GenetTune } from '@/lib/genet/musicTypes';
 import { getEmbedURL } from '@/lib/youtube';

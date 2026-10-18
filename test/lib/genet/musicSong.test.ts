@@ -1,5 +1,5 @@
-import { parseQuery } from '@/lib/genet/musicSearch';
-import { creditText, escapeHtml, markdownHtml, tuneOccurrences } from '@/lib/genet/musicSong';
+import { creditText, markdownHtml, tuneOccurrences } from '@/lib/genet/musicSong';
+import { escapeHtml, parseQuery } from '@/lib/search';
 
 describe('escapeHtml', () => {
   test('the five characters HTML reads are escaped', () => {
