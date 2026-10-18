@@ -1,7 +1,7 @@
 import {
   dayStart,
-  isKeyStream,
   jstDay,
+  occasionsOf,
   rowAt,
   NAMED_OCCASIONS,
   OPEN_RUN_MAX,
@@ -68,7 +68,7 @@ const COSTS = {
 } as const;
 
 /** The height one row of the timeline is expected to take. */
-export function estimateItemHeight(item: TimelineItem, open: boolean, profile: Profile): number {
+export function estimateItemHeight(item: TimelineItem, open: boolean, profile: Profile, searching = false): number {
   const costs = COSTS[profile];
 
   if (item.kind === 'now') return costs.now;
@@ -96,7 +96,7 @@ export function estimateItemHeight(item: TimelineItem, open: boolean, profile: P
     return shown.base + shown.perRow * item.rows.length + (days > 1 ? shown.perDayHeading * days : 0);
   }
 
-  const occasions = item.rows.filter((row) => isKeyStream(row.title)).length;
+  const occasions = occasionsOf(item.rows, searching).length;
   const { folded } = costs;
 
   return (
@@ -107,10 +107,15 @@ export function estimateItemHeight(item: TimelineItem, open: boolean, profile: P
 }
 
 /** The height a month's frame is expected to take before it is drawn. */
-export function estimateMonthHeight(month: MonthGroup, open: ReadonlySet<string>, profile: Profile): number {
+export function estimateMonthHeight(
+  month: MonthGroup,
+  open: ReadonlySet<string>,
+  profile: Profile,
+  searching = false,
+): number {
   return Math.round(
     month.items.reduce<number>(
-      (sum, item) => sum + estimateItemHeight(item, open.has(item.key), profile),
+      (sum, item) => sum + estimateItemHeight(item, open.has(item.key), profile, searching),
       COSTS[profile].month,
     ),
   );
@@ -150,8 +155,8 @@ function itemShape(item: TimelineItem, open: ReadonlySet<string>): unknown {
  * measured. The layout is left out on purpose - the caller forgets every
  * height when the width or the text size moves.
  */
-export function monthSignature(month: MonthGroup, open: ReadonlySet<string>): string {
-  return JSON.stringify([month.month, month.items.map((item) => itemShape(item, open))]);
+export function monthSignature(month: MonthGroup, open: ReadonlySet<string>, searching = false): string {
+  return JSON.stringify([month.month, searching, month.items.map((item) => itemShape(item, open))]);
 }
 
 /** The first and last instants of a `YYYY-MM`, in JST. */

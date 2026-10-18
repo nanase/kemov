@@ -21,6 +21,9 @@
 
   /* The trail, in the two states the axis can be in. */
   --fp-trail-ink: #9fb3ae;
+
+  /* What a search matched, wherever it is written on the page. */
+  --fp-mark: #fde9a8;
   --fp-trail-past: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='50' viewBox='0 0 28 50'%3E%3Cg fill='%239fb3ae'%3E%3Cellipse cx='8.5' cy='9.5' rx='4.4' ry='3.6'/%3E%3Ccircle cx='3.1' cy='14.1' r='1.7'/%3E%3Ccircle cx='6.8' cy='16.9' r='1.7'/%3E%3Ccircle cx='10.3' cy='16.9' r='1.7'/%3E%3Ccircle cx='13.9' cy='14.1' r='1.7'/%3E%3C/g%3E%3Cg fill='%239fb3ae'%3E%3Cellipse cx='19.5' cy='34.5' rx='4.4' ry='3.6'/%3E%3Ccircle cx='14.1' cy='39.1' r='1.7'/%3E%3Ccircle cx='17.8' cy='41.9' r='1.7'/%3E%3Ccircle cx='21.3' cy='41.9' r='1.7'/%3E%3Ccircle cx='24.9' cy='39.1' r='1.7'/%3E%3C/g%3E%3C/svg%3E");
   --fp-trail-future: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='50' viewBox='0 0 28 50'%3E%3Ccircle cx='8.5' cy='11.5' r='2.2' fill='%239fb3ae'/%3E%3Ccircle cx='19.5' cy='36.5' r='2.2' fill='%239fb3ae'/%3E%3C/svg%3E");
 
@@ -32,6 +35,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) .fp-page {
     --fp-trail-ink: #5c6467;
+    --fp-mark: #5b4a12;
     --fp-trail-past: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='50' viewBox='0 0 28 50'%3E%3Cg fill='%235c6467'%3E%3Cellipse cx='8.5' cy='9.5' rx='4.4' ry='3.6'/%3E%3Ccircle cx='3.1' cy='14.1' r='1.7'/%3E%3Ccircle cx='6.8' cy='16.9' r='1.7'/%3E%3Ccircle cx='10.3' cy='16.9' r='1.7'/%3E%3Ccircle cx='13.9' cy='14.1' r='1.7'/%3E%3C/g%3E%3Cg fill='%235c6467'%3E%3Cellipse cx='19.5' cy='34.5' rx='4.4' ry='3.6'/%3E%3Ccircle cx='14.1' cy='39.1' r='1.7'/%3E%3Ccircle cx='17.8' cy='41.9' r='1.7'/%3E%3Ccircle cx='21.3' cy='41.9' r='1.7'/%3E%3Ccircle cx='24.9' cy='39.1' r='1.7'/%3E%3C/g%3E%3C/svg%3E");
     --fp-trail-future: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='50' viewBox='0 0 28 50'%3E%3Ccircle cx='8.5' cy='11.5' r='2.2' fill='%235c6467'/%3E%3Ccircle cx='19.5' cy='36.5' r='2.2' fill='%235c6467'/%3E%3C/svg%3E");
   }
@@ -39,6 +43,7 @@
 
 :root[data-theme='dark'] .fp-page {
   --fp-trail-ink: #5c6467;
+  --fp-mark: #5b4a12;
   --fp-trail-past: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='50' viewBox='0 0 28 50'%3E%3Cg fill='%235c6467'%3E%3Cellipse cx='8.5' cy='9.5' rx='4.4' ry='3.6'/%3E%3Ccircle cx='3.1' cy='14.1' r='1.7'/%3E%3Ccircle cx='6.8' cy='16.9' r='1.7'/%3E%3Ccircle cx='10.3' cy='16.9' r='1.7'/%3E%3Ccircle cx='13.9' cy='14.1' r='1.7'/%3E%3C/g%3E%3Cg fill='%235c6467'%3E%3Cellipse cx='19.5' cy='34.5' rx='4.4' ry='3.6'/%3E%3Ccircle cx='14.1' cy='39.1' r='1.7'/%3E%3Ccircle cx='17.8' cy='41.9' r='1.7'/%3E%3Ccircle cx='21.3' cy='41.9' r='1.7'/%3E%3Ccircle cx='24.9' cy='39.1' r='1.7'/%3E%3C/g%3E%3C/svg%3E");
   --fp-trail-future: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='50' viewBox='0 0 28 50'%3E%3Ccircle cx='8.5' cy='11.5' r='2.2' fill='%235c6467'/%3E%3Ccircle cx='19.5' cy='36.5' r='2.2' fill='%235c6467'/%3E%3C/svg%3E");
 }
@@ -54,11 +59,28 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Here rather than in the cards: the marks are written into their text as
+   HTML, which a component's scoped styles do not reach. */
+.fp-page mark {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: var(--fp-mark);
+  color: inherit;
+}
+
 .fp-empty {
   padding: 26px 16px;
   color: var(--k-text-2);
   font-size: 13px;
   text-align: center;
+}
+
+.fp-empty p {
+  margin: 0;
+}
+
+.fp-empty p + p {
+  margin-top: 8px;
 }
 
 /* A word about what something is: its kind, where it was, whether it is still

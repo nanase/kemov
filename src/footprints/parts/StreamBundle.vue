@@ -5,9 +5,10 @@ import MemberAvatar from '@/parts/MemberAvatar.vue';
 import ThumbnailImage from '@/parts/ThumbnailImage.vue';
 import { formatCount } from '@/lib/numberFormat';
 import { relayVideoThumbnailURL } from '@/lib/relay';
+import { escapeHtml, highlightRanges, type SearchTerm } from '@/lib/search';
 
 import { formatDate, formatTime, openMs } from '../draw';
-import { isKeyStream, jstDay, rowAt, NAMED_OCCASIONS, OPEN_RUN_MAX, VIDEO_LABELS, type BundleItem } from '../model';
+import { jstDay, occasionsOf, rowAt, NAMED_OCCASIONS, OPEN_RUN_MAX, VIDEO_LABELS, type BundleItem } from '../model';
 import type { Channel } from '@/type/api';
 
 /**
@@ -17,15 +18,28 @@ import type { Channel } from '@/type/api';
  * the occasions in it - a debut, an anniversary - with the rest counted
  * rather than listed (#140). Opening it lists every one, grouped by day.
  */
-const { item, channels, open, dark } = defineProps<{
+const {
+  item,
+  channels,
+  open,
+  dark,
+  terms = [],
+} = defineProps<{
   item: BundleItem;
   /** Every member, for the names and pictures the rows carry. */
   channels: ReadonlyMap<string, Channel>;
   open: boolean;
   dark: boolean;
+  /** The words being searched for, marked where they appear. None marks nothing. */
+  terms?: readonly SearchTerm[];
 }>();
 
 const emit = defineEmits<{ toggle: [key: string]; open: [key: string] }>();
+
+/** Text as HTML, escaped, with what the search matched marked. */
+function marked(text: string): string {
+  return highlightRanges(text, terms, escapeHtml);
+}
 
 const count = computed(() => item.rows.length);
 const foldable = computed(() => count.value > OPEN_RUN_MAX);
@@ -45,7 +59,7 @@ const faces = computed(() =>
 );
 
 /** The occasions inside a folded run, which is what it names instead of all. */
-const occasions = computed(() => item.rows.filter((row) => isKeyStream(row.title)));
+const occasions = computed(() => occasionsOf(item.rows, terms.length > 0));
 const named = computed(() => occasions.value.slice(0, NAMED_OCCASIONS));
 
 /** Every stream in the run, grouped by the day it began on. */
@@ -176,7 +190,7 @@ onBeforeUnmount(() => clearTimeout(timer));
         <ThumbnailImage class="pic" :src="thumbnail(row.videoId)" loading="lazy" decoding="async" />
         <span class="about">
           <small class="fp-n">{{ formatDate(rowAt(row)).slice(5, 10) }} {{ formatTime(rowAt(row)) }}</small>
-          <span class="occasion-title">{{ row.title }}</span>
+          <span class="occasion-title" v-html="marked(row.title)"></span>
         </span>
       </button>
       <span v-if="occasions.length > named.length" class="more fp-n">
@@ -198,7 +212,7 @@ onBeforeUnmount(() => clearTimeout(timer));
                     <span class="fp-tag">{{ row.type === null ? '配信' : VIDEO_LABELS[row.type] }}</span>
                     <span class="who">{{ nameOf(row.channelId) }}</span>
                   </span>
-                  <span class="row-title">{{ row.title }}</span>
+                  <span class="row-title" v-html="marked(row.title)"></span>
                 </span>
               </button>
             </li>
