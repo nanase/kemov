@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue';
 
 import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt from '@/shell/UpdatedAt.vue';
@@ -152,24 +152,32 @@ const soonShown = computed(() => {
 const agoList = computed(() => thisWeekInPast(items.value, data.rows.value, filters.value, now.value));
 
 /**
- * The road's own rows.
+ * The road, which draws only the months near the screen.
  *
- * Qualified by the key, because a run of streams that has been opened holds
- * buttons of the same class: without this, "the last row" can be one stream
- * inside a run rather than the end of the road.
+ * A row in a month that is not drawn is not in the page to be found, so going
+ * to a row is asked of the road rather than looked up here.
  */
-const TIMELINE_ROWS = '.timeline .row[data-key]';
+const road = useTemplateRef<InstanceType<typeof TimelineView>>('road');
 
-/** The first row of the road, which is whichever end the order puts it at. */
+/**
+ * The first row of the road, which is whichever end the order puts it at.
+ *
+ * Newest first, that is the oldest record, at the far end of the page.
+ */
 function jumpToStart() {
-  const rows = document.querySelectorAll(TIMELINE_ROWS);
-  const first = filters.value.order === 'asc' ? document.querySelector('.timeline .year') : rows[rows.length - 1];
+  if (filters.value.order === 'asc') {
+    document.querySelector('.timeline .year')?.scrollIntoView({ block: 'start' });
 
-  first?.scrollIntoView({ block: 'start' });
+    return;
+  }
+
+  const oldest = timeline.value.order[0];
+
+  if (oldest !== undefined) void road.value?.reveal(oldest.key, 'start');
 }
 
 function jumpToNow() {
-  document.querySelector('.timeline .row.now')?.scrollIntoView({ block: 'center' });
+  void road.value?.reveal('now', 'center');
 }
 
 /** How long the month a reader is sent to stays lit. */
@@ -220,13 +228,16 @@ const nearEnd = ref(false);
 /** How close to the end of the road the band gets out of the way, in px. */
 const END_MARGIN = 140;
 
+/**
+ * The end of the road is the timeline's own bottom edge rather than its last
+ * row, which is not in the page while its month is not drawn.
+ */
 function readBand() {
   const panel = document.querySelector('.fp-page .filters')?.getBoundingClientRect();
-  const rows = document.querySelectorAll(TIMELINE_ROWS);
-  const last = rows[rows.length - 1]?.getBoundingClientRect();
+  const end = document.querySelector('.fp-page .timeline')?.getBoundingClientRect();
 
   filtersOffScreen.value = panel !== undefined && panel.bottom < 0;
-  nearEnd.value = last !== undefined && last.bottom < globalThis.innerHeight + END_MARGIN;
+  nearEnd.value = end !== undefined && end.bottom < globalThis.innerHeight + END_MARGIN;
 }
 
 /** What the band says, which is only what is not left at its default. */
@@ -327,7 +338,7 @@ function showItem(key: string) {
   mapOpen.value = false;
 
   requestAnimationFrame(() => {
-    document.querySelector(`.timeline [data-key="${target}"]`)?.scrollIntoView({ block: 'center' });
+    void road.value?.reveal(target, 'center');
   });
 }
 
@@ -336,10 +347,28 @@ function readTheme() {
 }
 
 /**
+ * Where the reader is, read at the next frame.
+ *
+ * Reading where the months sit lays the page out there and then. Straight
+ * after the records change, that layout is added to the pause the change
+ * already causes; at the frame it is the layout about to happen anyway.
+ */
+let positioning = 0;
+
+function readPositionSoon() {
+  if (positioning !== 0) return;
+
+  positioning = requestAnimationFrame(() => {
+    positioning = 0;
+    readPosition();
+  });
+}
+
+/**
  * Where the reader is depends on where the months sit on screen, which a
  * filter, the order or a run opening moves without any scroll or resize.
  */
-watch([timeline, openBundles], readPosition, { flush: 'post' });
+watch([timeline, openBundles], readPositionSoon, { flush: 'post' });
 
 onMounted(async () => {
   readTheme();
@@ -353,11 +382,11 @@ onMounted(async () => {
   }, TICK_MS);
 
   await data.start();
-  await nextTick();
-  readPosition();
+  readPositionSoon();
 });
 
 onBeforeUnmount(() => {
+  cancelAnimationFrame(positioning);
   globalThis.removeEventListener('scroll', readPosition);
   globalThis.removeEventListener('resize', readPosition);
   data.stop();
@@ -458,6 +487,7 @@ onBeforeUnmount(() => {
         </p>
         <TimelineView
           v-else
+          ref="road"
           :timeline
           :channels="data.channels.value"
           :filters

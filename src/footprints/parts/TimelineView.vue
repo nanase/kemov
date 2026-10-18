@@ -6,8 +6,9 @@ import { zoomOf } from '@/shell/textSize';
 import { formatCount } from '@/lib/numberFormat';
 
 import { formatDate, formatDayOfMonth, formatMonthDay, formatTime, formatWeekday } from '../draw';
-import { jstDay, jstParts, yearFaces, type Filters, type Timeline, type TimelineItem } from '../model';
-import { placeSpans, LANE_STEP, type Anchor, type PlacedSpan, type Span } from '../spans';
+import { jstDay, jstParts, yearFaces, type Filters, type MonthGroup, type Timeline, type TimelineItem } from '../model';
+import { placeSpans, yAt, LANE_STEP, type Anchor, type PlacedSpan, type Span } from '../spans';
+import { compensation, estimateMonthHeight, monthEdges, monthSignature, profileOf, type Resize } from '../virtual';
 import EventCard from './EventCard.vue';
 import StreamBundle from './StreamBundle.vue';
 import type { Channel } from '@/type/api';
@@ -40,12 +41,280 @@ const spans = ref<PlacedSpan[]>([]);
 let observer: ResizeObserver | undefined;
 
 /**
+ * The months whose rows are in the page.
+ *
+ * Every month keeps its frame, so the road is as long as it always was; only
+ * the frames near the screen hold their rows (see `../virtual.ts`). A month
+ * is drawn once it comes within a screen of the viewport and let go once it is
+ * two screens away, so that a reader scrolling back and forth over the edge
+ * does not have it drawn and dropped on every step.
+ */
+const drawn = ref(new Set<string>());
+
+/** The timeline's width in its own pixels, which picks the estimates. */
+const width = ref(0);
+
+/**
+ * The layout the remembered heights were measured in.
+ *
+ * Read by the stand-ins, so that forgetting the heights redraws them at the
+ * estimate rather than leaving them at a height from another width.
+ */
+const layout = ref('');
+
+/** Heights months were measured at, by `monthSignature`, in CSS pixels. */
+const heights = new Map<string, number>();
+
+/** Each month's frame, by `YYYY-MM`. */
+const frames = new Map<string, HTMLElement>();
+
+/** What each frame measured last, which a resize is compared against. */
+const seen = new WeakMap<Element, { height: number; standIn: boolean }>();
+
+/** How near the screen a month has to come to be drawn: a screen either side. */
+const DRAW_MARGIN = '100% 0px';
+
+/** How far from the screen a drawn month has to go to be let go: two screens. */
+const DROP_MARGIN = '200% 0px';
+
+let near: IntersectionObserver | undefined;
+let far: IntersectionObserver | undefined;
+let sizes: ResizeObserver | undefined;
+
+/** Each month's records, by `YYYY-MM`. */
+const monthGroups = computed(
+  () => new Map(timeline.years.flatMap((year) => year.months.map((month) => [month.month, month] as const))),
+);
+
+/** Which month each row is in, for sending the reader to a row not drawn. */
+const monthOfKey = computed(
+  () =>
+    new Map(
+      timeline.years.flatMap((year) =>
+        year.months.flatMap((month) => month.items.map((item) => [item.key, month.month] as const)),
+      ),
+    ),
+);
+
+/** The things that ran over several days, which the bands are drawn for. */
+const lasting = computed(() =>
+  timeline.years.flatMap((year) =>
+    year.months.flatMap((month) =>
+      month.items.flatMap((item) =>
+        item.kind === 'event' && item.endAt !== null
+          ? [{ key: item.key, title: item.event.title, from: item.at, to: item.endAt }]
+          : [],
+      ),
+    ),
+  ),
+);
+
+/**
+ * Every month's estimate, worked out once for the records and the layout.
+ *
+ * Not in the template's own pass: that runs again each time a month is drawn,
+ * which is every few screens of scrolling.
+ */
+const estimates = computed(() => {
+  const profile = profileOf(width.value);
+
+  return new Map([...monthGroups.value].map(([key, month]) => [key, estimateMonthHeight(month, open, profile)]));
+});
+
+/** The height an undrawn month stands at. */
+function standInHeight(month: MonthGroup): number {
+  // Read so that forgetting the heights draws the frames again.
+  void layout.value;
+
+  return heights.get(monthSignature(month, open)) ?? estimates.value.get(month.month) ?? 0;
+}
+
+/** The `YYYY-MM` a frame stands for. */
+function monthOf(element: Element): string {
+  return (element as HTMLElement).dataset.month ?? '';
+}
+
+function onNear(entries: IntersectionObserverEntry[]) {
+  const coming = entries.filter((entry) => entry.isIntersecting).map((entry) => monthOf(entry.target));
+
+  if (coming.every((month) => drawn.value.has(month))) return;
+
+  drawn.value = new Set([...drawn.value, ...coming]);
+}
+
+/**
+ * Lets go of the months that have gone far off screen.
+ *
+ * Not one with the focus inside it: taking a reader's focus out of the page
+ * under them sends it back to the top, which for a keyboard is losing their
+ * place entirely.
+ */
+function onFar(entries: IntersectionObserverEntry[]) {
+  const going = entries
+    .filter((entry) => !entry.isIntersecting && !entry.target.contains(document.activeElement))
+    .map((entry) => monthOf(entry.target))
+    .filter((month) => drawn.value.has(month));
+
+  if (going.length === 0) return;
+
+  const next = new Set(drawn.value);
+
+  going.forEach((month) => next.delete(month));
+  drawn.value = next;
+}
+
+/** Notes the height a drawn month measured, for when it is let go. */
+function remember(element: HTMLElement, height: number) {
+  const month = monthGroups.value.get(monthOf(element));
+
+  if (month !== undefined) heights.set(monthSignature(month, open), height);
+}
+
+/**
+ * Keeps what the reader is looking at where it is when a frame above it
+ * changes height - a month being drawn for the first time, most often.
+ *
+ * Done here rather than left to the browser's scroll anchoring, which Safari
+ * went years without and which phones keep running long after an update - and
+ * which would correct the same move a second time where it does exist, so the
+ * styles turn it off.
+ */
+function onSizes(entries: ResizeObserverEntry[]) {
+  if (root.value === null) return;
+
+  const zoom = zoomOf(root.value);
+  const changes: Resize[] = [];
+
+  entries.forEach((entry) => {
+    const element = entry.target as HTMLElement;
+    const box = element.getBoundingClientRect();
+    const standIn = element.classList.contains('stand-in');
+    const last = seen.get(element);
+
+    seen.set(element, { height: box.height, standIn });
+    if (!standIn) remember(element, box.height / zoom);
+    if (last !== undefined)
+      changes.push({ top: box.top, before: last.height, after: box.height, standIn: last.standIn });
+  });
+
+  const delta = compensation(changes, 0);
+
+  if (delta !== 0) globalThis.scrollBy(0, delta);
+}
+
+/**
+ * Takes every frame's height as it is now, so that a change made on purpose
+ * is not then corrected as if it had happened under the reader.
+ */
+function resync() {
+  if (root.value === null) return;
+
+  const zoom = zoomOf(root.value);
+
+  frames.forEach((element) => {
+    const height = element.getBoundingClientRect().height;
+    const standIn = element.classList.contains('stand-in');
+
+    seen.set(element, { height, standIn });
+    if (!standIn) remember(element, height / zoom);
+  });
+}
+
+/** Starts watching a frame for coming near, going far and changing height. */
+function observe(element: HTMLElement) {
+  near?.observe(element);
+  far?.observe(element);
+  sizes?.observe(element);
+}
+
+/** Stops watching a frame that has left the page. */
+function unobserve(element: HTMLElement) {
+  near?.unobserve(element);
+  far?.unobserve(element);
+  sizes?.unobserve(element);
+}
+
+/**
+ * One function per month, kept, because Vue calls a function ref that has
+ * changed with null and then again with the element: a new one every render
+ * would stop and start watching every frame each time a month is drawn.
+ */
+const frameRefs = new Map<string, (element: unknown) => void>();
+
+function frameRef(month: string): (element: unknown) => void {
+  const found = frameRefs.get(month);
+
+  if (found !== undefined) return found;
+
+  const assign = (element: unknown) => {
+    const previous = frames.get(month);
+
+    if (previous === element) return;
+    if (previous !== undefined) {
+      unobserve(previous);
+      frames.delete(month);
+    }
+    if (element instanceof HTMLElement) {
+      frames.set(month, element);
+      observe(element);
+    }
+  };
+
+  frameRefs.set(month, assign);
+
+  return assign;
+}
+
+/**
+ * Sends the reader to a row, drawing its month first if it is not drawn.
+ *
+ * The rows around it are drawn on the next frame, as for any scroll, and any
+ * of those above it that turn out another height than estimated move the
+ * page by the difference - so the row stays where it was put.
+ */
+async function reveal(key: string, block: ScrollLogicalPosition) {
+  const month = monthOfKey.value.get(key);
+
+  if (month === undefined) return;
+
+  if (!drawn.value.has(month)) {
+    drawn.value = new Set([...drawn.value, month]);
+    await nextTick();
+    resync();
+  }
+
+  root.value?.querySelector(`.row[data-key="${key}"]`)?.scrollIntoView({ block });
+}
+
+defineExpose({ reveal });
+
+/** Notes the width, and forgets every height measured at another one. */
+function readLayout() {
+  if (root.value === null) return;
+
+  const zoom = zoomOf(root.value);
+  const cssWidth = root.value.getBoundingClientRect().width / zoom;
+  const key = `${Math.round(cssWidth)}@${zoom}`;
+
+  width.value = cssWidth;
+
+  if (key === layout.value) return;
+
+  heights.clear();
+  layout.value = key;
+}
+
+/**
  * The bands for anything that ran over several days.
  *
  * Measured from the rows rather than worked out: where a day lands depends on
  * how many rows the months around it happen to hold, so the only way to know
  * is to look. Redone whenever the road changes shape - a run of streams being
- * opened moves everything below it.
+ * opened moves everything below it, and so does a month being drawn.
+ *
+ * The rows that are drawn are read, and every month's frame gives its two
+ * edges besides, so that a band reaching into a month not drawn still runs
+ * to about where it ended. It lands exactly once that month is drawn.
  */
 function measureSpans() {
   const element = root.value;
@@ -56,33 +325,55 @@ function measureSpans() {
   // differ by the reader's text size (@/shell/textSize.ts).
   const top = element.getBoundingClientRect().top;
   const zoom = zoomOf(element);
+  const placed = new Map<string, number>();
   const anchors: Anchor[] = [...element.querySelectorAll<HTMLElement>('.row[data-at]')]
-    .map((row) => ({ at: Number(row.dataset.at), y: (row.getBoundingClientRect().top - top) / zoom }))
-    .filter((anchor) => Number.isFinite(anchor.at))
-    .sort((a, b) => a.y - b.y);
+    .map((row) => {
+      const y = (row.getBoundingClientRect().top - top) / zoom;
 
-  const found: Span[] = [...element.querySelectorAll<HTMLElement>('.row[data-end]')].flatMap((row) => {
-    const to = Number(row.dataset.end);
-    const from = Number(row.dataset.at);
+      placed.set(row.dataset.key ?? '', y);
 
-    if (!Number.isFinite(to) || !Number.isFinite(from)) return [];
+      return { at: Number(row.dataset.at), y };
+    })
+    .filter((anchor) => Number.isFinite(anchor.at));
 
-    return [
-      {
-        key: row.dataset.key ?? '',
-        title: row.dataset.title ?? '',
-        from,
-        to,
-        y: (row.getBoundingClientRect().top - top) / zoom + 22,
-      },
-    ];
+  frames.forEach((frame, month) => {
+    const box = frame.getBoundingClientRect();
+
+    anchors.push(...monthEdges(month, (box.top - top) / zoom, (box.bottom - top) / zoom, filters.order));
+  });
+  anchors.sort((a, b) => a.y - b.y);
+
+  const found: Span[] = lasting.value.map((span) => {
+    const y = placed.get(span.key);
+
+    return { ...span, y: y === undefined ? yAt(anchors, span.from) : y + 22 };
   });
 
   spans.value = placeSpans(found, anchors);
 }
 
+/**
+ * Measured at the next frame rather than straight after the change.
+ *
+ * Reading where the rows are makes the browser lay the page out there and
+ * then. Straight after the records change, that layout is added to the pause
+ * the change already causes; at the frame it is the layout the browser was
+ * about to do anyway. Several changes in one frame measure once.
+ */
+let measuring = 0;
+
 function remeasure() {
-  void nextTick(measureSpans);
+  if (measuring !== 0) return;
+
+  measuring = requestAnimationFrame(() => {
+    measuring = 0;
+    measureSpans();
+  });
+}
+
+function onResize() {
+  readLayout();
+  remeasure();
 }
 
 /**
@@ -98,23 +389,33 @@ function laneLeft(lane: number): number {
   return (Number.isFinite(axis) ? axis : 56) + 8 + lane * LANE_STEP;
 }
 
+// The width is first read when the observer below first reports, which is
+// before the first paint, rather than here: reading it while the timeline is
+// being put into the page lays the page out on top of that work.
 onMounted(() => {
-  remeasure();
-  observer = new ResizeObserver(remeasure);
+  near = new IntersectionObserver(onNear, { rootMargin: DRAW_MARGIN });
+  far = new IntersectionObserver(onFar, { rootMargin: DROP_MARGIN });
+  sizes = new ResizeObserver(onSizes);
+  frames.forEach(observe);
+
+  observer = new ResizeObserver(onResize);
   if (root.value !== null) observer.observe(root.value);
-  globalThis.addEventListener('resize', remeasure);
+  globalThis.addEventListener('resize', onResize);
 });
 
 onBeforeUnmount(() => {
+  cancelAnimationFrame(measuring);
   observer?.disconnect();
-  globalThis.removeEventListener('resize', remeasure);
+  near?.disconnect();
+  far?.disconnect();
+  sizes?.disconnect();
+  globalThis.removeEventListener('resize', onResize);
 });
 
-watch(
-  () => [timeline, open, filters.order],
-  () => remeasure(),
-  { deep: true },
-);
+// Not deep: every one of these is replaced rather than changed in place, and
+// walking every record to find that out took 0.3 seconds at 390px wide with
+// the CPU slowed four times (2026-10-18).
+watch([() => timeline, () => open, () => filters.order, drawn], remeasure);
 
 const byId = computed(() => new Map(channels.map((channel) => [channel.channelId, channel])));
 const descending = computed(() => filters.order === 'desc');
@@ -128,8 +429,12 @@ const years = computed(() => {
   const list = timeline.years.map((year) => ({
     ...year,
     faces: yearFaces(channels, year.year, now),
+    // Worked out from the records rather than asked of the rows, which are
+    // not in the page for a month that is not drawn.
+    future: year.months.some((month) => month.items.some(isFuture)),
     months: year.months.map((month) => ({
       ...month,
+      future: month.items.every(isFuture),
       rows: rowsOf(month.items),
     })),
   }));
@@ -152,8 +457,12 @@ function rowsOf(items: readonly TimelineItem[]) {
 
     previousDay = day;
 
-    return { item, repeat, future: item.kind !== 'now' && item.at > now };
+    return { item, repeat, future: isFuture(item) };
   });
+}
+
+function isFuture(item: TimelineItem): boolean {
+  return item.kind !== 'now' && item.at > now;
 }
 
 function eventDay(item: Extract<TimelineItem, { kind: 'event' }>): string | null {
@@ -200,7 +509,13 @@ function membersOf(channelIds: readonly string[]): Channel[] {
       ></i>
     </div>
 
-    <section v-for="year in years" :key="year.year" class="year" :data-year="year.year">
+    <section
+      v-for="year in years"
+      :key="year.year"
+      class="year"
+      :class="{ future: year.future }"
+      :data-year="year.year"
+    >
       <header class="year-head">
         <div class="axis"><span class="year-node" aria-hidden="true"></span></div>
         <div class="year-about">
@@ -228,7 +543,15 @@ function membersOf(channelIds: readonly string[]): Channel[] {
         </div>
       </header>
 
-      <section v-for="month in year.months" :key="month.month" class="month" :data-month="month.month">
+      <section
+        v-for="month in year.months"
+        :key="month.month"
+        :ref="frameRef(month.month)"
+        class="month"
+        :class="{ 'stand-in': !drawn.has(month.month) }"
+        :data-month="month.month"
+        :style="drawn.has(month.month) ? undefined : { height: `${standInHeight(month)}px` }"
+      >
         <div class="month-label" aria-hidden="true">
           <div class="month-label-in" :class="{ flashed: month.month === flashed }">
             <span class="month-year fp-n">{{ month.year }}</span>
@@ -236,15 +559,18 @@ function membersOf(channelIds: readonly string[]): Channel[] {
           </div>
         </div>
 
-        <div class="rows">
+        <!-- A month not drawn keeps its heading and its stretch of trail, so
+             that scrolling faster than the rows can be drawn shows the road
+             with its rows still to come rather than a gap in it. -->
+        <div v-if="!drawn.has(month.month)" class="axis stand-in-trail" :class="{ future: month.future }"></div>
+
+        <div v-else class="rows">
           <div
             v-for="row in month.rows"
             :key="row.item.key"
             class="row"
             :data-key="row.item.key"
             :data-at="row.item.at"
-            :data-end="row.item.kind === 'event' && row.item.endAt !== null ? row.item.endAt : undefined"
-            :data-title="row.item.kind === 'event' ? row.item.event.title : undefined"
             :data-kind="row.item.kind === 'event' ? row.item.event.kind : undefined"
             :class="{
               event: row.item.kind === 'event',
@@ -319,6 +645,15 @@ function membersOf(channelIds: readonly string[]): Channel[] {
 </template>
 
 <style scoped>
+/*
+ * The browser's own scroll anchoring is off on this page. TimelineView moves
+ * the page itself when a month above the screen changes height, in every
+ * browser alike, and a browser that also anchored would move it twice.
+ */
+:global(html) {
+  overflow-anchor: none;
+}
+
 .timeline {
   position: relative;
   min-width: 0;
@@ -544,8 +879,18 @@ function membersOf(channelIds: readonly string[]): Channel[] {
 }
 
 .row.future .axis::before,
-.year:has(.row.future) .year-head .axis::before {
+.stand-in-trail.future::before,
+.year.future .year-head .axis::before {
   background-image: var(--fp-trail-future);
+}
+
+/* The trail of a month not drawn: the whole frame's height of it. */
+.stand-in-trail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--fp-axis);
 }
 
 .node {
