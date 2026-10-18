@@ -311,7 +311,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
 
         <div
           v-if="selectedMembers.length > 0 || fields.kind === 'debut'"
-          class="panel"
+          class="panel span2"
           :class="{ flag: needsLead || errorField === 'leadChannelIds' }"
         >
           <h4>主役</h4>
