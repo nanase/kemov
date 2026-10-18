@@ -23,7 +23,16 @@ import type { Channel } from '@/type/api';
  * the side. The month's heading sticks inside that column while the month is
  * on screen, level with the date beside it.
  */
-const { timeline, channels, filters, open, now, dark, flashed, terms } = defineProps<{
+const {
+  timeline,
+  channels,
+  filters,
+  open,
+  now,
+  dark,
+  flashed,
+  terms = [],
+} = defineProps<{
   timeline: Timeline;
   channels: readonly Channel[];
   filters: Filters;
@@ -33,8 +42,8 @@ const { timeline, channels, filters, open, now, dark, flashed, terms } = defineP
   dark: boolean;
   /** The `YYYY-MM` a reader has just been sent to, lit for a moment. */
   flashed: string | null;
-  /** The words being searched for, which the road is already narrowed to. */
-  terms: readonly SearchTerm[];
+  /** The words being searched for, which the road is already narrowed to. None is no search. */
+  terms?: readonly SearchTerm[];
 }>();
 
 const emit = defineEmits<{ toggle: [key: string]; open: [key: string] }>();
@@ -42,8 +51,13 @@ const emit = defineEmits<{ toggle: [key: string]; open: [key: string] }>();
 const root = useTemplateRef<HTMLDivElement>('root');
 const spans = ref<PlacedSpan[]>([]);
 
+/** The footprint column's width when the page's style cannot be read. */
+const AXIS_FALLBACK = 56;
+
 /** Where the footprint column ends, read when the bands are measured. */
-const axis = ref(56);
+const axis = ref(AXIS_FALLBACK);
+
+const searching = computed(() => terms.length > 0);
 let observer: ResizeObserver | undefined;
 
 /**
@@ -125,7 +139,7 @@ const estimates = computed(() => {
   const profile = profileOf(width.value);
 
   return new Map(
-    [...monthGroups.value].map(([key, month]) => [key, estimateMonthHeight(month, open, profile, terms.length > 0)]),
+    [...monthGroups.value].map(([key, month]) => [key, estimateMonthHeight(month, open, profile, searching.value)]),
   );
 });
 
@@ -134,7 +148,7 @@ const estimates = computed(() => {
  * for the same reason as the estimates.
  */
 const signatures = computed(
-  () => new Map([...monthGroups.value].map(([key, month]) => [key, monthSignature(month, open, terms.length > 0)])),
+  () => new Map([...monthGroups.value].map(([key, month]) => [key, monthSignature(month, open, searching.value)])),
 );
 
 /** The height an undrawn month stands at. */
@@ -370,7 +384,7 @@ function measureSpans() {
 
   const column = Number.parseFloat(getComputedStyle(element).getPropertyValue('--fp-axis'));
 
-  axis.value = Number.isFinite(column) ? column : 56;
+  axis.value = Number.isFinite(column) ? column : AXIS_FALLBACK;
   spans.value = placeSpans(found, anchors);
 }
 

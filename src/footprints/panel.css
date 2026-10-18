@@ -75,6 +75,14 @@
   text-align: center;
 }
 
+.fp-empty p {
+  margin: 0;
+}
+
+.fp-empty p + p {
+  margin-top: 8px;
+}
+
 /* A word about what something is: its kind, where it was, whether it is still
    to come. Never the member's own colour - that tells people apart (#140). */
 .fp-tag {

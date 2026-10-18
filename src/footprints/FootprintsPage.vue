@@ -79,7 +79,7 @@ const terms = computed(() => parseQuery(searched.value));
 const searching = computed(() => terms.value.length > 0);
 
 /** How long typing has to pause before the road follows it. */
-const SEARCH_PAUSE_MS = 150;
+const SEARCH_PAUSE_MS = 110;
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -565,6 +565,7 @@ onBeforeUnmount(() => {
               aria-label="タイトル・補足でさがす"
               autocomplete="off"
               enterkeyhint="search"
+              spellcheck="false"
               @keydown.esc="clearSearch"
             />
             <button
@@ -1134,6 +1135,10 @@ onBeforeUnmount(() => {
 }
 
 .filters {
+  /* The width every row's own label takes, which the note under the search
+     field lines up with too. */
+  --fp-label: 4em;
+
   padding: 4px 14px;
   margin-bottom: 8px;
 }
@@ -1255,7 +1260,7 @@ onBeforeUnmount(() => {
 /* Each row's own label is as wide as the longest of them, so that what
    follows starts on one line down the panel. */
 .filter-row > .filter-label:first-child {
-  width: 4em;
+  width: var(--fp-label);
 }
 
 .search {
@@ -1343,7 +1348,7 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   flex-basis: 100%;
   margin: 0;
-  padding-left: calc(4em + 10px);
+  padding-left: calc(var(--fp-label) + 10px);
   color: var(--k-text-2);
   font-size: 12.5px;
 }
@@ -1359,14 +1364,6 @@ onBeforeUnmount(() => {
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;
-}
-
-.fp-empty p {
-  margin: 0;
-}
-
-.fp-empty p + p {
-  margin-top: 8px;
 }
 
 @container (max-width: 620px) {
