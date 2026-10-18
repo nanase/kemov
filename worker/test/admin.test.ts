@@ -86,7 +86,7 @@ describe('handleAdminRequest', () => {
     const response = await handleAdminRequest(
       new Request('https://kemov.nanase.cc/admin/api/me', {
         method: 'POST',
-        headers: { 'Cf-Access-Jwt-Assertion': token },
+        headers: { 'Cf-Access-Jwt-Assertion': token, 'Sec-Fetch-Site': 'same-origin' },
       }),
       { ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM } as typeof env,
       undefined,
@@ -164,7 +164,8 @@ async function call(path: string, init: RequestInit = {}): Promise<Response> {
   return handleAdminRequest(
     new Request(`https://kemov.nanase.cc${path}`, {
       ...init,
-      headers: { ...init.headers, 'Cf-Access-Jwt-Assertion': token },
+      // A browser sends this on every request the admin page makes itself.
+      headers: { 'Sec-Fetch-Site': 'same-origin', ...init.headers, 'Cf-Access-Jwt-Assertion': token },
     }),
     { ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM } as typeof env,
     undefined,
@@ -172,6 +173,122 @@ async function call(path: string, init: RequestInit = {}): Promise<Response> {
     new Map() as CertsCache,
   );
 }
+
+describe('writes to /admin/api', () => {
+  const jsonPost = (headers: Record<string, string>) => ({
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body: JSON.stringify({}),
+  });
+  // `call` adds Sec-Fetch-Site itself; these tests need to control both headers, so they send their own.
+  async function send(init: RequestInit, path = '/admin/api/footprints/events'): Promise<Response> {
+    const { token, certs } = await signedAccessToken(validPayload());
+
+    return handleAdminRequest(
+      new Request(`https://kemov.nanase.cc${path}`, {
+        ...init,
+        headers: { ...init.headers, 'Cf-Access-Jwt-Assertion': token },
+      }),
+      { ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM } as typeof env,
+      undefined,
+      certsFetch(certs),
+      new Map() as CertsCache,
+    );
+  }
+
+  test('refuses a POST from another origin with 403', async () => {
+    const response = await send(jsonPost({ Origin: 'https://example.com' }));
+
+    expect(response.status).toEqual(403);
+  });
+
+  test('refuses a POST marked cross-site with 403, whatever Origin says', async () => {
+    const response = await send(jsonPost({ 'Sec-Fetch-Site': 'cross-site', Origin: 'https://kemov.nanase.cc' }));
+
+    expect(response.status).toEqual(403);
+  });
+
+  test('refuses a POST with neither Sec-Fetch-Site nor Origin with 403', async () => {
+    expect((await send(jsonPost({}))).status).toEqual(403);
+  });
+
+  test('refuses a body-less POST from another origin with 403', async () => {
+    const response = await send(
+      { method: 'POST', headers: { 'Sec-Fetch-Site': 'cross-site' } },
+      '/admin/api/collect-tasks/channel_stats/UCaaa/retry',
+    );
+
+    expect(response.status).toEqual(403);
+  });
+
+  test('lets a POST through when Sec-Fetch-Site is same-origin', async () => {
+    const response = await send(jsonPost({ 'Sec-Fetch-Site': 'same-origin' }));
+
+    expect(response.status).not.toEqual(403);
+  });
+
+  test('lets a POST through when Sec-Fetch-Site is absent and Origin is this origin', async () => {
+    const response = await send(jsonPost({ Origin: 'https://kemov.nanase.cc' }));
+
+    expect(response.status).not.toEqual(403);
+  });
+
+  test('lets a GET through whatever the headers say', async () => {
+    const response = await send({
+      method: 'GET',
+      headers: { 'Sec-Fetch-Site': 'cross-site', Origin: 'https://example.com' },
+    });
+
+    expect(response.status).toEqual(200);
+  });
+
+  test('refuses a body that is not application/json with 415', async () => {
+    const response = await call('/admin/api/footprints/events', {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: '{}',
+    });
+
+    expect(response.status).toEqual(415);
+  });
+
+  test('accepts application/json with parameters', async () => {
+    const response = await call('/admin/api/footprints/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+      body: '{}',
+    });
+
+    expect(response.status).not.toEqual(415);
+  });
+
+  test('refuses a body over 1 MiB with 413', async () => {
+    const response = await call('/admin/api/footprints/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ memo: 'a'.repeat(1024 * 1024) }),
+    });
+
+    expect(response.status).toEqual(413);
+  });
+
+  test('refuses an oversize body whose Content-Length is missing, by counting what it reads', async () => {
+    const chunk = new Uint8Array(64 * 1024).fill(0x61);
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(chunk);
+      },
+    });
+    const response = await call('/admin/api/footprints/events', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: stream,
+      duplex: 'half',
+    } as RequestInit);
+
+    expect(response.status).toEqual(413);
+  });
+});
 
 const put = (path: string, body: unknown) =>
   call(path, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -349,7 +466,11 @@ describe("handleAdminRequest routing to task 12's resources", () => {
   test('refuses a PUT body that is not valid JSON', async () => {
     await insertChannel('UCaaa');
 
-    const response = await call('/admin/api/members/UCaaa', { method: 'PUT', body: 'not json' });
+    const response = await call('/admin/api/members/UCaaa', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: 'not json',
+    });
 
     expect(response.status).toEqual(400);
     expect(await response.json()).toEqual({ error: 'body must be valid JSON' });
