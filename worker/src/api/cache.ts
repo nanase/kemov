@@ -169,8 +169,9 @@ export async function cachedJson(
   build: () => Promise<unknown>,
   now: Date = new Date(),
   statusOf: StatusOf = ALWAYS_200,
+  keyUrl: string = new URL(request.url).toString(),
 ): Promise<Response> {
-  const key = new Request(new URL(request.url).toString(), { method: 'GET' });
+  const key = new Request(keyUrl, { method: 'GET' });
   const stored = await cacheImpl.match(key);
   const storedAge = stored === undefined ? null : storedAgeSeconds(stored, now);
 
@@ -223,4 +224,32 @@ export async function cachedJson(
     // caller can retry, and #71's monitoring has something to alert on.
     return errorWithCacheHeaders(503, 'the database could not be read and no cached answer is available');
   }
+}
+
+/**
+ * The URL an answer is stored under.
+ *
+ * Built from the path as the router matched it and from the query parameters
+ * the route reads, in the order `names` lists them, and from nothing else.
+ * The request URL as sent would also key on `?z=1`, a trailing slash or a
+ * doubled one - differences no handler can see - and each of those would be a
+ * separate entry answering the same question.
+ *
+ * A parameter given twice is keyed by its first value, which is the one `get`
+ * hands the handler. One that is absent is left out rather than keyed as empty,
+ * because the handlers tell absent (`null`) from empty (`''`).
+ */
+export function cacheKeyUrl(url: URL, segments: readonly string[], names: readonly string[]): string {
+  const query = new URLSearchParams();
+
+  for (const name of names) {
+    const value = url.searchParams.get(name);
+
+    if (value !== null) query.append(name, value);
+  }
+
+  const path = `/${segments.filter((segment) => segment !== '').join('/')}`;
+  const search = query.toString();
+
+  return `${url.origin}${path}${search === '' ? '' : `?${search}`}`;
 }

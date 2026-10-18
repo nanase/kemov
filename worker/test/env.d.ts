@@ -25,4 +25,9 @@ declare global {
     const contents: string;
     export default contents;
   }
+
+  module '*.ts?raw' {
+    const contents: string;
+    export default contents;
+  }
 }
