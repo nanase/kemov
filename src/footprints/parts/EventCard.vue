@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 
 import { relayVideoThumbnailURL } from '@/lib/relay';
+import { escapeHtml, highlightRanges, type SearchTerm } from '@/lib/search';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
 import ThumbnailImage from '@/parts/ThumbnailImage.vue';
 
@@ -17,14 +18,26 @@ import type { Channel } from '@/type/api';
  * is the same card at a smaller size. Neither of them is dimmed for being old
  * or for being unconfirmed - what is uncertain is said in words.
  */
-const { item, members, dark } = defineProps<{
+const {
+  item,
+  members,
+  dark,
+  terms = [],
+} = defineProps<{
   item: EventItem;
   /** The members this involved, in the order the API sends them. */
   members: readonly Channel[];
   dark: boolean;
+  /** The words being searched for, marked where they appear. None marks nothing. */
+  terms?: readonly SearchTerm[];
 }>();
 
 const emit = defineEmits<{ open: [key: string] }>();
+
+/** Text as HTML, escaped, with what the search matched marked. */
+function marked(text: string): string {
+  return highlightRanges(text, terms, escapeHtml);
+}
 
 const event = computed(() => item.event);
 const kindLabel = computed(() => KIND_LABELS[event.value.kind]);
@@ -91,7 +104,7 @@ const thumbnail = computed(() =>
         </span>
       </div>
 
-      <button type="button" class="title" @click="emit('open', item.key)">{{ event.title }}</button>
+      <button type="button" class="title" @click="emit('open', item.key)" v-html="marked(event.title)"></button>
 
       <p v-if="period" class="period fp-n">
         <span>{{ period }}</span>
@@ -115,7 +128,7 @@ const thumbnail = computed(() =>
         </span>
       </div>
 
-      <p v-if="event.supplement" class="supplement">{{ event.supplement }}</p>
+      <p v-if="event.supplement" class="supplement" v-html="marked(event.supplement)"></p>
     </div>
 
     <button

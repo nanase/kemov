@@ -4,10 +4,14 @@ import {
   dayStart,
   eventAt,
   eventItems,
+  eventMatches,
   eventPasses,
+  hiddenMatches,
   isKeyStream,
   jstDay,
   jstMonth,
+  occasionsOf,
+  streamMatches,
   streamPasses,
   thisWeekInPast,
   upcoming,
@@ -16,6 +20,7 @@ import {
   type Filters,
 } from '@/footprints/model';
 import type { VideoTableRow } from '@/lib/ranking';
+import { parseQuery } from '@/lib/search';
 import type { Channel, FootprintEvent } from '@/type/api';
 
 /**
@@ -485,5 +490,87 @@ describe('thisWeekInPast', () => {
     const many = [1, 2, 3, 4, 5].map((n) => event({ eventId: 30 + n, startDate: `202${n}-09-19`, title: `${n} 件目` }));
 
     expect(thisWeekInPast(items(many), [], filters(), NOW)).toHaveLength(4);
+  });
+});
+
+describe('searching', () => {
+  const items = eventItems(
+    [
+      event({
+        eventId: 1,
+        title: '夏休みだよ！ジャパリ歌謡祭',
+        supplement: '10 人による歌枠リレー。',
+        channelIds: ['UCa'],
+      }),
+      event({ eventId: 2, title: '夏ボイス販売', supplement: null, channelIds: ['UCb'] }),
+    ],
+    new Map(),
+    NOW,
+  );
+  const streams = [
+    row({ videoId: 'a', title: '【歌枠】夏の曲を歌う', channelId: 'UCa' }),
+    row({ videoId: 'b', title: '【雑談】振り返り', channelId: 'UCb' }),
+  ];
+
+  test('finds an event by its title or its supplement', () => {
+    expect(eventMatches(items[0]!, parseQuery('歌謡祭'))).toBe(true);
+    expect(eventMatches(items[0]!, parseQuery('歌枠'))).toBe(true);
+    expect(eventMatches(items[1]!, parseQuery('歌枠'))).toBe(false);
+  });
+
+  // The site's search folds kana, so a reader need not know which was used.
+  test('finds a stream by its title, however the kana are written', () => {
+    expect(streamMatches(row({ title: 'ウサコの歌枠' }), parseQuery('うさこ'))).toBe(true);
+    expect(streamMatches(row({ title: '雑談' }), parseQuery('歌'))).toBe(false);
+  });
+
+  test('wants every word, not any of them', () => {
+    expect(eventMatches(items[0]!, parseQuery('夏 歌謡祭'))).toBe(true);
+    expect(eventMatches(items[1]!, parseQuery('夏 歌謡祭'))).toBe(false);
+  });
+
+  test('matches everything when nothing is searched for', () => {
+    expect(eventMatches(items[1]!, [])).toBe(true);
+    expect(streamMatches(streams[1]!, [])).toBe(true);
+  });
+
+  test('narrows the road to what matched', () => {
+    const timeline = buildTimeline(items, streams, filters(), NOW, parseQuery('歌'));
+
+    expect(timeline.events).toEqual(1);
+    expect(timeline.streams).toEqual(1);
+  });
+
+  test('counts what matched but another filter keeps off the road', () => {
+    const one = filters({ members: new Set(['UCb']) });
+
+    expect(hiddenMatches(items, streams, one, parseQuery('歌'))).toEqual(2);
+    expect(hiddenMatches(items, streams, filters(), parseQuery('歌'))).toEqual(0);
+    expect(hiddenMatches(items, streams, one, [])).toEqual(0);
+  });
+
+  // An event that is a stream stands for it, so that stream is never on the
+  // road as a stream and is not "hidden" by anything.
+  test('does not count a stream an event stands for', () => {
+    const claimed = eventItems(
+      [event({ eventId: 3, title: '歌謡祭', videoId: 'a', channelIds: ['UCa'] })],
+      new Map([['a', streams[0]!]]),
+      NOW,
+    );
+
+    expect(hiddenMatches(claimed, streams, filters({ streams: 'none' }), parseQuery('歌枠'))).toEqual(0);
+  });
+});
+
+describe('occasionsOf', () => {
+  const rows = [row({ videoId: 'a', title: '1周年記念配信' }), row({ videoId: 'b', title: '雑談' })];
+
+  test('names the occasions at rest', () => {
+    expect(occasionsOf(rows, false).map((r) => r.videoId)).toEqual(['a']);
+  });
+
+  // Every stream left in a run while searching is one the reader asked for.
+  test('names every stream while searching', () => {
+    expect(occasionsOf(rows, true).map((r) => r.videoId)).toEqual(['a', 'b']);
   });
 });

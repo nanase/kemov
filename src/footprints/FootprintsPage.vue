@@ -4,12 +4,15 @@ import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from
 import SiteShell from '@/shell/SiteShell.vue';
 import UpdatedAt from '@/shell/UpdatedAt.vue';
 import MemberAvatar from '@/parts/MemberAvatar.vue';
+import { formatCount } from '@/lib/numberFormat';
+import { parseQuery } from '@/lib/search';
 import { useStoredChoice } from '@/lib/useStoredChoice';
 
 import {
   buildTimeline,
   daysBetween,
   eventItems,
+  hiddenMatches,
   thisWeekInPast,
   upcoming,
   KIND_LABELS,
@@ -61,9 +64,75 @@ const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
 /** How often the clock in the badge and the "now" row are written again. */
 const TICK_MS = 30_000;
 
+/**
+ * What the reader is searching for: the field as typed, and the words the
+ * road is narrowed to.
+ *
+ * The two are apart so that the road is rebuilt once a reader pauses rather
+ * than at every letter, and the field itself never waits on that. Like the
+ * other narrowings, a search starts empty each visit and is not written into
+ * the address.
+ */
+const query = ref('');
+const searched = ref('');
+const terms = computed(() => parseQuery(searched.value));
+const searching = computed(() => terms.value.length > 0);
+
+/** How long typing has to pause before the road follows it. */
+const SEARCH_PAUSE_MS = 150;
+
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+watch(query, (value) => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    searched.value = value;
+  }, SEARCH_PAUSE_MS);
+});
+
 const rowsById = computed(() => new Map(data.rows.value.map((row) => [row.videoId, row])));
 const items = computed(() => eventItems(data.events.value, rowsById.value, now.value));
-const timeline = computed(() => buildTimeline(items.value, data.rows.value, filters.value, now.value));
+const timeline = computed(() => buildTimeline(items.value, data.rows.value, filters.value, now.value, terms.value));
+
+/** How many records the search found on the road, and how many the other filters keep off it. */
+const found = computed(() => timeline.value.events + timeline.value.streams);
+const hidden = computed(() => hiddenMatches(items.value, data.rows.value, filters.value, terms.value));
+
+const searchBox = useTemplateRef<HTMLInputElement>('searchBox');
+
+function clearSearch() {
+  clearTimeout(searchTimer);
+  query.value = '';
+  searched.value = '';
+  searchBox.value?.focus();
+}
+
+/** Puts every narrowing back to where it starts, except the order and the search. */
+function clearFilters() {
+  filters.value = { ...filters.value, members: new Set(), kind: 'all', streams: 'all' };
+}
+
+/** The key that is pressed with F, which is Command on a Mac. */
+const findKey = /mac|iphone|ipad/i.test(navigator.platform) ? '⌘' : 'Ctrl';
+
+/**
+ * Ctrl+F (Command+F) goes to this page's own search.
+ *
+ * The browser's own search only finds what is drawn, and this page draws the
+ * months near the screen and no others, so it would miss most of the record
+ * without saying so. Pressed again from inside the field, the key is left to
+ * the browser, for a reader who wants it after all. Nothing is taken while a
+ * dialog is open over the page.
+ */
+function onFindKey(event: KeyboardEvent) {
+  if (event.key.toLowerCase() !== 'f' || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+  if (openKey.value !== null || mapOpen.value || panel.value !== null) return;
+  if (searchBox.value === null || document.activeElement === searchBox.value) return;
+
+  event.preventDefault();
+  searchBox.value.focus();
+  searchBox.value.select();
+}
 
 /** The kinds that are actually in the record, which is what the picker lists. */
 const kinds = computed(() => {
@@ -245,6 +314,8 @@ const chosen = computed(() => {
   const list: { label: string; value: string; dim: boolean }[] = [];
   const kind = filters.value.kind;
 
+  if (searching.value) list.push({ label: 'さがす', value: searched.value.trim(), dim: false });
+
   list.push({
     label: 'できごと',
     value:
@@ -372,6 +443,7 @@ watch([timeline, openBundles], readPositionSoon, { flush: 'post' });
 
 onMounted(async () => {
   readTheme();
+  globalThis.addEventListener('keydown', onFindKey);
   globalThis.addEventListener('scroll', readPosition, { passive: true });
   globalThis.addEventListener('resize', readPosition);
   systemTheme.addEventListener('change', readTheme);
@@ -387,6 +459,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(positioning);
+  clearTimeout(searchTimer);
+  globalThis.removeEventListener('keydown', onFindKey);
   globalThis.removeEventListener('scroll', readPosition);
   globalThis.removeEventListener('resize', readPosition);
   data.stop();
@@ -474,6 +548,43 @@ onBeforeUnmount(() => {
             {{ filters.order === 'asc' ? '過去から' : '未来から' }}
           </button>
         </div>
+
+        <div class="filter-row">
+          <span class="filter-label">さがす</span>
+          <label class="search">
+            <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.8" fill="none" stroke="currentColor" stroke-width="1.6" />
+              <path d="M10.6 10.6 14 14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+            </svg>
+            <input
+              ref="searchBox"
+              v-model="query"
+              type="search"
+              class="search-input"
+              placeholder="題名・補足でさがす"
+              aria-label="題名・補足でさがす"
+              autocomplete="off"
+              enterkeyhint="search"
+              @keydown.esc="clearSearch"
+            />
+            <button v-if="query !== ''" type="button" class="search-clear" aria-label="検索を消す" @click="clearSearch">
+              ×
+            </button>
+          </label>
+          <span class="search-count fp-n" aria-live="polite">
+            <template v-if="searching"
+              ><b>{{ formatCount(found) }}</b> 件</template
+            >
+          </span>
+          <span class="search-key" aria-hidden="true"
+            ><kbd>{{ findKey }}</kbd
+            >+<kbd>F</kbd></span
+          >
+          <p v-if="hidden > 0" class="search-hidden">
+            ほかに {{ formatCount(hidden) }} 件が絞り込みで隠れています
+            <button type="button" class="linkish" @click="clearFilters">絞り込みを外す</button>
+          </p>
+        </div>
       </div>
 
       <p v-if="failed" class="fp-panel fp-empty">
@@ -482,9 +593,14 @@ onBeforeUnmount(() => {
       </p>
       <p v-else-if="data.loading.value" class="fp-panel fp-empty">読み込んでいます</p>
       <div v-else class="main">
-        <p v-if="timeline.events === 0 && timeline.streams === 0" class="fp-panel fp-empty">
-          条件に合う記録はありません
-        </p>
+        <div v-if="timeline.events === 0 && timeline.streams === 0" class="fp-panel fp-empty">
+          <p v-if="searching">「{{ searched.trim() }}」に合う記録はありません</p>
+          <p v-else>条件に合う記録はありません</p>
+          <p v-if="hidden > 0">
+            {{ formatCount(hidden) }} 件が絞り込みで隠れています
+            <button type="button" class="linkish" @click="clearFilters">絞り込みを外す</button>
+          </p>
+        </div>
         <TimelineView
           v-else
           ref="road"
@@ -495,6 +611,7 @@ onBeforeUnmount(() => {
           :now
           :dark
           :flashed
+          :terms
           @toggle="toggleBundle"
           @open="openItem"
         />
@@ -1129,9 +1246,135 @@ onBeforeUnmount(() => {
   flex: 1;
 }
 
+/* Each row's own label is as wide as the longest of them, so that what
+   follows starts on one line down the panel. */
+.filter-row > .filter-label:first-child {
+  width: 4em;
+}
+
+.search {
+  display: flex;
+  position: relative;
+  flex: 1 1 260px;
+  align-items: center;
+  min-width: 0;
+  max-width: 520px;
+}
+
+.search svg {
+  position: absolute;
+  left: 10px;
+  color: var(--k-text-3);
+  pointer-events: none;
+}
+
+.search-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 34px;
+  padding: 0 34px 0 32px;
+  border: 1px solid var(--k-line-2);
+  border-radius: 8px;
+  background: var(--k-surface);
+  color: var(--k-text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.search-input::placeholder {
+  color: var(--k-text-3);
+}
+
+/* The field draws its own clear button, the same in every browser. */
+.search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-clear {
+  position: absolute;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--k-track);
+  color: var(--k-text-2);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.search-count {
+  color: var(--k-text-2);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.search-count b {
+  color: var(--k-text);
+  font-size: 14px;
+}
+
+.search-key {
+  color: var(--k-text-3);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.search-key kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--k-line-2);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--k-surface);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+/* Under the field, starting where the field does. */
+.search-hidden {
+  box-sizing: border-box;
+  flex-basis: 100%;
+  margin: 0;
+  padding-left: calc(4em + 10px);
+  color: var(--k-text-2);
+  font-size: 12.5px;
+}
+
+.linkish {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--k-accent);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.fp-empty p {
+  margin: 0;
+}
+
+.fp-empty p + p {
+  margin-top: 8px;
+}
+
 @container (max-width: 620px) {
   .filters {
     padding: 2px 10px;
+  }
+
+  .search {
+    flex: 1 1 0;
+    max-width: none;
+  }
+
+  .search-key {
+    display: none;
   }
 
   .chip-name {

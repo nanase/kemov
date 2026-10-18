@@ -1,4 +1,5 @@
 import type { VideoTableRow } from '@/lib/ranking';
+import { normalize, type SearchTerm } from '@/lib/search';
 import type { Channel, EventKind, FootprintEvent, VideoType } from '@/type/api';
 
 /**
@@ -74,6 +75,17 @@ export const OPEN_RUN_MAX = 3;
 
 /** How many occasions a folded run names before it starts counting. */
 export const NAMED_OCCASIONS = 4;
+
+/**
+ * The streams a folded run names instead of listing them all.
+ *
+ * At rest that is the occasions. While searching, every stream in a run is
+ * one the reader asked for, so the run names those: naming its anniversaries
+ * instead would hide the very titles that matched.
+ */
+export function occasionsOf(rows: readonly VideoTableRow[], searching: boolean): VideoTableRow[] {
+  return searching ? [...rows] : rows.filter((row) => isKeyStream(row.title));
+}
 
 /** The JST calendar day an instant falls on, as `YYYY-MM-DD`. */
 export function jstDay(ms: number): string {
@@ -283,6 +295,70 @@ export function rowAt(row: VideoTableRow): number {
 }
 
 /**
+ * The text a search reads, folded once per record.
+ *
+ * An event is read by its title and its supplement, which are the two things
+ * on its card written in sentences; a stream by its title, which is all the
+ * archive has of it. Kept against the record object itself, so that a record
+ * fetched afresh is read again.
+ */
+const SEARCH_TEXT = new WeakMap<object, string>();
+
+function searchText(record: object, read: () => string): string {
+  const found = SEARCH_TEXT.get(record);
+
+  if (found !== undefined) return found;
+
+  const text = normalize(read());
+
+  SEARCH_TEXT.set(record, text);
+
+  return text;
+}
+
+/** Whether an event holds every word searched for. No words matches everything. */
+export function eventMatches(item: EventItem, terms: readonly SearchTerm[]): boolean {
+  if (terms.length === 0) return true;
+
+  const text = searchText(item.event, () => `${item.event.title}\n${item.event.supplement ?? ''}`);
+
+  return terms.every((term) => term.test(text));
+}
+
+/** Whether a stream's title holds every word searched for. */
+export function streamMatches(row: VideoTableRow, terms: readonly SearchTerm[]): boolean {
+  if (terms.length === 0) return true;
+
+  const text = searchText(row, () => row.title);
+
+  return terms.every((term) => term.test(text));
+}
+
+/**
+ * How many records hold the words searched for but are kept off the road by
+ * the other filters - a member not chosen, a kind left out, streams hidden.
+ *
+ * A stream an event has claimed is not one of them: it is never on the road
+ * as a stream, filtered or not, and the event stands for it.
+ */
+export function hiddenMatches(
+  events: readonly EventItem[],
+  rows: readonly VideoTableRow[],
+  filters: Filters,
+  terms: readonly SearchTerm[],
+): number {
+  if (terms.length === 0) return 0;
+
+  const claimed = new Set(events.flatMap((item) => (item.row === null ? [] : [item.row.videoId])));
+  const hiddenEvents = events.filter((item) => eventMatches(item, terms) && !eventPasses(item, filters)).length;
+  const hiddenStreams = rows.filter(
+    (row) => !claimed.has(row.videoId) && streamMatches(row, terms) && !streamPasses(row, filters, claimed),
+  ).length;
+
+  return hiddenEvents + hiddenStreams;
+}
+
+/**
  * The whole road: years, months, and the rows inside them.
  *
  * A run of streams is cut at a month's edge, at anything that happened, and
@@ -295,10 +371,13 @@ export function buildTimeline(
   rows: readonly VideoTableRow[],
   filters: Filters,
   now: number,
+  terms: readonly SearchTerm[] = [],
 ): Timeline {
   const claimed = new Set(events.flatMap((item) => (item.row === null ? [] : [item.row.videoId])));
-  const passing = events.filter((item) => eventPasses(item, filters));
-  const streams = rows.filter((row) => streamPasses(row, filters, claimed)).sort((a, b) => rowAt(a) - rowAt(b));
+  const passing = events.filter((item) => eventPasses(item, filters) && eventMatches(item, terms));
+  const streams = rows
+    .filter((row) => streamPasses(row, filters, claimed) && streamMatches(row, terms))
+    .sort((a, b) => rowAt(a) - rowAt(b));
 
   const months = new Map<string, MonthGroup>();
   const order: TimelineItem[] = [];

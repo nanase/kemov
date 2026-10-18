@@ -11,6 +11,7 @@ import { placeSpans, yAt, LANE_STEP, type Anchor, type PlacedSpan, type Span } f
 import { compensation, estimateMonthHeight, monthEdges, monthSignature, profileOf, type Resize } from '../virtual';
 import EventCard from './EventCard.vue';
 import StreamBundle from './StreamBundle.vue';
+import type { SearchTerm } from '@/lib/search';
 import type { Channel } from '@/type/api';
 
 /**
@@ -22,7 +23,7 @@ import type { Channel } from '@/type/api';
  * the side. The month's heading sticks inside that column while the month is
  * on screen, level with the date beside it.
  */
-const { timeline, channels, filters, open, now, dark, flashed } = defineProps<{
+const { timeline, channels, filters, open, now, dark, flashed, terms } = defineProps<{
   timeline: Timeline;
   channels: readonly Channel[];
   filters: Filters;
@@ -32,12 +33,17 @@ const { timeline, channels, filters, open, now, dark, flashed } = defineProps<{
   dark: boolean;
   /** The `YYYY-MM` a reader has just been sent to, lit for a moment. */
   flashed: string | null;
+  /** The words being searched for, which the road is already narrowed to. */
+  terms: readonly SearchTerm[];
 }>();
 
 const emit = defineEmits<{ toggle: [key: string]; open: [key: string] }>();
 
 const root = useTemplateRef<HTMLDivElement>('root');
 const spans = ref<PlacedSpan[]>([]);
+
+/** Where the footprint column ends, read when the bands are measured. */
+const axis = ref(56);
 let observer: ResizeObserver | undefined;
 
 /**
@@ -118,7 +124,9 @@ const lasting = computed(() =>
 const estimates = computed(() => {
   const profile = profileOf(width.value);
 
-  return new Map([...monthGroups.value].map(([key, month]) => [key, estimateMonthHeight(month, open, profile)]));
+  return new Map(
+    [...monthGroups.value].map(([key, month]) => [key, estimateMonthHeight(month, open, profile, terms.length > 0)]),
+  );
 });
 
 /**
@@ -126,7 +134,7 @@ const estimates = computed(() => {
  * for the same reason as the estimates.
  */
 const signatures = computed(
-  () => new Map([...monthGroups.value].map(([key, month]) => [key, monthSignature(month, open)])),
+  () => new Map([...monthGroups.value].map(([key, month]) => [key, monthSignature(month, open, terms.length > 0)])),
 );
 
 /** The height an undrawn month stands at. */
@@ -360,6 +368,9 @@ function measureSpans() {
     return { ...span, y: y === undefined ? yAt(anchors, span.from) : y + 22 };
   });
 
+  const column = Number.parseFloat(getComputedStyle(element).getPropertyValue('--fp-axis'));
+
+  axis.value = Number.isFinite(column) ? column : 56;
   spans.value = placeSpans(found, anchors);
 }
 
@@ -393,11 +404,12 @@ function onResize() {
  * Just past the footprint column: the axis is where the nodes and the month
  * headings are, and #140 keeps the bands out of it. Each column that overlaps
  * another steps 7px further right.
+ *
+ * The axis is read with the bands rather than here: reading a style while
+ * the bands are being drawn lays the page out in the middle of drawing it.
  */
 function laneLeft(lane: number): number {
-  const axis = root.value === null ? 56 : Number.parseFloat(getComputedStyle(root.value).getPropertyValue('--fp-axis'));
-
-  return (Number.isFinite(axis) ? axis : 56) + 8 + lane * LANE_STEP;
+  return axis.value + 8 + lane * LANE_STEP;
 }
 
 // The width is first read when the observer below first reports, which is
@@ -427,6 +439,26 @@ onBeforeUnmount(() => {
 // walking every record to find that out took 0.3 seconds at 390px wide with
 // the CPU slowed four times (2026-10-18).
 watch([() => timeline, () => open, () => filters.order, drawn], remeasure);
+
+/**
+ * A different narrowing or search starts the drawn months afresh.
+ *
+ * The months drawn so far were near the screen on the old road. A search
+ * gathers many short months into one screen, and clearing it again would
+ * otherwise draw every one of them at their full length at once. Watching
+ * the frames again has the observers report afresh which are near now.
+ */
+watch([() => filters, () => terms], () => {
+  drawn.value = new Set();
+  void nextTick(() => {
+    frames.forEach((element) => {
+      near?.unobserve(element);
+      far?.unobserve(element);
+      near?.observe(element);
+      far?.observe(element);
+    });
+  });
+});
 
 const byId = computed(() => new Map(channels.map((channel) => [channel.channelId, channel])));
 const descending = computed(() => filters.order === 'desc');
@@ -632,6 +664,7 @@ function membersOf(channelIds: readonly string[]): Channel[] {
               :item="row.item"
               :members="membersOf(row.item.event.channelIds)"
               :dark
+              :terms
               @open="emit('open', $event)"
             />
             <StreamBundle
@@ -640,6 +673,7 @@ function membersOf(channelIds: readonly string[]): Channel[] {
               :channels="byId"
               :open="open.has(row.item.key)"
               :dark
+              :terms
               @toggle="emit('toggle', $event)"
               @open="emit('open', $event)"
             />

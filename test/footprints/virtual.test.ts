@@ -125,6 +125,13 @@ describe('estimateItemHeight', () => {
     expect(occasion).toBeGreaterThan(quiet);
   });
 
+  // While searching, a folded run names the streams that matched instead.
+  test('expects a folded run to name more while searching', () => {
+    expect(estimateItemHeight(longRun(), false, 'wide', true)).toBeGreaterThan(
+      estimateItemHeight(longRun(), false, 'wide'),
+    );
+  });
+
   test('expects a run to grow when it is opened', () => {
     expect(estimateItemHeight(longRun(), true, 'wide')).toBeGreaterThan(estimateItemHeight(longRun(), false, 'wide'));
   });
@@ -186,6 +193,10 @@ describe('monthSignature', () => {
     expect(monthSignature(month(items), new Set([run.key]))).not.toEqual(
       monthSignature(month(items), new Set([other.key])),
     );
+  });
+
+  test('tells a month searched apart from the same month at rest', () => {
+    expect(monthSignature(month([run]), new Set(), true)).not.toEqual(monthSignature(month([run]), new Set()));
   });
 
   test('ignores a run opened in another month', () => {

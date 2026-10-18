@@ -1,4 +1,4 @@
-import { normalize, parseQuery } from '@/lib/search';
+import { escapeHtml, highlightRanges, normalize, parseQuery } from '@/lib/search';
 
 /**
  * The matching rules every search on the site shares. What matters is that a
@@ -37,5 +37,17 @@ describe('parseQuery term matching', () => {
 
   test('multiple words become multiple terms', () => {
     expect(parseQuery('四季 冬')).toHaveLength(2);
+  });
+});
+
+describe('highlightRanges', () => {
+  test('marks every place a word matched, however its kana were written', () => {
+    expect(highlightRanges('ウサコの歌枠', parseQuery('うさこ'), escapeHtml)).toEqual('<mark>ウサコ</mark>の歌枠');
+  });
+
+  // The text goes into the page as HTML, so whatever it holds must stay text.
+  test('escapes the text around and inside the marks', () => {
+    expect(highlightRanges('<b>歌</b>', parseQuery('歌'), escapeHtml)).toEqual('&lt;b&gt;<mark>歌</mark>&lt;/b&gt;');
+    expect(highlightRanges('<b>', [], escapeHtml)).toEqual('&lt;b&gt;');
   });
 });
