@@ -341,10 +341,10 @@ describe('upcoming', () => {
 
   // No field says "this comes round every year": the kind says it. Holding
   // the same fact twice would let the two disagree.
-  test('brings a recorded anniversary round again each year', () => {
+  test('brings a recorded memorial day round again each year', () => {
     const day = event({
       eventId: 14,
-      kind: 'anniversary',
+      kind: 'memorial_day',
       startDate: '2022-10-15',
       title: 'ジェネットの日',
       channelIds: ['UCa'],
@@ -355,10 +355,19 @@ describe('upcoming', () => {
     expect(list[0]?.key).toEqual('e:14');
   });
 
+  // コヨーテ1周年3D配信 happened once. Bringing it round each year put three
+  // of them on 2026-12-05.
+  test('does not bring an anniversary stream round again', () => {
+    const stream = event({ eventId: 18, kind: 'anniversary', startDate: '2022-12-05', title: 'コヨーテ1周年3D配信' });
+    const list = upcoming(items([stream]), [], [], filters(), NOW);
+
+    expect(list).toEqual([]);
+  });
+
   test('leaves out a day that is only known to the month, which has no day to keep', () => {
     const vague = event({
       eventId: 15,
-      kind: 'anniversary',
+      kind: 'memorial_day',
       datePrecision: 'month',
       startDate: '2022-10',
       title: '月までの記念日',

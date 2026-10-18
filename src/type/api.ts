@@ -566,6 +566,7 @@ export const EVENT_KINDS = [
   'milestone',
   'graduation',
   'anniversary',
+  'memorial_day',
   'other',
 ] as const;
 

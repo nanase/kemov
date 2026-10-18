@@ -11,8 +11,8 @@ import {
 } from '@/admin/lib/footprints';
 
 describe('KINDS', () => {
-  test('has 14 entries, matching worker/src/admin/footprints.ts', () => {
-    expect(KINDS).toHaveLength(14);
+  test('has 15 entries, matching worker/src/admin/footprints.ts', () => {
+    expect(KINDS).toHaveLength(15);
   });
 
   test('every value is unique', () => {

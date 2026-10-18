@@ -20,6 +20,7 @@ export const KINDS: readonly { value: string; label: string }[] = [
   { value: 'milestone', label: '節目' },
   { value: 'graduation', label: '卒業・活動終了' },
   { value: 'anniversary', label: '周年' },
+  { value: 'memorial_day', label: '記念日' },
   { value: 'other', label: 'その他' },
 ];
 
