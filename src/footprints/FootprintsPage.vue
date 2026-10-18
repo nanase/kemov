@@ -107,6 +107,20 @@ function clearSearch() {
   searchBox.value?.focus();
 }
 
+/**
+ * Esc clears the search, except while it is ending a kana conversion.
+ *
+ * Esc is also how a reader cancels a conversion, and clearing then would
+ * throw away what they had already typed. Some browsers say so with
+ * `isComposing`; Safari can send the key after the conversion has ended, marked
+ * only by the key code 229 that conversions use.
+ */
+function onSearchEscape(event: KeyboardEvent) {
+  if (event.isComposing || event.keyCode === 229) return;
+
+  clearSearch();
+}
+
 /** Puts every narrowing back to where it starts, except the order and the search. */
 function clearFilters() {
   filters.value = { ...filters.value, members: new Set(), kind: 'all', streams: 'all' };
@@ -566,7 +580,7 @@ onBeforeUnmount(() => {
               autocomplete="off"
               enterkeyhint="search"
               spellcheck="false"
-              @keydown.esc="clearSearch"
+              @keydown.esc="onSearchEscape"
             />
             <button
               v-if="query !== ''"
