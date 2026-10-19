@@ -94,6 +94,46 @@ describe('isWhitelistedSource', () => {
     expect(isWhitelistedSource(url, await readSourceWhitelist(env))).toEqual(false);
   });
 
+  // The text matches a prefix but a browser opens somewhere else.
+  test.each([
+    'https://x.com/KEMOVP_staff/../example/status/1',
+    'https://x.com/KEMOVP_staff/./status/1',
+    'https://x.com/KEMOVP_staff/%2e%2e/example/status/1',
+    'https://x.com/KEMOVP_staff/%2E./example',
+    'https://x.com/KEMOVP_staff/.%2e/example',
+    'https://x.com/KEMOVP_staff/..',
+    'https://kemov-project.com/news/../../example',
+    'https://x.com/KEMOVP_staff%2f..%2fexample',
+    'https://x.com/KEMOVP_staff/a%2Fb',
+    'https://x.com/KEMOVP_staff/a%5cb',
+    'https://x.com/KEMOVP_staff/..\\example',
+    'https://x.com/KEMOVP_staff/.\t./example',
+    'https://x.com@example.com/KEMOVP_staff/status/1',
+    'https://kemov-project.com@example.com/',
+    'https://kemov-project.com:8443/news/1',
+    'https://kemov-project.com:443/news/1',
+    'https://kemov-project.com./news/1',
+    'https://KEMOV-PROJECT.com/news/1',
+    'not a url',
+  ])('refuses %j', async (url) => {
+    expect(isWhitelistedSource(url, await readSourceWhitelist(env))).toEqual(false);
+  });
+
+  test('accepts a dot inside a segment and non-ASCII text, compared as written', async () => {
+    const list = await readSourceWhitelist(env);
+
+    expect(isWhitelistedSource('https://kemov-project.com/news/a..b/v1.2', list)).toEqual(true);
+    expect(isWhitelistedSource('https://kemov-project.com/news/けもV?q=../', list)).toEqual(true);
+    expect(isWhitelistedSource('https://x.com/KEMOVP_staff#../', list)).toEqual(true);
+    expect(
+      isWhitelistedSource(
+        'https://dic.nicovideo.jp/a/%E3%81%91%E3%82%82%E3%81%AE%E3%83%95%E3%83%AC%E3%83%B3%E3%82%BAv%E3%81%B7%E3%82%8D%E3%81%98%E3%81%87%E3%81%8F%E3%81%A8',
+        list,
+      ),
+    ).toEqual(true);
+    expect(isWhitelistedSource('https://wikiwiki.jp/kemo_v/けものフレンズ', list)).toEqual(true);
+  });
+
   // The list is an argument, so the answer follows it and nothing else.
   test('accepts only what the list it is given names', () => {
     expect(isWhitelistedSource('https://www.youtube.com/watch?v=a', [])).toEqual(false);
