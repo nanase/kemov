@@ -65,7 +65,7 @@ function inlineScripts(): string[] {
 
   return files.flatMap((file) =>
     [...readFileSync(resolve(root, file), 'utf8').matchAll(/<script(?<attributes>[^>]*)>(?<text>[\s\S]*?)<\/script>/g)]
-      .filter(({ groups }) => !/\b(src|type)=/.test(groups!.attributes!))
+      .filter(({ groups }) => !/(^|\s)src\s*=|(^|\s)type\s*=\s*["']?module/i.test(groups!.attributes!))
       .map(({ groups }) => groups!.text!),
   );
 }
