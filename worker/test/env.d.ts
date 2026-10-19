@@ -21,12 +21,7 @@ declare global {
   // Vite serves a ?raw import as the file's text. vite/client declares this
   // too, but it also declares a browser's import.meta and globals, none of
   // which exist on workerd.
-  module '*.toml?raw' {
-    const contents: string;
-    export default contents;
-  }
-
-  module '*.ts?raw' {
+  module '*?raw' {
     const contents: string;
     export default contents;
   }
