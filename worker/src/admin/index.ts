@@ -1,5 +1,5 @@
 import type { CertsCache } from '../lib/access';
-import { verifyAccess } from '../lib/access';
+import { isAdminEmail, verifyAccess } from '../lib/access';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 import { ackCollectTask, listCollectTasks, markCollectTaskUnavailable, retryCollectTask } from './collect-tasks';
@@ -108,7 +108,12 @@ export async function handleAdminRequest(
   // is easier to reach by asking for the wrong path.
   const identity = await verifyAccess(request, env.ACCESS_AUD, env.ACCESS_TEAM_DOMAIN, instant, fetchImpl, certsCache);
 
-  if (identity === null) return errorResponse(401, 'not authorized by Cloudflare Access');
+  // A token Access signed is not enough on its own: the address it names must
+  // also be on ADMIN_EMAILS, so a policy widened by mistake does not admit
+  // everyone it lets sign in. Refused the same way as a token that fails.
+  if (identity === null || !isAdminEmail(identity.email, env.ADMIN_EMAILS)) {
+    return errorResponse(401, 'not authorized by Cloudflare Access');
+  }
 
   // Checked here once, ahead of every route, so a writer added later is
   // covered without having to remember to ask.

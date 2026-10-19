@@ -1,6 +1,7 @@
 /**
  * Whether a request into `/admin/*` carries a Cloudflare Access token this
- * worker can verify on its own.
+ * worker can verify on its own, and whether the address it names is one of the
+ * admins this worker lists itself (`isAdminEmail`).
  *
  * Access is what actually keeps everyone else out: its policy sits in front
  * of the route and never lets an unauthorized request reach the worker at
@@ -155,6 +156,38 @@ async function verifySignature(
     signature,
     new TextEncoder().encode(`${headerSegment}.${payloadSegment}`),
   );
+}
+
+/**
+ * Whether `email` is one of the addresses in `adminEmails`, the comma-separated
+ * list `ADMIN_EMAILS` holds.
+ *
+ * Checked after `verifyAccess`, on the email it returns. Access's policy is
+ * what decides who may sign in, but a policy widened by mistake would still
+ * hand this worker a validly signed token for someone who should not be an
+ * admin; this list is the worker's own record of who that is. Commas and white
+ * space (a list pasted over several lines included) both separate addresses,
+ * and empty entries are dropped. Addresses are compared without regard to
+ * ASCII case only: `toLowerCase` alone would also fold characters like U+212A
+ * (the Kelvin sign) into `k`, admitting an address that is not on the list.
+ *
+ * `adminEmails` is `undefined` when `ADMIN_EMAILS` has not been registered
+ * yet, and an empty list refuses everyone too: like `ACCESS_AUD`, a missing
+ * list reads as "allow nobody", not "no restriction".
+ */
+export function isAdminEmail(email: string, adminEmails: string | undefined): boolean {
+  if (adminEmails === undefined) return false;
+
+  const wanted = foldAsciiCase(email.trim());
+
+  if (wanted === '') return false;
+
+  return adminEmails.split(/[,\s]+/).some((entry) => foldAsciiCase(entry) === wanted);
+}
+
+/** `value` with A-Z lowercased and every other character left as it is. */
+function foldAsciiCase(value: string): string {
+  return value.replace(/[A-Z]/g, (char) => char.toLowerCase());
 }
 
 /**

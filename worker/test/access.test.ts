@@ -1,4 +1,4 @@
-import { verifyAccess, type CertsCache } from '../src/lib/access';
+import { isAdminEmail, verifyAccess, type CertsCache } from '../src/lib/access';
 import { accessToken, certsFetch, signedAccessToken } from './access-token';
 
 const AUD = 'expected-aud';
@@ -148,5 +148,44 @@ describe('verifyAccess', () => {
     expect(await verifyAccess(requestWith(token), AUD, TEAM, NOW, certsFetch(certs), new Map() as CertsCache)).toEqual({
       email: 'かのん@example.com',
     });
+  });
+});
+
+describe('isAdminEmail', () => {
+  test('accepts an address on the list, wherever it sits', () => {
+    expect(isAdminEmail('admin@example.com', 'admin@example.com')).toBe(true);
+    expect(isAdminEmail('b@example.com', 'a@example.com,b@example.com,c@example.com')).toBe(true);
+  });
+
+  test('ignores case, spaces and empty entries', () => {
+    expect(isAdminEmail('Admin@Example.COM', ' a@example.com ,, admin@example.com ,')).toBe(true);
+    expect(isAdminEmail(' admin@example.com ', 'ADMIN@EXAMPLE.COM')).toBe(true);
+  });
+
+  test('takes white space, including a line break, as a separator too', () => {
+    expect(isAdminEmail('b@example.com', 'a@example.com\nb@example.com')).toBe(true);
+    expect(isAdminEmail('b@example.com', 'a@example.com b@example.com\r\n')).toBe(true);
+  });
+
+  // U+212A is the Kelvin sign: toLowerCase turns it into a plain "k".
+  test('folds ASCII case only, so a look-alike character does not match', () => {
+    expect(isAdminEmail('Kemo@example.com', 'kemo@example.com')).toBe(false);
+    expect(isAdminEmail('kemo@example.com', 'Kemo@example.com')).toBe(false);
+  });
+
+  test('refuses an address that is not on the list', () => {
+    expect(isAdminEmail('stranger@example.com', 'admin@example.com')).toBe(false);
+    expect(isAdminEmail('xadmin@example.com', 'admin@example.com')).toBe(false);
+  });
+
+  test('refuses everyone when the list is unregistered, empty or only separators', () => {
+    expect(isAdminEmail('admin@example.com', undefined)).toBe(false);
+    expect(isAdminEmail('admin@example.com', '')).toBe(false);
+    expect(isAdminEmail('admin@example.com', ' , ,')).toBe(false);
+  });
+
+  test('refuses an empty address even against a list with an empty entry', () => {
+    expect(isAdminEmail('', 'a@example.com,,b@example.com')).toBe(false);
+    expect(isAdminEmail('  ', ',')).toBe(false);
   });
 });
