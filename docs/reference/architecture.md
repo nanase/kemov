@@ -99,6 +99,39 @@ cookie があるのは、ブラウザがページを読み解く前に、`color-
   - ファイルの `ETag` で `304` を返すと、別の設定向けに書いたページが残る
   - `no-store` にしないのは、ブラウザによっては戻る・進むでページを復元しなくなるため
 
+## セキュリティヘッダー
+
+公開サイトと管理サイトのすべての HTML 応答に、フレームへの埋め込みの禁止（`X-Frame-Options: DENY` と CSP の `frame-ancestors 'none'`）と、CSP を付けます。値は `public/_headers` の 1 か所に書きます。
+
+- `public/_headers` は、ビルドで `dist/` に写され、Workers Static Assets が読む
+  - worker を起こさずに返すファイルにも、worker が `ASSETS` から取って返すページ（配色を書き込むページ、`/members/<id>`、`/videos/<id>`、`/admin/*`）にも効く
+  - worker は何も足さない。`ASSETS` の応答のヘッダーをそのまま引き継ぐ
+  - `wrangler dev` で、この 3 通りのどれにも付くことを確かめた
+- 規則は `/*` の 1 つだけにする
+  - Cloudflare は、パスに合う規則のヘッダーをすべて足し合わせる。`/admin/*` に別の規則を足すと、応答に CSP が 2 つ付いて両方に従うことになる
+  - 公開ページと管理画面が読むものは同じなので、方針も同じにしている
+
+CSP は、ビルド結果と各ページが実際に読むものを数えて決めました。
+
+| ディレクティブ                          | 値                                 | 理由                                                                                             |
+| --------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `default-src`                           | `'self'`                           | 書いていない種類は自分のオリジンだけ                                                             |
+| `script-src`                            | `'self'` と 1 つのハッシュ         | `head.html` のインラインのスクリプトを、本文の sha256 で許す。`'unsafe-inline'` は使わない       |
+| `style-src`                             | `'self' 'unsafe-inline'`           | `head.html` とビルドした HTML にインラインの `<style>` があり、画面の部品が `style` 属性を使う   |
+| `img-src`                               | `'self' data:`                     | サムネイルとアイコンは `/api/image` の中継から読む。CSS が `data:` の SVG を背景に使う           |
+| `font-src`                              | `'self'`                           | `vite-plugin-webfont-dl` がビルド時にフォントを `dist/assets/` へ取り込むので、Google は要らない |
+| `connect-src`                           | `'self'`                           | `fetch` の先は `/api` と `/admin/api` だけ                                                       |
+| `frame-src`                             | `https://www.youtube-nocookie.com` | 曲の詳細の埋め込みプレーヤー（`getEmbedURL`）。フレームはこれだけ                                |
+| `object-src`、`base-uri`、`form-action` | `'none'`、`'self'`、`'self'`       | `default-src` に引き継がれない指定                                                               |
+| `frame-ancestors`                       | `'none'`                           | 他のページへの埋め込みを禁じる。これも `default-src` に引き継がれない                            |
+
+- ハッシュは、`src/shell/head.html` のインラインのスクリプトの本文から計算した値
+  - スクリプトを書き換えたら、ハッシュも書き換える。`test/security-headers.test.ts` が、ページが持つインラインのスクリプトのハッシュと `public/_headers` のハッシュが過不足なく一致することを確かめる
+  - モジュールのスクリプトは、vite が `dist/assets/` のファイルに出すので `'self'` で足りる
+- 外部の画像やスクリプトを足すときは、まず `/api/image` のような自前の経路で済むかを考える。足すなら、その origin を該当するディレクティブへ足し、上の表も直す
+- `vite` の開発サーバーは `_headers` を読まないので、ヘッダーは付かない。`wrangler dev` で確かめる
+  - `wrangler dev` は `http://localhost` なので、`https:` だけを許す `frame-src` が曲の詳細の埋め込みを塞ぐ。本番は https なので影響しない
+
 ## 収集
 
 収集のジョブは、`wrangler.toml` の `[triggers]` の cron で動きます。どの cron がどのジョブを動かすかは `worker/src/collector/index.ts` の `jobsByCron` が決めます。1 つのジョブが失敗しても、同じ回の他のジョブは止まりません。

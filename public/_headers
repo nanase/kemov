@@ -1,0 +1,12 @@
+# Response headers for every file the site serves, and for the HTML the worker
+# answers by fetching one of them (themed pages, /members/<id>, /videos/<id>,
+# /admin/*). The worker adds nothing of its own; this file is the one place
+# the values are written. Cloudflare reads it from dist/, where vite copies it
+# from public/.
+#
+# test/security-headers.test.ts holds the script hash below to the inline
+# script in src/shell/head.html. The reason for each directive is in
+# docs/reference/architecture.md.
+/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-b54BklY8VLL/DkMT8X/jVwtpvl0eackDJkzaAeokoFk='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
