@@ -229,7 +229,7 @@ export async function cachedJson(
 /**
  * The URL an answer is stored under.
  *
- * Built from the path as the router matched it and from the query parameters
+ * Built from the path as the router matched it (its ends trimmed, an empty segment inside it kept, because a handler can tell `/a//b` from `/a/b`) and from the query parameters
  * the route reads, in the order `names` lists them, and from nothing else.
  * The request URL as sent would also key on `?z=1`, a trailing slash or a
  * doubled one - differences no handler can see - and each of those would be a
@@ -248,7 +248,7 @@ export function cacheKeyUrl(url: URL, segments: readonly string[], names: readon
     if (value !== null) query.append(name, value);
   }
 
-  const path = `/${segments.filter((segment) => segment !== '').join('/')}`;
+  const path = `/${segments.join('/')}`;
   const search = query.toString();
 
   return `${url.origin}${path}${search === '' ? '' : `?${search}`}`;

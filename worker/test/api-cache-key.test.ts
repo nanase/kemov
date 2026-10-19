@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 
 import { handleApiRequest, ROUTE_QUERY } from '../src/api';
+import { cacheKeyUrl } from '../src/api/cache';
 import channelsSource from '../src/api/channels.ts?raw';
 import healthSource from '../src/api/health.ts?raw';
 import indexSource from '../src/api/index.ts?raw';
@@ -57,6 +58,14 @@ describe('cache key', () => {
     }
 
     expect(cache.keys()).toHaveLength(1);
+  });
+
+  it('keeps an empty segment inside the path apart from the path without it', () => {
+    const url = new URL('https://kemov.nanase.cc/api/channels//videos');
+
+    expect(cacheKeyUrl(url, ['api', 'channels', '', 'videos'], [])).not.toBe(
+      cacheKeyUrl(url, ['api', 'channels', 'videos'], []),
+    );
   });
 
   it('ignores a parameter on a route that reads none', async () => {
