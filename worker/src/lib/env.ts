@@ -38,14 +38,6 @@ export interface Env {
   ACCESS_AUD: string;
 
   /**
-   * The email addresses allowed into `/admin/api`, comma-separated, set with
-   * `wrangler secret put ADMIN_EMAILS`. `isAdminEmail` in
-   * `worker/src/lib/access.ts` reads it. A secret rather than a `[vars]`
-   * entry because this repository is public and the list names people.
-   */
-  ADMIN_EMAILS: string;
-
-  /**
    * The Cloudflare Access team domain, e.g. `nanase.cloudflareaccess.com` -
    * a `[vars]` entry in `wrangler.toml`, not a secret: it is the same domain
    * a browser is already sent to for the Access login page, so it carries
@@ -54,4 +46,12 @@ export interface Env {
    * its own `iss` claim against it.
    */
   ACCESS_TEAM_DOMAIN: string;
+
+  /**
+   * The email addresses allowed into `/admin/api`, comma-separated, set with
+   * `wrangler secret put ADMIN_EMAILS`. `isAdminEmail` in
+   * `worker/src/lib/access.ts` reads it. A secret rather than a `[vars]`
+   * entry because this repository is public and the list names people.
+   */
+  ADMIN_EMAILS: string;
 }

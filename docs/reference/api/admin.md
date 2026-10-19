@@ -1,6 +1,6 @@
 # 管理サイトの API
 
-`/admin/api` のエンドポイントです。Cloudflare Access の後ろにあり、worker も要求ごとに Access の署名を検証します（[管理サイト](../admin.md#admin-と-cloudflare-access)）。
+`/admin/api` のエンドポイントです。Cloudflare Access の後ろにあり、worker も要求ごとに Access の署名を検証し、そのメールアドレスが `ADMIN_EMAILS` にあるかを確かめます（[管理サイト](../admin.md#admin-と-cloudflare-access)）。
 
 どのパスとメソッドを受けるかは、`worker/src/admin/index.ts` が決めます。この文書の表はその写しです。
 

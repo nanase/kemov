@@ -162,6 +162,17 @@ describe('isAdminEmail', () => {
     expect(isAdminEmail(' admin@example.com ', 'ADMIN@EXAMPLE.COM')).toBe(true);
   });
 
+  test('takes white space, including a line break, as a separator too', () => {
+    expect(isAdminEmail('b@example.com', 'a@example.com\nb@example.com')).toBe(true);
+    expect(isAdminEmail('b@example.com', 'a@example.com b@example.com\r\n')).toBe(true);
+  });
+
+  // U+212A is the Kelvin sign: toLowerCase turns it into a plain "k".
+  test('folds ASCII case only, so a look-alike character does not match', () => {
+    expect(isAdminEmail('Kemo@example.com', 'kemo@example.com')).toBe(false);
+    expect(isAdminEmail('kemo@example.com', 'Kemo@example.com')).toBe(false);
+  });
+
   test('refuses an address that is not on the list', () => {
     expect(isAdminEmail('stranger@example.com', 'admin@example.com')).toBe(false);
     expect(isAdminEmail('xadmin@example.com', 'admin@example.com')).toBe(false);

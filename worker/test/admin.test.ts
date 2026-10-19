@@ -5,7 +5,7 @@ import { handleAdminRequest } from '../src/admin';
 import { accessToken, certsFetch, signedAccessToken } from './access-token';
 import { clearEverything } from './reset-db';
 
-/** Routing and the Access check in front of it; what an authorized caller can do is #144's own scope. */
+/** Routing and the Access and ADMIN_EMAILS checks in front of it; what an authorized caller can do is #144's own scope. */
 
 const AUD = 'test-access-aud';
 // wrangler.toml's own ACCESS_TEAM_DOMAIN, which cloudflare:test's env already carries as a real [vars] entry.
@@ -208,6 +208,28 @@ describe('ADMIN_EMAILS', () => {
 
   test('refuses an address that is not on the list on a route that does not exist, too', async () => {
     expect((await me('stranger@example.com', 'admin@example.com', '/admin/api/nothing')).status).toEqual(401);
+  });
+
+  // The list is checked before the same-origin check, so a write from an address that is not on it is a 401, not a 403.
+  test('refuses a write from an address that is not on the list with 401, not 403', async () => {
+    const { token, certs } = await signedAccessToken(validPayload({ email: 'stranger@example.com' }));
+    const response = await handleAdminRequest(
+      new Request('https://kemov.nanase.cc/admin/api/footprints/events', {
+        method: 'POST',
+        headers: {
+          'Cf-Access-Jwt-Assertion': token,
+          'Sec-Fetch-Site': 'same-origin',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      }),
+      { ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM, ADMIN_EMAILS } as typeof env,
+      undefined,
+      certsFetch(certs),
+      new Map() as CertsCache,
+    );
+
+    expect(response.status).toEqual(401);
   });
 });
 
