@@ -158,6 +158,31 @@ async function verifySignature(
 }
 
 /**
+ * Whether `email` is one of the addresses in `adminEmails`, the comma-separated
+ * list `ADMIN_EMAILS` holds.
+ *
+ * Checked after `verifyAccess`, on the email it returns. Access's policy is
+ * what decides who may sign in, but a policy widened by mistake would still
+ * hand this worker a validly signed token for someone who should not be an
+ * admin; this list is the worker's own record of who that is. Spaces around an
+ * address and empty entries are dropped, and addresses are compared without
+ * regard to case.
+ *
+ * `adminEmails` is `undefined` when `ADMIN_EMAILS` has not been registered
+ * yet, and an empty list refuses everyone too: like `ACCESS_AUD`, a missing
+ * list reads as "allow nobody", not "no restriction".
+ */
+export function isAdminEmail(email: string, adminEmails: string | undefined): boolean {
+  if (adminEmails === undefined) return false;
+
+  const wanted = email.trim().toLowerCase();
+
+  if (wanted === '') return false;
+
+  return adminEmails.split(',').some((entry) => entry.trim().toLowerCase() === wanted);
+}
+
+/**
  * `expectedAud` is `undefined` when `ACCESS_AUD`, and `teamDomain` when
  * `ACCESS_TEAM_DOMAIN`, has not been registered yet. Both read as "verify
  * nothing" rather than "verify against nothing": every request is refused

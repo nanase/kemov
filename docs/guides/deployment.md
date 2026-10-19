@@ -27,6 +27,17 @@ bun wrangler secret list                  # 名前だけを出し、値は出さ
 | ----------------- | ------------------------------- |
 | `YOUTUBE_API_KEY` | 収集のジョブ（#62〜#65）        |
 | `ACCESS_AUD`      | `/admin/api` の前の検証（#144） |
+| `ADMIN_EMAILS`    | `/admin/api` を使える管理者     |
+
+`ADMIN_EMAILS` は、管理者のメールアドレスをカンマで区切った 1 行です。
+
+```sh
+bun wrangler secret put ADMIN_EMAILS      # 値を尋ねるので、a@example.com,b@example.com の形で入れる
+```
+
+- Access のポリシーに管理者を足したり外したりしたら、同じコマンドで値ごと入れ直す
+- 登録されていない間と、空の間は、`/admin/api` への要求がすべて 401 になる
+- 手元で動かすときは、`.dev.vars` に `ADMIN_EMAILS=a@example.com` の形で書く
 
 `Deploy` ワークフローは、worker が読むシークレットがすべて登録されているかを確かめ、1 つでも無ければ失敗します。
 

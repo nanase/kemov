@@ -11,6 +11,8 @@ const AUD = 'test-access-aud';
 // wrangler.toml's own ACCESS_TEAM_DOMAIN, which cloudflare:test's env already carries as a real [vars] entry.
 const TEAM = 'nanase.cloudflareaccess.com';
 const NOW_SECONDS = Math.floor(Date.now() / 1000);
+// What ADMIN_EMAILS holds in every test that is not about the list itself: the address validPayload names.
+const ADMIN_EMAILS = 'admin@example.com';
 
 const validPayload = (overrides: Record<string, unknown> = {}) => ({
   aud: AUD,
@@ -49,7 +51,7 @@ function request(
 
   return handleAdminRequest(
     new Request(`https://kemov.nanase.cc${path}`, init),
-    { ...env, ACCESS_AUD: aud, ACCESS_TEAM_DOMAIN: teamDomain } as typeof env,
+    { ...env, ACCESS_AUD: aud, ACCESS_TEAM_DOMAIN: teamDomain, ADMIN_EMAILS } as typeof env,
     undefined,
     fetchImpl,
     fetchImpl === undefined ? undefined : (new Map() as CertsCache),
@@ -88,7 +90,7 @@ describe('handleAdminRequest', () => {
         method: 'POST',
         headers: { 'Cf-Access-Jwt-Assertion': token, 'Sec-Fetch-Site': 'same-origin' },
       }),
-      { ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM } as typeof env,
+      { ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM, ADMIN_EMAILS } as typeof env,
       undefined,
       certsFetch(certs),
       new Map() as CertsCache,
@@ -158,6 +160,57 @@ describe('handleAdminRequest', () => {
   });
 });
 
+describe('ADMIN_EMAILS', () => {
+  /** `/admin/api/me` with a validly signed token for `email`, against an env whose ADMIN_EMAILS is `adminEmails`. */
+  async function me(email: string, adminEmails: string | undefined, path = '/admin/api/me'): Promise<Response> {
+    const { token, certs } = await signedAccessToken(validPayload({ email }));
+
+    return handleAdminRequest(
+      new Request(`https://kemov.nanase.cc${path}`, { headers: { 'Cf-Access-Jwt-Assertion': token } }),
+      { ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM, ADMIN_EMAILS: adminEmails } as typeof env,
+      undefined,
+      certsFetch(certs),
+      new Map() as CertsCache,
+    );
+  }
+
+  test('lets an address on the list through', async () => {
+    const response = await me('admin@example.com', 'other@example.com,admin@example.com');
+
+    expect(response.status).toEqual(200);
+    expect(await response.json()).toEqual({ email: 'admin@example.com' });
+  });
+
+  test('ignores case, spaces around an address, and empty entries in the list', async () => {
+    expect((await me('Admin@Example.com', ' ,other@example.com , ADMIN@example.com ,')).status).toEqual(200);
+  });
+
+  test('refuses a validly signed token for an address that is not on the list with 401', async () => {
+    const response = await me('stranger@example.com', 'admin@example.com');
+
+    expect(response.status).toEqual(401);
+    expect(await response.json()).toEqual({ error: 'not authorized by Cloudflare Access' });
+  });
+
+  test('does not take a longer address that merely contains a listed one', async () => {
+    expect((await me('xadmin@example.com', 'admin@example.com')).status).toEqual(401);
+    expect((await me('admin@example.com.evil.test', 'admin@example.com')).status).toEqual(401);
+  });
+
+  test('refuses everyone when ADMIN_EMAILS is not registered', async () => {
+    expect((await me('admin@example.com', undefined)).status).toEqual(401);
+  });
+
+  test('refuses everyone when ADMIN_EMAILS is empty or only separators', async () => {
+    expect((await me('admin@example.com', '')).status).toEqual(401);
+    expect((await me('admin@example.com', ' , ,')).status).toEqual(401);
+  });
+
+  test('refuses an address that is not on the list on a route that does not exist, too', async () => {
+    expect((await me('stranger@example.com', 'admin@example.com', '/admin/api/nothing')).status).toEqual(401);
+  });
+});
+
 async function call(path: string, init: RequestInit = {}): Promise<Response> {
   const { token, certs } = await signedAccessToken(validPayload());
 
@@ -167,7 +220,7 @@ async function call(path: string, init: RequestInit = {}): Promise<Response> {
       // A browser sends this on every request the admin page makes itself.
       headers: { 'Sec-Fetch-Site': 'same-origin', ...init.headers, 'Cf-Access-Jwt-Assertion': token },
     }),
-    { ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM } as typeof env,
+    { ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM, ADMIN_EMAILS } as typeof env,
     undefined,
     certsFetch(certs),
     new Map() as CertsCache,
@@ -189,7 +242,7 @@ describe('writes to /admin/api', () => {
         ...init,
         headers: { ...init.headers, 'Cf-Access-Jwt-Assertion': token },
       }),
-      { ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM } as typeof env,
+      { ...env, ACCESS_AUD: AUD, ACCESS_TEAM_DOMAIN: TEAM, ADMIN_EMAILS } as typeof env,
       undefined,
       certsFetch(certs),
       new Map() as CertsCache,
