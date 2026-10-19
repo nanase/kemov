@@ -104,12 +104,37 @@ describe('cache key', () => {
     expect(await state(cache, '/api/videos/ranking?limit=7&limit=5')).toBe('miss');
   });
 
-  it('keeps an empty parameter apart from an absent one', async () => {
+  it('keeps an empty parameter apart from an absent one', () => {
+    const key = (search: string) =>
+      cacheKeyUrl(
+        new URL(`https://kemov.nanase.cc/api/channels/UC1/videos${search}`),
+        ['api', 'channels', 'UC1', 'videos'],
+        ['cursor'],
+      );
+
+    expect(key('?cursor=')).not.toBe(key(''));
+  });
+
+  it('keys a limit by the value the handler uses', async () => {
     const cache = testCache();
+
+    await get(cache, '/api/videos/ranking?limit=100');
+
+    for (const query of ['limit=5000', 'limit=0100', 'limit=100.0', 'limit=1e2']) {
+      expect(await state(cache, `/api/videos/ranking?${query}`), query).toBe('fresh');
+    }
 
     await get(cache, '/api/videos/ranking');
 
-    expect(await state(cache, '/api/videos/ranking?limit=')).toBe('miss');
+    for (const query of ['limit=abc', 'limit=0', 'limit=-3', 'limit=1.5', 'limit=10']) {
+      expect(await state(cache, `/api/videos/ranking?${query}`), query).toBe('fresh');
+    }
+
+    await get(cache, '/api/channels/UC1/videos');
+
+    expect(await state(cache, '/api/channels/UC1/videos?limit=junk')).toBe('fresh');
+    expect(await state(cache, '/api/channels/UC1/videos?limit=999')).toBe('miss');
+    expect(await state(cache, '/api/channels/UC1/videos?limit=200')).toBe('fresh');
   });
 
   it('keys the history on bucket, from and to', async () => {
