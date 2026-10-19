@@ -1,5 +1,5 @@
 import type { Env } from '../lib/env';
-import { cachedJson, errorWithCacheHeaders, NotFound } from './cache';
+import { cachedJson, cacheKeyUrl, errorWithCacheHeaders, NotFound } from './cache';
 import { getChannel, getHistory, listChannels, readHistoryRange } from './channels';
 import { health, statusFor } from './health';
 import { relayChannelIcon, relayVideoThumbnail } from './image';
@@ -32,6 +32,19 @@ import {
  * so one failing emptied the statistics table with nothing to say why.
  */
 
+/**
+ * The query parameters each cached route reads, and so the only ones its
+ * answer is keyed on; any other is ignored. Each list must name every
+ * parameter the route's handler reads - one left out would put two different
+ * answers under one key. test/api-cache-key.test.ts checks the lists against
+ * the handlers' source.
+ */
+export const ROUTE_QUERY = {
+  ranking: ['metric', 'type', 'limit'],
+  channelVideos: ['limit', 'cursor'],
+  channelHistory: ['bucket', 'from', 'to'],
+} as const;
+
 export async function handleApiRequest(
   request: Request,
   env: Env,
@@ -56,8 +69,23 @@ export async function handleApiRequest(
 
   if (prefix !== 'api') return errorWithCacheHeaders(404, `no endpoint at ${pathname}`);
 
-  const cached = (build: () => Promise<unknown>, statusOf?: (body: unknown) => number) =>
-    cachedJson(request, cacheImpl, build, undefined, statusOf);
+  // The query parameters a route reads are named at its call below, and only
+  // those are part of what its answer is stored under. See ROUTE_QUERY.
+  // `effective` holds the value a handler actually used where it is not the
+  // one sent - a limit clamped to its maximum, say - so that `limit=5000` and
+  // `limit=200` are one entry rather than two.
+  const cached = (
+    build: () => Promise<unknown>,
+    statusOf?: (body: unknown) => number,
+    names: readonly string[] = [],
+    effective: Readonly<Record<string, string>> = {},
+  ) => {
+    const keyed = new URL(url);
+
+    for (const [name, value] of Object.entries(effective)) keyed.searchParams.set(name, value);
+
+    return cachedJson(request, cacheImpl, build, undefined, statusOf, cacheKeyUrl(keyed, segments, names));
+  };
 
   // #110: the body always reports every job and table; the status is derived
   // from it by statusFor, so that a monitor of this endpoint's status code -
@@ -81,7 +109,9 @@ export async function handleApiRequest(
 
     const limit = readLimit(searchParams.get('limit'), DEFAULT_RANKING_SIZE, MAX_RANKING_SIZE);
 
-    return await cached(() => rankVideos(env, metric, limit, requested.kind));
+    return await cached(() => rankVideos(env, metric, limit, requested.kind), undefined, ROUTE_QUERY.ranking, {
+      limit: String(limit),
+    });
   }
 
   if (segments.length === 3 && resource === 'channels' && name !== undefined) {
@@ -100,7 +130,9 @@ export async function handleApiRequest(
     const limit = readLimit(searchParams.get('limit'), DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
     const cursor = searchParams.get('cursor');
 
-    return await cached(() => listVideos(env, name, { limit, cursor }));
+    return await cached(() => listVideos(env, name, { limit, cursor }), undefined, ROUTE_QUERY.channelVideos, {
+      limit: String(limit),
+    });
   }
 
   if (segments.length === 4 && resource === 'channels' && sub === 'history' && name !== undefined) {
@@ -108,7 +140,11 @@ export async function handleApiRequest(
 
     if ('error' in range) return errorWithCacheHeaders(400, range.error);
 
-    return await cached(() => getHistory(env, name, range.from, range.to, range.bucketSeconds));
+    return await cached(
+      () => getHistory(env, name, range.from, range.to, range.bucketSeconds),
+      undefined,
+      ROUTE_QUERY.channelHistory,
+    );
   }
 
   // Not routed through cachedJson: the body is an image, not the JSON every
