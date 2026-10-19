@@ -46,9 +46,26 @@ async function insertChannel(channelId: string, thumbnailUrl: string | null): Pr
     .run();
 }
 
+async function insertVideo(videoId: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO video (video_id, channel_id, title, published_at, availability, live_broadcast_content, fetched_at)
+     VALUES (?1, 'UCvideo', 't', '2026-09-01T00:00:00Z', 'public', 'none', '2026-09-01T00:00:00Z')`,
+  )
+    .bind(videoId)
+    .run();
+}
+
 beforeEach(async () => {
+  await env.DB.prepare('DELETE FROM footprints_event').run();
+  await env.DB.prepare('DELETE FROM genet_tune_video').run();
+  await env.DB.prepare('DELETE FROM genet_tune').run();
+  await env.DB.prepare('DELETE FROM genet_stream').run();
+  await env.DB.prepare('DELETE FROM video').run();
   await env.DB.prepare('DELETE FROM channel_snapshot').run();
   await env.DB.prepare('DELETE FROM channel').run();
+  await insertChannel('UCvideo', null);
+  await insertVideo('dQw4w9WgXcQ');
+  await insertVideo('zZ9-_0AbCdE');
 });
 
 const request = (path: string) => new Request(`https://kemov.nanase.cc${path}`);
@@ -96,6 +113,7 @@ describe('relayVideoThumbnail', () => {
   test('refuses a videoId that is not shaped like one', async () => {
     const response = await relayVideoThumbnail(
       request('/api/image/video/nope'),
+      env,
       testCache(),
       undefined,
       'nope',
@@ -108,6 +126,7 @@ describe('relayVideoThumbnail', () => {
   test('refuses a size this endpoint does not offer', async () => {
     const response = await relayVideoThumbnail(
       request('/api/image/video/dQw4w9WgXcQ?size=hq720'),
+      env,
       testCache(),
       undefined,
       'dQw4w9WgXcQ',
@@ -132,6 +151,7 @@ describe('relayVideoThumbnail', () => {
 
     const response = await relayVideoThumbnail(
       request(`/api/image/video/dQw4w9WgXcQ?size=${size}`),
+      env,
       testCache(),
       undefined,
       'dQw4w9WgXcQ',
@@ -149,6 +169,7 @@ describe('relayVideoThumbnail', () => {
     const ask = () =>
       relayVideoThumbnail(
         request('/api/image/video/dQw4w9WgXcQ?size=maxresdefault'),
+        env,
         cache,
         undefined,
         'dQw4w9WgXcQ',
@@ -175,6 +196,7 @@ describe('relayVideoThumbnail', () => {
 
     const first = await relayVideoThumbnail(
       request('/api/image/video/dQw4w9WgXcQ'),
+      env,
       cache,
       undefined,
       'dQw4w9WgXcQ',
@@ -190,6 +212,7 @@ describe('relayVideoThumbnail', () => {
 
     const second = await relayVideoThumbnail(
       request('/api/image/video/dQw4w9WgXcQ'),
+      env,
       cache,
       undefined,
       'dQw4w9WgXcQ',
@@ -208,6 +231,7 @@ describe('relayVideoThumbnail', () => {
 
     const first = await relayVideoThumbnail(
       request('/api/image/video/dQw4w9WgXcQ'),
+      env,
       cache,
       undefined,
       'dQw4w9WgXcQ',
@@ -220,6 +244,7 @@ describe('relayVideoThumbnail', () => {
 
     const second = await relayVideoThumbnail(
       request('/api/image/video/dQw4w9WgXcQ'),
+      env,
       cache,
       undefined,
       'dQw4w9WgXcQ',
@@ -241,6 +266,7 @@ describe('relayVideoThumbnail', () => {
 
     const response = await relayVideoThumbnail(
       request('/api/image/video/dQw4w9WgXcQ'),
+      env,
       testCache(),
       undefined,
       'dQw4w9WgXcQ',
@@ -267,6 +293,7 @@ describe('relayVideoThumbnail', () => {
 
     const response = await relayVideoThumbnail(
       request('/api/image/video/dQw4w9WgXcQ'),
+      env,
       cache,
       undefined,
       'dQw4w9WgXcQ',
@@ -290,6 +317,7 @@ describe('relayVideoThumbnail', () => {
       Array.from({ length: 5 }, () =>
         relayVideoThumbnail(
           request('/api/image/video/dQw4w9WgXcQ'),
+          env,
           cache,
           undefined,
           'dQw4w9WgXcQ',
@@ -322,6 +350,7 @@ describe('relayVideoThumbnail', () => {
 
     const firstCall = relayVideoThumbnail(
       request('/api/image/video/dQw4w9WgXcQ'),
+      env,
       cache,
       undefined,
       'dQw4w9WgXcQ',
@@ -335,6 +364,7 @@ describe('relayVideoThumbnail', () => {
     await Promise.resolve();
     const secondCall = relayVideoThumbnail(
       request('/api/image/video/dQw4w9WgXcQ'),
+      env,
       cache,
       undefined,
       'dQw4w9WgXcQ',
@@ -351,6 +381,7 @@ describe('relayVideoThumbnail', () => {
 
     const third = await relayVideoThumbnail(
       request('/api/image/video/dQw4w9WgXcQ'),
+      env,
       cache,
       undefined,
       'dQw4w9WgXcQ',
@@ -361,6 +392,79 @@ describe('relayVideoThumbnail', () => {
     expect(third.status).toEqual(200);
     expect(third.headers.get('x-kemov-relay')).toEqual('hit');
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('relayVideoThumbnail: only videos the site holds', () => {
+  const ask = (videoId: string, cache: Cache, fetchImpl: typeof fetch) =>
+    relayVideoThumbnail(
+      request(`/api/image/video/${videoId}`),
+      env,
+      cache,
+      undefined,
+      videoId,
+      new URLSearchParams(),
+      fetchImpl,
+    );
+  const image = () =>
+    vi.fn<typeof fetch>(
+      async () => new Response(new Uint8Array([1]), { status: 200, headers: { 'content-type': 'image/jpeg' } }),
+    );
+
+  test('an id no table holds is answered 404 without fetching', async () => {
+    const fetchImpl = image();
+    const response = await ask('unknownId01', testCache(), fetchImpl);
+
+    expect(response.status).toEqual(404);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test('the 404 is cached for ten minutes and is not looked up again', async () => {
+    const cache = testCache();
+    const fetchImpl = image();
+    const first = await ask('unknownId01', cache, fetchImpl);
+
+    // Were it looked up again, this would now be relayed.
+    await insertVideo('unknownId01');
+
+    const second = await ask('unknownId01', cache, fetchImpl);
+
+    expect(first.headers.get('cache-control')).toEqual('public, max-age=600');
+    expect(second.status).toEqual(404);
+    expect(second.headers.get('x-kemov-relay')).toEqual('hit');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test('a cache hit does not read D1', async () => {
+    const cache = testCache();
+    const fetchImpl = image();
+
+    await ask('dQw4w9WgXcQ', cache, fetchImpl);
+    await env.DB.prepare('DELETE FROM video').run();
+
+    expect((await ask('dQw4w9WgXcQ', cache, fetchImpl)).status).toEqual(200);
+  });
+
+  test('each table that holds thumbnails makes an id known', async () => {
+    await env.DB.prepare(
+      `INSERT INTO genet_stream (video_id, video_type, title, published_at)
+       VALUES ('streamId001', 'video', '配信', '2026-09-01T00:00:00Z')`,
+    ).run();
+    await env.DB.prepare("INSERT INTO genet_tune (title) VALUES ('曲')").run();
+    await env.DB.prepare(
+      "INSERT INTO genet_tune_video (tune_id, position, video_id, title) SELECT tune_id, 1, 'tuneVideo01', '動画' FROM genet_tune",
+    ).run();
+    await env.DB.prepare(
+      `INSERT INTO footprints_event (date_precision, start_date, kind, title, video_id)
+       VALUES ('day', '2026-01-01', 'other', 'イベント', 'eventVideo1')`,
+    ).run();
+
+    for (const id of ['streamId001', 'tuneVideo01', 'eventVideo1']) {
+      const fetchImpl = image();
+
+      expect((await ask(id, testCache(), fetchImpl)).status).toEqual(200);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    }
   });
 });
 
@@ -508,6 +612,7 @@ describe('the real Cache API', () => {
 
     const first = await relayVideoThumbnail(
       request(`/api/image/video/${videoId}`),
+      env,
       cache,
       ctx,
       videoId,
@@ -520,6 +625,7 @@ describe('the real Cache API', () => {
 
     const second = await relayVideoThumbnail(
       request(`/api/image/video/${videoId}`),
+      env,
       cache,
       undefined,
       videoId,

@@ -10,6 +10,15 @@ updates:
       timezone: Asia/Tokyo
     open-pull-requests-limit: 5
 
+    # Wait a week after a release before proposing it. Merging deploys
+    # straight to the site, so a compromised release should have time to be
+    # noticed and pulled before it can reach us.
+    #
+    # Cooldown applies to version updates only; security updates are not
+    # delayed.
+    cooldown:
+      default-days: 7
+
     # Major bumps stay a deliberate decision. They can change what the page
     # renders, and merging now deploys straight to the site, so a major
     # should land when someone is ready to look at the result.
@@ -50,6 +59,11 @@ updates:
       day: monday
       time: '09:00'
       timezone: Asia/Tokyo
+
+    # Same reason as for bun above: wait a week before taking a new release.
+    cooldown:
+      default-days: 7
+
     groups:
       actions:
         patterns:

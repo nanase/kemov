@@ -110,6 +110,10 @@ export async function handleAdminRequest(
 
   if (identity === null) return errorResponse(401, 'not authorized by Cloudflare Access');
 
+  // Checked here once, ahead of every route, so a writer added later is
+  // covered without having to remember to ask.
+  if (!isSameOriginWrite(request)) return errorResponse(403, 'writes must come from the admin site itself');
+
   // Not routed through cachedJson/errorWithCacheHeaders: those exist to serve
   // a stale answer when D1 cannot be reached (see cache.ts), which nothing
   // under /admin/api does, and to cache is to publish, which a writer's own
@@ -585,10 +589,18 @@ function methodNotAllowed(request: Request, allow: string): Response {
  * of them would otherwise have to parse for itself.
  */
 async function readJsonObject(request: Request): Promise<{ value: Record<string, unknown> } | { error: Response }> {
+  const mediaType = (request.headers.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
+
+  if (mediaType !== 'application/json') return { error: errorResponse(415, 'Content-Type must be application/json') };
+
+  const text = await readBodyText(request);
+
+  if (text === null) return { error: errorResponse(413, `body must be at most ${MAX_BODY_BYTES} bytes`) };
+
   let parsed: unknown;
 
   try {
-    parsed = await request.json();
+    parsed = JSON.parse(text);
   } catch {
     return { error: errorResponse(400, 'body must be valid JSON') };
   }
@@ -598,4 +610,66 @@ async function readJsonObject(request: Request): Promise<{ value: Record<string,
   }
 
   return { value: parsed as Record<string, unknown> };
+}
+
+/** The most a request body may be, in bytes. */
+const MAX_BODY_BYTES = 1024 * 1024;
+
+/**
+ * The body as text, or null when it is over MAX_BODY_BYTES. Content-Length is
+ * only a hint a sender can omit or get wrong, so the bytes actually read are
+ * counted too, and reading stops at the first byte past the limit.
+ */
+async function readBodyText(request: Request): Promise<string | null> {
+  const declared = Number(request.headers.get('Content-Length'));
+
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return null;
+
+  if (request.body === null) return '';
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+
+    if (done) break;
+
+    total += value.byteLength;
+
+    if (total > MAX_BODY_BYTES) {
+      await reader.cancel();
+
+      return null;
+    }
+
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return new TextDecoder().decode(bytes);
+}
+
+/**
+ * Whether `request` may change anything: a read always may, a write only when
+ * the browser says it came from this same origin. Sec-Fetch-Site is the
+ * browser's own statement and cannot be set by a page; Origin stands in for it
+ * on a client that does not send one, and a request with neither is refused.
+ */
+function isSameOriginWrite(request: Request): boolean {
+  if (request.method === 'GET' || request.method === 'HEAD') return true;
+
+  const site = request.headers.get('Sec-Fetch-Site');
+
+  if (site !== null) return site === 'same-origin';
+
+  return request.headers.get('Origin') === new URL(request.url).origin;
 }

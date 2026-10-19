@@ -138,7 +138,7 @@ export async function handleApiRequest(
   }
 
   if (segments.length === 4 && resource === 'image' && name === 'video' && sub !== undefined) {
-    return await relayVideoThumbnail(request, cacheImpl, ctx, sub, searchParams);
+    return await relayVideoThumbnail(request, env, cacheImpl, ctx, sub, searchParams);
   }
 
   // Not routed through cachedJson: the object in PUBLIC_DATA already carries
