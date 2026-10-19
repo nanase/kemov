@@ -20,6 +20,46 @@ export async function readSourceWhitelist(env: Env): Promise<string[]> {
   return results.map((row) => row.prefix);
 }
 
+/** A path segment that is `.` or `..`, written plainly or with its dots percent-encoded: a browser resolves it away. */
+const DOT_SEGMENT = /^(?:\.|%2e){1,2}$/i;
+
+/**
+ * Whether opening `url` goes where its text says it does.
+ *
+ * The prefix match reads the text, and a browser reads the URL: it resolves
+ * `.` and `..` segments, treats `\` as `/`, drops tabs and line breaks, and
+ * takes user info and a port as part of the host. Text that a browser would
+ * read as somewhere else than it spells is refused outright, so the match
+ * below only ever sees a URL whose text and meaning agree. That means:
+ *
+ * - `new URL` parses it;
+ * - its origin is the text before the path - no user info, no port, and a host
+ *   already in the form `URL` normalises to;
+ * - the path (the text between the origin and `?` or `#`) holds no `.` or `..`
+ *   segment, no encoded `/` or `\`, and no `\`, tab or line break.
+ *
+ * The path is read from the original text, not from `URL.pathname`, so a URL
+ * with non-ASCII characters in it is compared as it was written.
+ */
+function readsAsWrittenOnTheWire(url: string): boolean {
+  let origin: string;
+
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    return false;
+  }
+
+  // An opaque origin (`"null"`) is a scheme that has none, which no https URL is.
+  if (!url.startsWith(origin) || origin === 'null') return false;
+
+  const path = url.slice(origin.length).split(/[?#]/, 1)[0];
+
+  if (/[\\\t\n\r]|%2f|%5c/i.test(path)) return false;
+
+  return !path.split('/').some((segment) => DOT_SEGMENT.test(segment));
+}
+
 /**
  * Whether `url` counts as a source `prefixes` accepts.
  *
@@ -36,6 +76,8 @@ export async function readSourceWhitelist(env: Env): Promise<string[]> {
  * the table once.
  */
 export function isWhitelistedSource(url: string, prefixes: readonly string[]): boolean {
+  if (!readsAsWrittenOnTheWire(url)) return false;
+
   return prefixes.some((prefix) => {
     if (!url.startsWith(prefix)) return false;
 

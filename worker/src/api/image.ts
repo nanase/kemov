@@ -366,7 +366,7 @@ export function readVideoThumbnailSize(value: string | null): VideoThumbnailSize
   return (VIDEO_THUMBNAIL_SIZES as readonly string[]).includes(value) ? (value as VideoThumbnailSize) : null;
 }
 
-/** A YouTube video id's shape - 11 characters, never checked against D1 for this endpoint. */
+/** A YouTube video id's shape - 11 characters. Whether this site knows the video is `isKnownVideo`'s question. */
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 
 export function isVideoId(value: string): boolean {
@@ -375,16 +375,38 @@ export function isVideoId(value: string): boolean {
 
 const VIDEO_THUMBNAIL_CACHE_SECONDS = 7 * 24 * 60 * 60;
 
+/** Shorter than a success: a video the collector or the admin site adds later should start showing soon. */
+const UNKNOWN_VIDEO_CACHE_SECONDS = 10 * 60;
+
+/**
+ * Whether any table the pages draw a thumbnail from holds this id, in one
+ * query. Drafts count: the admin site previews them with the same components.
+ */
+export async function isKnownVideo(env: Env, videoId: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT EXISTS (SELECT 1 FROM video WHERE video_id = ?1)
+         OR EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1)
+         OR EXISTS (SELECT 1 FROM genet_tune_video WHERE video_id = ?1)
+         OR EXISTS (SELECT 1 FROM footprints_event WHERE video_id = ?1) AS known`,
+  )
+    .bind(videoId)
+    .first<{ known: number }>();
+
+  return row !== null && row.known === 1;
+}
+
 /**
  * GET /api/image/video/:videoId
  *
- * D1 is not read here, unlike the channel icon above: a thumbnail's address
- * is built from the id alone, the same way `src/lib/youtube.ts` already
- * builds one for the browser to fetch directly, so there is nothing to look
- * up and nothing that could be missing from `video` for this to fail on.
+ * Only a video this site holds is relayed: `video`, `genet_stream`,
+ * `genet_tune_video` or `footprints_event`. D1 is read only after a cache
+ * miss, and an id none of them holds is answered 404 without a fetch. That
+ * answer is cached too, for less time than an image, so the same unknown id
+ * does not reach D1 again on every request.
  */
 export async function relayVideoThumbnail(
   request: Request,
+  env: Env,
   cacheImpl: Cache,
   ctx: ExecutionContext | undefined,
   videoId: string,
@@ -403,6 +425,15 @@ export async function relayVideoThumbnail(
   const cached = await cacheImpl.match(key);
 
   if (cached !== undefined) return withRelayState(cached, 'hit');
+
+  if (!(await isKnownVideo(env, videoId))) {
+    const unknown = jsonResponse(
+      { error: `no video ${videoId}` },
+      { status: 404, headers: { 'cache-control': `public, max-age=${UNKNOWN_VIDEO_CACHE_SECONDS}` } },
+    );
+
+    return answered(await answerAndCache(key, unknown, cacheImpl, ctx, 'error'));
+  }
 
   return await fetchAndCache(
     key,
