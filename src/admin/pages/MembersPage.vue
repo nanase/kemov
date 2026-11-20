@@ -577,6 +577,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                     type="text"
                     placeholder="#RRGGBB"
                     :value="colorText(box.key)"
+                    :aria-invalid="errorField === box.key"
                     @input="activeFields[box.key] = ($event.target as HTMLInputElement).value"
                     @change="fixColor(box.key)"
                   />
