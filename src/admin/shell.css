@@ -1136,9 +1136,21 @@ table.grid input[type='checkbox'] {
   gap: 7px;
 }
 
-.color-input .who-chip i {
-  width: 16px;
-  height: 16px;
+/* The browser's colour picker, which shows the colour itself. It cannot be
+   empty, so a box that is not a colour yet shows it dimmed. */
+.color-pick {
+  flex: none;
+  width: 34px;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--k-line-2);
+  border-radius: 7px;
+  background: var(--k-surface);
+  cursor: pointer;
+}
+
+.color-pick.unset {
+  opacity: 0.4;
 }
 
 /* ---- collected-value / override rows (配信・動画) ------------------- */

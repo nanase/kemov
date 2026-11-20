@@ -1,17 +1,22 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, getJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
 import {
+  COLOR_KEYS,
   MEMBER_TEXT,
   blankNewMember,
   fieldForSaveError,
+  memberOfListSaveError,
   moveId,
+  normalizeColor,
+  pickerValue,
   reconcileOrder,
   sameOrder,
   toFormFields,
+  type ColorKey,
   type Member,
   type MemberFieldKey,
   type MemberFormFields,
@@ -119,6 +124,12 @@ function selectRow(channelId: string): void {
   // The edit panel is inert while 保存 is in flight; so is the choice of what it shows.
   if (listSaving.value) return;
 
+  // What a failed save said is about the member it was shown for.
+  if (channelId !== selectedId.value) {
+    errorMessage.value = null;
+    errorField.value = null;
+  }
+
   newForm.value = null;
   selectedId.value = channelId;
   detail.value = true;
@@ -157,6 +168,7 @@ function addToList(): void {
     return;
   }
 
+  normalizeColors(member);
   draft.order = [...orderedIds.value, member.channelId];
   draft.added.push(member);
   newForm.value = null;
@@ -171,6 +183,8 @@ function removeAdded(): void {
   draft.added = draft.added.filter((a) => a.channelId !== id);
   draft.order = orderedIds.value.filter((other) => other !== id);
   selectedId.value = rows.value[0]?.channelId ?? null;
+  errorMessage.value = null;
+  errorField.value = null;
   detail.value = false;
 }
 
@@ -181,13 +195,38 @@ function move(channelId: string, delta: -1 | 1): void {
 function discard(): void {
   clearDraft();
   listError.value = null;
+  errorMessage.value = null;
+  errorField.value = null;
 
   if (selectedAdded.value === null && selected.value === null) selectedId.value = rows.value[0]?.channelId ?? null;
+}
+
+/**
+ * Puts a list save's 400 where a one-member save's goes: the member it is
+ * about is selected and the edit panel says why. The worker names the member;
+ * which field is read from the message, as `save` does, so this screen does
+ * not hold a second copy of the worker's checks.
+ */
+async function showAddedMemberError(channelId: string, message: string): Promise<void> {
+  newForm.value = null;
+  selectedId.value = channelId;
+  detail.value = true;
+
+  // Changing the selection clears the edit panel's error (`watch(selected)`
+  // above), and that runs after this line: set the error once it has.
+  await nextTick();
+
+  errorMessage.value = message;
+  errorField.value = fieldForSaveError(message);
 }
 
 async function saveList(): Promise<void> {
   listSaving.value = true;
   listError.value = null;
+  errorMessage.value = null;
+  errorField.value = null;
+
+  for (const member of draft.added) normalizeColors(member);
 
   try {
     await putJson('/members', { add: draft.added, order: orderedIds.value });
@@ -196,7 +235,17 @@ async function saveList(): Promise<void> {
     await load();
     showToast('保存しました');
   } catch (error) {
-    if (error instanceof AdminApiError && error.status === 409) {
+    const channelId =
+      error instanceof AdminApiError && error.status === 400
+        ? memberOfListSaveError(
+            error.body,
+            draft.added.map((a) => a.channelId),
+          )
+        : null;
+
+    if (error instanceof AdminApiError && channelId !== null) {
+      await showAddedMemberError(channelId, error.message);
+    } else if (error instanceof AdminApiError && error.status === 409) {
       showToast(MEMBER_TEXT.listChanged);
     } else {
       listError.value = error instanceof AdminApiError ? error.message : String(error);
@@ -212,6 +261,8 @@ async function save(): Promise<void> {
   saving.value = true;
   errorMessage.value = null;
   errorField.value = null;
+
+  normalizeColors(fields.value);
 
   try {
     await putJson(`/members/${encodeURIComponent(selectedId.value)}`, fields.value);
@@ -261,6 +312,38 @@ function setNullable(key: 'globalname' | 'twitter' | 'twitch' | 'activityEndDate
   if (activeFields.value === null) return;
 
   activeFields.value[key] = (event.target as HTMLInputElement).value || null;
+}
+
+/** A colour written without its `#` ("1a2b3c") is given one; anything else is left for the server to judge. */
+function normalizeColors(target: MemberFormFields): void {
+  for (const key of COLOR_KEYS) target[key] = normalizeColor(target[key]);
+}
+
+const COLOR_BOXES: readonly { key: ColorKey; id: string; label: string }[] = [
+  { key: 'colorKey', id: 'f-color-key', label: 'key' },
+  { key: 'colorSub', id: 'f-color-sub', label: 'sub' },
+  { key: 'colorLight', id: 'f-color-light', label: 'light' },
+  { key: 'colorBack', id: 'f-color-back', label: 'back' },
+];
+
+function colorText(key: ColorKey): string {
+  return activeFields.value?.[key] ?? '';
+}
+
+function isPickable(key: ColorKey): boolean {
+  return /^#[0-9A-Fa-f]{6}$/.test(colorText(key));
+}
+
+function fixColor(key: ColorKey): void {
+  if (activeFields.value === null) return;
+
+  activeFields.value[key] = normalizeColor(activeFields.value[key]);
+}
+
+function pickColor(key: ColorKey, event: Event): void {
+  if (activeFields.value === null) return;
+
+  activeFields.value[key] = (event.target as HTMLInputElement).value;
 }
 
 // Closing or reloading the tab loses `draft`; only the browser's own
@@ -489,34 +572,26 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
           >
             <h4>色</h4>
             <div class="row2">
-              <div class="field">
-                <label for="f-color-key">key</label>
+              <div v-for="box in COLOR_BOXES" :key="box.key" class="field">
+                <label :for="box.id">{{ box.label }}</label>
                 <div class="color-input">
-                  <input id="f-color-key" v-model="activeFields.colorKey" type="text" placeholder="#RRGGBB" />
-                  <span class="who-chip"><i :style="{ background: activeFields.colorKey }"></i></span>
-                </div>
-              </div>
-              <div class="field">
-                <label for="f-color-sub">sub</label>
-                <div class="color-input">
-                  <input id="f-color-sub" v-model="activeFields.colorSub" type="text" placeholder="#RRGGBB" />
-                  <span class="who-chip"><i :style="{ background: activeFields.colorSub }"></i></span>
-                </div>
-              </div>
-            </div>
-            <div class="row2">
-              <div class="field">
-                <label for="f-color-light">light</label>
-                <div class="color-input">
-                  <input id="f-color-light" v-model="activeFields.colorLight" type="text" placeholder="#RRGGBB" />
-                  <span class="who-chip"><i :style="{ background: activeFields.colorLight }"></i></span>
-                </div>
-              </div>
-              <div class="field">
-                <label for="f-color-back">back</label>
-                <div class="color-input">
-                  <input id="f-color-back" v-model="activeFields.colorBack" type="text" placeholder="#RRGGBB" />
-                  <span class="who-chip"><i :style="{ background: activeFields.colorBack }"></i></span>
+                  <input
+                    :id="box.id"
+                    type="text"
+                    placeholder="#RRGGBB"
+                    :value="colorText(box.key)"
+                    @input="activeFields[box.key] = ($event.target as HTMLInputElement).value"
+                    @change="fixColor(box.key)"
+                  />
+                  <input
+                    class="color-pick"
+                    :class="{ unset: !isPickable(box.key) }"
+                    type="color"
+                    :value="pickerValue(colorText(box.key))"
+                    :aria-label="MEMBER_TEXT.pickColor(box.label)"
+                    :title="MEMBER_TEXT.pickColor(box.label)"
+                    @input="pickColor(box.key, $event)"
+                  />
                 </div>
               </div>
             </div>
