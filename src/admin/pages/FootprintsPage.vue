@@ -13,8 +13,11 @@ import {
   type FootprintsMember,
 } from '../lib/footprints';
 import { footprintsMarkFor, type FootprintsPending } from '../lib/footprints-publish';
+import { countText } from '../lib/list-count';
+import { useListTotal } from '../lib/list-total';
 import { todayJst } from '../lib/snapshots';
 import { showToast } from '../lib/toast';
+import { confirmDiscard } from '../lib/unsaved-guard';
 
 /** あしあと (#144, task 9's own admin screen) - the table and its edit panel. */
 
@@ -38,6 +41,10 @@ const route = useRoute();
 let requestedId = typeof route.query.event === 'string' ? Number(route.query.event) : Number.NaN;
 
 const selected = computed(() => events.value.find((e) => e.eventId === selectedId.value) ?? null);
+const filtered = computed(() => status.value !== 'all' || q.value.trim() !== '');
+const listTotal = useListTotal(
+  async () => (await getJson<{ events: FootprintsEvent[] }>('/footprints/events')).events.length,
+);
 
 function memberName(channelId: string): string {
   return members.value.find((m) => m.channelId === channelId)?.name ?? channelId;
@@ -67,6 +74,7 @@ async function load(): Promise<void> {
     if (generation !== loadGeneration) return;
 
     events.value = body.events;
+    listTotal.update(events.value.length, filtered.value);
 
     if (selectedId.value !== null && !events.value.some((e) => e.eventId === selectedId.value)) {
       selectedId.value = null;
@@ -107,10 +115,20 @@ async function loadPending(): Promise<void> {
 
 /** After a save, a move to 公開待ち, a withdraw or a delete: the rows and what is waiting both changed. */
 function reload(): Promise<unknown> {
+  // A delete changes how many rows there are in all.
+  listTotal.invalidate();
+
   return Promise.all([load(), loadPending()]);
 }
 
+/** A row clicked in the table: asks first when the open one has changes that would be lost. */
 function selectRow(eventId: number): void {
+  if (eventId !== selectedId.value && !confirmDiscard()) return;
+
+  openRow(eventId);
+}
+
+function openRow(eventId: number): void {
   selectedId.value = eventId;
   detail.value = true;
 }
@@ -120,7 +138,10 @@ function back(): void {
 }
 
 async function addEvent(): Promise<void> {
+  if (!confirmDiscard()) return;
+
   adding.value = true;
+  listTotal.invalidate();
 
   try {
     const body = await postJson<{ event: { eventId: number } }>('/footprints/events', emptyFormFields(todayJst()));
@@ -131,7 +152,7 @@ async function addEvent(): Promise<void> {
     // or title filter can exclude it from `events`. Selecting it anyway
     // would point the inspector at an event the list doesn't show.
     if (events.value.some((e) => e.eventId === body.event.eventId)) {
-      selectRow(body.event.eventId);
+      openRow(body.event.eventId);
     } else {
       showToast('作りました（いまの絞り込みには出ません）');
     }
@@ -178,7 +199,7 @@ onMounted(() => {
         </div>
         <input v-model="q" type="text" class="btn" placeholder="題で絞り込み" aria-label="題で絞り込み" />
         <span class="grow"></span>
-        <span class="sub num">{{ events.length }} 件</span>
+        <span class="sub num">{{ countText(events.length, listTotal.total.value, filtered) }}</span>
         <button class="btn" type="button" :disabled="adding" @click="addEvent">＋ 足す</button>
       </div>
       <div class="scroller">
