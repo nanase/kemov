@@ -1,6 +1,7 @@
 import {
   blankNewMember,
   fieldForSaveError,
+  isHexColor,
   memberOfListSaveError,
   moveId,
   normalizeColor,
@@ -167,6 +168,16 @@ describe('normalizeColor', () => {
     ['a colour name', 'red'],
   ])('leaves %s as it is', (_label, value) => {
     expect(normalizeColor(value)).toEqual(value);
+  });
+});
+
+describe('isHexColor', () => {
+  test.each(['#1a2b3c', '#1A2B3C'])('accepts %s', (text) => {
+    expect(isHexColor(text)).toBe(true);
+  });
+
+  test.each(['', '#', '1a2b3c', '#1a2b3', '#1a2b3c4', 'red'])('refuses "%s"', (text) => {
+    expect(isHexColor(text)).toBe(false);
   });
 });
 

@@ -212,8 +212,13 @@ export function normalizeColor(value: string): string {
   return BARE_HEX.test(value) ? `#${value}` : value;
 }
 
-const PICKABLE = /^#[0-9A-Fa-f]{6}$/;
+const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 const PICKER_DEFAULT = '#000000';
+
+/** Whether `text` is a `#RRGGBB` colour, the one form the picker can show. */
+export function isHexColor(text: string): boolean {
+  return HEX_COLOR.test(text);
+}
 
 /**
  * The value an `<input type="color">` is given for a colour box's text. The
@@ -222,5 +227,5 @@ const PICKER_DEFAULT = '#000000';
  * itself is not touched.
  */
 export function pickerValue(text: string): string {
-  return PICKABLE.test(text) ? text.toLowerCase() : PICKER_DEFAULT;
+  return isHexColor(text) ? text.toLowerCase() : PICKER_DEFAULT;
 }

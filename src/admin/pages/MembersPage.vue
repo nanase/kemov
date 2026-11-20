@@ -9,6 +9,7 @@ import {
   MEMBER_TEXT,
   blankNewMember,
   fieldForSaveError,
+  isHexColor,
   memberOfListSaveError,
   moveId,
   normalizeColor,
@@ -330,10 +331,6 @@ function colorText(key: ColorKey): string {
   return activeFields.value?.[key] ?? '';
 }
 
-function isPickable(key: ColorKey): boolean {
-  return /^#[0-9A-Fa-f]{6}$/.test(colorText(key));
-}
-
 function fixColor(key: ColorKey): void {
   if (activeFields.value === null) return;
 
@@ -585,7 +582,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                   />
                   <input
                     class="color-pick"
-                    :class="{ unset: !isPickable(box.key) }"
+                    :class="{ unset: !isHexColor(colorText(box.key)) }"
                     type="color"
                     :value="pickerValue(colorText(box.key))"
                     :aria-label="MEMBER_TEXT.pickColor(box.label)"
