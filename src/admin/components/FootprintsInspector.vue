@@ -15,6 +15,7 @@ import {
 } from '../lib/footprints';
 import { AdminApiError, deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
+import { EDITING_TEXT, sameFields, saveToastFor } from '../lib/editing';
 import { APPROVED_TOAST, DEFERRED_TOAST, REJECTED_TOAST } from '../lib/inbox';
 import {
   footprintsMarkFor,
@@ -26,7 +27,9 @@ import { refreshPublishBadge } from '../lib/publish-badge';
 import { CHANGED_NOTICE, PUBLISH_QUEUED_TOAST, waitingNoticeFor, WITHDRAW_QUEUED_TOAST } from '../lib/publish-mark';
 import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
 import { showToast } from '../lib/toast';
+import { confirmDiscard, useUnsavedGuard } from '../lib/unsaved-guard';
 
+import DeleteButton from './DeleteButton.vue';
 import SplitHandle from './SplitHandle.vue';
 
 /**
@@ -63,6 +66,16 @@ const saving = ref(false);
 const errorMessage = ref<string | null>(null);
 const errorField = ref<EventFieldKey | null>(null);
 const memberPickerOpen = ref(false);
+
+/** Whether the fields differ from the row as saved - the 未保存 chip, and what asks before they are thrown away. */
+const dirty = computed(() => !sameFields(fields.value, toFormFields(props.event)));
+
+useUnsavedGuard(
+  () => dirty.value,
+  () => {
+    fields.value = toFormFields(props.event);
+  },
+);
 
 watch(
   () => props.event,
@@ -140,7 +153,7 @@ function save(): Promise<void> {
     emit('changed');
     // Saving a published row's content makes it 「公開後に変更あり」, which the badge counts.
     void refreshPublishBadge();
-    showToast('保存しました');
+    showToast(saveToastFor(props.event.status));
   });
 }
 
@@ -159,7 +172,7 @@ function remove(): Promise<void> {
   return withErrorHandling(async () => {
     await deleteJson(`/footprints/events/${props.event.eventId}`);
     emit('changed');
-    showToast('削除しました');
+    showToast(EDITING_TEXT.removed);
   });
 }
 
@@ -213,6 +226,11 @@ function confirmSource(): Promise<void> {
   });
 }
 
+/** ← 一覧: on a narrow screen the panel stays behind the list, so what is let go here is thrown away, not kept for later. */
+function back(): void {
+  if (confirmDiscard()) emit('back');
+}
+
 defineExpose({ approve });
 
 import PreviewButton from './PreviewButton.vue';
@@ -230,6 +248,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
         <div class="stack">
           <span class="chip" :class="mark.tone">{{ mark.label }}</span>
           <span class="chip kind">{{ kindLabel(fields.kind) }}</span>
+          <span v-if="dirty" class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
         </div>
       </div>
       <PreviewButton />
@@ -394,7 +413,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
     <div v-if="mode === 'review'" class="inspector-foot">
       <button class="btn primary" type="button" :disabled="saving" @click="approve">承認して公開待ちにする</button>
       <button class="btn" type="button" :disabled="saving" @click="defer">あとで</button>
-      <button class="btn back quiet" type="button" @click="emit('back')">← 一覧</button>
+      <button class="btn back quiet" type="button" @click="back">← 一覧</button>
       <span class="grow"></span>
       <span class="foot-sep" aria-hidden="true"></span>
       <button class="btn danger" type="button" :disabled="saving" @click="reject">却下</button>
@@ -402,7 +421,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
     <div v-else-if="mode === 'source'" class="inspector-foot">
       <button class="btn primary" type="button" :disabled="saving" @click="confirmSource">出典を確かめた</button>
       <button class="btn" type="button" :disabled="saving" @click="save">保存</button>
-      <button class="btn back quiet" type="button" @click="emit('back')">← 一覧</button>
+      <button class="btn back quiet" type="button" @click="back">← 一覧</button>
     </div>
     <div v-else class="inspector-foot">
       <button class="btn primary" type="button" :disabled="saving" @click="save">保存</button>
@@ -412,12 +431,10 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
       <button v-if="buttons.withdrawLabel" class="btn" type="button" :disabled="saving" @click="moveStatus('withdraw')">
         {{ buttons.withdrawLabel }}
       </button>
-      <button class="btn back quiet" type="button" @click="emit('back')">← 一覧</button>
+      <button class="btn back quiet" type="button" @click="back">← 一覧</button>
       <span class="grow"></span>
       <span class="foot-sep" aria-hidden="true"></span>
-      <button class="btn danger" type="button" :disabled="saving || buttons.deleteDisabled" @click="remove">
-        削除
-      </button>
+      <DeleteButton :disabled="saving || buttons.deleteDisabled" @remove="remove" />
     </div>
 
     <div v-if="memberPickerOpen" class="picker" @mousedown.self="memberPickerOpen = false">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref, shallowRef, toRaw, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { unescapeHtml } from '@nanase/alnilam/string';
 
@@ -10,6 +10,7 @@ import PreviewPane from '../components/PreviewPane.vue';
 import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, getJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
+import { EDITING_TEXT, SAVE_TOAST, sameFields, saveToastFor } from '../lib/editing';
 import { insertAt, mdSnippet, clock, type MdLinkKind } from '../lib/genet-markdown';
 import { type GenetPerson } from '../lib/genet-people';
 import {
@@ -41,9 +42,12 @@ import {
   type GenetStream,
   type StreamFormFields,
 } from '../lib/genet-streams';
+import { countText } from '../lib/list-count';
+import { useListTotal } from '../lib/list-total';
 import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
 import { CHANGED_NOTICE, PUBLISH_QUEUED_TOAST, waitingNoticeFor, WITHDRAW_QUEUED_TOAST } from '../lib/publish-mark';
 import { showToast } from '../lib/toast';
+import { confirmDiscard, useUnsavedGuard } from '../lib/unsaved-guard';
 
 // The プレビュー is drawn in ジェネット楽曲一覧's colours, already while it waits for a tune to be opened.
 import '@/shell/palette-genet.css';
@@ -94,8 +98,9 @@ const statusFilter = ref<(typeof STATUS_OPTIONS)[number]['value']>('all');
 const selectedVideoId = ref<string | null>(null);
 const detail = ref(false);
 
-const filteredStreams = computed(() =>
-  statusFilter.value === 'all' ? streams.value : streams.value.filter((s) => s.status === statusFilter.value),
+// `load` asks the worker for the filtered list, so `streams` is already what the filter shows.
+const listTotal = useListTotal(
+  async () => (await getJson<{ streams: GenetStream[] }>('/genet/streams')).streams.length,
 );
 const selected = computed(() => streams.value.find((s) => s.videoId === selectedVideoId.value) ?? null);
 const selectedWaiting = computed(() =>
@@ -118,17 +123,51 @@ const streamSaving = ref(false);
 const streamError = ref<string | null>(null);
 const streamErrorField = ref<ReturnType<typeof fieldForStreamSaveError>>(null);
 
-watch(selected, (stream) => {
-  streamFields.value = stream === null ? emptyStreamFields() : toStreamFormFields(stream);
+watch(selected, (stream, previous) => {
   streamError.value = null;
   streamErrorField.value = null;
-  openIndex.value = null;
-  // Keyed by performance index, which means nothing once the stream changes
-  // - the new stream's own performances start at the same indices, and a
-  // stale entry here would let openTune skip fetching and saveTune send the
-  // previous stream's tune fields to a different tune's ID.
-  tuneFieldsByIndex.value = new Map();
+
+  if (stream === null || stream.videoId !== previous?.videoId) {
+    streamFields.value = stream === null ? emptyStreamFields() : toStreamFormFields(stream);
+    closeTunes();
+    return;
+  }
+
+  // The open stream read again - after 公開待ちにする, 下書きに戻す or a
+  // filter that keeps it - leaves what is typed alone. Its own 保存 puts the
+  // saved fields back itself, once the list has been read.
+  if (previous !== null && !sameFields(streamFields.value, toStreamFormFields(previous))) return;
+
+  replaceStreamFields(toStreamFormFields(stream));
 });
+
+/**
+ * Puts `next` in place of the stream's fields. The tunes stay open with
+ * whatever is typed into them - no 保存 of the stream sends them - but only
+ * while each index still names the same tune: the caches are keyed by index,
+ * and a different order (saved elsewhere, or a tune taken off while a 保存
+ * was on its way) would hand one tune's fields to another's 保存.
+ */
+function replaceStreamFields(next: StreamFormFields): void {
+  const before = streamFields.value.performances.map((p) => p.tuneId);
+
+  streamFields.value = next;
+
+  if (
+    !sameFields(
+      before,
+      next.performances.map((p) => p.tuneId),
+    )
+  )
+    closeTunes();
+}
+
+/** Closes the tunes and forgets them; each is read again when opened. */
+function closeTunes(): void {
+  openIndex.value = null;
+  tuneFieldsByIndex.value = new Map();
+  tuneSavedByIndex.value = new Map();
+}
 
 async function loadPending(): Promise<void> {
   try {
@@ -138,16 +177,28 @@ async function loadPending(): Promise<void> {
   }
 }
 
-async function load(): Promise<void> {
+// A filter changed mid-request starts a second, overlapping GET; only the
+// latest one's answer is kept, so a slower earlier one cannot draw the list
+// for a filter that is no longer selected.
+let loadGeneration = 0;
+
+/** Resolves true when the list it read was put on screen: not failed, and not overtaken by a later load. */
+async function load(): Promise<boolean> {
   loading.value = true;
   loadError.value = null;
   void loadPending();
 
+  const generation = ++loadGeneration;
+  const filter = statusFilter.value;
+
   try {
-    const query = statusFilter.value === 'all' ? '' : `?status=${statusFilter.value}`;
+    const query = filter === 'all' ? '' : `?status=${filter}`;
     const body = await getJson<{ streams: GenetStream[] }>(`/genet/streams${query}`);
 
+    if (generation !== loadGeneration) return false;
+
     streams.value = body.streams;
+    listTotal.update(streams.value.length, filter !== 'all');
 
     if (selectedVideoId.value === null && streams.value.length > 0) {
       const requested = streams.value.find((s) => s.videoId === requestedVideoId);
@@ -159,10 +210,16 @@ async function load(): Promise<void> {
     }
 
     requestedVideoId = null;
+
+    return true;
   } catch (error) {
+    if (generation !== loadGeneration) return false;
+
     loadError.value = error instanceof AdminApiError ? error.message : String(error);
+
+    return false;
   } finally {
-    loading.value = false;
+    if (generation === loadGeneration) loading.value = false;
   }
 }
 
@@ -181,22 +238,39 @@ async function loadPeople(): Promise<void> {
   }
 }
 
+/** A stream clicked in the list: asks first when the open one has changes that would be lost. */
 function selectStream(videoId: string): void {
+  if (videoId !== selectedVideoId.value && !confirmDiscard()) return;
+
   selectedVideoId.value = videoId;
   detail.value = true;
 }
 
+// A filter can leave the open stream out of the list, which closes its
+// editor, so changing one asks first, as selecting another stream does.
+function setStatusFilter(value: (typeof STATUS_OPTIONS)[number]['value']): void {
+  if (value !== statusFilter.value && confirmDiscard()) statusFilter.value = value;
+}
+
 async function saveStream(): Promise<void> {
   if (selected.value === null) return;
+
+  const { videoId, status } = selected.value;
 
   streamSaving.value = true;
   streamError.value = null;
   streamErrorField.value = null;
 
   try {
-    await putJson(`/genet/streams/${encodeURIComponent(selected.value.videoId)}`, streamFields.value);
-    showToast('配信を保存しました');
-    await load();
+    await putJson(`/genet/streams/${encodeURIComponent(videoId)}`, streamFields.value);
+    showToast(saveToastFor(status));
+    // The reload kept the typed fields (see the watch on `selected`); they
+    // are saved now, so the saved stream takes their place - unless the
+    // reload failed, when `selected` is still the stream from before the
+    // save and putting it back would undo the save at the next one.
+    if ((await load()) && selected.value?.videoId === videoId) {
+      replaceStreamFields(toStreamFormFields(selected.value));
+    }
   } catch (error) {
     if (error instanceof AdminApiError) {
       streamError.value = error.message;
@@ -249,6 +323,48 @@ function addChip(list: string[], label: string): void {
 
 const openIndex = ref<number | null>(null);
 const tuneFieldsByIndex = ref<Map<number, TuneFormFields>>(new Map());
+/** Each open tune as last read from the worker, to tell what is unsaved in `tuneFieldsByIndex`. Replaced, never changed in place. */
+const tuneSavedByIndex = shallowRef<Map<number, TuneFormFields>>(new Map());
+
+function rememberSavedTune(index: number, tune: GenetTune): void {
+  tuneFieldsByIndex.value.set(index, toTuneFormFields(tune));
+  tuneSavedByIndex.value = new Map(tuneSavedByIndex.value).set(index, toTuneFormFields(tune));
+}
+
+function isTuneDirty(index: number): boolean {
+  const fields = tuneFieldsByIndex.value.get(index);
+  const saved = tuneSavedByIndex.value.get(index);
+
+  return fields !== undefined && saved !== undefined && !sameFields(fields, saved);
+}
+
+const streamDirty = computed(
+  () => selected.value !== null && !sameFields(streamFields.value, toStreamFormFields(selected.value)),
+);
+// The tunes' own 保存 is separate from the stream's, so either can be unsaved.
+const dirty = computed(() => streamDirty.value || [...tuneFieldsByIndex.value.keys()].some(isTuneDirty));
+
+/** Puts the stream's saved fields back and closes the tunes, which are read again when opened. */
+function discardEdits(): void {
+  if (selected.value !== null) streamFields.value = toStreamFormFields(selected.value);
+  closeTunes();
+}
+
+useUnsavedGuard(() => dirty.value, discardEdits);
+
+/** ← 一覧: on a narrow screen the editor stays behind the list, so what is let go here is thrown away. */
+function back(): void {
+  if (confirmDiscard()) detail.value = false;
+}
+
+/**
+ * Whether performance `index` of the open stream is still the tune it was
+ * when a request for it was sent. A stream switched, or a tune taken off
+ * above it, moves what an index names while the request is on its way.
+ */
+function stillAt(index: number, videoId: string | undefined, tuneId: number): boolean {
+  return selected.value?.videoId === videoId && streamFields.value.performances[index]?.tuneId === tuneId;
+}
 const tuneSaving = ref(false);
 const tuneError = ref<string | null>(null);
 const tuneErrorField = ref<ReturnType<typeof fieldForTuneSaveError>>(null);
@@ -271,10 +387,12 @@ async function openTune(index: number): Promise<void> {
 
   if (performance === undefined || tuneFieldsByIndex.value.has(index)) return;
 
+  const videoId = selected.value?.videoId;
+
   try {
     const body = await getJson<{ tune: GenetTune }>(`/genet/tunes/${performance.tuneId}`);
 
-    tuneFieldsByIndex.value.set(index, toTuneFormFields(body.tune));
+    if (stillAt(index, videoId, performance.tuneId)) rememberSavedTune(index, body.tune);
   } catch (error) {
     tuneError.value = error instanceof AdminApiError ? error.message : String(error);
   }
@@ -300,18 +418,28 @@ async function saveTune(index: number): Promise<void> {
 
   if (performance === undefined || fields === undefined) return;
 
+  const videoId = selected.value?.videoId;
+  const sent = structuredClone(toRaw(fields));
+
   tuneSaving.value = true;
   tuneError.value = null;
   tuneErrorField.value = null;
 
   try {
-    await putJson(`/genet/tunes/${performance.tuneId}`, fields);
-    showToast('曲を保存しました');
-    await load();
+    await putJson(`/genet/tunes/${performance.tuneId}`, sent);
+    showToast(SAVE_TOAST.saved);
+    // Only what the chips need: reading the streams again would also put the
+    // saved stream back into the fields over anything typed there.
+    void loadPending();
+
+    // What was sent is what is saved, even if reading it back fails below.
+    if (stillAt(index, videoId, performance.tuneId)) {
+      tuneSavedByIndex.value = new Map(tuneSavedByIndex.value).set(index, structuredClone(sent));
+    }
 
     const refreshed = await getJson<{ tune: GenetTune }>(`/genet/tunes/${performance.tuneId}`);
 
-    tuneFieldsByIndex.value.set(index, toTuneFormFields(refreshed.tune));
+    if (stillAt(index, videoId, performance.tuneId)) rememberSavedTune(index, refreshed.tune);
   } catch (error) {
     if (error instanceof AdminApiError) {
       tuneError.value = error.message;
@@ -375,7 +503,7 @@ async function addNewTune(): Promise<void> {
   try {
     const body = await postJson<{ tune: GenetTune }>('/genet/tunes', emptyTuneFieldsWithTitle(title));
 
-    tuneFieldsByIndex.value.set(streamFields.value.performances.length, toTuneFormFields(body.tune));
+    rememberSavedTune(streamFields.value.performances.length, body.tune);
     addPerformance(body.tune.tuneId);
   } catch (error) {
     showToast(error instanceof AdminApiError ? error.message : String(error));
@@ -393,17 +521,22 @@ function removePerformance(index: number): void {
   // that shifted into its old index - reindexing the whole map, rather than
   // only dropping the removed index, is what keeps openTune/saveTune reading
   // and writing the tune an index actually names after the splice.
-  const reindexed = new Map<number, TuneFormFields>();
-
-  for (const [i, fields] of tuneFieldsByIndex.value) {
-    if (i < index) reindexed.set(i, fields);
-    else if (i > index) reindexed.set(i - 1, fields);
-  }
-
-  tuneFieldsByIndex.value = reindexed;
+  tuneFieldsByIndex.value = withoutIndex(tuneFieldsByIndex.value, index);
+  tuneSavedByIndex.value = withoutIndex(tuneSavedByIndex.value, index);
 
   if (openIndex.value === index) openIndex.value = null;
   else if (openIndex.value !== null && openIndex.value > index) openIndex.value -= 1;
+}
+
+function withoutIndex<T>(byIndex: Map<number, T>, index: number): Map<number, T> {
+  const reindexed = new Map<number, T>();
+
+  for (const [i, value] of byIndex) {
+    if (i < index) reindexed.set(i, value);
+    else if (i > index) reindexed.set(i - 1, value);
+  }
+
+  return reindexed;
 }
 
 /* ---- 曲ごとの行編集: 小曲・作曲/作詞など・参考の動画・外部の資料 --------- */
@@ -596,7 +729,7 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
       <div class="toolbar">
         <h2>配信</h2>
         <span class="grow"></span>
-        <span class="sub num">{{ filteredStreams.length }} / {{ streams.length }}</span>
+        <span class="sub num">{{ countText(streams.length, listTotal.total.value, statusFilter !== 'all') }}</span>
       </div>
       <div class="setlist-filter">
         <div class="seg" role="group" aria-label="状態で絞る">
@@ -605,7 +738,7 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
             :key="opt.value"
             type="button"
             :aria-pressed="statusFilter === opt.value"
-            @click="statusFilter = opt.value"
+            @click="setStatusFilter(opt.value)"
           >
             {{ opt.label }}
           </button>
@@ -617,7 +750,7 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
           <div class="sub">{{ loadError }}</div>
         </div>
         <button
-          v-for="s in filteredStreams"
+          v-for="s in streams"
           :key="s.videoId"
           class="setlist-item"
           type="button"
@@ -639,13 +772,14 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
     <div v-if="selected" class="editor">
       <SplitHandle />
       <div class="toolbar">
-        <button class="btn quiet back" type="button" @click="detail = false">← 一覧</button>
+        <button class="btn quiet back" type="button" @click="back">← 一覧</button>
         <h2>
           {{ selected.shortTitle || selected.title }}
         </h2>
         <span class="chip" :class="streamMarkFor(selected.status, selected.videoId, pending).tone">{{
           streamMarkFor(selected.status, selected.videoId, pending).label
         }}</span>
+        <span v-if="dirty" class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
         <span class="grow"></span>
         <PreviewButton />
         <button class="btn primary" type="button" :disabled="streamSaving" @click="saveStream">保存</button>
@@ -655,7 +789,8 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
         </button>
       </div>
 
-      <div class="inspector-main" :class="{ 'with-preview': previewOpen }">
+      <!-- inert while the stream's 保存 is on its way: the saved fields replace these once it lands, so what is typed meanwhile would go unasked. -->
+      <div class="inspector-main" :class="{ 'with-preview': previewOpen }" :inert="streamSaving || undefined">
         <div class="scroller">
           <div v-if="selectedWaiting" class="editor-notice">
             <div class="panel">
@@ -796,6 +931,7 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
                 <span class="no">{{ pi + 1 }}</span>
                 <span class="t">{{ tuneTitleFor(pi) }}</span>
                 <span class="sub num">tune_id {{ perf.tuneId }}</span>
+                <span v-if="isTuneDirty(pi)" class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
                 <span v-if="!perf.description" class="chip alarm">時刻なし</span>
                 <span class="sub" aria-hidden="true">{{ openIndex === pi ? '▲' : '▼' }}</span>
               </button>
