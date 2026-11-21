@@ -5,19 +5,27 @@ import { EDITING_TEXT } from './editing';
 
 /**
  * Asks before an edit panel's unsaved changes are thrown away (#277's 6-10):
- * when another row is selected, when ← 一覧 is pressed, when another screen
- * is opened, and when the tab is closed or reloaded.
+ * when another row is selected, when ← 一覧 is pressed, when a filter is
+ * changed, when another screen is opened, and when the tab is closed or
+ * reloaded.
  *
- * The panel calls `useUnsavedGuard` with its own test for changes. Leaving
- * for another screen and closing the tab are caught here; the other two are
- * the page's own buttons, which call `confirmDiscard` before they act. One
- * panel at a time, module-wide rather than per page: only one screen is ever
- * on view.
+ * The panel calls `useUnsavedGuard` with its own test for changes and its own
+ * way to throw them away. Leaving for another screen and closing the tab are
+ * caught here; the rest are the page's own controls, which call
+ * `confirmDiscard` before they act. One panel at a time, module-wide rather
+ * than per page: only one screen is ever on view.
  */
-let current: (() => boolean) | null = null;
+interface Guard {
+  isDirty: () => boolean;
+  discard: () => void;
+}
 
-export function useUnsavedGuard(isDirty: () => boolean): void {
-  current = isDirty;
+let current: Guard | null = null;
+
+export function useUnsavedGuard(isDirty: () => boolean, discard: () => void): void {
+  const guard: Guard = { isDirty, discard };
+
+  current = guard;
 
   // Closing or reloading the tab: browsers show only their own sentence, so
   // this asks without one.
@@ -30,12 +38,22 @@ export function useUnsavedGuard(isDirty: () => boolean): void {
     window.removeEventListener('beforeunload', warnBeforeUnload);
     // A panel keyed by row is replaced by the next one; only the panel that
     // is still the current one clears it.
-    if (current === isDirty) current = null;
+    if (current === guard) current = null;
   });
   onBeforeRouteLeave(() => !isDirty() || window.confirm(EDITING_TEXT.confirmDiscard));
 }
 
-/** True when nothing unsaved is open, or the user agreed to throw it away. */
+/**
+ * True when nothing unsaved is open, or the user agreed to throw it away - in
+ * which case it is thrown away here, so a panel that stays open (a filter
+ * change that keeps its row, ← 一覧 on a narrow screen) shows the saved
+ * values rather than the changes it was just told to drop.
+ */
 export function confirmDiscard(): boolean {
-  return current === null || !current() || window.confirm(EDITING_TEXT.confirmDiscard);
+  if (current === null || !current.isDirty()) return true;
+  if (!window.confirm(EDITING_TEXT.confirmDiscard)) return false;
+
+  current.discard();
+
+  return true;
 }

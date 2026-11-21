@@ -45,6 +45,40 @@ describe('useListTotal', () => {
     expect(reads.calls()).toBe(0);
   });
 
+  it('does not start a second read while the first is on its way', async () => {
+    const reads = controlledReads();
+    const { total, update } = useListTotal(reads.read);
+
+    update(12, true);
+    update(3, true);
+    update(1, true);
+
+    expect(reads.calls()).toBe(1);
+
+    reads.answer(40);
+    await settle();
+
+    expect(total.value).toBe(40);
+  });
+
+  it('reads again when invalidated while a read was on its way', async () => {
+    const reads = controlledReads();
+    const { total, update, invalidate } = useListTotal(reads.read);
+
+    update(12, true);
+    invalidate();
+    reads.answer(40);
+    await settle();
+    update(12, true);
+
+    expect(reads.calls()).toBe(1);
+
+    reads.answer(41);
+    await settle();
+
+    expect(total.value).toBe(41);
+  });
+
   it('reads again after invalidate', async () => {
     const reads = controlledReads();
     const { total, update, invalidate } = useListTotal(reads.read);

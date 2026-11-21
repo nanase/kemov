@@ -70,7 +70,12 @@ const memberPickerOpen = ref(false);
 /** Whether the fields differ from the row as saved - the 未保存 chip, and what asks before they are thrown away. */
 const dirty = computed(() => !sameFields(fields.value, toFormFields(props.event)));
 
-useUnsavedGuard(() => dirty.value);
+useUnsavedGuard(
+  () => dirty.value,
+  () => {
+    fields.value = toFormFields(props.event);
+  },
+);
 
 watch(
   () => props.event,
@@ -223,10 +228,7 @@ function confirmSource(): Promise<void> {
 
 /** ← 一覧: on a narrow screen the panel stays behind the list, so what is let go here is thrown away, not kept for later. */
 function back(): void {
-  if (!confirmDiscard()) return;
-
-  fields.value = toFormFields(props.event);
-  emit('back');
+  if (confirmDiscard()) emit('back');
 }
 
 defineExpose({ approve });

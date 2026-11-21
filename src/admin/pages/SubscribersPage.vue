@@ -206,6 +206,19 @@ function back(): void {
   }
 }
 
+// A filter can leave the open row out of the table, which closes its panel,
+// so changing one asks first, as selecting another row does.
+function setStatus(value: string): void {
+  if (value !== status.value && confirmDiscard()) status.value = value;
+}
+
+function setChannel(event: Event): void {
+  const select = event.target as HTMLSelectElement;
+
+  if (confirmDiscard()) channelId.value = select.value;
+  else select.value = channelId.value;
+}
+
 async function created(milestoneId: number): Promise<void> {
   adding.value = false;
   await reload();
@@ -283,7 +296,7 @@ onMounted(() => {
     <div class="pane">
       <div class="toolbar">
         <h2>登録者数の節目</h2>
-        <select v-model="channelId" aria-label="メンバーで絞る" :disabled="bulkProgress !== null">
+        <select :value="channelId" aria-label="メンバーで絞る" :disabled="bulkProgress !== null" @change="setChannel">
           <option value="all">すべてのメンバー</option>
           <option v-for="m in members" :key="m.channelId" :value="m.channelId">{{ m.name }}</option>
         </select>
@@ -294,7 +307,7 @@ onMounted(() => {
             type="button"
             :aria-pressed="status === opt.value"
             :disabled="bulkProgress !== null"
-            @click="status = opt.value"
+            @click="setStatus(opt.value)"
           >
             {{ opt.label }}
           </button>

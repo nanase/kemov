@@ -137,15 +137,30 @@ function back(): void {
   detail.value = false;
 }
 
+// A filter can leave the open row out of the table, which closes its panel,
+// so changing one asks first, as selecting another row does.
+function setStatus(value: string): void {
+  if (value !== status.value && confirmDiscard()) status.value = value;
+}
+
+function setQuery(event: Event): void {
+  const input = event.target as HTMLInputElement;
+
+  if (confirmDiscard()) q.value = input.value;
+  else input.value = q.value;
+}
+
 async function addEvent(): Promise<void> {
   if (!confirmDiscard()) return;
 
   adding.value = true;
-  listTotal.invalidate();
 
   try {
     const body = await postJson<{ event: { eventId: number } }>('/footprints/events', emptyFormFields(todayJst()));
 
+    // After the POST rather than before: a load while it is on its way would
+    // count the list without the new row, and count it as fresh.
+    listTotal.invalidate();
     await load();
 
     // A new event is always a draft with an empty title - the active status
@@ -192,12 +207,19 @@ onMounted(() => {
             :key="opt.value"
             type="button"
             :aria-pressed="status === opt.value"
-            @click="status = opt.value"
+            @click="setStatus(opt.value)"
           >
             {{ opt.label }}
           </button>
         </div>
-        <input v-model="q" type="text" class="btn" placeholder="題で絞り込み" aria-label="題で絞り込み" />
+        <input
+          :value="q"
+          type="text"
+          class="btn"
+          placeholder="題で絞り込み"
+          aria-label="題で絞り込み"
+          @input="setQuery"
+        />
         <span class="grow"></span>
         <span class="sub num">{{ countText(events.length, listTotal.total.value, filtered) }}</span>
         <button class="btn" type="button" :disabled="adding" @click="addEvent">＋ 足す</button>

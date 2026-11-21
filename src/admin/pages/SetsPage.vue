@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref, shallowRef, toRaw, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { unescapeHtml } from '@nanase/alnilam/string';
 
@@ -124,13 +124,21 @@ const streamError = ref<string | null>(null);
 const streamErrorField = ref<ReturnType<typeof fieldForStreamSaveError>>(null);
 
 watch(selected, (stream, previous) => {
-  streamFields.value = stream === null ? emptyStreamFields() : toStreamFormFields(stream);
+  const sameStream = stream !== null && stream.videoId === previous?.videoId;
+
   streamError.value = null;
   streamErrorField.value = null;
 
-  // The same stream read again after its own 保存: the tunes stay open with
-  // whatever is typed into them, since that 保存 did not send them.
-  if (stream !== null && stream.videoId === previous?.videoId) return;
+  // The open stream read again - after 公開待ちにする, 下書きに戻す or a
+  // filter that keeps it - leaves what is typed alone. Its own 保存 puts the
+  // saved fields back itself, once the list has been read.
+  if (!(sameStream && previous !== null && !sameFields(streamFields.value, toStreamFormFields(previous)))) {
+    streamFields.value = stream === null ? emptyStreamFields() : toStreamFormFields(stream);
+  }
+
+  // The tunes stay open with whatever is typed into them too: no reload of
+  // the stream sends them.
+  if (sameStream) return;
 
   openIndex.value = null;
   // Keyed by performance index, which means nothing once the stream changes
@@ -149,17 +157,27 @@ async function loadPending(): Promise<void> {
   }
 }
 
+// A filter changed mid-request starts a second, overlapping GET; only the
+// latest one's answer is kept, so a slower earlier one cannot draw the list
+// for a filter that is no longer selected.
+let loadGeneration = 0;
+
 async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
   void loadPending();
 
+  const generation = ++loadGeneration;
+  const filter = statusFilter.value;
+
   try {
-    const query = statusFilter.value === 'all' ? '' : `?status=${statusFilter.value}`;
+    const query = filter === 'all' ? '' : `?status=${filter}`;
     const body = await getJson<{ streams: GenetStream[] }>(`/genet/streams${query}`);
 
+    if (generation !== loadGeneration) return;
+
     streams.value = body.streams;
-    listTotal.update(streams.value.length, statusFilter.value !== 'all');
+    listTotal.update(streams.value.length, filter !== 'all');
 
     if (selectedVideoId.value === null && streams.value.length > 0) {
       const requested = streams.value.find((s) => s.videoId === requestedVideoId);
@@ -172,9 +190,11 @@ async function load(): Promise<void> {
 
     requestedVideoId = null;
   } catch (error) {
+    if (generation !== loadGeneration) return;
+
     loadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
-    loading.value = false;
+    if (generation === loadGeneration) loading.value = false;
   }
 }
 
@@ -201,6 +221,12 @@ function selectStream(videoId: string): void {
   detail.value = true;
 }
 
+// A filter can leave the open stream out of the list, which closes its
+// editor, so changing one asks first, as selecting another stream does.
+function setStatusFilter(value: (typeof STATUS_OPTIONS)[number]['value']): void {
+  if (value !== statusFilter.value && confirmDiscard()) statusFilter.value = value;
+}
+
 async function saveStream(): Promise<void> {
   if (selected.value === null) return;
 
@@ -214,6 +240,10 @@ async function saveStream(): Promise<void> {
     await putJson(`/genet/streams/${encodeURIComponent(videoId)}`, streamFields.value);
     showToast(saveToastFor(status));
     await load();
+
+    // The reload kept the typed fields (see the watch on `selected`); they
+    // are saved now, so the saved stream takes their place.
+    if (selected.value?.videoId === videoId) streamFields.value = toStreamFormFields(selected.value);
   } catch (error) {
     if (error instanceof AdminApiError) {
       streamError.value = error.message;
@@ -287,17 +317,28 @@ const streamDirty = computed(
 // The tunes' own 保存 is separate from the stream's, so either can be unsaved.
 const dirty = computed(() => streamDirty.value || [...tuneFieldsByIndex.value.keys()].some(isTuneDirty));
 
-useUnsavedGuard(() => dirty.value);
-
-/** ← 一覧: on a narrow screen the editor stays behind the list, so what is let go here is thrown away. */
-function back(): void {
-  if (!confirmDiscard()) return;
-
+/** Puts the stream's saved fields back and closes the tunes, which are read again when opened. */
+function discardEdits(): void {
   if (selected.value !== null) streamFields.value = toStreamFormFields(selected.value);
   openIndex.value = null;
   tuneFieldsByIndex.value = new Map();
   tuneSavedByIndex.value = new Map();
-  detail.value = false;
+}
+
+useUnsavedGuard(() => dirty.value, discardEdits);
+
+/** ← 一覧: on a narrow screen the editor stays behind the list, so what is let go here is thrown away. */
+function back(): void {
+  if (confirmDiscard()) detail.value = false;
+}
+
+/**
+ * Whether performance `index` of the open stream is still the tune it was
+ * when a request for it was sent. A stream switched, or a tune taken off
+ * above it, moves what an index names while the request is on its way.
+ */
+function stillAt(index: number, videoId: string | undefined, tuneId: number): boolean {
+  return selected.value?.videoId === videoId && streamFields.value.performances[index]?.tuneId === tuneId;
 }
 const tuneSaving = ref(false);
 const tuneError = ref<string | null>(null);
@@ -321,10 +362,12 @@ async function openTune(index: number): Promise<void> {
 
   if (performance === undefined || tuneFieldsByIndex.value.has(index)) return;
 
+  const videoId = selected.value?.videoId;
+
   try {
     const body = await getJson<{ tune: GenetTune }>(`/genet/tunes/${performance.tuneId}`);
 
-    rememberSavedTune(index, body.tune);
+    if (stillAt(index, videoId, performance.tuneId)) rememberSavedTune(index, body.tune);
   } catch (error) {
     tuneError.value = error instanceof AdminApiError ? error.message : String(error);
   }
@@ -350,20 +393,28 @@ async function saveTune(index: number): Promise<void> {
 
   if (performance === undefined || fields === undefined) return;
 
+  const videoId = selected.value?.videoId;
+  const sent = structuredClone(toRaw(fields));
+
   tuneSaving.value = true;
   tuneError.value = null;
   tuneErrorField.value = null;
 
   try {
-    await putJson(`/genet/tunes/${performance.tuneId}`, fields);
+    await putJson(`/genet/tunes/${performance.tuneId}`, sent);
     showToast(SAVE_TOAST.saved);
     // Only what the chips need: reading the streams again would also put the
     // saved stream back into the fields over anything typed there.
     void loadPending();
 
+    // What was sent is what is saved, even if reading it back fails below.
+    if (stillAt(index, videoId, performance.tuneId)) {
+      tuneSavedByIndex.value = new Map(tuneSavedByIndex.value).set(index, structuredClone(sent));
+    }
+
     const refreshed = await getJson<{ tune: GenetTune }>(`/genet/tunes/${performance.tuneId}`);
 
-    rememberSavedTune(index, refreshed.tune);
+    if (stillAt(index, videoId, performance.tuneId)) rememberSavedTune(index, refreshed.tune);
   } catch (error) {
     if (error instanceof AdminApiError) {
       tuneError.value = error.message;
@@ -662,7 +713,7 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
             :key="opt.value"
             type="button"
             :aria-pressed="statusFilter === opt.value"
-            @click="statusFilter = opt.value"
+            @click="setStatusFilter(opt.value)"
           >
             {{ opt.label }}
           </button>

@@ -83,7 +83,12 @@ const errorField = ref<MilestoneFieldKey | null>(null);
 /** Against the saved row, or a new milestone's blank fields: anything typed into a new one is unsaved. */
 const dirty = computed(() => !sameFields(fields.value, initialFields()));
 
-useUnsavedGuard(() => dirty.value);
+useUnsavedGuard(
+  () => dirty.value,
+  () => {
+    fields.value = initialFields();
+  },
+);
 
 // A refetch hands the same row back as a new object, and the fields follow
 // what was saved. The error is left alone: a refetch can follow a failed step
@@ -218,10 +223,7 @@ function remove(): Promise<void> {
 
 /** ← 一覧 and a new milestone's やめる: what is let go here is thrown away. */
 function back(): void {
-  if (!confirmDiscard()) return;
-
-  fields.value = initialFields();
-  emit('back');
+  if (confirmDiscard()) emit('back');
 }
 
 useCrumbDetail(() => heading.value);

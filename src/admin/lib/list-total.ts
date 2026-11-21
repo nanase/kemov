@@ -14,30 +14,39 @@ export function useListTotal(readTotal: () => Promise<number>): {
 } {
   const total = ref<number | null>(null);
   let stale = true;
+  let reading = false;
   let generation = 0;
 
   /** Called after each load of the list, with what it showed. */
   function update(shown: number, filtered: boolean): void {
     if (!filtered) {
       generation++;
+      reading = false;
       total.value = shown;
       stale = false;
       return;
     }
 
-    if (!stale && total.value !== null) return;
+    // One read at a time: a search box typed into while the first read is
+    // on its way would otherwise start one per keystroke.
+    if (reading || (!stale && total.value !== null)) return;
 
     stale = false;
+    reading = true;
 
     const asked = ++generation;
 
     readTotal().then(
       (count) => {
-        if (asked === generation) total.value = count;
+        if (asked !== generation) return;
+
+        reading = false;
+        total.value = count;
       },
       () => {
         if (asked !== generation) return;
 
+        reading = false;
         total.value = null;
         stale = true;
       },
