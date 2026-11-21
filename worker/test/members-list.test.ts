@@ -343,6 +343,21 @@ describe('saveMembers', () => {
     expect(await publicOrder()).toEqual([A, B, C]);
   });
 
+  // The editor shows the message beside the member it is about, so the body
+  // has to say which of the added members it was.
+  test('names the added member a 400 is about, in the body', async () => {
+    await seedThree();
+
+    const second = 'UCdddddddddddddddddddddd';
+    const response = await saveMembers(env, {
+      add: [newMember(), newMember({ channelId: second, colorBack: 'x' })],
+      order: [A, B, C, NEW, second],
+    });
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ error: 'colorBack must be #RRGGBB', channelId: second });
+  });
+
   test('refuses an add for a member that already exists', async () => {
     await seedThree();
 

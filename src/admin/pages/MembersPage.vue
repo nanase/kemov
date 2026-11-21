@@ -1,17 +1,24 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, getJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
 import {
+  COLOR_KEYS,
   MEMBER_TEXT,
   blankNewMember,
+  editWouldBeLost,
   fieldForSaveError,
+  isHexColor,
+  memberOfListSaveError,
   moveId,
+  normalizeColor,
+  pickerValue,
   reconcileOrder,
   sameOrder,
   toFormFields,
+  type ColorKey,
   type Member,
   type MemberFieldKey,
   type MemberFormFields,
@@ -46,6 +53,27 @@ const confirmingRemove = ref(false);
 const errorMessage = ref<string | null>(null);
 const errorField = ref<MemberFieldKey | null>(null);
 const listError = ref<string | null>(null);
+
+/**
+ * A list save's 400 about an added member, kept over the list instead of
+ * shown in the edit panel: set only when showing that member would throw away
+ * what is typed there (`editWouldBeLost`). 該当の行を表示 shows it then.
+ */
+const rowError = ref<{ channelId: string; message: string } | null>(null);
+const shownRowError = computed(() => {
+  const error = rowError.value;
+  const member = error === null ? undefined : draft.added.find((a) => a.channelId === error.channelId);
+
+  return error === null || member === undefined ? null : { ...error, name: member.name };
+});
+
+/** The id the edit panel's 保存できません banner has, for the fields it names to point at. */
+const SAVE_ERROR_ID = 'members-save-error';
+
+/** `aria-describedby` for `key`'s field: the banner, while the banner is about that field. */
+function describedBy(key: MemberFieldKey): string | undefined {
+  return errorField.value === key ? SAVE_ERROR_ID : undefined;
+}
 
 const savedIds = computed(() => saved.value.map((m) => m.channelId));
 const orderedIds = computed(() => draft.order ?? savedIds.value);
@@ -101,6 +129,10 @@ async function load(): Promise<void> {
 
     draft.added = draft.added.filter((a) => !taken.has(a.channelId));
 
+    if (rowError.value !== null && !draft.added.some((a) => a.channelId === rowError.value?.channelId)) {
+      rowError.value = null;
+    }
+
     if (draft.order !== null) {
       draft.order = reconcileOrder(draft.order, [...savedIds.value, ...draft.added.map((a) => a.channelId)]);
     }
@@ -118,6 +150,20 @@ async function load(): Promise<void> {
 function selectRow(channelId: string): void {
   // The edit panel is inert while 保存 is in flight; so is the choice of what it shows.
   if (listSaving.value) return;
+
+  // A click on the row the banner is about shows the error there, as the
+  // banner's own button does: the banner has said all it had to. Only a click
+  // does this - the selection also moves when a row is deleted.
+  if (rowError.value?.channelId === channelId) {
+    openErrorRow();
+    return;
+  }
+
+  // What a failed save said is about the member it was shown for.
+  if (channelId !== selectedId.value) {
+    errorMessage.value = null;
+    errorField.value = null;
+  }
 
   newForm.value = null;
   selectedId.value = channelId;
@@ -157,6 +203,7 @@ function addToList(): void {
     return;
   }
 
+  normalizeColors(member);
   draft.order = [...orderedIds.value, member.channelId];
   draft.added.push(member);
   newForm.value = null;
@@ -171,6 +218,9 @@ function removeAdded(): void {
   draft.added = draft.added.filter((a) => a.channelId !== id);
   draft.order = orderedIds.value.filter((other) => other !== id);
   selectedId.value = rows.value[0]?.channelId ?? null;
+  if (rowError.value?.channelId === id) rowError.value = null;
+  errorMessage.value = null;
+  errorField.value = null;
   detail.value = false;
 }
 
@@ -181,13 +231,56 @@ function move(channelId: string, delta: -1 | 1): void {
 function discard(): void {
   clearDraft();
   listError.value = null;
+  rowError.value = null;
+  errorMessage.value = null;
+  errorField.value = null;
 
   if (selectedAdded.value === null && selected.value === null) selectedId.value = rows.value[0]?.channelId ?? null;
+}
+
+/**
+ * Puts a list save's 400 where a one-member save's goes: the member it is
+ * about is selected and the edit panel says why. The worker names the member;
+ * which field is read from the message, as `save` does, so this screen does
+ * not hold a second copy of the worker's checks.
+ */
+async function showAddedMemberError(channelId: string, message: string): Promise<void> {
+  newForm.value = null;
+  selectedId.value = channelId;
+  detail.value = true;
+
+  // Changing the selection clears the edit panel's error (`watch(selected)`
+  // above), and that runs after this line: set the error once it has.
+  await nextTick();
+
+  errorMessage.value = message;
+  errorField.value = fieldForSaveError(message);
+}
+
+/** The button over the list: the user chose to move, so what is typed in the edit panel goes, as it does for a click on a row. */
+function openErrorRow(): void {
+  const error = rowError.value;
+
+  if (error === null || listSaving.value) return;
+
+  rowError.value = null;
+
+  // The banner, and the button in it that may have had focus, is gone; the
+  // field the error is about is where the user goes next.
+  void showAddedMemberError(error.channelId, error.message).then(async () => {
+    await nextTick();
+    document.querySelector<HTMLElement>('.inspector [aria-invalid="true"]')?.focus();
+  });
 }
 
 async function saveList(): Promise<void> {
   listSaving.value = true;
   listError.value = null;
+  rowError.value = null;
+  errorMessage.value = null;
+  errorField.value = null;
+
+  for (const member of draft.added) normalizeColors(member);
 
   try {
     await putJson('/members', { add: draft.added, order: orderedIds.value });
@@ -196,7 +289,23 @@ async function saveList(): Promise<void> {
     await load();
     showToast('保存しました');
   } catch (error) {
-    if (error instanceof AdminApiError && error.status === 409) {
+    const channelId =
+      error instanceof AdminApiError && error.status === 400
+        ? memberOfListSaveError(
+            error.body,
+            draft.added.map((a) => a.channelId),
+          )
+        : null;
+
+    if (error instanceof AdminApiError && channelId !== null) {
+      // Moving to the member would replace what is typed in the edit panel;
+      // say so over the list and leave the panel as it is.
+      if (editWouldBeLost(newForm.value, fields.value, selected.value)) {
+        rowError.value = { channelId, message: error.message };
+      } else {
+        await showAddedMemberError(channelId, error.message);
+      }
+    } else if (error instanceof AdminApiError && error.status === 409) {
       showToast(MEMBER_TEXT.listChanged);
     } else {
       listError.value = error instanceof AdminApiError ? error.message : String(error);
@@ -212,6 +321,8 @@ async function save(): Promise<void> {
   saving.value = true;
   errorMessage.value = null;
   errorField.value = null;
+
+  normalizeColors(fields.value);
 
   try {
     await putJson(`/members/${encodeURIComponent(selectedId.value)}`, fields.value);
@@ -263,6 +374,34 @@ function setNullable(key: 'globalname' | 'twitter' | 'twitch' | 'activityEndDate
   activeFields.value[key] = (event.target as HTMLInputElement).value || null;
 }
 
+/** A colour written without its `#` ("1a2b3c") is given one; anything else is left for the server to judge. */
+function normalizeColors(target: MemberFormFields): void {
+  for (const key of COLOR_KEYS) target[key] = normalizeColor(target[key]);
+}
+
+const COLOR_BOXES: readonly { key: ColorKey; id: string; label: string }[] = [
+  { key: 'colorKey', id: 'f-color-key', label: 'key' },
+  { key: 'colorSub', id: 'f-color-sub', label: 'sub' },
+  { key: 'colorLight', id: 'f-color-light', label: 'light' },
+  { key: 'colorBack', id: 'f-color-back', label: 'back' },
+];
+
+function colorText(key: ColorKey): string {
+  return activeFields.value?.[key] ?? '';
+}
+
+function fixColor(key: ColorKey): void {
+  if (activeFields.value === null) return;
+
+  activeFields.value[key] = normalizeColor(activeFields.value[key]);
+}
+
+function pickColor(key: ColorKey, event: Event): void {
+  if (activeFields.value === null) return;
+
+  activeFields.value[key] = (event.target as HTMLInputElement).value;
+}
+
 // Closing or reloading the tab loses `draft`; only the browser's own
 // confirmation is shown, so this screen adds no sentence of its own.
 function warnBeforeUnload(event: BeforeUnloadEvent): void {
@@ -310,6 +449,17 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
         <div v-if="listError" class="panel flag">
           <h4>保存できません</h4>
           <div class="hint">{{ listError }}</div>
+        </div>
+        <div v-if="shownRowError" class="panel flag" role="alert">
+          <h4>保存できません</h4>
+          <div class="hint">{{ MEMBER_TEXT.rowErrorLead(shownRowError.name, shownRowError.channelId) }}</div>
+          <div class="hint">{{ shownRowError.message }}</div>
+          <div class="hint">{{ MEMBER_TEXT.rowErrorKept }}</div>
+          <div class="stack">
+            <button class="btn" type="button" :disabled="listSaving" @click="openErrorRow">
+              {{ MEMBER_TEXT.openErrorRow }}
+            </button>
+          </div>
         </div>
         <table class="grid">
           <thead>
@@ -392,7 +542,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
 
       <div class="inspector-main" :class="{ 'with-preview': previewOpen }">
         <div class="inspector-body">
-          <div v-if="errorMessage" class="panel flag">
+          <div v-if="errorMessage" :id="SAVE_ERROR_ID" class="panel flag">
             <h4>保存できません</h4>
             <div class="hint">{{ errorMessage }}</div>
           </div>
@@ -406,7 +556,13 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
           <div class="row2">
             <div class="field">
               <label for="f-name">名前</label>
-              <input id="f-name" v-model="activeFields.name" type="text" :aria-invalid="errorField === 'name'" />
+              <input
+                id="f-name"
+                v-model="activeFields.name"
+                type="text"
+                :aria-invalid="errorField === 'name'"
+                :aria-describedby="describedBy('name')"
+              />
             </div>
             <div class="field">
               <label for="f-fullname">fullname</label>
@@ -415,6 +571,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                 v-model="activeFields.fullname"
                 type="text"
                 :aria-invalid="errorField === 'fullname'"
+                :aria-describedby="describedBy('fullname')"
               />
             </div>
           </div>
@@ -427,6 +584,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                 type="text"
                 :value="activeFields.globalname ?? ''"
                 :aria-invalid="errorField === 'globalname'"
+                :aria-describedby="describedBy('globalname')"
                 @input="setNullable('globalname', $event)"
               />
             </div>
@@ -437,6 +595,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                 type="text"
                 :value="activeFields.twitter ?? ''"
                 :aria-invalid="errorField === 'twitter'"
+                :aria-describedby="describedBy('twitter')"
                 @input="setNullable('twitter', $event)"
               />
             </div>
@@ -449,6 +608,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
               type="text"
               :value="activeFields.twitch ?? ''"
               :aria-invalid="errorField === 'twitch'"
+              :aria-describedby="describedBy('twitch')"
               @input="setNullable('twitch', $event)"
             />
           </div>
@@ -462,6 +622,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                 type="text"
                 placeholder="YYYY-MM-DD"
                 :aria-invalid="errorField === 'activityStartDate'"
+                :aria-describedby="describedBy('activityStartDate')"
               />
             </div>
             <div class="field">
@@ -472,6 +633,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                 :value="activeFields.activityEndDate ?? ''"
                 placeholder="活動中"
                 :aria-invalid="errorField === 'activityEndDate'"
+                :aria-describedby="describedBy('activityEndDate')"
                 @input="setNullable('activityEndDate', $event)"
               />
             </div>
@@ -489,34 +651,28 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
           >
             <h4>色</h4>
             <div class="row2">
-              <div class="field">
-                <label for="f-color-key">key</label>
+              <div v-for="box in COLOR_BOXES" :key="box.key" class="field">
+                <label :for="box.id">{{ box.label }}</label>
                 <div class="color-input">
-                  <input id="f-color-key" v-model="activeFields.colorKey" type="text" placeholder="#RRGGBB" />
-                  <span class="who-chip"><i :style="{ background: activeFields.colorKey }"></i></span>
-                </div>
-              </div>
-              <div class="field">
-                <label for="f-color-sub">sub</label>
-                <div class="color-input">
-                  <input id="f-color-sub" v-model="activeFields.colorSub" type="text" placeholder="#RRGGBB" />
-                  <span class="who-chip"><i :style="{ background: activeFields.colorSub }"></i></span>
-                </div>
-              </div>
-            </div>
-            <div class="row2">
-              <div class="field">
-                <label for="f-color-light">light</label>
-                <div class="color-input">
-                  <input id="f-color-light" v-model="activeFields.colorLight" type="text" placeholder="#RRGGBB" />
-                  <span class="who-chip"><i :style="{ background: activeFields.colorLight }"></i></span>
-                </div>
-              </div>
-              <div class="field">
-                <label for="f-color-back">back</label>
-                <div class="color-input">
-                  <input id="f-color-back" v-model="activeFields.colorBack" type="text" placeholder="#RRGGBB" />
-                  <span class="who-chip"><i :style="{ background: activeFields.colorBack }"></i></span>
+                  <input
+                    :id="box.id"
+                    type="text"
+                    placeholder="#RRGGBB"
+                    :value="colorText(box.key)"
+                    :aria-invalid="errorField === box.key"
+                    :aria-describedby="describedBy(box.key)"
+                    @input="activeFields[box.key] = ($event.target as HTMLInputElement).value"
+                    @change="fixColor(box.key)"
+                  />
+                  <input
+                    class="color-pick"
+                    :class="{ unset: !isHexColor(colorText(box.key)) }"
+                    type="color"
+                    :value="pickerValue(colorText(box.key))"
+                    :aria-label="MEMBER_TEXT.pickColor(box.label)"
+                    :title="MEMBER_TEXT.pickColor(box.label)"
+                    @input="pickColor(box.key, $event)"
+                  />
                 </div>
               </div>
             </div>
