@@ -103,6 +103,10 @@ export const MEMBER_TEXT = {
   removed: '削除しました',
   listChanged: 'メンバー情報に変更がありました。再読み込みしてください',
   pickColor: (label: string) => `${label} の色を選ぶ`,
+  rowErrorLead: (name: string, channelId: string) =>
+    `足した行「${name || '名前なし'}」（${channelId}）に誤りがあります。`,
+  rowErrorKept: '編集の欄に入力中の内容があるので、その行へは移っていません。',
+  openErrorRow: '該当の行を表示',
 } as const;
 
 /**
@@ -179,6 +183,28 @@ export function fieldForSaveError(message: string): MemberFieldKey | null {
   }
 
   return null;
+}
+
+function sameFields<T extends object>(a: T, b: T): boolean {
+  const keys = Object.keys(a) as (keyof T)[];
+
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+}
+
+/**
+ * Whether showing a different member in the edit panel would throw away what
+ * is typed in it: a 「メンバーを足す」 form that is not blank, or a saved
+ * member's fields that differ from the saved ones. An added member's fields
+ * are kept in the draft as they are typed, so leaving one loses nothing.
+ */
+export function editWouldBeLost(
+  newForm: NewMemberFields | null,
+  fields: MemberFormFields | null,
+  saved: Member | null,
+): boolean {
+  if (newForm !== null) return !sameFields(newForm, blankNewMember());
+
+  return fields !== null && saved !== null && !sameFields(fields, toFormFields(saved));
 }
 
 /**

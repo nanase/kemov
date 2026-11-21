@@ -8,6 +8,7 @@ import {
   COLOR_KEYS,
   MEMBER_TEXT,
   blankNewMember,
+  editWouldBeLost,
   fieldForSaveError,
   isHexColor,
   memberOfListSaveError,
@@ -52,6 +53,27 @@ const confirmingRemove = ref(false);
 const errorMessage = ref<string | null>(null);
 const errorField = ref<MemberFieldKey | null>(null);
 const listError = ref<string | null>(null);
+
+/**
+ * A list save's 400 about an added member, kept over the list instead of
+ * shown in the edit panel: set only when showing that member would throw away
+ * what is typed there (`editWouldBeLost`). 該当の行を表示 shows it then.
+ */
+const rowError = ref<{ channelId: string; message: string } | null>(null);
+const shownRowError = computed(() => {
+  const error = rowError.value;
+  const member = error === null ? undefined : draft.added.find((a) => a.channelId === error.channelId);
+
+  return error === null || member === undefined ? null : { ...error, name: member.name };
+});
+
+/** The id the edit panel's 保存できません banner has, for the fields it names to point at. */
+const SAVE_ERROR_ID = 'members-save-error';
+
+/** `aria-describedby` for `key`'s field: the banner, while the banner is about that field. */
+function describedBy(key: MemberFieldKey): string | undefined {
+  return errorField.value === key ? SAVE_ERROR_ID : undefined;
+}
 
 const savedIds = computed(() => saved.value.map((m) => m.channelId));
 const orderedIds = computed(() => draft.order ?? savedIds.value);
@@ -184,6 +206,7 @@ function removeAdded(): void {
   draft.added = draft.added.filter((a) => a.channelId !== id);
   draft.order = orderedIds.value.filter((other) => other !== id);
   selectedId.value = rows.value[0]?.channelId ?? null;
+  rowError.value = null;
   errorMessage.value = null;
   errorField.value = null;
   detail.value = false;
@@ -196,6 +219,7 @@ function move(channelId: string, delta: -1 | 1): void {
 function discard(): void {
   clearDraft();
   listError.value = null;
+  rowError.value = null;
   errorMessage.value = null;
   errorField.value = null;
 
@@ -221,9 +245,20 @@ async function showAddedMemberError(channelId: string, message: string): Promise
   errorField.value = fieldForSaveError(message);
 }
 
+/** The button over the list: the user chose to move, so what is typed in the edit panel goes, as it does for a click on a row. */
+function openErrorRow(): void {
+  const error = rowError.value;
+
+  if (error === null || listSaving.value) return;
+
+  rowError.value = null;
+  void showAddedMemberError(error.channelId, error.message);
+}
+
 async function saveList(): Promise<void> {
   listSaving.value = true;
   listError.value = null;
+  rowError.value = null;
   errorMessage.value = null;
   errorField.value = null;
 
@@ -245,7 +280,13 @@ async function saveList(): Promise<void> {
         : null;
 
     if (error instanceof AdminApiError && channelId !== null) {
-      await showAddedMemberError(channelId, error.message);
+      // Moving to the member would replace what is typed in the edit panel;
+      // say so over the list and leave the panel as it is.
+      if (editWouldBeLost(newForm.value, fields.value, selected.value)) {
+        rowError.value = { channelId, message: error.message };
+      } else {
+        await showAddedMemberError(channelId, error.message);
+      }
     } else if (error instanceof AdminApiError && error.status === 409) {
       showToast(MEMBER_TEXT.listChanged);
     } else {
@@ -391,6 +432,17 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
           <h4>保存できません</h4>
           <div class="hint">{{ listError }}</div>
         </div>
+        <div v-if="shownRowError" class="panel flag">
+          <h4>保存できません</h4>
+          <div class="hint">{{ MEMBER_TEXT.rowErrorLead(shownRowError.name, shownRowError.channelId) }}</div>
+          <div class="hint">{{ shownRowError.message }}</div>
+          <div class="hint">{{ MEMBER_TEXT.rowErrorKept }}</div>
+          <div class="stack">
+            <button class="btn" type="button" :disabled="listSaving" @click="openErrorRow">
+              {{ MEMBER_TEXT.openErrorRow }}
+            </button>
+          </div>
+        </div>
         <table class="grid">
           <thead>
             <tr>
@@ -472,7 +524,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
 
       <div class="inspector-main" :class="{ 'with-preview': previewOpen }">
         <div class="inspector-body">
-          <div v-if="errorMessage" class="panel flag">
+          <div v-if="errorMessage" :id="SAVE_ERROR_ID" class="panel flag">
             <h4>保存できません</h4>
             <div class="hint">{{ errorMessage }}</div>
           </div>
@@ -486,7 +538,13 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
           <div class="row2">
             <div class="field">
               <label for="f-name">名前</label>
-              <input id="f-name" v-model="activeFields.name" type="text" :aria-invalid="errorField === 'name'" />
+              <input
+                id="f-name"
+                v-model="activeFields.name"
+                type="text"
+                :aria-invalid="errorField === 'name'"
+                :aria-describedby="describedBy('name')"
+              />
             </div>
             <div class="field">
               <label for="f-fullname">fullname</label>
@@ -495,6 +553,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                 v-model="activeFields.fullname"
                 type="text"
                 :aria-invalid="errorField === 'fullname'"
+                :aria-describedby="describedBy('fullname')"
               />
             </div>
           </div>
@@ -507,6 +566,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                 type="text"
                 :value="activeFields.globalname ?? ''"
                 :aria-invalid="errorField === 'globalname'"
+                :aria-describedby="describedBy('globalname')"
                 @input="setNullable('globalname', $event)"
               />
             </div>
@@ -517,6 +577,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                 type="text"
                 :value="activeFields.twitter ?? ''"
                 :aria-invalid="errorField === 'twitter'"
+                :aria-describedby="describedBy('twitter')"
                 @input="setNullable('twitter', $event)"
               />
             </div>
@@ -529,6 +590,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
               type="text"
               :value="activeFields.twitch ?? ''"
               :aria-invalid="errorField === 'twitch'"
+              :aria-describedby="describedBy('twitch')"
               @input="setNullable('twitch', $event)"
             />
           </div>
@@ -542,6 +604,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                 type="text"
                 placeholder="YYYY-MM-DD"
                 :aria-invalid="errorField === 'activityStartDate'"
+                :aria-describedby="describedBy('activityStartDate')"
               />
             </div>
             <div class="field">
@@ -552,6 +615,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                 :value="activeFields.activityEndDate ?? ''"
                 placeholder="活動中"
                 :aria-invalid="errorField === 'activityEndDate'"
+                :aria-describedby="describedBy('activityEndDate')"
                 @input="setNullable('activityEndDate', $event)"
               />
             </div>
@@ -578,6 +642,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                     placeholder="#RRGGBB"
                     :value="colorText(box.key)"
                     :aria-invalid="errorField === box.key"
+                    :aria-describedby="describedBy(box.key)"
                     @input="activeFields[box.key] = ($event.target as HTMLInputElement).value"
                     @change="fixColor(box.key)"
                   />

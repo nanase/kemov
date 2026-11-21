@@ -1,5 +1,6 @@
 import {
   blankNewMember,
+  editWouldBeLost,
   fieldForSaveError,
   isHexColor,
   memberOfListSaveError,
@@ -188,5 +189,41 @@ describe('pickerValue', () => {
 
   test.each(['', '#', '1a2b3c', '#1a2b3', 'red'])('gives the default for "%s", which is not a colour yet', (text) => {
     expect(pickerValue(text)).toEqual('#000000');
+  });
+});
+
+describe('editWouldBeLost', () => {
+  test('is false when nothing is open', () => {
+    expect(editWouldBeLost(null, null, null)).toBe(false);
+  });
+
+  test('is false for a new-member form nobody has typed in', () => {
+    expect(editWouldBeLost(blankNewMember(), null, null)).toBe(false);
+  });
+
+  test.each([
+    ['channelId', { channelId: 'UC' }],
+    ['name', { name: 'あ' }],
+    ['a colour', { colorKey: '1a2b3c' }],
+    ['a nullable field', { twitter: 'kemov_x' }],
+  ])('is true for a new-member form with %s typed in', (_label, typed) => {
+    expect(editWouldBeLost({ ...blankNewMember(), ...typed }, null, null)).toBe(true);
+  });
+
+  test('is false for a saved member shown as it was saved', () => {
+    expect(editWouldBeLost(null, toFormFields(MEMBER), MEMBER)).toBe(false);
+  });
+
+  test.each([
+    ['a text field', { name: 'ケープ' }],
+    ['a colour', { colorBack: '#000000' }],
+    ['a field cleared to null', { twitter: null }],
+    ['an end date cleared', { activityEndDate: null }],
+  ])('is true for a saved member with %s changed', (_label, changed) => {
+    expect(editWouldBeLost(null, { ...toFormFields(MEMBER), ...changed }, MEMBER)).toBe(true);
+  });
+
+  test('looks at the new-member form first when both are there', () => {
+    expect(editWouldBeLost(blankNewMember(), { ...toFormFields(MEMBER), name: 'x' }, MEMBER)).toBe(false);
   });
 });
