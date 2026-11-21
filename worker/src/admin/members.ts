@@ -458,6 +458,20 @@ export async function addMember(env: Env, body: Record<string, unknown>): Promis
 }
 
 /**
+ * `refusal` with the member it is about added to its body as `channelId`. A
+ * save names many members at once, so a bare "colorKey must be #RRGGBB" does
+ * not say whose; the editor reads `channelId` to show the message beside that
+ * member. `error` is left as it was.
+ */
+async function namingMember(refusal: Response, member: Record<string, unknown>): Promise<Response> {
+  const { error } = (await refusal.json()) as { error: string };
+
+  return jsonResponse(typeof member.channelId === 'string' ? { error, channelId: member.channelId } : { error }, {
+    status: refusal.status,
+  });
+}
+
+/**
  * PUT /admin/api/members: `{ add: [member...], order: [channelId...] }`, the
  * list as the admin site's editor left it, saved at once. `add` may be left
  * out when only the order changed.
@@ -484,7 +498,7 @@ export async function saveMembers(env: Env, body: Record<string, unknown>): Prom
 
     const read = readMemberBody(member as Record<string, unknown>, NEW_MEMBER_KEYS);
 
-    if ('error' in read) return read.error;
+    if ('error' in read) return await namingMember(read.error, member as Record<string, unknown>);
 
     added.push(read.values);
   }

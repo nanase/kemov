@@ -102,6 +102,11 @@ export const MEMBER_TEXT = {
   hasRecords: '記録があるため削除できません',
   removed: '削除しました',
   listChanged: 'メンバー情報に変更がありました。再読み込みしてください',
+  pickColor: (label: string) => `${label} の色を選ぶ`,
+  rowErrorLead: (name: string, channelId: string) =>
+    `足した行「${name || '名前なし'}」（${channelId}）に誤りがあります。`,
+  rowErrorKept: '編集の欄に入力中の内容があったので、その行へは移りませんでした。',
+  openErrorRow: '該当の行を表示',
 } as const;
 
 /**
@@ -178,4 +183,74 @@ export function fieldForSaveError(message: string): MemberFieldKey | null {
   }
 
   return null;
+}
+
+function sameFields<T extends object>(a: T, b: T): boolean {
+  const keys = Object.keys(a) as (keyof T)[];
+
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+}
+
+/**
+ * Whether showing a different member in the edit panel would throw away what
+ * is typed in it: a 「メンバーを足す」 form that is not blank, or a saved
+ * member's fields that differ from the saved ones.
+ */
+export function editWouldBeLost(
+  newForm: NewMemberFields | null,
+  fields: MemberFormFields | null,
+  saved: Member | null,
+): boolean {
+  if (newForm !== null) return !sameFields(newForm, blankNewMember());
+
+  return fields !== null && saved !== null && !sameFields(fields, toFormFields(saved));
+}
+
+/**
+ * Which not-yet-saved member a list save's 400 is about: the `channelId` the
+ * worker puts in the body (`namingMember` in `worker/src/admin/members.ts`),
+ * when it is one of `addedIds`. Null for a 400 that is about no member in
+ * particular, or about one this screen does not hold - those stay a message
+ * over the list.
+ */
+export function memberOfListSaveError(body: unknown, addedIds: readonly string[]): string | null {
+  if (typeof body !== 'object' || body === null || !('channelId' in body)) return null;
+
+  const { channelId } = body;
+
+  return typeof channelId === 'string' && addedIds.includes(channelId) ? channelId : null;
+}
+
+export const COLOR_KEYS = ['colorKey', 'colorSub', 'colorLight', 'colorBack'] as const;
+
+export type ColorKey = (typeof COLOR_KEYS)[number];
+
+const BARE_HEX = /^[0-9A-Fa-f]{6}$/;
+
+/**
+ * `value` with the `#` a colour is written with put back when it was left
+ * off: "1a2b3c" is "#1a2b3c". Anything else is returned as it was - a 3-digit
+ * hex or a colour name is not turned into a guess, and the server's own check
+ * (`COLOR_PATTERN`) is still the one that decides what is a colour.
+ */
+export function normalizeColor(value: string): string {
+  return BARE_HEX.test(value) ? `#${value}` : value;
+}
+
+const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
+const PICKER_DEFAULT = '#000000';
+
+/** Whether `text` is a `#RRGGBB` colour, the one form the picker can show. */
+export function isHexColor(text: string): boolean {
+  return HEX_COLOR.test(text);
+}
+
+/**
+ * The value an `<input type="color">` is given for a colour box's text. The
+ * picker holds only a lowercase `#rrggbb` and cannot be empty, so a box that
+ * is empty or not a colour yet shows the picker's default instead - the box
+ * itself is not touched.
+ */
+export function pickerValue(text: string): string {
+  return isHexColor(text) ? text.toLowerCase() : PICKER_DEFAULT;
 }
