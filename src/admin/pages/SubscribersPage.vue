@@ -426,6 +426,7 @@ onMounted(() => {
         </div>
       </div>
     </div>
+    <!-- inert while the list is read: the answer puts the open row's saved fields back, or leaves the row out of the table and closes the panel, over anything typed meanwhile. -->
     <SubscriberMilestoneInspector
       v-if="adding || selected"
       :key="adding ? 'new' : selected!.milestoneId"
@@ -436,6 +437,7 @@ onMounted(() => {
       :pending="pending"
       :bulk-running="bulkProgress !== null"
       :track-write="trackWrite"
+      :inert="loading || undefined"
       @changed="reload"
       @created="created"
       @back="back"

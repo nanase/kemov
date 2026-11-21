@@ -284,14 +284,14 @@ onMounted(() => {
         </table>
       </div>
     </div>
-    <!-- inert while ＋ 足す is on its way: the reload after it reads the open row again, which puts its saved fields back over anything typed meanwhile. -->
+    <!-- inert while the list is read, or ＋ 足す is on its way: the answer puts the open row's saved fields back, or leaves the row out of the table and closes the panel, over anything typed meanwhile. -->
     <FootprintsInspector
       v-if="selected"
       :key="selected.eventId"
       :event="selected"
       :members="members"
       :pending="pending"
-      :inert="adding || undefined"
+      :inert="adding || loading || undefined"
       @changed="reload"
       @back="back"
     />

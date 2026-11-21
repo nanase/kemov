@@ -167,6 +167,7 @@ function closeTunes(): void {
   openIndex.value = null;
   tuneFieldsByIndex.value = new Map();
   tuneSavedByIndex.value = new Map();
+  latestTuneRead.clear();
 }
 
 async function loadPending(): Promise<void> {
@@ -325,6 +326,13 @@ const openIndex = ref<number | null>(null);
 const tuneFieldsByIndex = ref<Map<number, TuneFormFields>>(new Map());
 /** Each open tune as last read from the worker, to tell what is unsaved in `tuneFieldsByIndex`. Replaced, never changed in place. */
 const tuneSavedByIndex = shallowRef<Map<number, TuneFormFields>>(new Map());
+/**
+ * The latest read of each open tune, by index. A tune closed and opened again
+ * before its first read lands starts a second one; whichever lands last must
+ * not be the older one, or it replaces what was typed into the newer one.
+ */
+const latestTuneRead = new Map<number, number>();
+let tuneReadCount = 0;
 
 function rememberSavedTune(index: number, tune: GenetTune): void {
   tuneFieldsByIndex.value.set(index, toTuneFormFields(tune));
@@ -388,11 +396,16 @@ async function openTune(index: number): Promise<void> {
   if (performance === undefined || tuneFieldsByIndex.value.has(index)) return;
 
   const videoId = selected.value?.videoId;
+  const read = ++tuneReadCount;
+
+  latestTuneRead.set(index, read);
 
   try {
     const body = await getJson<{ tune: GenetTune }>(`/genet/tunes/${performance.tuneId}`);
 
-    if (stillAt(index, videoId, performance.tuneId)) rememberSavedTune(index, body.tune);
+    if (latestTuneRead.get(index) === read && stillAt(index, videoId, performance.tuneId)) {
+      rememberSavedTune(index, body.tune);
+    }
   } catch (error) {
     tuneError.value = error instanceof AdminApiError ? error.message : String(error);
   }
@@ -515,7 +528,13 @@ function emptyTuneFieldsWithTitle(title: string): TuneFormFields {
 }
 
 function removePerformance(index: number): void {
+  // The tune itself is not deleted, but what is typed into it goes with the row.
+  if (isTuneDirty(index) && !window.confirm(EDITING_TEXT.confirmDiscardTune)) return;
+
   streamFields.value.performances.splice(index, 1);
+  // A read on its way names an index that may now be another tune's; the
+  // tunes not yet read are read again when opened.
+  latestTuneRead.clear();
 
   // Every cached entry after the removed one now belongs to the performance
   // that shifted into its old index - reindexing the whole map, rather than
@@ -789,8 +808,12 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
         </button>
       </div>
 
-      <!-- inert while the stream's 保存 is on its way: the saved fields replace these once it lands, so what is typed meanwhile would go unasked. -->
-      <div class="inspector-main" :class="{ 'with-preview': previewOpen }" :inert="streamSaving || undefined">
+      <!-- inert while the list is read or a 保存 is on its way: the answer puts saved fields back, or leaves the stream out of the list and closes the editor, over anything typed meanwhile. -->
+      <div
+        class="inspector-main"
+        :class="{ 'with-preview': previewOpen }"
+        :inert="loading || streamSaving || tuneSaving || undefined"
+      >
         <div class="scroller">
           <div v-if="selectedWaiting" class="editor-notice">
             <div class="panel">

@@ -8,6 +8,7 @@
 export const EDITING_TEXT = {
   unsaved: '未保存',
   confirmDiscard: '保存していない変更があります。変更を捨てて移りますか？',
+  confirmDiscardTune: 'この曲に保存していない変更があります。変更を捨てて外しますか？',
   remove: '削除',
   removeConfirm: '削除する',
   removeCancel: 'やめる',
