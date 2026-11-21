@@ -64,8 +64,24 @@ describe('lookupView', () => {
 });
 
 describe('lookupFailure', () => {
-  test('is notFound for a 404, which is YouTube saying there is no such channel', () => {
-    expect(lookupFailure(new AdminApiError(404, { error: 'x' }), ID)).toEqual({ status: 'notFound', channelId: ID });
+  test('is notFound for the worker 404 that says YouTube has no such channel', () => {
+    expect(lookupFailure(new AdminApiError(404, { error: 'x', code: 'channel_not_found' }), ID)).toEqual({
+      status: 'notFound',
+      channelId: ID,
+    });
+  });
+
+  test('is failed for a 404 that does not carry the code, such as a route the worker lacks', () => {
+    for (const body of [{ error: 'no endpoint at /admin/api/channel-lookup/x' }, null, 'Not Found']) {
+      expect(lookupFailure(new AdminApiError(404, body), ID)).toEqual({ status: 'failed', channelId: ID });
+    }
+  });
+
+  test('is failed when the code comes with another status', () => {
+    expect(lookupFailure(new AdminApiError(502, { code: 'channel_not_found' }), ID)).toEqual({
+      status: 'failed',
+      channelId: ID,
+    });
   });
 
   test('is failed for every other failure, which says nothing about the id', () => {

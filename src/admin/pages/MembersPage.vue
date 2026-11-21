@@ -97,7 +97,10 @@ const lookup = ref<ChannelLookup | null>(null);
 const lookupGate = createRequestGate();
 const lookupShown = computed(() => lookupView(newForm.value?.channelId ?? '', lookup.value));
 const addBlocked = computed(() => blocksAdding(lookupShown.value));
-const foundLookup = computed(() => (lookup.value?.status === 'found' ? lookup.value : null));
+/** The answer to draw while the view is `found`; `lookupView` has already checked it is for the id typed now. */
+const foundLookup = computed(() =>
+  lookupShown.value === 'found' && lookup.value?.status === 'found' ? lookup.value : null,
+);
 
 /** The id of the box that asks, for the 一覧に足す button to point at while it is refused. */
 const LOOKUP_ID = 'members-channel-lookup';
@@ -613,7 +616,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                 <span class="lookup-icon" aria-hidden="true"></span>
                 {{ LOOKUP_TEXT.loading }}
               </p>
-              <div v-else-if="lookupShown === 'found' && foundLookup" class="lookup-row">
+              <div v-else-if="foundLookup" class="lookup-row">
                 <MemberAvatar
                   :src="foundLookup.iconDataUrl"
                   :name="foundLookup.title"

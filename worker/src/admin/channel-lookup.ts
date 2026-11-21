@@ -24,10 +24,14 @@ import { CHANNEL_ID_PATTERN } from './members';
  *   channel exists but its picture could not be fetched, which says nothing
  *   against the id.
  * - 400 for an id that is not `UC` and 22 characters, before YouTube is asked.
- * - 404 when Channels.list names no such channel. The screen blocks adding.
+ * - 404 with `code: 'channel_not_found'` when Channels.list names no such
+ *   channel. The screen blocks adding.
  * - 502 when YouTube could not be asked or did not answer properly. This is
  *   not "not found": the id may be right.
  */
+
+/** The `code` of the 404 that means YouTube has no such channel, as opposed to a 404 from anywhere else. */
+export const NOT_FOUND_CODE = 'channel_not_found';
 
 /** The size the icon is fetched at: sharp on a dense screen at the 54px the member preview draws a face, and small enough to carry in the answer. */
 const ICON_SIZE = '176';
@@ -57,7 +61,7 @@ function base64Of(bytes: Uint8Array): string {
 
 /** The icon at `url` as a data: URL, or null when it is not where expected or cannot be read. */
 async function iconDataUrl(url: string | undefined, fetchImpl: typeof fetch): Promise<string | null> {
-  if (url === undefined || !isAllowedChannelIconHost(url)) return null;
+  if (url === undefined || !isAllowedChannelIconHost(url) || !url.startsWith('https://')) return null;
 
   try {
     // `redirect: 'error'`: a redirect would leave the two allowed hosts
@@ -78,7 +82,7 @@ async function iconDataUrl(url: string | undefined, fetchImpl: typeof fetch): Pr
 
 export async function lookupChannel(env: Env, channelId: string, fetchImpl: typeof fetch = fetch): Promise<Response> {
   if (!CHANNEL_ID_PATTERN.test(channelId)) {
-    return errorResponse(400, 'channel_id は UC から始まる 24 文字で指定してください');
+    return errorResponse(400, 'channel id must be UC followed by 22 characters');
   }
 
   let item: NonNullable<ChannelsListSnippet['items']>[number] | undefined;
@@ -94,15 +98,23 @@ export async function lookupChannel(env: Env, channelId: string, fetchImpl: type
     item = response.items?.find((candidate) => candidate.id === channelId);
   } catch (error) {
     console.error('channel-lookup: Channels.list failed', error);
-    return errorResponse(502, 'YouTube に問い合わせできませんでした');
+    return errorResponse(502, 'YouTube could not be asked about the channel');
   }
 
-  if (item === undefined) return errorResponse(404, `channel ${channelId} was not found on YouTube`);
+  // `code` is what tells this 404 from any other: a route that does not exist
+  // answers 404 with only an `error`, and so can a gateway in front of the
+  // worker. The screen blocks adding on this one alone.
+  if (item === undefined) {
+    return jsonResponse(
+      { error: `channel ${channelId} was not found on YouTube`, code: NOT_FOUND_CODE },
+      { status: 404 },
+    );
+  }
 
   const title = item.snippet?.title;
 
   if (typeof title !== 'string' || title === '') {
-    return errorResponse(502, 'YouTube の応答にチャンネル名がありませんでした');
+    return errorResponse(502, 'YouTube answered without a title for the channel');
   }
 
   return jsonResponse({

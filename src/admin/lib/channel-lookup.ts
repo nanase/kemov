@@ -28,7 +28,7 @@ export type ChannelLookup =
 /** The five states the table names, in the order it lists them. */
 export type LookupView = 'waiting' | 'loading' | 'found' | 'notFound' | 'failed';
 
-/** The same rule as the worker's own (`CHANNEL_ID_PATTERN` in `worker/src/admin/members.ts`): `UC` and 22 characters of base64url. */
+/** What a channel id looks like: `UC` and 22 characters of base64url. It only decides when to ask; the answer is YouTube's. */
 const CHANNEL_ID_SHAPE = /^UC[\w-]{22}$/;
 
 /** Whether `value` is the 24-character form YouTube is asked about. Anything shorter or longer is still being typed. */
@@ -52,11 +52,25 @@ export function lookupView(channelId: string, lookup: ChannelLookup | null): Loo
   return lookup !== null && lookup.channelId === id ? lookup.status : 'loading';
 }
 
-/** What a failed call means: a 404 is YouTube saying there is no such channel; any other failure says nothing about the id. */
+/** The `code` the worker puts on its 404 for "YouTube has no such channel". It is the same string as `NOT_FOUND_CODE` in `worker/src/admin/channel-lookup.ts`. */
+const NOT_FOUND_CODE = 'channel_not_found';
+
+/**
+ * What a failed call means. Only the worker's own "YouTube has no such
+ * channel" answer is `notFound`, because that is what stops 一覧に足す. A 404
+ * without the code - a route the worker lacks, a gateway in front of it -
+ * says nothing about the id, and so is `failed` like every other failure.
+ */
 export function lookupFailure(error: unknown, channelId: string): ChannelLookup {
-  return error instanceof AdminApiError && error.status === 404
-    ? { status: 'notFound', channelId }
-    : { status: 'failed', channelId };
+  const notFound =
+    error instanceof AdminApiError &&
+    error.status === 404 &&
+    typeof error.body === 'object' &&
+    error.body !== null &&
+    'code' in error.body &&
+    error.body.code === NOT_FOUND_CODE;
+
+  return { status: notFound ? 'notFound' : 'failed', channelId };
 }
 
 export function lookupFound(body: ChannelLookupBody): ChannelLookup {

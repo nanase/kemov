@@ -78,6 +78,7 @@ describe('lookupChannel', () => {
     const response = await lookup(fetchImpl);
 
     expect(response.status).toEqual(404);
+    expect(await response.json()).toMatchObject({ code: 'channel_not_found' });
     expect(calls.images).toEqual([]);
   });
 
@@ -142,6 +143,13 @@ describe('lookupChannel', () => {
     const { fetchImpl, calls } = fakeFetch(() => channelsList('https://example.invalid/a.png'));
 
     expect(await (await lookup(fetchImpl)).json()).toMatchObject({ title: 'つばき', iconDataUrl: null });
+    expect(calls.images).toEqual([]);
+  });
+
+  test('does not fetch an icon over http, even from an allowed host', async () => {
+    const { fetchImpl, calls } = fakeFetch(() => channelsList('http://yt3.ggpht.com/abc=s88'));
+
+    expect(await (await lookup(fetchImpl)).json()).toMatchObject({ iconDataUrl: null });
     expect(calls.images).toEqual([]);
   });
 
