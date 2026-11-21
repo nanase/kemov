@@ -124,35 +124,50 @@ const streamError = ref<string | null>(null);
 const streamErrorField = ref<ReturnType<typeof fieldForStreamSaveError>>(null);
 
 watch(selected, (stream, previous) => {
-  const sameStream = stream !== null && stream.videoId === previous?.videoId;
-  const tunesBefore = streamFields.value.performances.map((p) => p.tuneId);
-
   streamError.value = null;
   streamErrorField.value = null;
+
+  if (stream === null || stream.videoId !== previous?.videoId) {
+    streamFields.value = stream === null ? emptyStreamFields() : toStreamFormFields(stream);
+    closeTunes();
+    return;
+  }
 
   // The open stream read again - after 公開待ちにする, 下書きに戻す or a
   // filter that keeps it - leaves what is typed alone. Its own 保存 puts the
   // saved fields back itself, once the list has been read.
-  if (!(sameStream && previous !== null && !sameFields(streamFields.value, toStreamFormFields(previous)))) {
-    streamFields.value = stream === null ? emptyStreamFields() : toStreamFormFields(stream);
-  }
+  if (previous !== null && !sameFields(streamFields.value, toStreamFormFields(previous))) return;
 
-  // The tunes stay open with whatever is typed into them too: no reload of
-  // the stream sends them. Only while each index still names the same tune,
-  // though - the caches are keyed by index, and a stream saved elsewhere in
-  // another order would hand one tune's fields to another's 保存.
-  const tunesAfter = streamFields.value.performances.map((p) => p.tuneId);
+  replaceStreamFields(toStreamFormFields(stream));
+});
 
-  if (sameStream && sameFields(tunesBefore, tunesAfter)) return;
+/**
+ * Puts `next` in place of the stream's fields. The tunes stay open with
+ * whatever is typed into them - no 保存 of the stream sends them - but only
+ * while each index still names the same tune: the caches are keyed by index,
+ * and a different order (saved elsewhere, or a tune taken off while a 保存
+ * was on its way) would hand one tune's fields to another's 保存.
+ */
+function replaceStreamFields(next: StreamFormFields): void {
+  const before = streamFields.value.performances.map((p) => p.tuneId);
 
+  streamFields.value = next;
+
+  if (
+    !sameFields(
+      before,
+      next.performances.map((p) => p.tuneId),
+    )
+  )
+    closeTunes();
+}
+
+/** Closes the tunes and forgets them; each is read again when opened. */
+function closeTunes(): void {
   openIndex.value = null;
-  // Keyed by performance index, which means nothing once the stream changes
-  // - the new stream's own performances start at the same indices, and a
-  // stale entry here would let openTune skip fetching and saveTune send the
-  // previous stream's tune fields to a different tune's ID.
   tuneFieldsByIndex.value = new Map();
   tuneSavedByIndex.value = new Map();
-});
+}
 
 async function loadPending(): Promise<void> {
   try {
@@ -254,7 +269,7 @@ async function saveStream(): Promise<void> {
     // reload failed, when `selected` is still the stream from before the
     // save and putting it back would undo the save at the next one.
     if ((await load()) && selected.value?.videoId === videoId) {
-      streamFields.value = toStreamFormFields(selected.value);
+      replaceStreamFields(toStreamFormFields(selected.value));
     }
   } catch (error) {
     if (error instanceof AdminApiError) {
@@ -332,9 +347,7 @@ const dirty = computed(() => streamDirty.value || [...tuneFieldsByIndex.value.ke
 /** Puts the stream's saved fields back and closes the tunes, which are read again when opened. */
 function discardEdits(): void {
   if (selected.value !== null) streamFields.value = toStreamFormFields(selected.value);
-  openIndex.value = null;
-  tuneFieldsByIndex.value = new Map();
-  tuneSavedByIndex.value = new Map();
+  closeTunes();
 }
 
 useUnsavedGuard(() => dirty.value, discardEdits);
@@ -776,7 +789,8 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
         </button>
       </div>
 
-      <div class="inspector-main" :class="{ 'with-preview': previewOpen }">
+      <!-- inert while the stream's 保存 is on its way: the saved fields replace these once it lands, so what is typed meanwhile would go unasked. -->
+      <div class="inspector-main" :class="{ 'with-preview': previewOpen }" :inert="streamSaving || undefined">
         <div class="scroller">
           <div v-if="selectedWaiting" class="editor-notice">
             <div class="panel">
