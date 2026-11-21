@@ -98,7 +98,7 @@ const statusFilter = ref<(typeof STATUS_OPTIONS)[number]['value']>('all');
 const selectedVideoId = ref<string | null>(null);
 const detail = ref(false);
 
-// The worker filters by status, so `streams` is already what the filter asks for.
+// `load` asks the worker for the filtered list, so `streams` is already what the filter shows.
 const listTotal = useListTotal(
   async () => (await getJson<{ streams: GenetStream[] }>('/genet/streams')).streams.length,
 );

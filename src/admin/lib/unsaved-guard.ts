@@ -11,8 +11,8 @@ import { EDITING_TEXT } from './editing';
  * The panel calls `useUnsavedGuard` with its own test for changes. Leaving
  * for another screen and closing the tab are caught here; the other two are
  * the page's own buttons, which call `confirmDiscard` before they act. One
- * panel at a time, module-wide rather than per page, for the reason toast.ts
- * gives: only one screen is ever on view.
+ * panel at a time, module-wide rather than per page: only one screen is ever
+ * on view.
  */
 let current: (() => boolean) | null = null;
 
@@ -20,7 +20,7 @@ export function useUnsavedGuard(isDirty: () => boolean): void {
   current = isDirty;
 
   // Closing or reloading the tab: browsers show only their own sentence, so
-  // this asks without one, as MembersPage.vue does.
+  // this asks without one.
   function warnBeforeUnload(event: BeforeUnloadEvent): void {
     if (isDirty()) event.preventDefault();
   }
