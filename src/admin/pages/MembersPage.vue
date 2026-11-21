@@ -1,8 +1,21 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
+import MemberAvatar from '@/parts/MemberAvatar.vue';
+
 import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, getJson, putJson } from '../lib/api';
+import {
+  LOOKUP_TEXT,
+  blocksAdding,
+  createRequestGate,
+  isChannelIdShape,
+  lookupFailure,
+  lookupFound,
+  lookupView,
+  type ChannelLookup,
+  type ChannelLookupBody,
+} from '../lib/channel-lookup';
 import { useCrumbDetail } from '../lib/crumb';
 import {
   COLOR_KEYS,
@@ -74,6 +87,49 @@ const SAVE_ERROR_ID = 'members-save-error';
 function describedBy(key: MemberFieldKey): string | undefined {
   return errorField.value === key ? SAVE_ERROR_ID : undefined;
 }
+
+/**
+ * What YouTube said about the channel_id typed in the new member's form (#276).
+ * It is only drawn for the id it was asked for (`lookupView`), and a request
+ * that is no longer the latest never writes here (`lookupGate`).
+ */
+const lookup = ref<ChannelLookup | null>(null);
+const lookupGate = createRequestGate();
+const lookupShown = computed(() => lookupView(newForm.value?.channelId ?? '', lookup.value));
+const addBlocked = computed(() => blocksAdding(lookupShown.value));
+const foundLookup = computed(() => (lookup.value?.status === 'found' ? lookup.value : null));
+
+/** The id of the box that asks, for the 一覧に足す button to point at while it is refused. */
+const LOOKUP_ID = 'members-channel-lookup';
+
+async function checkChannel(channelId: string): Promise<void> {
+  const ticket = lookupGate.start();
+
+  lookup.value = { status: 'loading', channelId };
+
+  try {
+    const body = await getJson<ChannelLookupBody>(`/channel-lookup/${encodeURIComponent(channelId)}`);
+
+    if (lookupGate.isCurrent(ticket)) lookup.value = lookupFound(body);
+  } catch (error) {
+    if (lookupGate.isCurrent(ticket)) lookup.value = lookupFailure(error, channelId);
+  }
+}
+
+// Asked once the id is 24 characters, not on every key: each question is a
+// YouTube API call. Any other value - shorter, longer, or the form gone -
+// drops the answer in flight as well as the one shown.
+watch(
+  () => newForm.value?.channelId.trim() ?? '',
+  (channelId) => {
+    if (isChannelIdShape(channelId)) {
+      void checkChannel(channelId);
+    } else {
+      lookupGate.cancel();
+      lookup.value = null;
+    }
+  },
+);
 
 const savedIds = computed(() => saved.value.map((m) => m.channelId));
 const orderedIds = computed(() => draft.order ?? savedIds.value);
@@ -186,7 +242,7 @@ function addMember(): void {
 function addToList(): void {
   const member = newForm.value;
 
-  if (member === null) return;
+  if (member === null || addBlocked.value) return;
 
   member.channelId = member.channelId.trim();
 
@@ -551,6 +607,39 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
             <label for="f-cid">channel_id</label>
             <input v-if="newForm" id="f-cid" v-model="newForm.channelId" type="text" placeholder="UC…" />
             <input v-else id="f-cid" type="text" :value="selectedId" readonly />
+            <div v-if="newForm" :id="LOOKUP_ID" class="lookup" aria-live="polite">
+              <p v-if="lookupShown === 'waiting'" class="hint">{{ LOOKUP_TEXT.waiting }}</p>
+              <p v-else-if="lookupShown === 'loading'" class="lookup-row hint">
+                <span class="lookup-icon" aria-hidden="true"></span>
+                {{ LOOKUP_TEXT.loading }}
+              </p>
+              <div v-else-if="lookupShown === 'found' && foundLookup" class="lookup-row">
+                <MemberAvatar
+                  :src="foundLookup.iconDataUrl"
+                  :name="foundLookup.title"
+                  :color="null"
+                  :size="40"
+                  :dark="false"
+                />
+                <div>
+                  <div class="lookup-title">{{ foundLookup.title }}</div>
+                  <div class="hint">{{ LOOKUP_TEXT.found }}</div>
+                </div>
+              </div>
+              <div v-else-if="lookupShown === 'notFound'" class="panel flag">
+                <h4>{{ LOOKUP_TEXT.notFoundHeading }}</h4>
+                <div class="hint">{{ LOOKUP_TEXT.notFoundBody }}</div>
+              </div>
+              <div v-else-if="lookupShown === 'failed'" class="panel">
+                <h4>{{ LOOKUP_TEXT.failedHeading }}</h4>
+                <div class="hint">{{ LOOKUP_TEXT.failedBody }}</div>
+                <div class="stack">
+                  <button class="btn" type="button" @click="checkChannel(newForm.channelId.trim())">
+                    {{ LOOKUP_TEXT.retry }}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="row2">
@@ -689,7 +778,15 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
 
       <div class="inspector-foot">
         <template v-if="newForm">
-          <button class="btn primary" type="button" @click="addToList">{{ MEMBER_TEXT.addToList }}</button>
+          <button
+            class="btn primary"
+            type="button"
+            :disabled="addBlocked"
+            :aria-describedby="addBlocked ? LOOKUP_ID : undefined"
+            @click="addToList"
+          >
+            {{ MEMBER_TEXT.addToList }}
+          </button>
         </template>
         <template v-else-if="selectedAdded">
           <button class="btn danger" type="button" @click="removeAdded">{{ MEMBER_TEXT.removeAdded }}</button>
@@ -721,6 +818,30 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
 <style scoped>
 .move {
   white-space: nowrap;
+}
+
+.lookup p {
+  margin: 0;
+}
+
+.lookup-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lookup-title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+/* The same size as the avatar it becomes, so the form does not move when the answer comes. */
+.lookup-icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--k-line);
 }
 
 .move .btn {

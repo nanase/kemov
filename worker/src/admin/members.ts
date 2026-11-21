@@ -121,7 +121,7 @@ type NewMemberKey = (typeof NEW_MEMBER_KEYS)[number];
 // site writes it into CSS as it is given; an X handle has no `@` and is at
 // most 15 characters of letters, digits and underscore; a Twitch login is 4
 // to 25 of the same.
-const CHANNEL_ID_PATTERN = /^UC[\w-]{22}$/;
+export const CHANNEL_ID_PATTERN = /^UC[\w-]{22}$/;
 const COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 const TWITTER_PATTERN = /^\w{1,15}$/;
 const TWITCH_PATTERN = /^\w{4,25}$/;
