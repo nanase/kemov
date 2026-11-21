@@ -61,15 +61,16 @@ describe('useListTotal', () => {
     expect(total.value).toBe(40);
   });
 
-  it('reads again when invalidated while a read was on its way', async () => {
+  it('reads again by itself when invalidated while a read was on its way', async () => {
     const reads = controlledReads();
     const { total, update, invalidate } = useListTotal(reads.read);
 
     update(12, true);
     invalidate();
+    // The load after the change finds the first read still running.
+    update(13, true);
     reads.answer(40);
     await settle();
-    update(12, true);
 
     expect(reads.calls()).toBe(1);
 

@@ -31,6 +31,10 @@ export function useListTotal(readTotal: () => Promise<number>): {
     // on its way would otherwise start one per keystroke.
     if (reading || (!stale && total.value !== null)) return;
 
+    read();
+  }
+
+  function read(): void {
     stale = false;
     reading = true;
 
@@ -42,6 +46,12 @@ export function useListTotal(readTotal: () => Promise<number>): {
 
         reading = false;
         total.value = count;
+
+        // Invalidated while this read was on its way: a row was added or
+        // deleted after the worker counted, so this count may be one off.
+        // The load that followed the change found this read running and
+        // left it to it, so the replacement is started here.
+        if (stale) read();
       },
       () => {
         if (asked !== generation) return;

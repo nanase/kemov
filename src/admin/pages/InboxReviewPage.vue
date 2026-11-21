@@ -17,6 +17,7 @@ import {
 import { refreshPublishBadge } from '../lib/publish-badge';
 import { publishMarkFor } from '../lib/publish-mark';
 import { showToast } from '../lib/toast';
+import { confirmDiscard } from '../lib/unsaved-guard';
 
 /**
  * やること > 確認待ち (#141): あしあと and ジェネット楽曲一覧 rows nobody has let
@@ -93,6 +94,8 @@ async function loadMembers(): Promise<void> {
 }
 
 function selectRow(key: string): void {
+  if (key !== selectedKey.value && !confirmDiscard()) return;
+
   selectedKey.value = key;
   detail.value = true;
 }
@@ -158,7 +161,12 @@ async function onKeydown(event: KeyboardEvent): Promise<void> {
 
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
     event.preventDefault();
-    selectedKey.value = moveSelection(keys.value, selectedKey.value, event.key === 'ArrowDown' ? 1 : -1);
+
+    const next = moveSelection(keys.value, selectedKey.value, event.key === 'ArrowDown' ? 1 : -1);
+
+    if (next !== selectedKey.value && !confirmDiscard()) return;
+
+    selectedKey.value = next;
     await nextTick();
     document.querySelector('tr[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
 

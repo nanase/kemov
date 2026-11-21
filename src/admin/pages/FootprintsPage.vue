@@ -123,6 +123,8 @@ function reload(): Promise<unknown> {
 
 /** A row clicked in the table: asks first when the open one has changes that would be lost. */
 function selectRow(eventId: number): void {
+  // ＋ 足す opens its new row once created; another row chosen meanwhile would be replaced.
+  if (adding.value) return;
   if (eventId !== selectedId.value && !confirmDiscard()) return;
 
   openRow(eventId);
@@ -282,12 +284,14 @@ onMounted(() => {
         </table>
       </div>
     </div>
+    <!-- inert while ＋ 足す is on its way: the reload after it reads the open row again, which puts its saved fields back over anything typed meanwhile. -->
     <FootprintsInspector
       v-if="selected"
       :key="selected.eventId"
       :event="selected"
       :members="members"
       :pending="pending"
+      :inert="adding || undefined"
       @changed="reload"
       @back="back"
     />

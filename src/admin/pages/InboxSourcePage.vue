@@ -6,6 +6,7 @@ import { AdminApiError, getJson } from '../lib/api';
 import { kindLabel, type FootprintsEvent, type FootprintsMember } from '../lib/footprints';
 import { footprintsMarkFor, type FootprintsPending } from '../lib/footprints-publish';
 import { selectionAfterReload } from '../lib/inbox';
+import { confirmDiscard } from '../lib/unsaved-guard';
 
 /**
  * やること > 出典の確認待ち (#141): every あしあと row still marked so, whether
@@ -76,6 +77,8 @@ async function loadMembers(): Promise<void> {
 }
 
 function selectRow(eventId: number): void {
+  if (eventId !== selectedId.value && !confirmDiscard()) return;
+
   selectedId.value = eventId;
   detail.value = true;
 }

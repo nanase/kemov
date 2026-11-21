@@ -125,6 +125,7 @@ const streamErrorField = ref<ReturnType<typeof fieldForStreamSaveError>>(null);
 
 watch(selected, (stream, previous) => {
   const sameStream = stream !== null && stream.videoId === previous?.videoId;
+  const tunesBefore = streamFields.value.performances.map((p) => p.tuneId);
 
   streamError.value = null;
   streamErrorField.value = null;
@@ -137,8 +138,12 @@ watch(selected, (stream, previous) => {
   }
 
   // The tunes stay open with whatever is typed into them too: no reload of
-  // the stream sends them.
-  if (sameStream) return;
+  // the stream sends them. Only while each index still names the same tune,
+  // though - the caches are keyed by index, and a stream saved elsewhere in
+  // another order would hand one tune's fields to another's 保存.
+  const tunesAfter = streamFields.value.performances.map((p) => p.tuneId);
+
+  if (sameStream && sameFields(tunesBefore, tunesAfter)) return;
 
   openIndex.value = null;
   // Keyed by performance index, which means nothing once the stream changes
@@ -162,7 +167,8 @@ async function loadPending(): Promise<void> {
 // for a filter that is no longer selected.
 let loadGeneration = 0;
 
-async function load(): Promise<void> {
+/** Resolves true when the list it read was put on screen: not failed, and not overtaken by a later load. */
+async function load(): Promise<boolean> {
   loading.value = true;
   loadError.value = null;
   void loadPending();
@@ -174,7 +180,7 @@ async function load(): Promise<void> {
     const query = filter === 'all' ? '' : `?status=${filter}`;
     const body = await getJson<{ streams: GenetStream[] }>(`/genet/streams${query}`);
 
-    if (generation !== loadGeneration) return;
+    if (generation !== loadGeneration) return false;
 
     streams.value = body.streams;
     listTotal.update(streams.value.length, filter !== 'all');
@@ -189,10 +195,14 @@ async function load(): Promise<void> {
     }
 
     requestedVideoId = null;
+
+    return true;
   } catch (error) {
-    if (generation !== loadGeneration) return;
+    if (generation !== loadGeneration) return false;
 
     loadError.value = error instanceof AdminApiError ? error.message : String(error);
+
+    return false;
   } finally {
     if (generation === loadGeneration) loading.value = false;
   }
@@ -239,11 +249,13 @@ async function saveStream(): Promise<void> {
   try {
     await putJson(`/genet/streams/${encodeURIComponent(videoId)}`, streamFields.value);
     showToast(saveToastFor(status));
-    await load();
-
     // The reload kept the typed fields (see the watch on `selected`); they
-    // are saved now, so the saved stream takes their place.
-    if (selected.value?.videoId === videoId) streamFields.value = toStreamFormFields(selected.value);
+    // are saved now, so the saved stream takes their place - unless the
+    // reload failed, when `selected` is still the stream from before the
+    // save and putting it back would undo the save at the next one.
+    if ((await load()) && selected.value?.videoId === videoId) {
+      streamFields.value = toStreamFormFields(selected.value);
+    }
   } catch (error) {
     if (error instanceof AdminApiError) {
       streamError.value = error.message;
