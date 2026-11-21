@@ -112,17 +112,6 @@ watch(selected, (member) => {
   confirmingRemove.value = false;
 });
 
-// A click on the row the banner is about shows the error there, as the
-// banner's own button does: the banner has said all it had to.
-watch(selectedId, (id) => {
-  const error = rowError.value;
-
-  if (error === null || id !== error.channelId) return;
-
-  rowError.value = null;
-  void showAddedMemberError(error.channelId, error.message);
-});
-
 async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
@@ -161,6 +150,14 @@ async function load(): Promise<void> {
 function selectRow(channelId: string): void {
   // The edit panel is inert while 保存 is in flight; so is the choice of what it shows.
   if (listSaving.value) return;
+
+  // A click on the row the banner is about shows the error there, as the
+  // banner's own button does: the banner has said all it had to. Only a click
+  // does this - the selection also moves when a row is deleted.
+  if (rowError.value?.channelId === channelId) {
+    openErrorRow();
+    return;
+  }
 
   // What a failed save said is about the member it was shown for.
   if (channelId !== selectedId.value) {
@@ -268,8 +265,8 @@ function openErrorRow(): void {
 
   rowError.value = null;
 
-  // The button that had focus is gone with the banner; the field the error is
-  // about is where the user goes next.
+  // The banner, and the button in it that may have had focus, is gone; the
+  // field the error is about is where the user goes next.
   void showAddedMemberError(error.channelId, error.message).then(async () => {
     await nextTick();
     document.querySelector<HTMLElement>('.inspector [aria-invalid="true"]')?.focus();
