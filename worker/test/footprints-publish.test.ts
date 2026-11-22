@@ -32,7 +32,7 @@ const WHITELISTED_PREFIX = 'https://kemono-friends.jp/';
 const WHITELISTED_SOURCE = `${WHITELISTED_PREFIX}some-article`;
 const SOURCES_NOT_ENOUGH =
   '出典が足りません。「出典の確認待ち」を外すには、ホワイトリストに載った出典を 1 つ足すか、別のサイトの出典を足してください。';
-const NO_TITLE = '題を入れてください。';
+const NO_TITLE = '題を書いてください。';
 
 /** `env` with an R2 that refuses every write - what a publish meets when the public JSON cannot be written. */
 const R2_DOWN: Env = {

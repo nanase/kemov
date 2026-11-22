@@ -69,7 +69,7 @@ function publishProblems(saved: FootprintsEvent, whitelist: readonly string[]): 
   const { event, sources } = saved;
   const problems: PublishProblem[] = [];
 
-  if (event.title === '') problems.push({ field: 'title', message: '題を入れてください。' });
+  if (event.title === '') problems.push({ field: 'title', message: '題を書いてください。' });
 
   // The upcoming list counts days and years from a debut for its leads
   // alone. A debut with none would count for nobody, and saying so here is
