@@ -386,6 +386,48 @@ describe('publishChange', () => {
     expect(await publications()).toEqual([]);
   });
 
+  // The change is recorded by the time the check reads `revision` again, so a
+  // failure there is not one to answer as if nothing had been saved.
+  test('says the change was recorded when the revisions cannot be read again after the batch', async () => {
+    const eventId = await insertEvent('前');
+    let batched = false;
+    const failingAfter = new Proxy(env.DB, {
+      get(target, property) {
+        if (property === 'batch') {
+          return async (statements: D1PreparedStatement[]) => {
+            const results = await target.batch(statements);
+
+            batched = true;
+
+            return results;
+          };
+        }
+
+        if (property === 'prepare') {
+          return (sql: string) => {
+            if (batched && sql.includes('FROM revision r')) throw new Error('D1 is down');
+
+            return target.prepare(sql);
+          };
+        }
+
+        const value = Reflect.get(target, property) as unknown;
+
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+
+    const outcome = await publishChange({ ...env, DB: failingAfter }, TARGET, publishOf(eventId), [], NOW);
+
+    expect(outcome).toEqual({
+      written: false,
+      recorded: true,
+      revisionId: expect.any(Number),
+      error: expect.stringContaining('D1 is down'),
+    });
+    expect(await revisions()).toHaveLength(1);
+  });
+
   // Both JSONs checked out; the one checked first records last. The newest
   // publication row must still name the newest revision, or a published row
   // would count as waiting.

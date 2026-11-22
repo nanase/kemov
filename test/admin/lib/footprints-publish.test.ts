@@ -1,5 +1,6 @@
 import { AdminApiError } from '@/admin/lib/api';
 import {
+  bandReasonIds,
   canPublishFootprints,
   footprintsAnswerFor,
   footprintsMarkFor,
@@ -205,5 +206,30 @@ describe('footprintsAnswerFor', () => {
       band: { title: '保存できません', note: 'offline' },
       changed: false,
     });
+  });
+});
+
+describe('bandReasonIds', () => {
+  const refusal = {
+    title: '公開できません',
+    lines: ['題を書いてください。', '出典が足りません。', '別の理由'],
+    note: null,
+  };
+
+  test('points a field at every reason the refusal lists for it', () => {
+    expect(bandReasonIds(refusal, ['title', 'sources', 'title'], 'title')).toEqual('foot-reason-0 foot-reason-2');
+    expect(bandReasonIds(refusal, ['title', 'sources', 'title'], 'sources')).toEqual('foot-reason-1');
+  });
+
+  test('points a field the band does not mark at nothing', () => {
+    expect(bandReasonIds(refusal, ['title', 'sources', 'title'], 'videoId')).toBeUndefined();
+    expect(bandReasonIds(null, [], 'title')).toBeUndefined();
+  });
+
+  test('points a field marked by a band with no list at its note', () => {
+    const failed = { title: '保存できません', lines: [], note: 'startDate must be YYYY-MM-DD' };
+
+    expect(bandReasonIds(failed, ['startDate'], 'startDate')).toEqual('foot-band-note');
+    expect(bandReasonIds({ ...failed, note: null }, ['startDate'], 'startDate')).toBeUndefined();
   });
 });

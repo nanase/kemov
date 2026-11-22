@@ -18,6 +18,9 @@ import { useCrumbDetail } from '../lib/crumb';
 import { EDITING_TEXT, sameFields } from '../lib/editing';
 import { REJECTED_TOAST } from '../lib/inbox';
 import {
+  BAND_NOTE_ID,
+  bandReasonId,
+  bandReasonIds,
   footprintsAnswerFor,
   footprintsMarkFor,
   isChangedSincePublish,
@@ -116,6 +119,10 @@ const selectedMembers = computed(() =>
 
 function invalid(field: EventFieldKey): boolean {
   return invalidFields.value.includes(field);
+}
+
+function reasonIds(field: EventFieldKey): string | undefined {
+  return bandReasonIds(band.value, invalidFields.value, field);
 }
 
 function toggleMember(channelId: string): void {
@@ -308,9 +315,9 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
         <div v-if="band" class="panel flag" role="alert">
           <h4>{{ band.title }}</h4>
           <ul v-if="band.lines.length > 0" class="reasons">
-            <li v-for="(line, i) in band.lines" :key="i">{{ line }}</li>
+            <li v-for="(line, i) in band.lines" :id="bandReasonId(i)" :key="i">{{ line }}</li>
           </ul>
-          <div v-if="band.note" class="hint">{{ band.note }}</div>
+          <div v-if="band.note" :id="BAND_NOTE_ID" class="hint">{{ band.note }}</div>
         </div>
 
         <div v-if="changedSincePublish" class="panel flag">
@@ -326,11 +333,22 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
         <div class="row2">
           <div class="field">
             <label for="f-date">日付</label>
-            <input id="f-date" v-model="fields.startDate" type="text" :aria-invalid="invalid('startDate')" />
+            <input
+              id="f-date"
+              v-model="fields.startDate"
+              type="text"
+              :aria-invalid="invalid('startDate')"
+              :aria-describedby="reasonIds('startDate')"
+            />
           </div>
           <div class="field">
             <label for="f-prec">日付の細かさ</label>
-            <select id="f-prec" v-model="fields.datePrecision" :aria-invalid="invalid('datePrecision')">
+            <select
+              id="f-prec"
+              v-model="fields.datePrecision"
+              :aria-invalid="invalid('datePrecision')"
+              :aria-describedby="reasonIds('datePrecision')"
+            >
               <option value="day">日まで</option>
               <option value="month">月まで</option>
             </select>
@@ -339,7 +357,13 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
 
         <div class="field span2">
           <label for="f-title">題</label>
-          <input id="f-title" v-model="fields.title" type="text" :aria-invalid="invalid('title')" />
+          <input
+            id="f-title"
+            v-model="fields.title"
+            type="text"
+            :aria-invalid="invalid('title')"
+            :aria-describedby="reasonIds('title')"
+          />
         </div>
 
         <div v-if="event" class="field">
@@ -350,7 +374,12 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
         <div class="row2">
           <div class="field">
             <label for="f-kind">種類</label>
-            <select id="f-kind" v-model="fields.kind" :aria-invalid="invalid('kind')">
+            <select
+              id="f-kind"
+              v-model="fields.kind"
+              :aria-invalid="invalid('kind')"
+              :aria-describedby="reasonIds('kind')"
+            >
               <option v-for="k in KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
             </select>
           </div>
@@ -376,8 +405,11 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
           v-if="selectedMembers.length > 0 || fields.kind === 'debut'"
           class="panel span2"
           :class="{ flag: needsLead || invalid('leadChannelIds') }"
+          role="group"
+          aria-labelledby="f-lead-title"
+          :aria-describedby="reasonIds('leadChannelIds')"
         >
-          <h4>主役</h4>
+          <h4 id="f-lead-title">主役</h4>
           <div v-if="selectedMembers.length > 0" class="stack">
             <div class="seg" role="group" aria-label="主役">
               <button
@@ -408,8 +440,14 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
           <textarea id="f-memo" v-model="fields.memo"></textarea>
         </div>
 
-        <div class="panel" :class="{ flag: invalid('sources') }">
-          <h4>出典</h4>
+        <div
+          class="panel"
+          :class="{ flag: invalid('sources') }"
+          role="group"
+          aria-labelledby="f-sources-title"
+          :aria-describedby="reasonIds('sources')"
+        >
+          <h4 id="f-sources-title">出典</h4>
           <div v-for="(source, i) in fields.sources" :key="i" class="source-row">
             <input v-model="source.url" type="text" placeholder="https://..." aria-label="出典の URL" />
             <input v-model="source.title" type="text" placeholder="題（省略可）" aria-label="出典の題" />
@@ -432,7 +470,13 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
 
         <div class="field">
           <label for="f-video">動画 ID</label>
-          <input id="f-video" v-model="fields.videoId" type="text" :aria-invalid="invalid('videoId')" />
+          <input
+            id="f-video"
+            v-model="fields.videoId"
+            type="text"
+            :aria-invalid="invalid('videoId')"
+            :aria-describedby="reasonIds('videoId')"
+          />
         </div>
 
         <div class="panel">

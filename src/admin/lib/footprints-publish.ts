@@ -82,6 +82,30 @@ export interface PublishBand {
   note: string | null;
 }
 
+/** The id of a band's `lines[index]` in the page, and of its note. */
+export const bandReasonId = (index: number): string => `foot-reason-${index}`;
+export const BAND_NOTE_ID = 'foot-band-note';
+
+/**
+ * The ids of what `band` says about `field`, for its control's
+ * aria-describedby, or undefined when the band says nothing about it. A
+ * refusal lists one reason for each field it marks, in the same order as
+ * `fields`; any other band that marks a field says why in its note.
+ */
+export function bandReasonIds(
+  band: PublishBand | null,
+  fields: readonly EventFieldKey[],
+  field: EventFieldKey,
+): string | undefined {
+  if (band === null || !fields.includes(field)) return undefined;
+
+  if (band.lines.length === fields.length) {
+    return fields.flatMap((f, i) => (f === field ? [bandReasonId(i)] : [])).join(' ');
+  }
+
+  return band.note === null ? undefined : BAND_NOTE_ID;
+}
+
 export type FootprintsAnswer =
   | { kind: 'done'; toast: string }
   | {

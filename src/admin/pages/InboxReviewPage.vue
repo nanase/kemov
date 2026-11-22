@@ -304,6 +304,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
     </div>
 
     <template v-if="selected">
+      <!-- inert while the list is read, or read again after a save: the answer puts the open row's saved fields back, or leaves the row out of the list and closes the panel, over anything typed meanwhile. -->
       <FootprintsInspector
         v-if="selected.kind === 'event'"
         ref="inspector"
@@ -312,6 +313,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
         :members="members"
         :pending="null"
         mode="review"
+        :inert="loading || undefined"
         @changed="load"
         @back="detail = false"
       />

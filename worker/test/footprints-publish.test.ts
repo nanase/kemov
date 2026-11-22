@@ -274,6 +274,43 @@ describe('publishEvent', () => {
     expect(await publicationRows()).toEqual([]);
   });
 
+  // Deleted after publishEvent read it and wrote the JSON, before its batch:
+  // the member and source rows must not fail the batch on the foreign key.
+  test('logs nothing, and takes the event back out of the JSON, when it is deleted before the batch', async () => {
+    await insertChannel('UCaaa');
+
+    const eventId = await createValidEvent({ channelIds: ['UCaaa'] });
+    const deleting: Env = {
+      ...env,
+      DB: new Proxy(env.DB, {
+        get(target, property) {
+          if (property === 'batch') {
+            return async (statements: D1PreparedStatement[]) => {
+              // As deleteEvent does it: the children first.
+              await target.batch(
+                ['footprints_event_member', 'footprints_event_source', 'footprints_event'].map((table) =>
+                  target.prepare(`DELETE FROM ${table} WHERE event_id = ?1`).bind(eventId),
+                ),
+              );
+
+              return await target.batch(statements);
+            };
+          }
+
+          const value = Reflect.get(target, property) as unknown;
+
+          return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+        },
+      }),
+    };
+
+    const response = await publishEvent(deleting, eventId, validBody({ channelIds: ['UCaaa'] }), NOW);
+
+    expect(response.status).toEqual(404);
+    expect(await revisionRows()).toEqual([]);
+    expect((await readPublished())!.events).toEqual([]);
+  });
+
   test('refuses sourcePending=false with no sources', async () => {
     const eventId = await createValidEvent();
 

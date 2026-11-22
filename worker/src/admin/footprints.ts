@@ -500,24 +500,28 @@ export async function validatedFields(
   return fields;
 }
 
+/**
+ * Member and source rows for an event that already has its row. Inserted
+ * only while that row is still there: an event deleted between the caller's
+ * read and its batch would otherwise fail the whole batch on the foreign
+ * key, and a publish with it, after the public JSON was already written,
+ * instead of letting the batch end with no revision logged (publishing.ts).
+ */
 function memberStatements(env: Env, eventId: number, fields: EventFields): D1PreparedStatement[] {
   return fields.channelIds.map((channelId) =>
-    env.DB.prepare('INSERT INTO footprints_event_member (event_id, channel_id, lead) VALUES (?1, ?2, ?3)').bind(
-      eventId,
-      channelId,
-      fields.leadChannelIds.includes(channelId) ? 1 : 0,
-    ),
+    env.DB.prepare(
+      `INSERT INTO footprints_event_member (event_id, channel_id, lead)
+       SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1)`,
+    ).bind(eventId, channelId, fields.leadChannelIds.includes(channelId) ? 1 : 0),
   );
 }
 
 function sourceStatements(env: Env, eventId: number, sources: readonly SourceRow[]): D1PreparedStatement[] {
   return sources.map((source, index) =>
-    env.DB.prepare('INSERT INTO footprints_event_source (event_id, position, url, title) VALUES (?1, ?2, ?3, ?4)').bind(
-      eventId,
-      index + 1,
-      source.url,
-      source.title,
-    ),
+    env.DB.prepare(
+      `INSERT INTO footprints_event_source (event_id, position, url, title)
+       SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1)`,
+    ).bind(eventId, index + 1, source.url, source.title),
   );
 }
 

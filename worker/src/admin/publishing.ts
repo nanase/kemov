@@ -194,7 +194,16 @@ async function bringUpToDate(
   let checkable = trusted;
 
   for (let rebuilds = 0; ; rebuilds += 1) {
-    const latest = await latestRevisions(env, target.entity);
+    let latest: LatestRevisionRow[];
+
+    // Caught, unlike the read before anything was written: the change is
+    // recorded by now, and the caller must say so rather than fail as if
+    // nothing had been saved.
+    try {
+      latest = await latestRevisions(env, target.entity);
+    } catch (error) {
+      return { current: false, error: String(error) };
+    }
 
     if (checkable && !hasNewer(latest, written)) {
       let head: R2Object | null;
