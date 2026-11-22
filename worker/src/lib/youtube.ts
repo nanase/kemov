@@ -32,6 +32,34 @@ export function chunkIds(ids: readonly string[], size: number = YOUTUBE_MAX_RESU
 }
 
 /**
+ * A non-2xx answer from the Data API, with the status and the `reason` the API
+ * gave (`quotaExceeded`, `channelNotFound`, ...), so a caller can tell one
+ * failure from another without reading the message.
+ */
+export class YouTubeApiError extends Error {
+  readonly status: number;
+  /** The first `error.errors[].reason` of the body, or undefined when the body is not the API's JSON error. */
+  readonly reason: string | undefined;
+
+  constructor(path: string, status: number, body: string) {
+    super(`YouTube API ${path} responded ${status}: ${body}`);
+    this.name = 'YouTubeApiError';
+    this.status = status;
+    this.reason = reasonOf(body);
+  }
+}
+
+function reasonOf(body: string): string | undefined {
+  try {
+    const reason = (JSON.parse(body) as { error?: { errors?: { reason?: unknown }[] } }).error?.errors?.[0]?.reason;
+
+    return typeof reason === 'string' ? reason : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Calls one YouTube Data API v3 endpoint and parses the JSON body.
  *
  * Shared by every collector that talks to the Data API (#62 to #64): the base
@@ -59,7 +87,7 @@ export async function callYouTubeApi<T>(
   const response = await fetchImpl(url);
 
   if (!response.ok) {
-    throw new Error(`YouTube API ${path} responded ${response.status}: ${await response.text()}`);
+    throw new YouTubeApiError(path, response.status, await response.text());
   }
 
   return (await response.json()) as T;
