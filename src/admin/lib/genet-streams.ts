@@ -163,3 +163,45 @@ export function fieldForSaveError(message: string): StreamFieldError | null {
 export function withoutItem(items: readonly string[], index: number): string[] {
   return items.filter((_, i) => i !== index);
 }
+
+/**
+ * Where each performance goes when a stream's performances, as the tune IDs
+ * `before`, are replaced by `after` read from the worker: old index to new
+ * index, the k-th performance of a tune to the k-th performance of the same
+ * tune. A performance whose tune `after` no longer holds that many times has
+ * no entry.
+ *
+ * The open tunes are cached by index, so a new order - saved by someone else
+ * between this page's 保存 and its reload - would otherwise hand one tune's
+ * typed fields to another's 保存.
+ */
+export function performanceMoves(before: readonly number[], after: readonly number[]): Map<number, number> {
+  const freeByTune = new Map<number, number[]>();
+
+  after.forEach((tuneId, index) => {
+    freeByTune.set(tuneId, [...(freeByTune.get(tuneId) ?? []), index]);
+  });
+
+  const moves = new Map<number, number>();
+
+  before.forEach((tuneId, index) => {
+    const next = freeByTune.get(tuneId)?.shift();
+
+    if (next !== undefined) moves.set(index, next);
+  });
+
+  return moves;
+}
+
+/** `byIndex` with each key moved by `moves`; keys `moves` has no entry for are left out. */
+export function moveEntries<T>(byIndex: ReadonlyMap<number, T>, moves: ReadonlyMap<number, number>): Map<number, T> {
+  const moved = new Map<number, T>();
+
+  for (const [index, value] of byIndex) {
+    const next = moves.get(index);
+
+    if (next !== undefined) moved.set(next, value);
+  }
+
+  return moved;
+}

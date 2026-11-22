@@ -33,6 +33,8 @@ import {
 import {
   emptyFormFields as emptyStreamFields,
   fieldForSaveError as fieldForStreamSaveError,
+  moveEntries,
+  performanceMoves,
   PLATFORMS,
   SCENE_STYLE_LABEL,
   SCENE_STYLES,
@@ -120,6 +122,8 @@ const showPublish = computed(
 
 const streamFields = ref<StreamFormFields>(emptyStreamFields());
 const streamSaving = ref(false);
+/** 公開待ちにする or 下書きに戻す on its way, through the list read after it. */
+const statusSending = ref(false);
 const streamError = ref<string | null>(null);
 const streamErrorField = ref<ReturnType<typeof fieldForStreamSaveError>>(null);
 
@@ -143,23 +147,37 @@ watch(selected, (stream, previous) => {
 
 /**
  * Puts `next` in place of the stream's fields. The tunes stay open with
- * whatever is typed into them - no 保存 of the stream sends them - but only
- * while each index still names the same tune: the caches are keyed by index,
- * and a different order (saved elsewhere, or a tune taken off while a 保存
- * was on its way) would hand one tune's fields to another's 保存.
+ * whatever is typed into them - no 保存 of the stream sends them. When `next`
+ * orders the performances differently (saved elsewhere meanwhile), each
+ * tune's fields move with its tune (lib/genet-streams.ts `performanceMoves`).
+ * A tune `next` no longer holds would take its unsaved changes with it, so
+ * that is asked first; declining keeps the fields as they are, which then
+ * show as unsaved against the stream read.
  */
 function replaceStreamFields(next: StreamFormFields): void {
   const before = streamFields.value.performances.map((p) => p.tuneId);
+  const after = next.performances.map((p) => p.tuneId);
+
+  if (sameFields(before, after)) {
+    streamFields.value = next;
+
+    return;
+  }
+
+  const moves = performanceMoves(before, after);
+  const losesTyped = [...tuneFieldsByIndex.value.keys()].some((index) => !moves.has(index) && isTuneDirty(index));
+
+  if (losesTyped && !window.confirm(EDITING_TEXT.confirmDiscard)) return;
 
   streamFields.value = next;
+  tuneFieldsByIndex.value = moveEntries(tuneFieldsByIndex.value, moves);
+  tuneSavedByIndex.value = moveEntries(tuneSavedByIndex.value, moves);
+  // A read on its way names its old index; the tune is read again when opened.
+  latestTuneRead.clear();
 
-  if (
-    !sameFields(
-      before,
-      next.performances.map((p) => p.tuneId),
-    )
-  )
-    closeTunes();
+  const open = openIndex.value === null ? undefined : moves.get(openIndex.value);
+
+  openIndex.value = open !== undefined && tuneFieldsByIndex.value.has(open) ? open : null;
 }
 
 /** Closes the tunes and forgets them; each is read again when opened. */
@@ -288,7 +306,9 @@ async function saveStream(): Promise<void> {
 // the list read again afterwards can leave the stream out under the current
 // filter and close the editor - either way what is typed would go unasked.
 async function publishStream(): Promise<void> {
-  if (selected.value === null || !confirmDiscard()) return;
+  if (selected.value === null || statusSending.value || !confirmDiscard()) return;
+
+  statusSending.value = true;
 
   try {
     await postJson(`/genet/streams/${encodeURIComponent(selected.value.videoId)}/publish`, {});
@@ -300,11 +320,15 @@ async function publishStream(): Promise<void> {
     } else {
       showToast(error instanceof AdminApiError ? error.message : String(error));
     }
+  } finally {
+    statusSending.value = false;
   }
 }
 
 async function withdrawStream(): Promise<void> {
-  if (selected.value === null || !confirmDiscard()) return;
+  if (selected.value === null || statusSending.value || !confirmDiscard()) return;
+
+  statusSending.value = true;
 
   try {
     await postJson(`/genet/streams/${encodeURIComponent(selected.value.videoId)}/withdraw`, {});
@@ -312,6 +336,8 @@ async function withdrawStream(): Promise<void> {
     await load();
   } catch (error) {
     showToast(error instanceof AdminApiError ? error.message : String(error));
+  } finally {
+    statusSending.value = false;
   }
 }
 
@@ -805,17 +831,25 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
         <span class="grow"></span>
         <PreviewButton />
         <button class="btn primary" type="button" :disabled="streamSaving" @click="saveStream">保存</button>
-        <button v-if="showPublish" class="btn" type="button" @click="publishStream">公開待ちにする</button>
-        <button v-if="selected.status === 'published'" class="btn" type="button" @click="withdrawStream">
+        <button v-if="showPublish" class="btn" type="button" :disabled="statusSending" @click="publishStream">
+          公開待ちにする
+        </button>
+        <button
+          v-if="selected.status === 'published'"
+          class="btn"
+          type="button"
+          :disabled="statusSending"
+          @click="withdrawStream"
+        >
           下書きに戻す
         </button>
       </div>
 
-      <!-- inert while the list is read or a 保存 is on its way: the answer puts saved fields back, or leaves the stream out of the list and closes the editor, over anything typed meanwhile. -->
+      <!-- inert while the list is read, or a 保存, 公開待ちにする or 下書きに戻す is on its way: the answer puts saved fields back, or leaves the stream out of the list and closes the editor, over anything typed meanwhile. -->
       <div
         class="inspector-main"
         :class="{ 'with-preview': previewOpen }"
-        :inert="loading || streamSaving || tuneSaving || undefined"
+        :inert="loading || streamSaving || tuneSaving || statusSending || undefined"
       >
         <div class="scroller">
           <div v-if="selectedWaiting" class="editor-notice">

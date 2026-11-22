@@ -153,11 +153,23 @@ async function loadPending(): Promise<void> {
   }
 }
 
-function reload(): Promise<unknown> {
+/**
+ * reload() calls on their way. `loading` alone ends with the list, before
+ * 公開待ち is read and so before created() opens the new row over whatever
+ * was typed into the row shown meanwhile.
+ */
+const reloading = ref(0);
+
+async function reload(): Promise<void> {
   // A save can add a row, and a delete takes one away.
   listTotal.invalidate();
+  reloading.value += 1;
 
-  return Promise.all([load(), loadPending()]);
+  try {
+    await Promise.all([load(), loadPending()]);
+  } finally {
+    reloading.value -= 1;
+  }
 }
 
 async function loadMembers(): Promise<void> {
@@ -221,6 +233,7 @@ function setChannel(event: Event): void {
 
 async function created(milestoneId: number): Promise<void> {
   adding.value = false;
+  // The panel shows another row until the reload ends, held by `reloading`.
   await reload();
 
   // The filters can leave a new row out of the table; pointing the panel at it
@@ -430,7 +443,7 @@ onMounted(() => {
         </div>
       </div>
     </div>
-    <!-- inert while the list is read: the answer puts the open row's saved fields back, or leaves the row out of the table and closes the panel, over anything typed meanwhile. -->
+    <!-- inert while the list is read, or read again after a save: the answer puts the open row's saved fields back, or leaves the row out of the table and closes the panel, over anything typed meanwhile. -->
     <SubscriberMilestoneInspector
       v-if="adding || selected"
       :key="adding ? 'new' : selected!.milestoneId"
@@ -441,7 +454,7 @@ onMounted(() => {
       :pending="pending"
       :bulk-running="bulkProgress !== null"
       :track-write="trackWrite"
-      :inert="loading || undefined"
+      :inert="loading || reloading > 0 || undefined"
       @changed="reload"
       @created="created"
       @back="back"
