@@ -7,7 +7,6 @@ import { createStream } from '../src/admin/genet-streams';
 import { createTune } from '../src/admin/genet-tunes';
 import {
   confirmEventSources,
-  deferStream,
   inboxCounts,
   listPublishInbox,
   listReviewInbox,
@@ -130,20 +129,6 @@ describe('listReviewInbox', () => {
     expect(body.events.map((e) => e.eventId)).toEqual([draft]);
   });
 
-  test('puts streams put off with あとで behind the ones not yet looked at', async () => {
-    const later = await createValidStream('aaaaaaaaaaa', '2021-01-01T00:00:00Z');
-    const fresh = await createValidStream('bbbbbbbbbbb', '2024-01-01T00:00:00Z');
-
-    await deferStream(env, later);
-
-    const body = await json<ReviewBody>(listReviewInbox(env));
-
-    expect(body.streams.map((s) => [s.videoId, s.status])).toEqual([
-      [fresh, 'draft'],
-      [later, 'review'],
-    ]);
-  });
-
   test('lists streams the same way, with the titles of the tunes they perform', async () => {
     const draft = await createValidStream('aaaaaaaaaaa');
     const published = await createValidStream('bbbbbbbbbbb');
@@ -218,40 +203,6 @@ describe('confirmEventSources', () => {
 
   test('answers 404 for an event that does not exist', async () => {
     expect((await confirmEventSources(env, 1)).status).toEqual(404);
-  });
-});
-
-describe('deferStream', () => {
-  test('refuses a published stream and leaves it published', async () => {
-    const videoId = await createValidStream('ccccccccccc');
-
-    await publishStream(env, videoId);
-
-    expect((await deferStream(env, videoId)).status).toEqual(409);
-
-    const stream = await env.DB.prepare('SELECT status FROM genet_stream WHERE video_id = ?1')
-      .bind(videoId)
-      .first<{ status: string }>();
-
-    expect(stream!.status).toEqual('published');
-  });
-
-  test('move a stream to review without logging a revision', async () => {
-    const videoId = await createValidStream('ddddddddddd');
-
-    expect((await deferStream(env, videoId)).status).toEqual(200);
-
-    const stream = await env.DB.prepare('SELECT status FROM genet_stream WHERE video_id = ?1')
-      .bind(videoId)
-      .first<{ status: string }>();
-    const revisions = await env.DB.prepare('SELECT count(*) AS n FROM revision').first<{ n: number }>();
-
-    expect(stream!.status).toEqual('review');
-    expect(revisions!.n).toEqual(0);
-  });
-
-  test('answers 404 for a stream that does not exist', async () => {
-    expect((await deferStream(env, 'nonexistent')).status).toEqual(404);
   });
 });
 

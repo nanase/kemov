@@ -1,15 +1,17 @@
 import { env } from 'cloudflare:test';
 
-import { createPerson } from '../src/admin/genet-people';
+import { createPerson, updatePerson } from '../src/admin/genet-people';
 import {
   GENET_MUSIC_SHAPE_VERSION,
   pendingGenetMusic,
   publishGenetMusicNow,
   publishStream,
+  saveStream,
+  saveTune,
   withdrawStream,
 } from '../src/admin/genet-publish';
-import { createStream, updateStream } from '../src/admin/genet-streams';
-import { createTune } from '../src/admin/genet-tunes';
+import { createStream, getStream } from '../src/admin/genet-streams';
+import { createTune, getTune } from '../src/admin/genet-tunes';
 import { clearEverything } from './reset-db';
 
 async function clearPublicData(): Promise<void> {
@@ -42,8 +44,8 @@ async function createValidPerson(overrides: Record<string, unknown> = {}): Promi
   return body.person.personId;
 }
 
-async function createValidTune(overrides: Record<string, unknown> = {}): Promise<number> {
-  const response = await createTune(env, {
+function validTuneBody(overrides: Record<string, unknown> = {}) {
+  return {
     title: '曲名',
     originalTitle: null,
     subtunes: [],
@@ -52,7 +54,11 @@ async function createValidTune(overrides: Record<string, unknown> = {}): Promise
     scores: [],
     memo: null,
     ...overrides,
-  });
+  };
+}
+
+async function createValidTune(overrides: Record<string, unknown> = {}): Promise<number> {
+  const response = await createTune(env, validTuneBody(overrides));
   const body = (await response.json()) as { tune: { tuneId: number } };
 
   return body.tune.tuneId;
@@ -94,29 +100,89 @@ async function createPerformableStream(): Promise<{ videoId: string; tuneId: num
   return { videoId, tuneId, personId };
 }
 
+/** The stream's fields as the edit screen sends them: what `GET` answers, with `overrides` typed over them. */
+async function fieldsOf(videoId: string, overrides: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  const body = (await (await getStream(env, videoId)).json()) as { stream: Record<string, unknown> };
+
+  return { ...body.stream, ...overrides };
+}
+
+async function publish(videoId: string, overrides: Record<string, unknown> = {}): Promise<Response> {
+  return await publishStream(env, videoId, await fieldsOf(videoId, overrides), NOW);
+}
+
+async function withdraw(videoId: string, overrides: Record<string, unknown> = {}): Promise<Response> {
+  return await withdrawStream(env, videoId, await fieldsOf(videoId, overrides), NOW);
+}
+
+async function tuneFieldsOf(tuneId: number, overrides: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  const body = (await (await getTune(env, tuneId)).json()) as { tune: Record<string, unknown> };
+
+  return { ...body.tune, ...overrides };
+}
+
+interface PublishedMusic {
+  published_at: string;
+  shape_version?: number;
+  channel_id?: string | null;
+  streams: { video_id: string; title: string }[];
+  tunes: { tune_id: number; title: string }[];
+  people: { person_id: number; name: string }[];
+}
+
+async function readPublished(): Promise<PublishedMusic | null> {
+  const object = await env.PUBLIC_DATA.get('genet/music.json');
+
+  if (object === null) return null;
+
+  return JSON.parse(await object.text());
+}
+
+async function streamStatus(videoId: string): Promise<string | undefined> {
+  const row = await env.DB.prepare('SELECT status FROM genet_stream WHERE video_id = ?1')
+    .bind(videoId)
+    .first<{ status: string }>();
+
+  return row?.status;
+}
+
+/** An env whose R2 refuses every write, as when R2 is down. */
+function failingPutEnv(): typeof env {
+  return {
+    ...env,
+    PUBLIC_DATA: {
+      put: () => Promise.reject(new Error('R2 is down')),
+      head: env.PUBLIC_DATA.head.bind(env.PUBLIC_DATA),
+      get: env.PUBLIC_DATA.get.bind(env.PUBLIC_DATA),
+    },
+  } as unknown as typeof env;
+}
+
 describe('publishStream', () => {
   test('answers 404 for a stream that does not exist', async () => {
-    expect((await publishStream(env, 'nope')).status).toEqual(404);
+    expect((await publishStream(env, 'nope', validStreamBody(), NOW)).status).toEqual(404);
   });
 
   // The reads at the top of publishStream and its own batch are separate
   // round trips, so a concurrent deleteStream can land in between - rigs
   // env.DB.prepare to delete the stream (the same three DELETEs
-  // deleteStream itself runs) right after one of those reads resolves, the
-  // same moment a real race would land in. The batch's UPDATE still runs
-  // (SET on a gone row changes nothing) and the response still reports
-  // success from the `saved` this call already read, but no `publish`
-  // revision is logged for a stream no longer there to publish.
-  test('logs no revision for a stream deleted concurrently, between the reads and the batch', async () => {
+  // deleteStream itself runs) right after the first read of the latest
+  // revisions, the same moment a real race would land in. The batch then
+  // finds no row: no performance is inserted, no `publish` revision is
+  // logged for the stream, and the JSON already written with it is built
+  // again without it.
+  test('logs no revision for a stream deleted concurrently, and leaves it out of the JSON', async () => {
     const { videoId } = await createPerformableStream();
+    const fields = await fieldsOf(videoId);
     const realPrepare = env.DB.prepare.bind(env.DB);
+    let deleted = false;
 
     const riggedDB = {
       batch: env.DB.batch.bind(env.DB),
       prepare: (sql: string) => {
         const stmt = realPrepare(sql);
 
-        if (!sql.startsWith('SELECT r.entity_key, r.revision_id, r.action, r.body')) return stmt;
+        if (!sql.startsWith('SELECT r.entity, r.entity_key, r.revision_id, r.action, r.body')) return stmt;
 
         return {
           bind: (...args: unknown[]) => {
@@ -126,11 +192,14 @@ describe('publishStream', () => {
               all: async <T = unknown>() => {
                 const result = await bound.all<T>();
 
-                await env.DB.batch([
-                  env.DB.prepare('DELETE FROM genet_scene WHERE video_id = ?1').bind(videoId),
-                  env.DB.prepare('DELETE FROM genet_performance WHERE video_id = ?1').bind(videoId),
-                  env.DB.prepare('DELETE FROM genet_stream WHERE video_id = ?1').bind(videoId),
-                ]);
+                if (!deleted) {
+                  deleted = true;
+                  await env.DB.batch([
+                    env.DB.prepare('DELETE FROM genet_scene WHERE video_id = ?1').bind(videoId),
+                    env.DB.prepare('DELETE FROM genet_performance WHERE video_id = ?1').bind(videoId),
+                    env.DB.prepare('DELETE FROM genet_stream WHERE video_id = ?1').bind(videoId),
+                  ]);
+                }
 
                 return result;
               },
@@ -143,31 +212,32 @@ describe('publishStream', () => {
       },
     };
 
-    const response = await publishStream({ ...env, DB: riggedDB } as typeof env, videoId);
-    const body = (await response.json()) as { revisionId?: number };
+    const response = await publishStream({ ...env, DB: riggedDB } as typeof env, videoId, fields, NOW);
 
-    expect(response.status).toEqual(200);
+    expect(response.status).toEqual(404);
     expect(await revisionRows('genet_stream')).toEqual([]);
-    // No revision was actually logged (the row was gone by the time the
-    // guarded INSERT ran), so revisionId must not name one that was never
-    // written - not even the last_row_id an unguarded read would still see.
-    expect(body.revisionId).toBeUndefined();
+    expect(
+      await env.DB.prepare('SELECT count(*) AS n FROM genet_performance').first<{ n: number }>(),
+    ).toEqual({ n: 0 });
+    expect((await readPublished())!.streams).toEqual([]);
   });
 
-  test('publishes a ready stream and logs publish revisions for the stream, its tune and its person', async () => {
+  test('publishes a ready stream, writes the JSON, and logs publish revisions for the stream, its tune and its person', async () => {
     const { videoId, tuneId, personId } = await createPerformableStream();
 
-    const response = await publishStream(env, videoId);
+    const response = await publish(videoId);
 
     expect(response.status).toEqual(200);
 
     const body = (await response.json()) as {
       stream: { status: string };
+      publicationId: number;
       tuneRevisionCount: number;
       personRevisionCount: number;
     };
 
     expect(body.stream.status).toEqual('published');
+    expect(body.publicationId).toEqual(expect.any(Number));
     expect(body.tuneRevisionCount).toEqual(1);
     expect(body.personRevisionCount).toEqual(1);
 
@@ -180,15 +250,34 @@ describe('publishStream', () => {
     expect(await revisionRows('genet_person')).toEqual([
       { entity_key: String(personId), action: 'publish', body: expect.any(String) },
     ]);
+
+    const published = await readPublished();
+
+    expect(published!.published_at).toEqual('2026-09-18T00:00:00Z');
+    expect(published!.streams.map((s) => s.video_id)).toEqual([videoId]);
+    expect(published!.tunes.map((t) => t.tune_id)).toEqual([tuneId]);
+    expect(published!.people.map((p) => p.person_id)).toEqual([personId]);
+    expect(
+      await env.DB.prepare("SELECT target, object_key FROM publication WHERE target = 'genet_music'").first(),
+    ).toEqual({ target: 'genet_music', object_key: 'genet/music.json' });
+  });
+
+  test('saves what is typed before publishing it', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId, { title: '打ち直した題' });
+
+    expect((await readPublished())!.streams[0]!.title).toEqual('打ち直した題');
+    expect(((await fieldsOf(videoId)) as { title: string }).title).toEqual('打ち直した題');
   });
 
   test('does not log a tune/person revision the second time nothing about them changed', async () => {
     const { videoId } = await createPerformableStream();
 
-    await publishStream(env, videoId);
-    await withdrawStream(env, videoId);
+    await publish(videoId);
+    await withdraw(videoId);
 
-    const response = await publishStream(env, videoId);
+    const response = await publish(videoId);
     const body = (await response.json()) as { tuneRevisionCount: number; personRevisionCount: number };
 
     expect(response.status).toEqual(200);
@@ -198,76 +287,62 @@ describe('publishStream', () => {
     expect(await revisionRows('genet_person')).toHaveLength(1);
   });
 
-  test('refuses an empty title, and changes nothing', async () => {
+  test('refuses an empty title, saves the draft anyway, and logs nothing', async () => {
     const { videoId } = await createPerformableStream();
 
-    await updateStream(env, videoId, validStreamBody({ title: '', performances: [] }));
-
-    const response = await publishStream(env, videoId);
+    const response = await publish(videoId, { title: '', memo: '書きかけ' });
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toMatchObject({ errors: expect.arrayContaining(['title must not be empty']) });
+    expect(await response.json()).toEqual({
+      errors: ['タイトルを書いてください。'],
+      problems: [{ field: 'title', performanceIndex: null, message: 'タイトルを書いてください。' }],
+      saved: true,
+    });
     expect(await revisionRows('genet_stream')).toEqual([]);
+    expect(await streamStatus(videoId)).toEqual('draft');
+    expect(((await fieldsOf(videoId)) as { memo: string }).memo).toEqual('書きかけ');
+    expect(await readPublished()).toBeNull();
   });
 
   test('refuses a videoId that is not 11 characters, for a youtube stream', async () => {
-    const response1 = await createStream(env, validStreamBody({ videoId: 'short' }));
+    expect((await createStream(env, validStreamBody({ videoId: 'short' }))).status).toEqual(201);
 
-    expect(response1.status).toEqual(201);
-
-    const response = await publishStream(env, 'short');
-
-    expect(response.status).toEqual(400);
-    expect(await response.json()).toMatchObject({ errors: expect.arrayContaining(['videoId must be 11 characters']) });
-  });
-
-  test('refuses no performances', async () => {
-    const videoId = await createValidStream();
-
-    const response = await publishStream(env, videoId);
+    const response = await publish('short');
 
     expect(response.status).toEqual(400);
     expect(await response.json()).toMatchObject({
-      errors: expect.arrayContaining(['performances must have at least one tune']),
+      problems: [
+        { field: 'videoId', performanceIndex: null, message: '動画 ID は 11 文字です。いまは 5 文字です。' },
+        { field: 'performances', performanceIndex: null, message: '曲を 1 曲以上足してください。' },
+      ],
     });
   });
 
   // A performance naming a tune that does not exist, or a tune attribute
-  // naming a person that does not exist, cannot actually be saved -
-  // genet-streams.test.ts's and genet-tunes.test.ts's own "refuses an
-  // unknown tuneId/personId" tests cover that, since genet_performance.tune_id
-  // and genet_tune_attribute_person.person_id are both foreign keys D1
-  // enforces. publishProblems still checks for them (see its own comment) as
-  // a defense that cannot be exercised through this admin API alone.
+  // naming a person that does not exist, cannot be saved - genet_performance
+  // and genet_tune_attribute_person point at them by foreign key, and
+  // saving refuses an unknown id first - so publishing does not check again.
 
-  test('refuses a scene videoId that is not 11 characters', async () => {
+  test('refuses a scene videoId that is not 11 characters, naming its performance', async () => {
     const tuneId = await createValidTune();
     const videoId = await createValidStream({
-      performances: [{ tuneId, description: null, scenes: [{ style: 'play', videoId: 'short', startSeconds: 0 }] }],
-    });
-
-    const response = await publishStream(env, videoId);
-
-    expect(response.status).toEqual(400);
-    expect(await response.json()).toMatchObject({
-      errors: expect.arrayContaining(['performances[0].scenes[0].videoId must be 11 characters']),
-    });
-  });
-
-  test('refuses a scene videoId that is not 11 characters only for a youtube stream', async () => {
-    const tuneId = await createValidTune();
-    const videoId = await createValidStream({
-      platform: 'youtube',
       performances: [
+        { tuneId, description: null, scenes: [] },
         { tuneId, description: null, scenes: [{ style: 'play', videoId: 'a'.repeat(19), startSeconds: 0 }] },
       ],
     });
 
-    const response = await publishStream(env, videoId);
+    const response = await publish(videoId);
 
     expect(response.status).toEqual(400);
     expect(await response.json()).toMatchObject({
-      errors: expect.arrayContaining(['performances[0].scenes[0].videoId must be 11 characters']),
+      problems: [
+        {
+          field: 'performances',
+          performanceIndex: 1,
+          message: '2 曲目の場面 1 の動画 ID は 11 文字です。いまは 19 文字です。',
+        },
+      ],
     });
   });
 
@@ -281,7 +356,7 @@ describe('publishStream', () => {
       performances: [{ tuneId, description: null, scenes: [{ style: 'play', videoId: tiktokId, startSeconds: 0 }] }],
     });
 
-    const response = await publishStream(env, videoId);
+    const response = await publish(videoId);
 
     expect(response.status).toEqual(200);
     expect(await revisionRows('genet_stream')).toEqual([
@@ -289,149 +364,354 @@ describe('publishStream', () => {
     ]);
   });
 
-  test('refuses a tune attribute with both text and people', async () => {
+  test('refuses a tune attribute with both text and people, once for a tune performed twice', async () => {
     const personId = await createValidPerson();
     const tuneId = await createValidTune({
-      attributes: [{ name: '作曲', text: '文', people: [{ personId, creditedAs: null, note: null }] }],
+      attributes: [
+        { name: '作曲', text: null, people: [] },
+        { name: '作詞', text: '文', people: [{ personId, creditedAs: null, note: null }] },
+      ],
     });
-    const videoId = await createValidStream({ performances: [{ tuneId, description: null, scenes: [] }] });
+    const videoId = await createValidStream({
+      performances: [
+        { tuneId, description: null, scenes: [] },
+        { tuneId, description: null, scenes: [] },
+      ],
+    });
 
-    const response = await publishStream(env, videoId);
+    const response = await publish(videoId);
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toMatchObject({
-      errors: expect.arrayContaining([`tune ${tuneId} attributes[0]: text and people must not both be present`]),
-    });
+    expect(((await response.json()) as { errors: string[] }).errors).toEqual([
+      '1 曲目の作曲・作詞などの 2 番目に、文章と人物の両方が書かれています。どちらか一方にしてください。',
+    ]);
   });
 
   test('collects every failing condition in one answer', async () => {
     const videoId = await createValidStream({ title: '', performances: [] });
 
-    const response = await publishStream(env, videoId);
-    const body = (await response.json()) as { errors: string[] };
+    const body = (await (await publish(videoId)).json()) as { errors: string[] };
 
-    expect(body.errors).toEqual(
-      expect.arrayContaining(['title must not be empty', 'performances must have at least one tune']),
-    );
+    expect(body.errors).toEqual(['タイトルを書いてください。', '曲を 1 曲以上足してください。']);
   });
 
-  test('publishing an already-published stream is allowed, and logs a fresh revision matching the current row', async () => {
-    const { videoId, tuneId } = await createPerformableStream();
+  test('saves the fields and leaves the stream a draft when the JSON cannot be written', async () => {
+    const { videoId } = await createPerformableStream();
+    const response = await publishStream(failingPutEnv(), videoId, await fieldsOf(videoId, { title: '新しい題' }), NOW);
 
-    await publishStream(env, videoId);
-    await updateStream(
-      env,
-      videoId,
-      validStreamBody({
-        title: '新しい題',
-        performances: [
-          { tuneId, description: '演奏として', scenes: [{ style: 'play', videoId: 'zzzzzzzzzzz', startSeconds: 0 }] },
-        ],
-      }),
-    );
+    expect(response.status).toEqual(502);
+    expect(await response.json()).toMatchObject({ saved: true, stream: { status: 'draft', title: '新しい題' } });
+    expect(await revisionRows('genet_stream')).toEqual([]);
+  });
+});
 
-    const response = await publishStream(env, videoId);
+describe('saveStream', () => {
+  test('saves a draft as a draft, and writes no JSON', async () => {
+    const { videoId } = await createPerformableStream();
+
+    const response = await saveStream(env, videoId, await fieldsOf(videoId, { title: '直した題' }), NOW);
+
+    expect(response.status).toEqual(200);
+    expect(await streamStatus(videoId)).toEqual('draft');
+    expect(await revisionRows('genet_stream')).toEqual([]);
+    expect(await readPublished()).toBeNull();
+  });
+
+  test('puts a published stream’s save in the JSON at once, with a fresh revision', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const response = await saveStream(env, videoId, await fieldsOf(videoId, { title: '新しい題' }), NOW);
 
     expect(response.status).toEqual(200);
     expect(await revisionRows('genet_stream')).toHaveLength(2);
+    expect((await readPublished())!.streams[0]!.title).toEqual('新しい題');
+  });
 
-    const rows = await revisionRows('genet_stream');
+  test('refuses a published stream’s save that would not pass, and leaves the stream and the JSON as they were', async () => {
+    const { videoId } = await createPerformableStream();
 
-    expect(JSON.parse(rows[1].body!)).toMatchObject({ title: '新しい題' });
+    await publish(videoId);
+
+    const response = await saveStream(env, videoId, await fieldsOf(videoId, { title: '' }), NOW);
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toMatchObject({ saved: false });
+    expect(((await fieldsOf(videoId)) as { title: string }).title).toEqual('配信題');
+    expect((await readPublished())!.streams[0]!.title).toEqual('配信題');
+    expect(await revisionRows('genet_stream')).toHaveLength(1);
   });
 });
 
 describe('withdrawStream', () => {
   test('answers 404 for a stream that does not exist', async () => {
-    expect((await withdrawStream(env, 'nope')).status).toEqual(404);
+    expect((await withdrawStream(env, 'nope', validStreamBody(), NOW)).status).toEqual(404);
   });
 
-  test('sets status to draft and logs a withdraw revision with a null body, without touching tune/person revisions', async () => {
+  test('answers 409 for a stream that is not published', async () => {
+    const videoId = await createValidStream();
+
+    expect((await withdraw(videoId)).status).toEqual(409);
+  });
+
+  test('takes the stream and what it alone performed out of the JSON, and keeps the tune/person revisions', async () => {
     const { videoId } = await createPerformableStream();
 
-    await publishStream(env, videoId);
+    await publish(videoId);
 
-    const response = await withdrawStream(env, videoId);
+    const response = await withdraw(videoId, { memo: '戻した' });
 
     expect(response.status).toEqual(200);
-
-    const body = (await response.json()) as { stream: { status: string } };
-
-    expect(body.stream.status).toEqual('draft');
+    expect(((await response.json()) as { stream: { status: string; memo: string } }).stream).toMatchObject({
+      status: 'draft',
+      memo: '戻した',
+    });
 
     const streamRows = await revisionRows('genet_stream');
 
     expect(streamRows[streamRows.length - 1]).toEqual({ entity_key: videoId, action: 'withdraw', body: null });
     expect(await revisionRows('genet_tune')).toHaveLength(1);
     expect(await revisionRows('genet_person')).toHaveLength(1);
+
+    const published = await readPublished();
+
+    expect(published!.streams).toEqual([]);
+    expect(published!.tunes).toEqual([]);
+    expect(published!.people).toEqual([]);
+  });
+
+  test('changes nothing when the JSON cannot be written', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const response = await withdrawStream(failingPutEnv(), videoId, await fieldsOf(videoId), NOW);
+
+    expect(response.status).toEqual(502);
+    expect(await streamStatus(videoId)).toEqual('published');
+    expect(await revisionRows('genet_stream')).toHaveLength(1);
   });
 });
 
-describe('pendingGenetMusic', () => {
-  test('lists a stream, tune and person whose latest revision has not been published yet', async () => {
-    const { videoId, tuneId, personId } = await createPerformableStream();
+describe('saveTune', () => {
+  test('saves a tune no published stream performs, and logs nothing', async () => {
+    const { tuneId } = await createPerformableStream();
 
-    await publishStream(env, videoId);
+    const response = await saveTune(env, tuneId, await tuneFieldsOf(tuneId, { title: '直した曲名' }), NOW);
 
-    const response = await pendingGenetMusic(env);
-    const body = (await response.json()) as { pending: { entity: string; key: string }[] };
-
-    expect(body.pending).toEqual(
-      expect.arrayContaining([
-        { entity: 'genet_stream', key: videoId, revisionId: expect.any(Number), latestAction: 'publish' },
-        { entity: 'genet_tune', key: String(tuneId), revisionId: expect.any(Number), latestAction: 'publish' },
-        { entity: 'genet_person', key: String(personId), revisionId: expect.any(Number), latestAction: 'publish' },
-      ]),
-    );
+    expect(response.status).toEqual(200);
+    expect(await response.json()).toMatchObject({ tune: { title: '直した曲名' }, live: false });
+    expect(await revisionRows('genet_tune')).toEqual([]);
+    expect(await readPublished()).toBeNull();
   });
 
-  test('is empty once "publish now" has caught up', async () => {
-    const { videoId } = await createPerformableStream();
-
-    await publishStream(env, videoId);
-    await publishGenetMusicNow(env, NOW);
-
-    const body = (await pendingGenetMusic(env).then((r) => r.json())) as { pending: unknown[] };
-
-    expect(body.pending).toEqual([]);
-  });
-
-  test('reports a title edit on a published stream as changed', async () => {
+  // #284's 6-5: the tune is shared, and the public JSON has it for every
+  // published stream that performs it.
+  test('puts the save of a tune a published stream performs in the JSON at once', async () => {
     const { videoId, tuneId } = await createPerformableStream();
 
-    await publishStream(env, videoId);
-    await updateStream(
+    await publish(videoId);
+
+    const response = await saveTune(env, tuneId, await tuneFieldsOf(tuneId, { title: '直した曲名' }), NOW);
+
+    expect(response.status).toEqual(200);
+    expect(await response.json()).toMatchObject({ tune: { title: '直した曲名' }, live: true });
+    expect(await revisionRows('genet_tune')).toHaveLength(2);
+    expect((await readPublished())!.tunes[0]!.title).toEqual('直した曲名');
+  });
+
+  test('brings along a person it names whose name changed since the last publish', async () => {
+    const { videoId, tuneId, personId } = await createPerformableStream();
+
+    await publish(videoId);
+    await updatePerson(env, personId, { name: '新しい名前', link: null, memo: null });
+    await saveTune(env, tuneId, await tuneFieldsOf(tuneId), NOW);
+
+    expect(await revisionRows('genet_person')).toHaveLength(2);
+    expect((await readPublished())!.people[0]!.name).toEqual('新しい名前');
+  });
+
+  test('refuses a tune that would not pass, and saves nothing', async () => {
+    const { videoId, tuneId, personId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const response = await saveTune(
       env,
-      videoId,
-      validStreamBody({
-        title: '新しい題',
-        performances: [
-          { tuneId, description: '演奏として', scenes: [{ style: 'play', videoId: 'zzzzzzzzzzz', startSeconds: 0 }] },
-        ],
+      tuneId,
+      await tuneFieldsOf(tuneId, {
+        title: '直した曲名',
+        attributes: [{ name: '作曲', text: '文', people: [{ personId, creditedAs: null, note: null }] }],
       }),
+      NOW,
     );
 
-    const body = (await pendingGenetMusic(env).then((r) => r.json())) as { changed: { entity: string; key: string }[] };
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({
+      errors: ['作曲・作詞などの 1 番目に、文章と人物の両方が書かれています。どちらか一方にしてください。'],
+      problems: [
+        {
+          field: 'attributes',
+          attributeIndex: 0,
+          message: '作曲・作詞などの 1 番目に、文章と人物の両方が書かれています。どちらか一方にしてください。',
+        },
+      ],
+      saved: false,
+    });
+    expect(((await tuneFieldsOf(tuneId)) as { title: string }).title).toEqual('曲名');
+  });
 
-    expect(body.changed).toEqual(expect.arrayContaining([{ entity: 'genet_stream', key: videoId, title: '新しい題' }]));
+  test('leaves a tune only a withdrawn stream performs out of the JSON', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    await publish(videoId);
+    await withdraw(videoId);
+
+    const response = await saveTune(env, tuneId, await tuneFieldsOf(tuneId, { title: '直した曲名' }), NOW);
+
+    expect(await response.json()).toMatchObject({ live: false });
+    expect((await readPublished())!.tunes).toEqual([]);
+  });
+
+  test('saves the tune, and says so, when the JSON cannot be written', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const response = await saveTune(failingPutEnv(), tuneId, await tuneFieldsOf(tuneId, { title: '直した曲名' }), NOW);
+
+    expect(response.status).toEqual(502);
+    expect(await response.json()).toMatchObject({ saved: true, live: true, tune: { title: '直した曲名' } });
+    expect(await revisionRows('genet_tune')).toHaveLength(1);
+  });
+
+  test('getTune says whether a published stream performs the tune', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    expect(await (await getTune(env, tuneId)).json()).toMatchObject({ live: false });
+
+    await publish(videoId);
+
+    expect(await (await getTune(env, tuneId)).json()).toMatchObject({ live: true });
+  });
+});
+
+/** A `publish` revision recorded with no JSON written after it, as a publish from before #284 left one. */
+async function recordWaiting(videoId: string, title: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO revision (entity, entity_key, action, body, created_via) VALUES ('genet_stream', ?1, 'publish', ?2, 'admin')`,
+  )
+    .bind(
+      videoId,
+      JSON.stringify({
+        video_id: videoId,
+        platform: 'youtube',
+        url: null,
+        video_type: 'live',
+        title,
+        short_title: null,
+        published_at: '2026-01-01T00:00:00Z',
+        categories: [],
+        keywords: [],
+        performances: [],
+      }),
+    )
+    .run();
+}
+
+describe('pendingGenetMusic', () => {
+  test('is empty after a publish, which wrote the JSON itself', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    expect(await (await pendingGenetMusic(env)).json()).toEqual({
+      pending: [],
+      changed: [],
+      shapeOutdated: false,
+      behind: false,
+    });
+  });
+
+  test('lists a revision recorded with no JSON written after it', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+    await recordWaiting(videoId, '前の題');
+
+    const body = (await (await pendingGenetMusic(env)).json()) as { pending: unknown[] };
+
+    expect(body.pending).toEqual([
+      { entity: 'genet_stream', key: videoId, revisionId: expect.any(Number), latestAction: 'publish' },
+    ]);
+  });
+
+  test('reports a published stream whose row no longer matches its revision as changed', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+    await env.DB.prepare("UPDATE genet_stream SET title = '新しい題' WHERE video_id = ?1").bind(videoId).run();
+
+    const body = (await (await pendingGenetMusic(env)).json()) as { changed: unknown[] };
+
+    expect(body.changed).toEqual([{ entity: 'genet_stream', key: videoId, title: '新しい題' }]);
+  });
+
+  test('says the JSON may be behind while a write is not found up to date', async () => {
+    await env.DB.prepare("INSERT INTO publication_write (target) VALUES ('genet_music')").run();
+
+    expect(await (await pendingGenetMusic(env)).json()).toMatchObject({ behind: true });
   });
 
   // D1 refuses a statement bound to more than 100 parameters. readStreams
   // (genet-streams.ts) builds `IN (?1, ...)` from every published stream at
   // once - #144's real streaming.yml migration alone carries 113 of them -
-  // so this stays green only because it chunks (worker/src/lib/d1.ts).
+  // so this stays green only because it chunks (worker/src/lib/d1.ts). The
+  // streams are written straight to the tables: publishing 150 of them one
+  // by one would write the JSON 150 times.
   test('reads more published streams than one D1 statement can bind', async () => {
-    const { tuneId } = await createPerformableStream();
     const count = 150;
+    const statements: D1PreparedStatement[] = [];
 
     for (let i = 0; i < count; i++) {
       const videoId = `pub${String(i).padStart(8, '0')}`;
 
-      await createStream(env, validStreamBody({ videoId, performances: [{ tuneId, description: null, scenes: [] }] }));
-      await publishStream(env, videoId);
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO genet_stream (video_id, video_type, title, published_at, status)
+           VALUES (?1, 'live', ?1, '2026-01-01T00:00:00Z', 'published')`,
+        ).bind(videoId),
+      );
     }
 
-    const body = (await pendingGenetMusic(env).then((r) => r.json())) as {
+    await env.DB.batch(statements);
+
+    for (let i = 0; i < count; i++) {
+      const videoId = `pub${String(i).padStart(8, '0')}`;
+
+      await env.DB.prepare(
+        `INSERT INTO revision (entity, entity_key, action, body, created_via) VALUES ('genet_stream', ?1, 'publish', ?2, 'admin')`,
+      )
+        .bind(
+          videoId,
+          JSON.stringify({
+            video_id: videoId,
+            platform: 'youtube',
+            url: null,
+            video_type: 'live',
+            title: videoId,
+            short_title: null,
+            published_at: '2026-01-01T00:00:00Z',
+            categories: [],
+            keywords: [],
+            performances: [],
+          }),
+        )
+        .run();
+    }
+
+    const body = (await (await pendingGenetMusic(env)).json()) as {
       pending: { entity: string }[];
       changed: unknown[];
     };
@@ -442,19 +722,6 @@ describe('pendingGenetMusic', () => {
 });
 
 describe('publishGenetMusicNow', () => {
-  async function readPublished(): Promise<{
-    published_at: string;
-    streams: { video_id: string }[];
-    tunes: { tune_id: number }[];
-    people: { person_id: number }[];
-  } | null> {
-    const object = await env.PUBLIC_DATA.get('genet/music.json');
-
-    if (object === null) return null;
-
-    return JSON.parse(await object.text());
-  }
-
   test('writes nothing and answers published: false when nothing is pending', async () => {
     const response = await publishGenetMusicNow(env, NOW);
 
@@ -462,53 +729,42 @@ describe('publishGenetMusicNow', () => {
     expect(await readPublished()).toBeNull();
   });
 
-  test('writes the JSON with the published stream, its tune and its person, and adds a publication row', async () => {
-    const { videoId, tuneId, personId } = await createPerformableStream();
+  test('has nothing to do after a publish', async () => {
+    const { videoId } = await createPerformableStream();
 
-    await publishStream(env, videoId);
+    await publish(videoId);
+
+    expect(await (await publishGenetMusicNow(env, NOW)).json()).toEqual({ published: false });
+  });
+
+  test('builds the JSON from a revision left waiting, and adds a publication row', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+    await recordWaiting(videoId, '前の題');
 
     const response = await publishGenetMusicNow(env, NOW);
 
-    expect(response.status).toEqual(200);
-
-    const body = (await response.json()) as {
-      published: boolean;
-      streamCount: number;
-      tuneCount: number;
-      personCount: number;
-    };
-
-    expect(body).toMatchObject({ published: true, streamCount: 1, tuneCount: 1, personCount: 1 });
-
-    const published = await readPublished();
-
-    expect(published!.published_at).toEqual('2026-09-18T00:00:00Z');
-    expect(published!.streams.map((s) => s.video_id)).toEqual([videoId]);
-    expect(published!.tunes.map((t) => t.tune_id)).toEqual([tuneId]);
-    expect(published!.people.map((p) => p.person_id)).toEqual([personId]);
-
-    const publication = await env.DB.prepare(
-      "SELECT target, object_key FROM publication WHERE target = 'genet_music'",
-    ).first();
-
-    expect(publication).toEqual({ target: 'genet_music', object_key: 'genet/music.json' });
+    expect(await response.json()).toMatchObject({ published: true, streamCount: 1, tuneCount: 0, personCount: 0 });
+    expect((await readPublished())!.streams[0]!.title).toEqual('前の題');
+    expect(await (await pendingGenetMusic(env)).json()).toMatchObject({ pending: [] });
   });
 
-  test('leaves out a stream whose latest revision is a withdraw, and the tune/person it alone performed', async () => {
+  test('builds the JSON again while it may be behind', async () => {
     const { videoId } = await createPerformableStream();
 
-    await publishStream(env, videoId);
-    await withdrawStream(env, videoId);
-    await publishGenetMusicNow(env, NOW);
+    await publish(videoId);
+    await env.PUBLIC_DATA.put('genet/music.json', JSON.stringify({ shape_version: GENET_MUSIC_SHAPE_VERSION }));
+    await env.DB.prepare("INSERT INTO publication_write (target) VALUES ('genet_music')").run();
 
-    const published = await readPublished();
-
-    expect(published!.streams).toEqual([]);
-    expect(published!.tunes).toEqual([]);
-    expect(published!.people).toEqual([]);
+    expect(await (await publishGenetMusicNow(env, NOW)).json()).toMatchObject({ published: true, streamCount: 1 });
+    expect((await readPublished())!.streams.map((s) => s.video_id)).toEqual([videoId]);
+    expect(await (await pendingGenetMusic(env)).json()).toMatchObject({ behind: false });
   });
+});
 
-  test("does not load an unpublished stream's tune/person even if they exist", async () => {
+describe('the JSON', () => {
+  test("does not hold a draft stream's tune or person, even though they exist", async () => {
     const personId = await createValidPerson();
     const unpublishedTuneId = await createValidTune({
       title: '未公開の曲',
@@ -526,13 +782,29 @@ describe('publishGenetMusicNow', () => {
       performances: [{ tuneId: publishedTuneId, description: null, scenes: [] }],
     });
 
-    await publishStream(env, publishedVideoId);
-    await publishGenetMusicNow(env, NOW);
+    await publish(publishedVideoId);
 
     const published = await readPublished();
 
     expect(published!.tunes.map((t) => t.tune_id)).toEqual([publishedTuneId]);
     expect(published!.people).toEqual([]);
+  });
+
+  test('keeps the other published streams when one is published', async () => {
+    const tuneId = await createValidTune();
+    const first = await createValidStream({
+      videoId: 'aaaaaaaaaaa',
+      performances: [{ tuneId, description: null, scenes: [] }],
+    });
+    const second = await createValidStream({
+      videoId: 'bbbbbbbbbbb',
+      performances: [{ tuneId, description: null, scenes: [] }],
+    });
+
+    await publish(first);
+    await publish(second);
+
+    expect((await readPublished())!.streams.map((s) => s.video_id).sort()).toEqual([first, second]);
   });
 
   test('orders streams by publishedAt descending, tunes and people by id ascending', async () => {
@@ -558,9 +830,8 @@ describe('publishGenetMusicNow', () => {
       performances: [{ tuneId: tuneB, description: null, scenes: [] }],
     });
 
-    await publishStream(env, earlier);
-    await publishStream(env, later);
-    await publishGenetMusicNow(env, NOW);
+    await publish(earlier);
+    await publish(later);
 
     const published = await readPublished();
 
@@ -570,7 +841,7 @@ describe('publishGenetMusicNow', () => {
   });
 });
 
-describe('publishGenetMusicNow: channel_id and shape_version', () => {
+describe('the JSON: channel_id and shape_version', () => {
   const GENET = 'UCgenet00000000000000000';
   const GUEST = 'UCguest00000000000000000';
   const OTHER = 'UCother00000000000000000';
@@ -612,18 +883,12 @@ describe('publishGenetMusicNow: channel_id and shape_version', () => {
         ...(platform === 'tiktok' ? { platform, url: `https://www.tiktok.com/@example/video/${videoId}` } : {}),
         performances: [{ tuneId, description: null, scenes: [] }],
       });
-      await publishStream(env, videoId);
+      await publish(videoId);
     }
   }
 
-  async function published(): Promise<{
-    shape_version?: number;
-    channel_id?: string | null;
-    streams: { video_id: string }[];
-  }> {
-    const object = await env.PUBLIC_DATA.get('genet/music.json');
-
-    return JSON.parse(await object!.text());
+  async function published(): Promise<PublishedMusic> {
+    return (await readPublished())!;
   }
 
   describe('channel_id', () => {
@@ -635,7 +900,6 @@ describe('publishGenetMusicNow: channel_id and shape_version', () => {
         { videoId: youtubeId(2), channelId: GENET, publishedAt: '2026-02-01T00:00:00Z' },
         { videoId: youtubeId(3), channelId: GENET, publishedAt: '2026-03-01T00:00:00Z' },
       ]);
-      await publishGenetMusicNow(env, NOW);
 
       const json = await published();
 
@@ -651,10 +915,9 @@ describe('publishGenetMusicNow: channel_id and shape_version', () => {
       }));
 
       await publishStreams(streams);
-      await publishGenetMusicNow(env, NOW);
 
       expect((await published()).channel_id).toEqual(GENET);
-    }, 30000);
+    }, 60000);
 
     test('leaves out TikTok streams and streams with no video row from the count', async () => {
       await publishStreams([
@@ -668,21 +931,18 @@ describe('publishGenetMusicNow: channel_id and shape_version', () => {
         { videoId: '7300000000000000002', platform: 'tiktok' },
         { videoId: '7300000000000000003', platform: 'tiktok' },
       ]);
-      await publishGenetMusicNow(env, NOW);
 
       expect((await published()).channel_id).toEqual(GENET);
     });
 
     test('is null when no stream can be matched to a video', async () => {
       await publishStreams([{ videoId: youtubeId(1) }, { videoId: youtubeId(2) }]);
-      await publishGenetMusicNow(env, NOW);
 
       expect((await published()).channel_id).toBeNull();
     });
 
     test('is null when only TikTok streams are published', async () => {
       await publishStreams([{ videoId: '7300000000000000001', platform: 'tiktok' }]);
-      await publishGenetMusicNow(env, NOW);
 
       expect((await published()).channel_id).toBeNull();
     });
@@ -692,7 +952,6 @@ describe('publishGenetMusicNow: channel_id and shape_version', () => {
         { videoId: youtubeId(1), channelId: GENET },
         { videoId: youtubeId(2), channelId: GUEST },
       ]);
-      await publishGenetMusicNow(env, NOW);
 
       expect((await published()).channel_id).toBeNull();
     });
@@ -706,7 +965,6 @@ describe('publishGenetMusicNow: channel_id and shape_version', () => {
         { videoId: youtubeId(4), channelId: OTHER },
         { videoId: youtubeId(5), channelId: 'UCthird000000000000000000' },
       ]);
-      await publishGenetMusicNow(env, NOW);
 
       expect((await published()).channel_id).toBeNull();
     });
@@ -719,7 +977,6 @@ describe('publishGenetMusicNow: channel_id and shape_version', () => {
         { videoId: youtubeId(3), channelId: GUEST },
         { videoId: youtubeId(4), channelId: OTHER },
       ]);
-      await publishGenetMusicNow(env, NOW);
 
       expect((await published()).channel_id).toEqual(GENET);
     });
@@ -728,7 +985,6 @@ describe('publishGenetMusicNow: channel_id and shape_version', () => {
   describe('shape_version', () => {
     async function publishOneStream(): Promise<void> {
       await publishStreams([{ videoId: youtubeId(1), channelId: GENET }]);
-      await publishGenetMusicNow(env, NOW);
     }
 
     test('is written into the JSON', async () => {
@@ -800,7 +1056,12 @@ describe('publishGenetMusicNow: channel_id and shape_version', () => {
     });
 
     describe('reported by pendingGenetMusic', () => {
-      async function pending(): Promise<{ pending: unknown[]; changed: unknown[]; shapeOutdated: boolean }> {
+      async function pending(): Promise<{
+        pending: unknown[];
+        changed: unknown[];
+        shapeOutdated: boolean;
+        behind: boolean;
+      }> {
         return (await pendingGenetMusic(env).then((r) => r.json())) as never;
       }
 
@@ -831,14 +1092,14 @@ describe('publishGenetMusicNow: channel_id and shape_version', () => {
       test('is false when the stored JSON has the current shape', async () => {
         await publishOneStream();
 
-        expect(await pending()).toEqual({ pending: [], changed: [], shapeOutdated: false });
+        expect(await pending()).toEqual({ pending: [], changed: [], shapeOutdated: false, behind: false });
       });
 
       test.each(OLD_SHAPES)('is true, with nothing else waiting, for %s', async (_name, arrange) => {
         await publishOneStream();
         await arrange();
 
-        expect(await pending()).toEqual({ pending: [], changed: [], shapeOutdated: true });
+        expect(await pending()).toEqual({ pending: [], changed: [], shapeOutdated: true, behind: false });
       });
 
       test.each(OLD_SHAPES)('agrees with what a run does, for %s', async (_name, arrange) => {

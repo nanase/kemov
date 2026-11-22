@@ -7,8 +7,9 @@ import { isSchemaTimestamp } from '../lib/time';
  * Reading, saving and deleting `genet_stream` (#141, #139): one stream, the
  * unit the admin site edits and publishes. Unlike `genet_tune` and
  * `genet_person`, `genet_stream` carries its own `status` - #141's design
- * gives it, and only it, a publish gate - so a save here logs no `revision`
- * either; only genet-publish.ts's publish/withdraw do.
+ * gives it, and only it, a publish gate. A draft's save here logs no
+ * `revision`; 「公開」, a published stream's 「保存」 and 「非公開に戻す」 go
+ * through genet-publish.ts, which does.
  *
  * `video_id` is the caller's own primary key (the YouTube id, or TikTok's
  * numeric video id), not one this file assigns - unlike footprints_event and
@@ -244,7 +245,7 @@ export async function readStreams(env: Env, videoIds: readonly string[]): Promis
 /** GET /admin/api/genet/streams - optionally narrowed by status and by a substring of title. */
 export async function listStreams(env: Env, status: string | null, q: string | null): Promise<Response> {
   if (status !== null && !isStatus(status)) {
-    return errorResponse(400, `status must be one of draft, review, published`);
+    return errorResponse(400, `status must be one of draft, published`);
   }
 
   const conditions: string[] = [];
@@ -283,8 +284,8 @@ export async function getStream(env: Env, videoId: string): Promise<Response> {
   return jsonResponse({ stream: present(saved) });
 }
 
-function isStatus(value: unknown): value is 'draft' | 'review' | 'published' {
-  return value === 'draft' || value === 'review' || value === 'published';
+function isStatus(value: unknown): value is 'draft' | 'published' {
+  return value === 'draft' || value === 'published';
 }
 
 interface SceneFields {
@@ -467,7 +468,7 @@ async function unknownTuneIds(env: Env, tuneIds: readonly number[]): Promise<num
   return ids.filter((id) => !known.has(id));
 }
 
-async function validatedStreamFields(
+export async function validatedStreamFields(
   env: Env,
   body: Record<string, unknown>,
 ): Promise<StreamFields | { error: Response }> {
@@ -489,6 +490,14 @@ async function validatedStreamFields(
   return fields;
 }
 
+/**
+ * Performance and scene rows for a stream that already has its row. Inserted
+ * only while that row is still there: a stream deleted between the caller's
+ * read and its batch would otherwise fail the whole batch on the foreign
+ * key, and a publish with it, after the public JSON was already written,
+ * instead of letting the batch end with no revision logged (publishing.ts).
+ * createStream's batch inserts the row first, so the check passes there.
+ */
 function childStatements(env: Env, videoId: string, fields: StreamFields): D1PreparedStatement[] {
   const statements: D1PreparedStatement[] = [];
 
@@ -497,7 +506,8 @@ function childStatements(env: Env, videoId: string, fields: StreamFields): D1Pre
 
     statements.push(
       env.DB.prepare(
-        'INSERT INTO genet_performance (video_id, position, tune_id, description) VALUES (?1, ?2, ?3, ?4)',
+        `INSERT INTO genet_performance (video_id, position, tune_id, description)
+         SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1)`,
       ).bind(videoId, position, p.tuneId, p.description),
     );
 
@@ -505,7 +515,7 @@ function childStatements(env: Env, videoId: string, fields: StreamFields): D1Pre
       statements.push(
         env.DB.prepare(
           `INSERT INTO genet_scene (video_id, position, scene_position, style, scene_video_id, start_seconds)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
+           SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1)`,
         ).bind(videoId, position, sceneIndex + 1, s.style, s.videoId, s.startSeconds),
       );
     });
@@ -577,22 +587,25 @@ export async function createStream(env: Env, body: Record<string, unknown>): Pro
   return jsonResponse({ stream: present(saved!) }, { status: 201 });
 }
 
-/** PUT /admin/api/genet/streams/:videoId. Replaces performances and scenes; `status` is left untouched. */
-export async function updateStream(env: Env, videoId: string, body: Record<string, unknown>): Promise<Response> {
-  const existing = await readStream(env, videoId);
-
-  if (existing === null) return errorResponse(404, `no stream ${videoId}`);
-
-  const fields = await validatedStreamFields(env, body);
-
-  if ('error' in fields) return fields.error;
-
-  await env.DB.batch([
+/**
+ * The statements that save `fields` over stream `videoId`, replacing its
+ * performances and scenes - and, when `status` is given, its status, so
+ * that genet-publish.ts saves and publishes in one batch. `status` is left
+ * as it is otherwise.
+ */
+export function saveStatements(
+  env: Env,
+  videoId: string,
+  fields: StreamFields,
+  status?: 'draft' | 'published',
+): D1PreparedStatement[] {
+  return [
     env.DB.prepare(
       `UPDATE genet_stream
           SET platform = ?1, url = ?2, video_type = ?3, title = ?4, short_title = ?5, published_at = ?6,
-              categories = ?7, keywords = ?8, memo = ?9, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE video_id = ?10`,
+              categories = ?7, keywords = ?8, memo = ?9, status = COALESCE(?10, status),
+              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE video_id = ?11`,
     ).bind(
       fields.platform,
       fields.url,
@@ -603,12 +616,54 @@ export async function updateStream(env: Env, videoId: string, body: Record<strin
       JSON.stringify(fields.categories),
       JSON.stringify(fields.keywords),
       fields.memo,
+      status ?? null,
       videoId,
     ),
     env.DB.prepare('DELETE FROM genet_scene WHERE video_id = ?1').bind(videoId),
     env.DB.prepare('DELETE FROM genet_performance WHERE video_id = ?1').bind(videoId),
     ...childStatements(env, videoId, fields),
-  ]);
+  ];
+}
+
+/** `saved` as it reads once `fields` are saved over it with `status`, without reading it back. */
+export function withFields(saved: GenetStream, fields: StreamFields, status: 'draft' | 'published'): GenetStream {
+  return {
+    stream: {
+      ...saved.stream,
+      platform: fields.platform,
+      url: fields.url,
+      video_type: fields.videoType,
+      title: fields.title,
+      short_title: fields.shortTitle,
+      published_at: fields.publishedAt,
+      categories: JSON.stringify(fields.categories),
+      keywords: JSON.stringify(fields.keywords),
+      status,
+      memo: fields.memo,
+    },
+    performances: fields.performances.map((p) => ({
+      tune_id: p.tuneId,
+      description: p.description,
+      scenes: p.scenes.map((s) => ({ style: s.style, video_id: s.videoId, start_seconds: s.startSeconds })),
+    })),
+  };
+}
+
+/**
+ * Saves `body` over a draft stream, and leaves its `status` as it is. A
+ * published stream's save reaches the public JSON, and goes through
+ * genet-publish.ts's `saveStream` instead.
+ */
+export async function updateStream(env: Env, videoId: string, body: Record<string, unknown>): Promise<Response> {
+  const existing = await readStream(env, videoId);
+
+  if (existing === null) return errorResponse(404, `no stream ${videoId}`);
+
+  const fields = await validatedStreamFields(env, body);
+
+  if ('error' in fields) return fields.error;
+
+  await env.DB.batch(saveStatements(env, videoId, fields));
 
   const saved = await readStream(env, videoId);
 

@@ -1,11 +1,17 @@
+import { AdminApiError } from '@/admin/lib/api';
+import { SAVE_TOAST } from '@/admin/lib/editing';
+import { PUBLISH_TEXT } from '@/admin/lib/footprints-publish';
 import {
   canPublishGenet,
-  canRepublishStream,
   entityLabel,
   isChangedSincePublish,
   isWaiting,
   publishesOnlyForShape,
-  streamMarkFor,
+  reasonIdsFor,
+  streamAnswerFor,
+  streamReasonId,
+  tuneAnswerFor,
+  TUNE_TEXT,
   type ChangedGenetEntry,
   type PendingGenetEntry,
 } from '@/admin/lib/genet-publish';
@@ -52,6 +58,12 @@ describe('canPublishGenet', () => {
   test('is false when the response does not report the shape at all', () => {
     expect(canPublishGenet({ pending: [], changed: [] })).toBe(false);
   });
+
+  // A write of the JSON that no check found up to date may have left it
+  // saying what no revision says; the worker builds it again for that.
+  test('is true when the JSON may be behind', () => {
+    expect(canPublishGenet({ pending: [], changed: [], shapeOutdated: false, behind: true })).toBe(true);
+  });
 });
 
 describe('publishesOnlyForShape', () => {
@@ -70,6 +82,10 @@ describe('publishesOnlyForShape', () => {
   test('is false when the shape is current or not reported', () => {
     expect(publishesOnlyForShape({ pending: [], changed: [], shapeOutdated: false })).toBe(false);
     expect(publishesOnlyForShape({ pending: [], changed: [] })).toBe(false);
+  });
+
+  test('is false when the JSON may be behind too', () => {
+    expect(publishesOnlyForShape({ pending: [], changed: [], shapeOutdated: true, behind: true })).toBe(false);
   });
 });
 
@@ -97,42 +113,149 @@ describe('isChangedSincePublish', () => {
   });
 });
 
-describe('streamMarkFor', () => {
-  test('a published stream waiting for 「いま公開する」 is 公開待ち, and 公開 after', () => {
-    expect(streamMarkFor('published', 'abcdefghijk', { pending: [WAITING], changed: [] }).label).toEqual('公開待ち');
-    expect(streamMarkFor('published', 'abcdefghijk', { pending: [], changed: [] }).label).toEqual('公開');
+const PROBLEMS = [
+  { field: 'title', performanceIndex: null, message: 'タイトルを書いてください。' },
+  { field: 'performances', performanceIndex: 1, message: '2 曲目の場面 1 の動画 ID は 11 文字です。いまは 3 文字です。' },
+];
+
+describe('streamAnswerFor', () => {
+  test.each([
+    ['publish', 'draft', SAVE_TOAST.publish],
+    ['save', 'published', SAVE_TOAST.savePublished],
+    ['save', 'draft', SAVE_TOAST.saveDraft],
+    ['withdraw', 'published', SAVE_TOAST.withdraw],
+  ] as const)('%s on a %s stream that went through says %s', (action, status, toast) => {
+    expect(streamAnswerFor(action, status, null)).toEqual({ kind: 'done', toast });
   });
 
-  test('is 公開（未確認） when the list could not be read', () => {
-    expect(streamMarkFor('published', 'abcdefghijk', null).label).toEqual('公開（未確認）');
+  test('a refused publish lists the reasons, marks their parts, and says the draft was saved', () => {
+    const error = new AdminApiError(400, { errors: [], problems: PROBLEMS, saved: true });
+
+    expect(streamAnswerFor('publish', 'draft', error)).toEqual({
+      kind: 'band',
+      band: {
+        title: PUBLISH_TEXT.refusedPublish,
+        lines: PROBLEMS.map((p) => p.message),
+        note: PUBLISH_TEXT.refusedPublishNote,
+      },
+      fields: [
+        { section: 'title', performanceIndex: null, sceneIndex: null },
+        { section: 'performances', performanceIndex: 1, sceneIndex: null },
+      ],
+      changed: true,
+    });
+  });
+
+  test('a refused save of a published stream says nothing was saved, and reads nothing again', () => {
+    const error = new AdminApiError(400, { errors: [], problems: PROBLEMS, saved: false });
+    const answer = streamAnswerFor('save', 'published', error);
+
+    expect(answer.kind === 'band' && [answer.band.title, answer.band.note, answer.changed]).toEqual([
+      PUBLISH_TEXT.refusedSave,
+      PUBLISH_TEXT.refusedSaveNote,
+      false,
+    ]);
+  });
+
+  // The button to press again is the one the stream shows now, by the status the answer gives it.
+  test.each([
+    ['draft', PUBLISH_TEXT.notWrittenPublish],
+    ['published', PUBLISH_TEXT.notWrittenSave],
+  ])('a 502 that saved a stream now %s says to press its button again', (status, title) => {
+    const error = new AdminApiError(502, { error: 'saved, but …', saved: true, stream: { status } });
+
+    expect(streamAnswerFor('publish', 'draft', error)).toEqual({
+      kind: 'band',
+      band: { title, lines: [], note: null },
+      fields: [],
+      changed: true,
+    });
+  });
+
+  test('a withdraw the JSON could not follow says so, and one that changed nothing says that', () => {
+    const behind = streamAnswerFor('withdraw', 'published', new AdminApiError(502, { error: '…', saved: true }));
+    const nothing = streamAnswerFor('withdraw', 'published', new AdminApiError(502, { error: '…' }));
+
+    expect(behind.kind === 'band' && [behind.band.title, behind.changed]).toEqual([
+      PUBLISH_TEXT.withdrawnBehind,
+      true,
+    ]);
+    expect(nothing.kind === 'band' && [nothing.band.title, nothing.changed]).toEqual([
+      PUBLISH_TEXT.notWithdrawn,
+      false,
+    ]);
+  });
+
+  test('any other failure is said as it came, with the field it names, and a 409 reads the list again', () => {
+    const answer = streamAnswerFor('save', 'draft', new AdminApiError(409, { error: 'stream abc already exists' }));
+
+    expect(answer).toEqual({
+      kind: 'band',
+      band: { title: PUBLISH_TEXT.failed, lines: [], note: 'stream abc already exists' },
+      fields: [{ section: 'videoId', performanceIndex: null, sceneIndex: null }],
+      changed: true,
+    });
+  });
+
+  test('a 400 save error changes nothing', () => {
+    const answer = streamAnswerFor('save', 'draft', new AdminApiError(400, { error: 'title must be a string' }));
+
+    expect(answer.kind === 'band' && answer.changed).toBe(false);
   });
 });
 
-describe('canRepublishStream', () => {
-  const streamChanged: ChangedGenetEntry = { entity: 'genet_stream', key: 'abcdefghijk', title: '配信題' };
-
-  test('is true when this stream itself changed', () => {
-    expect(canRepublishStream({ pending: [], changed: [streamChanged] }, 'abcdefghijk')).toBe(true);
+describe('tuneAnswerFor', () => {
+  test('a save that reached the public JSON says so, and one that did not says saved', () => {
+    expect(tuneAnswerFor(true, null)).toEqual({ kind: 'done', toast: SAVE_TOAST.savePublished });
+    expect(tuneAnswerFor(false, null)).toEqual({ kind: 'done', toast: SAVE_TOAST.saved });
   });
 
-  // Another stream changing is no reason to offer a stream that did not change
-  // a new version: it would match the last one.
-  test('is false when only another stream changed', () => {
-    expect(canRepublishStream({ pending: [], changed: [streamChanged] }, 'otherstream')).toBe(false);
+  test('a refusal lists the reasons, marks the attributes, and says nothing was saved', () => {
+    const problems = [{ field: 'attributes', attributeIndex: 2, message: '作曲・作詞などの 3 番目に…' }];
+    const answer = tuneAnswerFor(false, new AdminApiError(400, { errors: [], problems, saved: false }));
+
+    expect(answer).toEqual({
+      kind: 'band',
+      band: { title: TUNE_TEXT.failed, lines: ['作曲・作詞などの 3 番目に…'], note: TUNE_TEXT.refusedNote },
+      fields: [{ section: 'attributes', index: 2 }],
+      changed: false,
+    });
   });
 
-  // A tune or a person has no screen of its own to be sent to 公開待ち from;
-  // publishing a stream that performs it is what does that, and which stream
-  // that is cannot be told from here.
-  test('is true while a tune or a person is changed, whichever stream it is asked about', () => {
-    expect(canRepublishStream({ pending: [], changed: [CHANGED] }, 'otherstream')).toBe(true);
+  test('a 502 that saved says to press この曲を保存 again', () => {
+    const answer = tuneAnswerFor(false, new AdminApiError(502, { error: '…', saved: true }));
+
+    expect(answer.kind === 'band' && [answer.band.title, answer.changed]).toEqual([TUNE_TEXT.notWritten, true]);
   });
 
-  test('is false when nothing is changed', () => {
-    expect(canRepublishStream({ pending: [WAITING], changed: [] }, 'abcdefghijk')).toBe(false);
+  test('any other failure keeps the tune band title, with the message as the note', () => {
+    const answer = tuneAnswerFor(false, new AdminApiError(400, { error: 'title must not be empty' }));
+
+    expect(answer).toEqual({
+      kind: 'band',
+      band: { title: TUNE_TEXT.failed, lines: [], note: 'title must not be empty' },
+      fields: [{ section: 'title', index: null }],
+      changed: false,
+    });
+  });
+});
+
+describe('reasonIdsFor', () => {
+  const band = { title: '公開できません', lines: ['a', 'b', 'c'], note: 'note' };
+  const fields = ['title', 'performances', 'title'];
+
+  test('names the reasons of the fields it marks, one each', () => {
+    expect(reasonIdsFor(band, fields, (f) => f === 'title', streamReasonId, 'n')).toEqual(
+      `${streamReasonId(0)} ${streamReasonId(2)}`,
+    );
   });
 
-  test('is true when unknown, rather than leaving no way forward', () => {
-    expect(canRepublishStream(null, 'abcdefghijk')).toBe(true);
+  test('names the note when the band does not list a reason for each field', () => {
+    expect(reasonIdsFor({ ...band, lines: [] }, ['title'], (f) => f === 'title', streamReasonId, 'n')).toEqual('n');
+  });
+
+  test('is undefined when nothing is marked, or there is no band', () => {
+    expect(reasonIdsFor(band, fields, (f) => f === 'videoId', streamReasonId, 'n')).toBeUndefined();
+    expect(reasonIdsFor(null, fields, (f) => f === 'title', streamReasonId, 'n')).toBeUndefined();
   });
 });

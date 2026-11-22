@@ -34,9 +34,8 @@ export function jstDate(instant: string): string {
 }
 
 /**
- * あしあと and ジェネット楽曲一覧 in one list: the rows nobody has looked at
- * first, then the ones put off with 「あとで」 (`review`), each part by date.
- * A month-only date sorts before the days of that month.
+ * あしあと and ジェネット楽曲一覧 in one list, by date. A month-only date
+ * sorts before the days of that month.
  */
 export function reviewRows(inbox: ReviewInbox): ReviewRow[] {
   const rows: ReviewRow[] = [
@@ -56,9 +55,7 @@ export function reviewRows(inbox: ReviewInbox): ReviewRow[] {
     })),
   ];
 
-  const deferred = (row: ReviewRow) => (row.status === 'review' ? 1 : 0);
-
-  return rows.sort((a, b) => deferred(a) - deferred(b) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
 /** The key `step` rows away from `current`, kept inside the list - the first row when `current` is not in it. */
@@ -193,6 +190,4 @@ export function canPublishAny(inbox: PublishInbox): boolean {
   return inbox.canPublish.footprints || inbox.canPublish.genet || inbox.canPublish.milestones;
 }
 
-export const APPROVED_TOAST = '承認しました。「公開待ち」で「いま公開する」を押すと本番に反映されます';
-export const DEFERRED_TOAST = 'あとでに回しました';
 export const REJECTED_TOAST = '却下して削除しました';

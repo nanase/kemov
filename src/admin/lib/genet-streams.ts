@@ -101,6 +101,7 @@ export function emptyFormFields(): StreamFormFields {
 }
 
 export type StreamFieldSection =
+  | 'videoId'
   | 'title'
   | 'shortTitle'
   | 'platform'
@@ -122,6 +123,8 @@ const SCENE_MARKER = /^performances\[(\d+)\]\.scenes\[(\d+)\]/;
 const PERFORMANCE_MARKER = /^performances\[(\d+)\]/;
 
 const BARE_MARKERS: [RegExp, StreamFieldSection][] = [
+  [/^videoId /, 'videoId'],
+  [/^stream \S+ already exists/, 'videoId'],
   [/^title /, 'title'],
   [/^shortTitle /, 'shortTitle'],
   [/^platform /, 'platform'],
@@ -204,4 +207,59 @@ export function moveEntries<T>(byIndex: ReadonlyMap<number, T>, moves: ReadonlyM
   }
 
   return moved;
+}
+
+/**
+ * `GET /admin/api/genet/streams`'s query string for a status and a title
+ * substring - '' when neither narrows anything. The same shape as あしあと's
+ * `footprintsQuery`.
+ */
+export function streamsQuery(status: string, q: string): string {
+  const params = new URLSearchParams();
+
+  if (status !== 'all') params.set('status', status);
+  if (q.trim() !== '') params.set('q', q.trim());
+
+  const query = params.toString();
+
+  return query === '' ? '' : `?${query}`;
+}
+
+/**
+ * Whether a stream that becomes `status` drops out of the list under the
+ * status filter `filter`, which closes its editor and the tunes open in it.
+ */
+export function leavesFilter(filter: string, status: string): boolean {
+  return filter !== 'all' && filter !== status;
+}
+
+/**
+ * `byIndex` with entry `index` taken out and every later one moved up by one,
+ * for the open tunes when a performance is taken off: each entry must stay
+ * with the performance it belongs to, not with the index it had.
+ */
+export function withoutIndex<T>(byIndex: ReadonlyMap<number, T>, index: number): Map<number, T> {
+  const reindexed = new Map<number, T>();
+
+  for (const [i, value] of byIndex) {
+    if (i < index) reindexed.set(i, value);
+    else if (i > index) reindexed.set(i - 1, value);
+  }
+
+  return reindexed;
+}
+
+/**
+ * Whether the open tune needs a read sent for it: it is open, nothing read of
+ * it is in `loaded`, and no read is on its way for its index in `reading`. A
+ * read names the index it was sent for, so a performance taken off above it,
+ * or a new order of them, drops its answer, and the tune would otherwise stay
+ * open with nothing read (#284).
+ */
+export function openTuneUnread(
+  openIndex: number | null,
+  loaded: ReadonlyMap<number, unknown>,
+  reading: ReadonlyMap<number, unknown>,
+): boolean {
+  return openIndex !== null && !loaded.has(openIndex) && !reading.has(openIndex);
 }

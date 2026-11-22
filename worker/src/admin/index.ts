@@ -7,12 +7,18 @@ import { ackCollectTask, listCollectTasks, markCollectTaskUnavailable, retryColl
 import { createEvent, deleteEvent, getEvent, listEvents } from './footprints';
 import { pendingFootprints, publishEvent, publishFootprintsNow, saveEvent, withdrawEvent } from './footprints-publish';
 import { createPerson, deletePerson, getPerson, listPeople, updatePerson } from './genet-people';
-import { pendingGenetMusic, publishGenetMusicNow, publishStream, withdrawStream } from './genet-publish';
-import { createStream, deleteStream, getStream, listStreams, updateStream } from './genet-streams';
-import { createTune, deleteTune, getTune, listTunes, updateTune } from './genet-tunes';
+import {
+  pendingGenetMusic,
+  publishGenetMusicNow,
+  publishStream,
+  saveStream,
+  saveTune,
+  withdrawStream,
+} from './genet-publish';
+import { createStream, deleteStream, getStream, listStreams } from './genet-streams';
+import { createTune, deleteTune, getTune, listTunes } from './genet-tunes';
 import {
   confirmEventSources,
-  deferStream,
   inboxCounts,
   listPublishInbox,
   listReviewInbox,
@@ -287,15 +293,23 @@ export async function handleAdminRequest(
 
     const body = await readJsonObject(request);
 
-    return 'error' in body ? body.error : await updateStream(env, id2, body.value);
+    return 'error' in body ? body.error : await saveStream(env, id2, body.value, instant);
   }
 
   if (segments.length === 6 && name === 'genet' && sub === 'streams' && id2 !== undefined) {
     if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
 
-    if (action === 'publish') return await publishStream(env, id2);
-    if (action === 'withdraw') return await withdrawStream(env, id2);
-    if (action === 'defer') return await deferStream(env, id2);
+    if (action === 'publish') {
+      const body = await readJsonObject(request);
+
+      return 'error' in body ? body.error : await publishStream(env, id2, body.value, instant);
+    }
+
+    if (action === 'withdraw') {
+      const body = await readJsonObject(request);
+
+      return 'error' in body ? body.error : await withdrawStream(env, id2, body.value, instant);
+    }
 
     return errorResponse(404, `no endpoint at ${pathname}`);
   }
@@ -327,7 +341,7 @@ export async function handleAdminRequest(
 
     const body = await readJsonObject(request);
 
-    return 'error' in body ? body.error : await updateTune(env, tuneId, body.value);
+    return 'error' in body ? body.error : await saveTune(env, tuneId, body.value, instant);
   }
 
   if (segments.length === 4 && name === 'genet' && sub === 'people') {

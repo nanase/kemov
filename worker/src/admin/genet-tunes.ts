@@ -6,9 +6,9 @@ import { errorResponse, jsonResponse } from '../lib/json';
  * Reading, saving and deleting `genet_tune` (#141, #139): one tune's own
  * material - title, credits, reference videos and sheet music - shared
  * across every `genet_stream` that performs it. Like `genet_person`,
- * `genet_tune` has no `status` of its own, so a save here logs no
- * `revision`; only publishing a stream that performs it does, in
- * genet-publish.ts.
+ * `genet_tune` has no `status` of its own. A save here logs no `revision`:
+ * publishing a stream that performs it does, in genet-publish.ts, and so
+ * does saving a tune a published stream performs, which goes there too.
  *
  * A save replaces every attribute, video and score row wholesale, the same
  * full-replace shape footprints.ts gives `footprints_event`'s members and
@@ -297,13 +297,43 @@ export async function listTunes(env: Env, q: string | null): Promise<Response> {
   return jsonResponse({ tunes: results.map((row) => present(byId.get(row.tune_id)!)) });
 }
 
-/** GET /admin/api/genet/tunes/:tuneId. 404 when there is no such tune. */
+/**
+ * Whether a published stream performs tune `tuneId`: some stream's latest
+ * revision is a `publish` whose body performs it. That is what puts a tune
+ * in the public JSON (genet-publish.ts), so its save has to reach the JSON
+ * too (#284's 6-5).
+ */
+export async function isPerformedLive(env: Env, tuneId: number): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT 1
+       FROM revision r
+       JOIN (SELECT MAX(revision_id) AS revision_id
+               FROM revision
+              WHERE entity = 'genet_stream'
+              GROUP BY entity_key) latest
+         ON latest.revision_id = r.revision_id
+      WHERE r.action = 'publish'
+        AND EXISTS (SELECT 1 FROM json_each(r.body, '$.performances') p
+                     WHERE json_extract(p.value, '$.tune_id') = ?1)
+      LIMIT 1`,
+  )
+    .bind(tuneId)
+    .first();
+
+  return row !== null;
+}
+
+/**
+ * GET /admin/api/genet/tunes/:tuneId. 404 when there is no such tune.
+ * `live` says whether a published stream performs it, so that its 保存
+ * reaches the public JSON.
+ */
 export async function getTune(env: Env, tuneId: number): Promise<Response> {
   const saved = await readTune(env, tuneId);
 
   if (saved === null) return errorResponse(404, `no tune ${tuneId}`);
 
-  return jsonResponse({ tune: present(saved) });
+  return jsonResponse({ tune: present(saved), live: await isPerformedLive(env, tuneId) });
 }
 
 interface AttributeFields {
@@ -324,7 +354,7 @@ interface ScoreFields {
   title: string;
 }
 
-interface TuneFields {
+export interface TuneFields {
   title: string;
   originalTitle: string | null;
   subtunes: string[];
@@ -541,7 +571,7 @@ async function unknownPersonIds(env: Env, personIds: readonly number[]): Promise
   return ids.filter((id) => !known.has(id));
 }
 
-async function validatedTuneFields(env: Env, body: Record<string, unknown>): Promise<TuneFields | { error: Response }> {
+export async function validatedTuneFields(env: Env, body: Record<string, unknown>): Promise<TuneFields | { error: Response }> {
   const fields = readTuneFields(body);
 
   if ('error' in fields) return { error: errorResponse(400, fields.error) };
@@ -610,7 +640,14 @@ function childStatementsForNewTune(env: Env, fields: TuneFields): D1PreparedStat
   return statements;
 }
 
-/** The same statements as `childStatementsForNewTune`, for an existing `tuneId` bound directly rather than read off `last_insert_rowid()`. */
+/**
+ * The same statements as `childStatementsForNewTune`, for an existing
+ * `tuneId` bound directly rather than read off `last_insert_rowid()`. Each is
+ * inserted only while the tune is still there, as genet-streams.ts's own
+ * `childStatements` are and for the same reason: a tune deleted between the
+ * caller's read and its batch would otherwise fail a publish's batch on the
+ * foreign key, after the public JSON was already written.
+ */
 function childStatements(env: Env, tuneId: number, fields: TuneFields): D1PreparedStatement[] {
   const statements: D1PreparedStatement[] = [];
 
@@ -618,12 +655,10 @@ function childStatements(env: Env, tuneId: number, fields: TuneFields): D1Prepar
     const position = index + 1;
 
     statements.push(
-      env.DB.prepare('INSERT INTO genet_tune_attribute (tune_id, position, name, text) VALUES (?1, ?2, ?3, ?4)').bind(
-        tuneId,
-        position,
-        a.name,
-        a.text,
-      ),
+      env.DB.prepare(
+        `INSERT INTO genet_tune_attribute (tune_id, position, name, text)
+         SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1)`,
+      ).bind(tuneId, position, a.name, a.text),
     );
 
     a.people.forEach((p, personIndex) => {
@@ -631,7 +666,7 @@ function childStatements(env: Env, tuneId: number, fields: TuneFields): D1Prepar
         env.DB.prepare(
           `INSERT INTO genet_tune_attribute_person
              (tune_id, attribute_position, position, person_id, credited_as, note)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
+           SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1)`,
         ).bind(tuneId, position, personIndex + 1, p.personId, p.creditedAs, p.note),
       );
     });
@@ -640,19 +675,18 @@ function childStatements(env: Env, tuneId: number, fields: TuneFields): D1Prepar
   fields.videos.forEach((v, index) => {
     statements.push(
       env.DB.prepare(
-        'INSERT INTO genet_tune_video (tune_id, position, video_id, title, start_seconds, description) VALUES (?1, ?2, ?3, ?4, ?5, ?6)',
+        `INSERT INTO genet_tune_video (tune_id, position, video_id, title, start_seconds, description)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1)`,
       ).bind(tuneId, index + 1, v.videoId, v.title, v.startSeconds, v.description),
     );
   });
 
   fields.scores.forEach((s, index) => {
     statements.push(
-      env.DB.prepare('INSERT INTO genet_tune_score (tune_id, position, url, title) VALUES (?1, ?2, ?3, ?4)').bind(
-        tuneId,
-        index + 1,
-        s.url,
-        s.title,
-      ),
+      env.DB.prepare(
+        `INSERT INTO genet_tune_score (tune_id, position, url, title)
+         SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1)`,
+      ).bind(tuneId, index + 1, s.url, s.title),
     );
   });
 
@@ -681,7 +715,51 @@ export async function createTune(env: Env, body: Record<string, unknown>): Promi
   return jsonResponse({ tune: present(saved!) }, { status: 201 });
 }
 
-/** PUT /admin/api/genet/tunes/:tuneId. Replaces every attribute, video and score row. */
+/** The statements that save `fields` over tune `tuneId`, replacing every attribute, video and score row. */
+export function saveStatements(env: Env, tuneId: number, fields: TuneFields): D1PreparedStatement[] {
+  return [
+    env.DB.prepare(
+      'UPDATE genet_tune SET title = ?1, original_title = ?2, subtunes = ?3, memo = ?4 WHERE tune_id = ?5',
+    ).bind(fields.title, fields.originalTitle, JSON.stringify(fields.subtunes), fields.memo, tuneId),
+    env.DB.prepare('DELETE FROM genet_tune_attribute_person WHERE tune_id = ?1').bind(tuneId),
+    env.DB.prepare('DELETE FROM genet_tune_attribute WHERE tune_id = ?1').bind(tuneId),
+    env.DB.prepare('DELETE FROM genet_tune_video WHERE tune_id = ?1').bind(tuneId),
+    env.DB.prepare('DELETE FROM genet_tune_score WHERE tune_id = ?1').bind(tuneId),
+    ...childStatements(env, tuneId, fields),
+  ];
+}
+
+/** `saved` as it reads once `fields` are saved over it, without reading it back. */
+export function withFields(saved: GenetTune, fields: TuneFields): GenetTune {
+  return {
+    tune: {
+      ...saved.tune,
+      title: fields.title,
+      original_title: fields.originalTitle,
+      subtunes: JSON.stringify(fields.subtunes),
+      memo: fields.memo,
+    },
+    attributes: fields.attributes.map((a) => ({
+      name: a.name,
+      text: a.text,
+      people: a.people.map((p) => ({ person_id: p.personId, credited_as: p.creditedAs, note: p.note })),
+    })),
+    videos: fields.videos.map((v) => ({
+      video_id: v.videoId,
+      title: v.title,
+      start_seconds: v.startSeconds,
+      description: v.description,
+    })),
+    scores: fields.scores.map((s) => ({ url: s.url, title: s.title })),
+  };
+}
+
+/**
+ * PUT /admin/api/genet/tunes/:tuneId for a tune no published stream
+ * performs. Replaces every attribute, video and score row. A tune a
+ * published stream performs reaches the public JSON when it is saved, and
+ * goes through genet-publish.ts's `saveTune` instead (#284).
+ */
 export async function updateTune(env: Env, tuneId: number, body: Record<string, unknown>): Promise<Response> {
   const existing = await readTune(env, tuneId);
 
@@ -691,16 +769,7 @@ export async function updateTune(env: Env, tuneId: number, body: Record<string, 
 
   if ('error' in fields) return fields.error;
 
-  await env.DB.batch([
-    env.DB.prepare(
-      'UPDATE genet_tune SET title = ?1, original_title = ?2, subtunes = ?3, memo = ?4 WHERE tune_id = ?5',
-    ).bind(fields.title, fields.originalTitle, JSON.stringify(fields.subtunes), fields.memo, tuneId),
-    env.DB.prepare('DELETE FROM genet_tune_attribute_person WHERE tune_id = ?1').bind(tuneId),
-    env.DB.prepare('DELETE FROM genet_tune_attribute WHERE tune_id = ?1').bind(tuneId),
-    env.DB.prepare('DELETE FROM genet_tune_video WHERE tune_id = ?1').bind(tuneId),
-    env.DB.prepare('DELETE FROM genet_tune_score WHERE tune_id = ?1').bind(tuneId),
-    ...childStatements(env, tuneId, fields),
-  ]);
+  await env.DB.batch(saveStatements(env, tuneId, fields));
 
   const saved = await readTune(env, tuneId);
 

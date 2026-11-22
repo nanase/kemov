@@ -17,9 +17,8 @@ import { waitingSubscriberMilestones } from './subscriber-milestones-publish';
  *
  * 確認待ち is a row nobody has let through yet: a draft that has never been
  * published (no `import` or `publish` revision - one withdrawn after it was
- * live has been through once already). A stream put off with 「あとで」 is
- * one too, which is what its `status = 'review'` records, and sorts after the
- * ones not yet looked at. あしあと has no 「あとで」 since #281.
+ * live has been through once already). Neither has 「あとで」 any more
+ * (#281, #284).
  */
 
 const NEVER_PUBLISHED_EVENT = `CAST(event_id AS TEXT) NOT IN (
@@ -29,7 +28,7 @@ const NEVER_PUBLISHED_STREAM = `video_id NOT IN (
   SELECT entity_key FROM revision WHERE entity = 'genet_stream' AND action IN ('import', 'publish'))`;
 
 const REVIEW_EVENTS = `status = 'draft' AND ${NEVER_PUBLISHED_EVENT}`;
-const REVIEW_STREAMS = `status = 'review' OR (status = 'draft' AND ${NEVER_PUBLISHED_STREAM})`;
+const REVIEW_STREAMS = `status = 'draft' AND ${NEVER_PUBLISHED_STREAM}`;
 
 /** GET /admin/api/inbox - how many rows each やること screen holds, for the sidebar. */
 export async function inboxCounts(env: Env): Promise<Response> {
@@ -59,9 +58,9 @@ export async function listReviewInbox(env: Env): Promise<Response> {
     env.DB.prepare(`SELECT event_id FROM footprints_event WHERE ${REVIEW_EVENTS} ORDER BY start_date, event_id`).all<{
       event_id: number;
     }>(),
-    env.DB.prepare(
-      `SELECT video_id FROM genet_stream WHERE ${REVIEW_STREAMS} ORDER BY status = 'review', published_at, video_id`,
-    ).all<{ video_id: string }>(),
+    env.DB.prepare(`SELECT video_id FROM genet_stream WHERE ${REVIEW_STREAMS} ORDER BY published_at, video_id`).all<{
+      video_id: string;
+    }>(),
   ]);
 
   const [eventsById, streamsById] = await Promise.all([
@@ -216,7 +215,7 @@ export async function listPublishInbox(env: Env): Promise<Response> {
     ],
     canPublish: {
       footprints: footprints.length > 0,
-      genet: genet.pending.length > 0 || genet.shapeOutdated,
+      genet: genet.pending.length > 0 || genet.shapeOutdated || genet.behind,
       milestones: milestones.needsBuild,
     },
   });
@@ -242,28 +241,6 @@ function selectByIds(env: Env, select: string, ids: readonly (string | number)[]
 
 function byKey(rows: readonly TitledRow[]): Map<string, TitledRow> {
   return new Map(rows.map((row) => [String(row.id), row]));
-}
-
-/**
- * POST /admin/api/genet/streams/:videoId/defer - 「あとで」. The stream
- * becomes `review` and stays in 確認待ち, behind the streams not yet looked
- * at. Logs no revision: nothing about what is or will be public changed. 409
- * for a published stream, which 確認待ち never lists.
- */
-export async function deferStream(env: Env, videoId: string): Promise<Response> {
-  const row = await env.DB.prepare('SELECT status FROM genet_stream WHERE video_id = ?1')
-    .bind(videoId)
-    .first<{ status: string }>();
-
-  if (row === null) return errorResponse(404, `no stream ${videoId}`);
-
-  if (row.status === 'published') return errorResponse(409, 'a published stream cannot be put off');
-
-  await env.DB.prepare(`UPDATE genet_stream SET status = 'review' WHERE video_id = ?1 AND status <> 'published'`)
-    .bind(videoId)
-    .run();
-
-  return jsonResponse({ status: 'review' });
 }
 
 /**
