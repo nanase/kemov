@@ -197,12 +197,19 @@ watch(selected, (member) => {
   confirmingRemove.value = false;
 });
 
+/** Only the latest `load` writes: a slower, older one must not put its list over a newer one's (and so reset the fields a list save put back). */
+const loadGate = createRequestGate();
+
 async function load(): Promise<void> {
+  const ticket = loadGate.start();
+
   loading.value = true;
   loadError.value = null;
 
   try {
     const body = await getJson<{ members: Member[] }>('/members');
+
+    if (!loadGate.isCurrent(ticket)) return;
 
     saved.value = body.members;
 
@@ -226,9 +233,9 @@ async function load(): Promise<void> {
       selectedId.value = rows.value[0]!.channelId;
     }
   } catch (error) {
-    loadError.value = error instanceof AdminApiError ? error.message : String(error);
+    if (loadGate.isCurrent(ticket)) loadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
-    loading.value = false;
+    if (loadGate.isCurrent(ticket)) loading.value = false;
   }
 }
 
