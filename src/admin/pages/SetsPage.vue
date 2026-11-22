@@ -284,8 +284,11 @@ async function saveStream(): Promise<void> {
   }
 }
 
+// 公開待ちにする and 下書きに戻す send the saved stream, not what is typed, and
+// the list read again afterwards can leave the stream out under the current
+// filter and close the editor - either way what is typed would go unasked.
 async function publishStream(): Promise<void> {
-  if (selected.value === null) return;
+  if (selected.value === null || !confirmDiscard()) return;
 
   try {
     await postJson(`/genet/streams/${encodeURIComponent(selected.value.videoId)}/publish`, {});
@@ -301,7 +304,7 @@ async function publishStream(): Promise<void> {
 }
 
 async function withdrawStream(): Promise<void> {
-  if (selected.value === null) return;
+  if (selected.value === null || !confirmDiscard()) return;
 
   try {
     await postJson(`/genet/streams/${encodeURIComponent(selected.value.videoId)}/withdraw`, {});

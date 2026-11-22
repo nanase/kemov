@@ -239,13 +239,15 @@ async function created(milestoneId: number): Promise<void> {
  * Sends each draft the table shows through 「公開待ちにする」, one at a time
  * (lib/subscriber-milestones-bulk.ts). The filters are locked meanwhile, so
  * the table stays the one the confirmation counted. The list is read again
- * afterwards, stopped or not.
+ * afterwards, stopped or not, and that puts the open panel's saved fields
+ * back - so its unsaved changes are asked about too, after the run itself is
+ * agreed to, so that declining the run keeps them.
  */
 async function publishShownDrafts(): Promise<void> {
   const targets = bulkTargets.value;
 
   if (targets.length === 0 || inspectorBusy.value) return;
-  if (!window.confirm(bulkConfirmText(targets.length)) || inspectorBusy.value) return;
+  if (!window.confirm(bulkConfirmText(targets.length)) || inspectorBusy.value || !confirmDiscard()) return;
 
   bulkOutcome.value = null;
   bulkProgress.value = { done: 0, total: targets.length };
@@ -369,7 +371,9 @@ onMounted(() => {
         <div v-if="loadError" class="empty-note">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
-          <button class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
+          <button class="btn quiet" type="button" :disabled="loading" @click="confirmDiscard() && load()">
+            再読み込み
+          </button>
         </div>
         <table class="grid">
           <thead>
