@@ -4,7 +4,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import FootprintsInspector from '../components/FootprintsInspector.vue';
 import GenetStreamReview from '../components/GenetStreamReview.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
-import type { FootprintsMember } from '../lib/footprints';
+import { toFormFields, type FootprintsMember } from '../lib/footprints';
+import { footprintsMarkFor } from '../lib/footprints-publish';
 import {
   moveSelection,
   reviewRows,
@@ -22,8 +23,12 @@ import { confirmDiscard } from '../lib/unsaved-guard';
 /**
  * やること > 確認待ち (#141): あしあと and ジェネット楽曲一覧 rows nobody has let
  * through yet, in one table. A saved filter, not a screen of its own - the
- * panel is the data screens' own, with 承認 / あとで / 却下 at the bottom.
- * `↑` `↓` move through the rows and `A` approves the one selected.
+ * panel is the data screens' own, with 承認 / 却下 at the bottom (and あとで
+ * for a stream). `↑` `↓` move through the rows and `A` approves the one
+ * selected.
+ *
+ * 承認 is each data's own 「公開」: an あしあと row goes to the public
+ * timeline at once (#281), a stream to 公開待ち.
  */
 
 const inbox = ref<ReviewInbox | null>(null);
@@ -115,7 +120,7 @@ function toggleAll(): void {
 
 function approveRow(row: ReviewRow): Promise<unknown> {
   return row.kind === 'event'
-    ? postJson(`/footprints/events/${row.event.eventId}/publish`, {})
+    ? postJson(`/footprints/events/${row.event.eventId}/publish`, toFormFields(row.event))
     : postJson(`/genet/streams/${encodeURIComponent(row.stream.videoId)}/publish`, {});
 }
 
@@ -143,7 +148,7 @@ async function approveTicked(): Promise<void> {
   bulkDone.value = null;
   showToast(
     failed.length === 0
-      ? `${targets.length} 件を承認しました。「公開待ち」で「いま公開する」を押すと本番に反映されます`
+      ? `${targets.length} 件を承認しました`
       : `${targets.length - failed.length} 件を承認しました。${failed.length} 件は通りませんでした`,
   );
   await Promise.all([load(), refreshPublishBadge()]);
@@ -277,6 +282,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
               </td>
               <td>
                 <span v-if="row.kind === 'event' && row.event.sourcePending" class="chip alarm">出典の確認待ち</span>
+                <span v-else-if="row.kind === 'event'" class="chip" :class="footprintsMarkFor(row.status).tone">{{
+                  footprintsMarkFor(row.status).label
+                }}</span>
                 <span v-else class="chip" :class="publishMarkFor(row.status, false).tone">{{
                   publishMarkFor(row.status, false).label
                 }}</span>
@@ -289,13 +297,14 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
         <span v-if="running" class="num">{{ bulkDone }} / {{ bulkTotal }} 件を承認中</span>
         <template v-else>
           <span class="num">{{ ticked.size }} 件を選択中</span>
-          <button class="btn primary" type="button" @click="confirming = true">まとめて承認して公開待ちにする</button>
+          <button class="btn primary" type="button" @click="confirming = true">まとめて承認</button>
           <button class="btn" type="button" @click="ticked = new Set()">選択を外す</button>
         </template>
       </div>
     </div>
 
     <template v-if="selected">
+      <!-- inert while the list is read, or read again after a save: the answer puts the open row's saved fields back, or leaves the row out of the list and closes the panel, over anything typed meanwhile. -->
       <FootprintsInspector
         v-if="selected.kind === 'event'"
         ref="inspector"
@@ -304,6 +313,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
         :members="members"
         :pending="null"
         mode="review"
+        :inert="loading || undefined"
         @changed="load"
         @back="detail = false"
       />
@@ -320,9 +330,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
 
     <div v-if="confirming" class="picker" @mousedown.self="confirming = false">
       <div class="picker-box" role="dialog" aria-label="まとめて承認">
-        <div class="picker-head">{{ tickedRows.length }} 件を承認して公開待ちにします</div>
+        <div class="picker-head">{{ tickedRows.length }} 件を承認します</div>
         <div class="picker-body">
-          <div class="sub">本番への反映は、このあと「公開待ち」で「いま公開する」を押したときです</div>
+          <div class="sub">
+            あしあとの行は、すぐ本番に出ます。楽曲一覧の行は、このあと「公開待ち」で「いま公開する」を押したときに出ます。
+          </div>
         </div>
         <div class="picker-foot">
           <button class="btn primary" type="button" @click="approveTicked">承認する</button>

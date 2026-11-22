@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test';
 
-import { createEvent, updateEvent } from '../src/admin/footprints';
-import { publishEvent, publishFootprintsNow, withdrawEvent } from '../src/admin/footprints-publish';
+import { createEvent } from '../src/admin/footprints';
+import { publishEvent, saveEvent, withdrawEvent } from '../src/admin/footprints-publish';
 import { createMilestone, updateMilestone } from '../src/admin/subscriber-milestones';
 import {
   pendingSubscriberMilestones,
@@ -61,17 +61,11 @@ async function errorsOf(response: Response): Promise<string[]> {
 
 /** A footprints event of kind milestone, published and live on the public timeline. */
 async function liveEvent(title: string): Promise<number> {
-  const response = await createEvent(env, {
-    datePrecision: 'day',
-    startDate: '2024-01-30',
-    kind: 'milestone',
-    title,
-    sourcePending: true,
-  });
+  const fields = { datePrecision: 'day', startDate: '2024-01-30', kind: 'milestone', title, sourcePending: true };
+  const response = await createEvent(env, fields);
   const eventId = ((await response.json()) as { event: { eventId: number } }).event.eventId;
 
-  expect((await publishEvent(env, eventId)).status).toEqual(200);
-  expect((await publishFootprintsNow(env, NOW)).status).toEqual(200);
+  expect((await publishEvent(env, eventId, fields, NOW)).status).toEqual(200);
 
   return eventId;
 }
@@ -218,7 +212,7 @@ describe('publishMilestone', () => {
     const eventId = await liveEvent('記念配信');
     const milestoneId = await create({ eventId });
 
-    await updateEvent(env, eventId, { datePrecision: 'day', startDate: '2024-01-30', kind: 'other', title: 'x' });
+    await saveEvent(env, eventId, { datePrecision: 'day', startDate: '2024-01-30', kind: 'other', title: 'x' }, NOW);
 
     const response = await publishMilestone(env, milestoneId);
 
@@ -385,9 +379,7 @@ describe('the linked event', () => {
     });
     const eventId = ((await response.json()) as { event: { eventId: number } }).event.eventId;
 
-    // Sent to 公開待ち, but the timeline has not been published since.
-    await publishEvent(env, eventId);
-
+    // Left a draft: never on the timeline.
     const milestoneId = await create({ eventId });
 
     await publishMilestone(env, milestoneId);
@@ -406,19 +398,13 @@ describe('the linked event', () => {
     await publishMilestone(env, milestoneId);
     await publishSubscriberMilestonesNow(env, NOW);
 
-    await updateEvent(env, eventId, {
-      datePrecision: 'day',
-      startDate: '2024-01-30',
-      kind: 'milestone',
-      title: '新しい題',
-      sourcePending: true,
-    });
-    await publishEvent(env, eventId);
-
-    // Only 公開待ち on the timeline so far: the title there is still the old one.
-    expect((await pending()).eventChanged).toEqual([]);
-
-    await publishFootprintsNow(env, NOW);
+    // A published event's save reaches the timeline at once (#281).
+    await saveEvent(
+      env,
+      eventId,
+      { datePrecision: 'day', startDate: '2024-01-30', kind: 'milestone', title: '新しい題', sourcePending: true },
+      NOW,
+    );
 
     expect(await pending()).toEqual({
       pending: [],
@@ -441,8 +427,12 @@ describe('the linked event', () => {
 
     await publishMilestone(env, milestoneId);
     await publishSubscriberMilestonesNow(env, NOW);
-    await withdrawEvent(env, eventId);
-    await publishFootprintsNow(env, NOW);
+    await withdrawEvent(
+      env,
+      eventId,
+      { datePrecision: 'day', startDate: '2024-01-30', kind: 'milestone', title: '記念配信', sourcePending: true },
+      NOW,
+    );
 
     expect((await pending()).eventChanged).toEqual([{ milestoneId, eventId }]);
 

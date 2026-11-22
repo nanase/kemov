@@ -4,12 +4,13 @@ import { RouterLink, useRoute } from 'vue-router';
 
 import SubscriberMilestoneInspector from '../components/SubscriberMilestoneInspector.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
-import { STATUS_OPTIONS, type FootprintsEvent, type FootprintsMember } from '../lib/footprints';
+import type { FootprintsEvent, FootprintsMember } from '../lib/footprints';
 import {
   announcerLabel,
   formatCount,
   linkableEvents,
   milestonesQuery,
+  STATUS_OPTIONS,
   type SubscriberMilestone,
 } from '../lib/subscriber-milestones';
 import { SAVE_TOAST } from '../lib/editing';

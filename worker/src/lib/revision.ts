@@ -40,8 +40,8 @@ export type RevisionAction = (typeof REVISION_ACTIONS)[number];
 
 /**
  * A statement for one `revision` row, meant to sit in the same `db.batch` as
- * the row it logs - see footprints.ts for a `publish`/`withdraw`, and
- * members.ts, video-overrides.ts and snapshot-exclusions.ts for a `save`/`delete`.
+ * the row it logs - a `publish`/`withdraw` from a data that passes through a
+ * publish, or a `save`/`delete` from one that takes effect when it is saved.
  *
  * `created_via` is always `'admin'`: everything through `/admin/api` is a
  * person acting through the admin site, never the collector.

@@ -17,9 +17,9 @@ import { waitingSubscriberMilestones } from './subscriber-milestones-publish';
  *
  * 確認待ち is a row nobody has let through yet: a draft that has never been
  * published (no `import` or `publish` revision - one withdrawn after it was
- * live has been through once already), and a row put off with 「あとで」,
- * which is what `status = 'review'` records. Put-off rows sort after the
- * ones not yet looked at.
+ * live has been through once already). A stream put off with 「あとで」 is
+ * one too, which is what its `status = 'review'` records, and sorts after the
+ * ones not yet looked at. あしあと has no 「あとで」 since #281.
  */
 
 const NEVER_PUBLISHED_EVENT = `CAST(event_id AS TEXT) NOT IN (
@@ -28,7 +28,7 @@ const NEVER_PUBLISHED_EVENT = `CAST(event_id AS TEXT) NOT IN (
 const NEVER_PUBLISHED_STREAM = `video_id NOT IN (
   SELECT entity_key FROM revision WHERE entity = 'genet_stream' AND action IN ('import', 'publish'))`;
 
-const REVIEW_EVENTS = `status = 'review' OR (status = 'draft' AND ${NEVER_PUBLISHED_EVENT})`;
+const REVIEW_EVENTS = `status = 'draft' AND ${NEVER_PUBLISHED_EVENT}`;
 const REVIEW_STREAMS = `status = 'review' OR (status = 'draft' AND ${NEVER_PUBLISHED_STREAM})`;
 
 /** GET /admin/api/inbox - how many rows each やること screen holds, for the sidebar. */
@@ -56,9 +56,9 @@ export async function inboxCounts(env: Env): Promise<Response> {
  */
 export async function listReviewInbox(env: Env): Promise<Response> {
   const [{ results: eventIds }, { results: videoIds }] = await Promise.all([
-    env.DB.prepare(
-      `SELECT event_id FROM footprints_event WHERE ${REVIEW_EVENTS} ORDER BY status = 'review', start_date, event_id`,
-    ).all<{ event_id: number }>(),
+    env.DB.prepare(`SELECT event_id FROM footprints_event WHERE ${REVIEW_EVENTS} ORDER BY start_date, event_id`).all<{
+      event_id: number;
+    }>(),
     env.DB.prepare(
       `SELECT video_id FROM genet_stream WHERE ${REVIEW_STREAMS} ORDER BY status = 'review', published_at, video_id`,
     ).all<{ video_id: string }>(),
@@ -245,26 +245,11 @@ function byKey(rows: readonly TitledRow[]): Map<string, TitledRow> {
 }
 
 /**
- * POST /admin/api/footprints/events/:eventId/defer - 「あとで」. The row
- * becomes `review` and stays in 確認待ち, behind the rows not yet looked at.
- * Logs no revision: nothing about what is or will be public changed. 409 for
- * a published row, which 確認待ち never lists.
+ * POST /admin/api/genet/streams/:videoId/defer - 「あとで」. The stream
+ * becomes `review` and stays in 確認待ち, behind the streams not yet looked
+ * at. Logs no revision: nothing about what is or will be public changed. 409
+ * for a published stream, which 確認待ち never lists.
  */
-export async function deferEvent(env: Env, eventId: number): Promise<Response> {
-  const saved = await readEvent(env, eventId);
-
-  if (saved === null) return errorResponse(404, `no footprints event ${eventId}`);
-
-  if (saved.event.status === 'published') return errorResponse(409, 'a published event cannot be put off');
-
-  await env.DB.prepare(`UPDATE footprints_event SET status = 'review' WHERE event_id = ?1 AND status <> 'published'`)
-    .bind(eventId)
-    .run();
-
-  return jsonResponse({ event: presentEvent({ ...saved, event: { ...saved.event, status: 'review' } }) });
-}
-
-/** POST /admin/api/genet/streams/:videoId/defer - `deferEvent` for a stream. */
 export async function deferStream(env: Env, videoId: string): Promise<Response> {
   const row = await env.DB.prepare('SELECT status FROM genet_stream WHERE video_id = ?1')
     .bind(videoId)
@@ -288,7 +273,8 @@ export async function deferStream(env: Env, videoId: string): Promise<Response> 
  * cannot leave 出典の確認待ち on sources that would then fail to publish.
  *
  * A published row's public copy still says 確認待ち afterwards: like any
- * other save, this logs no revision, and the row needs 「公開待ちにする」.
+ * other save of the mark alone, this logs no revision, and the row needs
+ * 「保存」 on あしあと to reach the public timeline.
  */
 export async function confirmEventSources(env: Env, eventId: number): Promise<Response> {
   const saved = await readEvent(env, eventId);

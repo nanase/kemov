@@ -18,8 +18,8 @@ import {
  * Publishing `subscriber_milestone` (#225): the check that lets a row into
  * the public JSON, withdrawing it back to a draft, and building
  * `subscribers/milestones.json` from `revision` rather than from the working
- * rows. The two steps are the same as footprints-publish.ts's: 「公開待ちにする」
- * logs a `publish` revision, and 「いま公開する」 writes the JSON.
+ * rows, in two steps: 「公開待ちにする」 logs a `publish` revision, and
+ * 「いま公開する」 writes the JSON.
  *
  * A JSON of its own rather than a part of `footprints/events.json` (HQ's call
  * on #225): the statistics and member pages that draw these would otherwise
@@ -68,10 +68,12 @@ async function publishProblems(env: Env, saved: SubscriberMilestone, whitelist: 
  * POST /admin/api/subscribers/milestones/:milestoneId/publish -
  * 「公開待ちにする」. 400 with every failing condition; otherwise `status`
  * becomes `published` and a `publish` revision is logged in one `db.batch`,
- * gated on the row still being there, the same as footprints-publish.ts's
- * `publishEvent` (whose comment explains the races this does and does not
- * close). Publishing an already-published milestone is allowed: it is how a
- * row changed since its publish gets a revision that matches it again.
+ * gated on the row still being there: a delete between the read and the
+ * batch leaves no revision behind. An update in between is not caught, and
+ * the revision is built from what was read; the admin site is used by one
+ * person at a time. Publishing an already-published milestone is allowed: it
+ * is how a row changed since its publish gets a revision that matches it
+ * again.
  */
 export async function publishMilestone(env: Env, milestoneId: number): Promise<Response> {
   const saved = await readMilestone(env, milestoneId);
