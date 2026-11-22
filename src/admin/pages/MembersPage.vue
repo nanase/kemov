@@ -245,7 +245,9 @@ function selectRow(channelId: string): void {
   }
 
   // Another row replaces what the edit panel shows; unsaved typing goes only if the user says so (#286).
-  if (channelId !== selectedId.value && !confirmDiscard()) return;
+  // The open 「メンバーを足す」 form goes too, even for the row that looks selected: 元に戻す
+  // and a reload select the first row while the form is still open.
+  if ((channelId !== selectedId.value || newForm.value !== null) && !confirmDiscard()) return;
 
   // What a failed save said is about the member it was shown for.
   if (channelId !== selectedId.value) {
