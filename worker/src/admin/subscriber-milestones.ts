@@ -336,10 +336,18 @@ async function eventLinkProblem(env: Env, eventId: number | null): Promise<strin
   return null;
 }
 
-/** Everything a create, a save and a publish check before touching D1. */
+/**
+ * Everything a create, a save and a publish check before touching D1.
+ *
+ * `keptEventId` is the event the row is linked to already, which
+ * 「非公開に戻す」 lets the row keep though the event is no longer a
+ * milestone: otherwise an event's kind changed on あしあと would leave a
+ * published milestone that cannot be taken off the public site.
+ */
 export async function validatedFields(
   env: Env,
   body: Record<string, unknown>,
+  keptEventId?: number | null,
 ): Promise<MilestoneFields | { error: Response }> {
   const fields = readMilestoneFields(body);
 
@@ -355,7 +363,8 @@ export async function validatedFields(
 
   if (channel === null) return { error: errorResponse(400, `unknown channelId: ${fields.channelId}`) };
 
-  const linkProblem = await eventLinkProblem(env, fields.eventId);
+  const linkProblem =
+    keptEventId !== undefined && fields.eventId === keptEventId ? null : await eventLinkProblem(env, fields.eventId);
 
   if (linkProblem !== null) return { error: errorResponse(400, linkProblem) };
 
@@ -364,16 +373,23 @@ export async function validatedFields(
 
 /**
  * Source rows for a milestone that already has its row. Inserted only while
- * that row is still there, for the reason footprints.ts's `memberStatements`
- * gives: a milestone deleted between the caller's read and its batch would
- * otherwise fail the whole batch on the foreign key, a publish with it.
+ * that row is still there - and, when `whileStatus` is given, still in that
+ * status - for the reason footprints.ts's `memberStatements` gives: a
+ * milestone deleted between the caller's read and its batch would otherwise
+ * fail the whole batch on the foreign key, a publish with it.
  */
-function sourceStatements(env: Env, milestoneId: number, sources: readonly SourceRow[]): D1PreparedStatement[] {
+function sourceStatements(
+  env: Env,
+  milestoneId: number,
+  sources: readonly SourceRow[],
+  whileStatus: string | null,
+): D1PreparedStatement[] {
   return sources.map((source, index) =>
     env.DB.prepare(
       `INSERT INTO subscriber_milestone_source (milestone_id, position, url, title)
-       SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1)`,
-    ).bind(milestoneId, index + 1, source.url, source.title),
+       SELECT ?1, ?2, ?3, ?4
+        WHERE EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1 AND (?5 IS NULL OR status = ?5))`,
+    ).bind(milestoneId, index + 1, source.url, source.title, whileStatus),
   );
 }
 
@@ -420,24 +436,38 @@ export async function createMilestone(env: Env, body: Record<string, unknown>): 
 }
 
 /**
+ * What `saveStatements` sets and expects: the `status` to give the row, and
+ * the one it must still have for anything to be written. A save that read
+ * the row as a draft passes `whileStatus: 'draft'`, so a publish that landed
+ * in between is not written over with no revision: the first statement then
+ * changes nothing, which the caller reads as the row having moved on.
+ */
+export interface SaveOptions {
+  status?: 'draft' | 'published';
+  whileStatus?: 'draft' | 'published';
+}
+
+/**
  * The statements that save `fields` over milestone `milestoneId`'s row and
- * sources - and `status` too, when one is given. A plain draft save
- * (`updateMilestone`) and subscriber-milestones-publish.ts's publishing both
- * run these, the latter in the same batch as the revision it logs.
+ * sources (see `SaveOptions`). A plain draft save (`updateMilestone`) and
+ * subscriber-milestones-publish.ts's publishing both run these, the latter in
+ * the same batch as the revision it logs.
  */
 export function saveStatements(
   env: Env,
   milestoneId: number,
   fields: MilestoneFields,
-  status?: 'draft' | 'published',
+  options: SaveOptions = {},
 ): D1PreparedStatement[] {
+  const whileStatus = options.whileStatus ?? null;
+
   return [
     env.DB.prepare(
       `UPDATE subscriber_milestone
           SET channel_id = ?1, date_precision = ?2, reached_date = ?3, subscriber_count = ?4, announced_by = ?5,
               event_id = ?6, memo = ?7, status = COALESCE(?8, status),
               updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE milestone_id = ?9`,
+        WHERE milestone_id = ?9 AND (?10 IS NULL OR status = ?10)`,
     ).bind(
       fields.channelId,
       fields.datePrecision,
@@ -446,12 +476,27 @@ export function saveStatements(
       fields.announcedBy,
       fields.eventId,
       fields.memo,
-      status ?? null,
+      options.status ?? null,
       milestoneId,
+      whileStatus,
     ),
-    env.DB.prepare('DELETE FROM subscriber_milestone_source WHERE milestone_id = ?1').bind(milestoneId),
-    ...sourceStatements(env, milestoneId, fields.sources),
+    env.DB.prepare(
+      `DELETE FROM subscriber_milestone_source
+        WHERE milestone_id = ?1
+          AND EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1 AND (?2 IS NULL OR status = ?2))`,
+    ).bind(milestoneId, whileStatus),
+    ...sourceStatements(env, milestoneId, fields.sources, whileStatus),
   ];
+}
+
+/** Whether `saveStatements`' batch wrote the row: false when it was gone, or no longer in `whileStatus`. */
+export function savedRow(results: readonly D1Result[]): boolean {
+  return results[0]!.meta.changes > 0;
+}
+
+/** The answer when a save that read the row as a draft found it published by then. */
+export function noLongerDraftResponse(milestoneId: number): Response {
+  return errorResponse(409, `subscriber milestone ${milestoneId} is no longer a draft`);
 }
 
 /**
@@ -485,7 +530,8 @@ export function withFields(
  * Saves a draft's fields. Replaces the sources along with the row; `status`
  * is left untouched, and no `revision` is logged. A published milestone's
  * save reaches the public site, and that is
- * subscriber-milestones-publish.ts's `saveMilestone`.
+ * subscriber-milestones-publish.ts's `saveMilestone`. 409, and nothing
+ * written, when the row was published between the read and the write.
  */
 export async function updateMilestone(env: Env, milestoneId: number, body: Record<string, unknown>): Promise<Response> {
   const existing = await readMilestone(env, milestoneId);
@@ -496,11 +542,15 @@ export async function updateMilestone(env: Env, milestoneId: number, body: Recor
 
   if ('error' in fields) return fields.error;
 
-  await env.DB.batch(saveStatements(env, milestoneId, fields));
+  if (existing.milestone.status !== 'draft') return noLongerDraftResponse(milestoneId);
 
+  const results = await env.DB.batch(saveStatements(env, milestoneId, fields, { whileStatus: 'draft' }));
   const saved = await readMilestone(env, milestoneId);
 
-  return jsonResponse({ milestone: present(saved!) });
+  if (saved === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+  if (!savedRow(results)) return noLongerDraftResponse(milestoneId);
+
+  return jsonResponse({ milestone: present(saved) });
 }
 
 /**

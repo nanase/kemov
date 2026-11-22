@@ -1,4 +1,5 @@
 import type { Env } from '../lib/env';
+import { queryInChunks } from '../lib/d1';
 import { errorResponse, jsonResponse } from '../lib/json';
 import {
   countedHost,
@@ -25,6 +26,8 @@ import {
   publishedBodyOf,
   readMilestone,
   readMilestones,
+  noLongerDraftResponse,
+  savedRow,
   saveStatements,
   updateMilestone,
   validatedFields,
@@ -122,9 +125,13 @@ export async function judgeSources(
     return { kind: 'host', host, sameSite };
   });
 
+  // A listener's one post counts only once it is a URL a save accepts: an
+  // empty row, or text no host can be read from, would say "enough" for a
+  // publish the save then refuses.
   const enough =
-    input.urls.length > 0 &&
-    (input.announcedBy === 'listener' || marks.some((mark) => mark.kind !== 'host') || hasTwoHosts(input.urls));
+    input.announcedBy === 'listener'
+      ? input.urls.some((url) => url.startsWith('https://') && countedHost(url) !== null)
+      : marks.some((mark) => mark.kind !== 'host') || hasTwoHosts(input.urls);
 
   return { marks, enough };
 }
@@ -205,12 +212,40 @@ interface PublicMilestone {
 }
 
 /**
- * The events live on the public timeline, as it shows them, from the latest
- * `footprints_event` revisions: since #281 every publish of an event writes
- * the timeline in the same request, so its latest revision is what the
- * timeline has. An event whose latest revision is a `withdraw` is not on it.
+ * The events among `eventIds` that are live on the public timeline right now,
+ * as it shows them.
+ *
+ * "Live" is what `footprints/events.json` was last found up to date with, not
+ * the events' working rows or their newest revision: the newest
+ * `footprints_event` revision of each event no newer than the last
+ * `publication` of あしあと, when that revision is a `publish`. A revision
+ * recorded while the timeline could not be brought up to date, or one sent to
+ * 公開待ち before #281 and not written since, is not yet the event here
+ * either, so this JSON never names an event the timeline does not have.
  */
-function liveEventsOf(rows: readonly LatestRevisionRow[]): Map<number, LiveEvent> {
+async function liveEvents(env: Env, eventIds: readonly number[]): Promise<Map<number, LiveEvent>> {
+  const keys = [...new Set(eventIds)].map(String);
+
+  if (keys.length === 0) return new Map();
+
+  const footprintsRevisionId = await lastPublishedRevisionId(env, 'footprints');
+  const rows = await queryInChunks(keys, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 2}`).join(', ');
+    const { results } = await env.DB.prepare(
+      `SELECT r.action, r.body
+         FROM revision r
+         JOIN (SELECT MAX(revision_id) AS revision_id
+                 FROM revision
+                WHERE entity = 'footprints_event' AND revision_id <= ?1 AND entity_key IN (${placeholders})
+                GROUP BY entity_key) latest
+           ON latest.revision_id = r.revision_id`,
+    )
+      .bind(footprintsRevisionId, ...chunk)
+      .all<{ action: string; body: string | null }>();
+
+    return results;
+  });
+
   const live = new Map<number, LiveEvent>();
 
   for (const row of rows) {
@@ -222,6 +257,11 @@ function liveEventsOf(rows: readonly LatestRevisionRow[]): Map<number, LiveEvent
   }
 
   return live;
+}
+
+/** The event ids `bodies` link to. */
+function linkedEventIds(bodies: readonly PublishedBody[]): number[] {
+  return bodies.flatMap((body) => (body.event_id === null ? [] : [body.event_id]));
 }
 
 /**
@@ -242,13 +282,22 @@ function publicEntryOf(body: PublishedBody, live: ReadonlyMap<number, LiveEvent>
   };
 }
 
-/** The milestones of the public JSON, built from `latest` (milestones' and events' rows) with `change` applied, by date reached and then by id. */
-function publicMilestones(latest: readonly LatestRevisionRow[], change: RevisionChange | null): PublicMilestone[] {
-  const live = liveEventsOf(latest.filter((row) => row.entity === 'footprints_event'));
-  const bodies = liveBodies(
+/** The `publish` bodies the public JSON is built from: the milestones' rows among `latest`, with `change` applied. */
+function liveMilestoneBodies(latest: readonly LatestRevisionRow[], change: RevisionChange | null): PublishedBody[] {
+  return liveBodies(
     latest.filter((row) => row.entity === 'subscriber_milestone'),
     change,
   ) as unknown as PublishedBody[];
+}
+
+/** The milestones of the public JSON, built from `latest` with `change` applied, by date reached and then by id. */
+async function publicMilestones(
+  env: Env,
+  latest: readonly LatestRevisionRow[],
+  change: RevisionChange | null,
+): Promise<PublicMilestone[]> {
+  const bodies = liveMilestoneBodies(latest, change);
+  const live = await liveEvents(env, linkedEventIds(bodies));
   const milestones = bodies.map((body) => publicEntryOf(body, live));
 
   milestones.sort((a, b) =>
@@ -267,7 +316,12 @@ function publicMilestones(latest: readonly LatestRevisionRow[], change: Revision
  */
 export const SUBSCRIBER_MILESTONES_SHAPE_VERSION = 1;
 
-/** What publishing.ts needs to know about 登録者数の節目. */
+/**
+ * What publishing.ts needs to know about 登録者数の節目. `footprints_event` is
+ * read too: the check after a publish then builds the JSON again when an
+ * event's revision was recorded meanwhile, by which time the event's own
+ * request may have moved the timeline on.
+ */
 export const MILESTONES_TARGET: PublishTarget = {
   entity: 'subscriber_milestone',
   alsoBuiltFrom: ['footprints_event'],
@@ -275,11 +329,16 @@ export const MILESTONES_TARGET: PublishTarget = {
   objectKey: OBJECT_KEY,
   table: 'subscriber_milestone',
   keyColumn: 'milestone_id',
-  buildJson(_env: Env, now: Date, latest: readonly LatestRevisionRow[], change: RevisionChange | null): string {
+  async buildJson(
+    env: Env,
+    now: Date,
+    latest: readonly LatestRevisionRow[],
+    change: RevisionChange | null,
+  ): Promise<string> {
     return JSON.stringify({
       published_at: formatTimestamp(now),
       shape_version: SUBSCRIBER_MILESTONES_SHAPE_VERSION,
-      milestones: publicMilestones(latest, change),
+      milestones: await publicMilestones(env, latest, change),
     });
   },
 };
@@ -345,21 +404,31 @@ async function saveAndPublish(
   const problems = await publishProblems(env, next);
 
   if (problems.length > 0) {
-    if (!wasPublished) await env.DB.batch(saveStatements(env, milestoneId, fields));
+    if (wasPublished) return refusalResponse(problems, false);
 
-    return refusalResponse(problems, !wasPublished);
+    // Saved only while it is still the draft it was read as: one published
+    // in between is not written over with no revision.
+    if (!savedRow(await env.DB.batch(saveStatements(env, milestoneId, fields, { whileStatus: 'draft' })))) {
+      return noLongerDraftResponse(milestoneId);
+    }
+
+    return refusalResponse(problems, true);
   }
 
   const outcome = await publishChange(
     env,
     MILESTONES_TARGET,
     { key: String(milestoneId), action: 'publish', body: publishedBodyOf(next) },
-    saveStatements(env, milestoneId, fields, 'published'),
+    saveStatements(env, milestoneId, fields, { status: 'published' }),
     now,
   );
 
   if (!outcome.written) {
-    if (!outcome.recorded) await env.DB.batch(saveStatements(env, milestoneId, fields));
+    if (!outcome.recorded) {
+      await env.DB.batch(
+        saveStatements(env, milestoneId, fields, { whileStatus: wasPublished ? 'published' : 'draft' }),
+      );
+    }
 
     return await notWrittenResponse(env, milestoneId, outcome);
   }
@@ -434,7 +503,9 @@ export async function withdrawMilestone(
 
   if (saved.milestone.status !== 'published') return errorResponse(409, 'only a published milestone can be withdrawn');
 
-  const fields = await validatedFields(env, body);
+  // The event it is linked to already may stay, though it is no longer a
+  // milestone: taking the row off the public site must not wait on あしあと.
+  const fields = await validatedFields(env, body, saved.milestone.event_id);
 
   if ('error' in fields) return fields.error;
 
@@ -442,7 +513,7 @@ export async function withdrawMilestone(
     env,
     MILESTONES_TARGET,
     { key: String(milestoneId), action: 'withdraw', body: null },
-    saveStatements(env, milestoneId, fields, 'draft'),
+    saveStatements(env, milestoneId, fields, { status: 'draft' }),
     now,
   );
 
@@ -520,15 +591,14 @@ async function storedJson(env: Env): Promise<StoredJson> {
  *   since (publishing.ts's `isBehind`)
  */
 async function publishState(env: Env) {
-  const [lastRevisionId, own, events, stored, behind] = await Promise.all([
+  const [lastRevisionId, own, stored, behind] = await Promise.all([
     lastPublishedRevisionId(env, MILESTONES_TARGET.target),
     latestRevisions(env, 'subscriber_milestone'),
-    latestRevisions(env, 'footprints_event'),
     storedJson(env),
     isBehind(env, MILESTONES_TARGET.target),
   ]);
 
-  const live = liveEventsOf(events);
+  const live = await liveEvents(env, linkedEventIds(liveMilestoneBodies(own, null)));
   const pending = own
     .filter((row) => row.revision_id > lastRevisionId)
     .map((row) => ({ milestoneId: Number(row.entity_key), latestAction: row.action }));
@@ -643,7 +713,7 @@ export async function publishSubscriberMilestonesNow(env: Env, now: Date): Promi
   return jsonResponse({
     published: true,
     publicationId: outcome.publicationId,
-    milestoneCount: publicMilestones(outcome.latest, null).length,
+    milestoneCount: liveMilestoneBodies(outcome.latest, null).length,
     byteLength: outcome.byteLength,
   });
 }
@@ -660,21 +730,10 @@ export async function publishSubscriberMilestonesNow(env: Env, now: Date): Promi
  */
 export async function republishMilestonesForEvents(env: Env, now: Date): Promise<void> {
   try {
-    const [own, events, stored] = await Promise.all([
-      latestRevisions(env, 'subscriber_milestone'),
-      latestRevisions(env, 'footprints_event'),
-      storedJson(env),
-    ]);
-    const live = liveEventsOf(events);
-    const linked = new Map<number, number | null>();
-
-    for (const row of own) {
-      if (row.action === 'withdraw' || row.body === null) continue;
-
-      const body = JSON.parse(row.body) as PublishedBody;
-
-      linked.set(body.milestone_id, body.event_id);
-    }
+    const [own, stored] = await Promise.all([latestRevisions(env, 'subscriber_milestone'), storedJson(env)]);
+    const bodies = liveMilestoneBodies(own, null);
+    const live = await liveEvents(env, linkedEventIds(bodies));
+    const linked = new Map(bodies.map((body) => [body.milestone_id, body.event_id]));
 
     const stale = stored.milestones.some((entry) => {
       const eventId = linked.get(entry.milestone_id) ?? null;

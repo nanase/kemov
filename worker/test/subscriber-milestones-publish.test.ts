@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test';
 
 import { createEvent } from '../src/admin/footprints';
 import { publishEvent, publishFootprintsNow, saveEvent, withdrawEvent } from '../src/admin/footprints-publish';
-import { createMilestone, getMilestone, updateMilestone } from '../src/admin/subscriber-milestones';
+import { createMilestone, getMilestone } from '../src/admin/subscriber-milestones';
 import {
   checkSources,
   pendingSubscriberMilestones,
@@ -623,7 +623,9 @@ describe('pendingSubscriberMilestones', () => {
     const milestoneId = await createPublished();
 
     // A save that went past publishing: what a published row's PUT did before #283.
-    await updateMilestone(env, milestoneId, body({ subscriberCount: 30000 }));
+    await env.DB.prepare('UPDATE subscriber_milestone SET subscriber_count = 30000 WHERE milestone_id = ?1')
+      .bind(milestoneId)
+      .run();
 
     expect((await pending()).changed).toEqual([{ milestoneId }]);
   });
@@ -685,5 +687,123 @@ describe('checkSources', () => {
     expect((await check({ urls: [1] })).status).toEqual(400);
     expect((await check({ channelId: 1 })).status).toEqual(400);
     expect((await check({ urls: Array.from({ length: 51 }, () => 'https://x.com') })).status).toEqual(400);
+  });
+});
+
+// What /code-review found on the first pass: a save racing a publish, a
+// withdraw blocked by あしあと, and the timeline the JSON names.
+describe('a draft save that finds the row published meanwhile', () => {
+  /** `env` whose next `batch` first publishes `milestoneId` elsewhere, as another tab would. */
+  function publishedFirst(milestoneId: number): Env {
+    let done = false;
+
+    return {
+      ...env,
+      DB: new Proxy(env.DB, {
+        get(target, property) {
+          if (property === 'batch') {
+            return async (statements: D1PreparedStatement[]) => {
+              if (!done) {
+                done = true;
+                await target
+                  .prepare("UPDATE subscriber_milestone SET status = 'published' WHERE milestone_id = ?1")
+                  .bind(milestoneId)
+                  .run();
+              }
+
+              return await target.batch(statements);
+            };
+          }
+
+          const value = Reflect.get(target, property) as unknown;
+
+          return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+        },
+      }),
+    };
+  }
+
+  test('of a refused publish answers 409 and writes nothing over it', async () => {
+    const milestoneId = await create();
+    const sent = body({ subscriberCount: 21000, sources: [] });
+
+    const response = await publishMilestone(publishedFirst(milestoneId), milestoneId, sent, NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published', subscriberCount: 20000 });
+
+    const sources = await env.DB.prepare(
+      'SELECT count(*) AS n FROM subscriber_milestone_source WHERE milestone_id = ?1',
+    )
+      .bind(milestoneId)
+      .first<{ n: number }>();
+
+    expect(sources!.n).toEqual(1);
+  });
+
+  test('of a plain save answers 409 and writes nothing over it', async () => {
+    const milestoneId = await create();
+
+    const response = await saveMilestone(
+      publishedFirst(milestoneId),
+      milestoneId,
+      body({ subscriberCount: 21000 }),
+      NOW,
+    );
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published', subscriberCount: 20000 });
+  });
+});
+
+describe('withdrawMilestone with an event no longer a milestone', () => {
+  test('still takes the milestone off the public site, keeping the link', async () => {
+    const eventId = await liveEvent('記念配信');
+    const milestoneId = await createPublished({ eventId });
+
+    await saveEvent(env, eventId, eventFields('記念配信', { kind: 'other' }), NOW);
+
+    expect((await withdrawMilestone(env, milestoneId, body({ eventId }), NOW)).status).toEqual(200);
+    expect(await storedMilestones()).toEqual([]);
+  });
+
+  test('refuses linking it anew', async () => {
+    const eventId = await liveEvent('記念配信');
+    const milestoneId = await createPublished();
+
+    await saveEvent(env, eventId, eventFields('記念配信', { kind: 'other' }), NOW);
+
+    expect((await withdrawMilestone(env, milestoneId, body({ eventId }), NOW)).status).toEqual(400);
+  });
+});
+
+describe('the event the JSON names', () => {
+  // Recorded but not on the timeline: a revision sent to 公開待ち before #281.
+  test('is the one on the timeline, not a revision the timeline does not have yet', async () => {
+    const eventId = await liveEvent('年表の題');
+
+    await env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body, created_via)
+       SELECT 'footprints_event', entity_key, 'publish', json_set(body, '$.title', '待っている題'), 'admin'
+         FROM revision WHERE entity = 'footprints_event' AND entity_key = ?1`,
+    )
+      .bind(String(eventId))
+      .run();
+
+    await createPublished({ eventId });
+
+    expect(await storedMilestones()).toEqual([
+      expect.objectContaining({ event: expect.objectContaining({ title: '年表の題' }) }),
+    ]);
+  });
+});
+
+describe("checkSources for a listener's announcement", () => {
+  test('does not count an empty row, or text a save would refuse', async () => {
+    for (const urls of [[''], ['not a url'], ['http://x.com/listener/status/1']]) {
+      const response = await checkSources(env, { channelId: 'UCaaa', announcedBy: 'listener', urls });
+
+      expect(((await response.json()) as { enough: boolean }).enough).toBe(false);
+    }
   });
 });

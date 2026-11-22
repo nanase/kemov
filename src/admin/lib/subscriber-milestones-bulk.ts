@@ -34,12 +34,26 @@ export function bulkPublishTargets(shown: readonly SubscriberMilestone[]): Subsc
   return shown.filter((m) => m.status === 'draft');
 }
 
+/** Whether `error` is the worker refusing a publish for its own conditions (lib/publishing.ts's `problems`). */
+function isRefusal(error: unknown): error is AdminApiError {
+  return (
+    error instanceof AdminApiError &&
+    error.status === 400 &&
+    typeof error.body === 'object' &&
+    error.body !== null &&
+    'problems' in error.body &&
+    Array.isArray(error.body.problems)
+  );
+}
+
 /**
  * Publishes `targets` one at a time, each request waiting for the one before.
- * A 400 is the check refusing that row, so the row is skipped and the run
- * goes on. Anything else - the network, a 5xx (the public JSON could not be
- * written among them), a 404 for a row deleted since the list was read -
- * stops the run there: the rows after it are not tried.
+ * A 400 that lists the publish's own problems is the check refusing that
+ * row, so the row is skipped and the run goes on. Anything else - a 400 for a
+ * field a save refuses, the network, a 5xx (the public JSON could not be
+ * written among them), a 404 for a row deleted since the list was read, a
+ * 409 for one published since - stops the run there: the rows after it are
+ * not tried.
  * `onProgress` is told how many rows have been answered, stopped row aside.
  */
 export async function publishInTurn(
@@ -54,7 +68,7 @@ export async function publishInTurn(
       await publish(milestone);
       outcome.published++;
     } catch (error) {
-      if (!(error instanceof AdminApiError) || error.status !== 400) {
+      if (!isRefusal(error)) {
         outcome.stopped = { milestone, reason: error instanceof Error ? error.message : String(error) };
         break;
       }

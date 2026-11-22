@@ -19,7 +19,12 @@ function milestone(milestoneId: number, status: string): SubscriberMilestone {
   };
 }
 
-const REFUSED = new AdminApiError(400, { errors: ['there are no sources'] });
+const SOURCES_PROBLEM = '出典が足りません。ホワイトリストの出典か、別のサイトの出典を足してください。';
+const REFUSED = new AdminApiError(400, {
+  errors: [SOURCES_PROBLEM],
+  problems: [{ field: 'sources', message: SOURCES_PROBLEM }],
+  saved: true,
+});
 
 describe('bulkPublishTargets', () => {
   test('keeps only the drafts, in the order the table shows them', () => {
@@ -86,13 +91,16 @@ describe('publishInTurn', () => {
     expect(outcome).toEqual({
       total: 3,
       published: 2,
-      skipped: [{ milestone: refused, reason: 'there are no sources' }],
+      skipped: [{ milestone: refused, reason: SOURCES_PROBLEM }],
       stopped: null,
     });
   });
 
   test.each([
     ['the network', new AdminApiError(0, '/subscribers/milestones/2/publish could not be reached: TypeError')],
+    // A field a save refuses is not what the run skips for: the row is not
+    // short of sources, and calling it so would send the person to the wrong place.
+    ['a 400 that is not a refused publish', new AdminApiError(400, { error: 'footprints event 3 is not a milestone' })],
     ['a 5xx', new AdminApiError(500, null)],
     ['anything that is not an answer from the worker', new TypeError('boom')],
   ])('stops at a failure of %s and tries nothing after it', async (_, error) => {

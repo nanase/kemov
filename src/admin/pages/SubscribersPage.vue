@@ -255,7 +255,7 @@ async function created(milestoneId: number): Promise<void> {
 
 /**
  * Sends each draft the table shows through 「公開」, one at a time, with the
- * fields it was saved with (lib/subscriber-milestones-bulk.ts). The filters
+ * fields it has saved when its turn comes (lib/subscriber-milestones-bulk.ts). The filters
  * are locked meanwhile, so the table stays the one the confirmation counted.
  * The list is read again afterwards, stopped or not, and that puts the open
  * panel's saved fields back - so its unsaved changes are asked about too,
@@ -273,8 +273,16 @@ async function publishShownDrafts(): Promise<void> {
   try {
     bulkOutcome.value = await publishInTurn(
       targets,
-      (milestone) =>
-        postJson(`/subscribers/milestones/${milestone.milestoneId}/publish`, toRequestBody(toFormFields(milestone))),
+      async ({ milestoneId }) => {
+        // Read again just before: the table can be older than the row - a
+        // save whose answer came after another row was opened is not in it.
+        const saved = await getJson<SubscriberMilestone>(`/subscribers/milestones/${milestoneId}`);
+
+        // Published elsewhere since the table was read: on the public site already.
+        if (saved.status !== 'draft') return;
+
+        await postJson(`/subscribers/milestones/${milestoneId}/publish`, toRequestBody(toFormFields(saved)));
+      },
       (done) => {
         bulkProgress.value = { done, total: targets.length };
       },
