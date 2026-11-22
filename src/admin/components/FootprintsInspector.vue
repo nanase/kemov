@@ -59,7 +59,7 @@ const props = withDefaults(
   }>(),
   { mode: 'data' },
 );
-const emit = defineEmits<{ changed: []; created: [eventId: number]; back: [] }>();
+const emit = defineEmits<{ changed: []; created: [eventId: number]; back: []; busy: [busy: boolean] }>();
 
 // Taken once: a blank row opened before midnight must not turn unsaved at it.
 const blank = emptyFormFields(todayJst());
@@ -73,6 +73,9 @@ const fields = ref<EventFormFields>(initialFields());
 useCrumbDetail(() => fields.value.title);
 
 const saving = ref(false);
+// The page keeps this panel open while a request is on its way: an unmounted
+// panel's `changed` reaches nobody, and the table would keep the row as it was.
+watch(saving, (busy) => emit('busy', busy));
 const band = ref<PublishBand | null>(null);
 const invalidFields = ref<readonly EventFieldKey[]>([]);
 const memberPickerOpen = ref(false);
@@ -156,10 +159,16 @@ function send(action: FootAction): Promise<unknown> {
 /**
  * Runs `request`, then says what came of it (`footprintsAnswerFor`): a toast
  * when it went through, otherwise the band above the fields and the fields
- * it names marked. The table is read again whenever the row changed, a
- * refusal that saved a draft's fields included.
+ * it names marked. The table is read again whenever the row may have
+ * changed: a refusal that saved a draft's fields, and a failed request that
+ * `changedAnyway` says got part of the way, included.
  */
-async function run(action: FootAction, request: () => Promise<unknown>, toast?: string): Promise<void> {
+async function run(
+  action: FootAction,
+  request: () => Promise<unknown>,
+  toast?: string,
+  changedAnyway: () => boolean = () => false,
+): Promise<void> {
   if (saving.value) return;
 
   const status = props.event?.status ?? null;
@@ -190,7 +199,7 @@ async function run(action: FootAction, request: () => Promise<unknown>, toast?: 
   band.value = answer.band;
   invalidFields.value = answer.fields;
 
-  if (answer.changed) {
+  if (answer.changed || changedAnyway()) {
     emit('changed');
     void refreshPublishBadge();
   }
@@ -251,13 +260,17 @@ function confirmSource(): Promise<void> {
       ? '出典を確かめました。本番の年表を直すには、あしあとでこの行の「保存」を押します'
       : '出典を確かめました';
 
+  let saved = false;
+
   return run(
     'save',
     async () => {
       await send('save');
+      saved = true;
       await postJson(`/footprints/events/${eventId.value}/confirm-source`, {});
     },
     toast,
+    () => saved,
   );
 }
 

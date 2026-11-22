@@ -140,15 +140,23 @@ describe('footprintsAnswerFor', () => {
     });
   });
 
-  // A 502 without `saved` did not say it saved anything, so it is not called a save.
-  test('a 502 that does not say it saved is a failure, not a save', () => {
+  // A 502 without `saved` did not say it saved anything, so it is not called
+  // a save - but a 5xx may have written part of the way, so the table is read again.
+  test('a 502 that does not say it saved is a failure, not a save, and the table is read again', () => {
     const error = new AdminApiError(502, { error: 'bad gateway' });
 
     expect(footprintsAnswerFor('publish', 'draft', error)).toMatchObject({
       kind: 'band',
       band: { title: '保存できません', note: 'bad gateway' },
-      changed: false,
+      changed: true,
     });
+  });
+
+  // The row is not what the screen shows: deleted, or withdrawn, elsewhere.
+  test.each([404, 409, 500])('a %i reads the table again', (status) => {
+    const error = new AdminApiError(status, { error: 'nope' });
+
+    expect(footprintsAnswerFor('withdraw', 'published', error)).toMatchObject({ kind: 'band', changed: true });
   });
 
   test('a request that could not be sent at all is a failure', () => {

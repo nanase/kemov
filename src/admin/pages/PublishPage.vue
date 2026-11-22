@@ -7,6 +7,7 @@ import type { FootprintsMember } from '../lib/footprints';
 import {
   canPublishFootprints,
   footprintsMarkFor,
+  PUBLISH_TEXT,
   type ChangedFootprintsEntry,
   type FootprintsPending,
   type PendingFootprintsEntry,
@@ -253,7 +254,7 @@ onMounted(async () => {
             </div>
             <div v-if="changed.length > 0" class="panel flag">
               <h4>公開後に変更があった行</h4>
-              <div class="hint">{{ CHANGED_ROWS_HINT }}</div>
+              <div class="hint">{{ PUBLISH_TEXT.changedBody }}</div>
               <ul class="change-list">
                 <li v-for="c in changed" :key="c.eventId">
                   <span class="change-title">{{ c.title }}</span>

@@ -161,8 +161,10 @@ const FIELD_MARKERS: readonly [RegExp, MilestoneFieldKey][] = [
 ];
 
 /**
- * The edit panel's status buttons and whether 削除 is disabled. A published
- * milestone can be withdrawn, and can be sent to 公開待ち again - that second
+ * The edit panel's status buttons and whether 削除 is disabled, for the
+ * two-step publishing 節目 keeps until #283 (あしあと's is `footprintsFootFor`
+ * in lib/footprints.ts). A published milestone can be withdrawn, and can be
+ * sent to 公開待ち again - that second
  * one is how a row changed since it was published gets a version matching its
  * current content, since saving never adds one. Deleting one is refused (409)
  * until it is withdrawn.

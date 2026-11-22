@@ -18,9 +18,9 @@ import {
  * Publishing `genet_stream` (#141, task 10): the validation that lets a
  * stream become part of the public JSON, withdrawing it back to a draft, and
  * building `genet/music.json` from `revision` rather than from the working
- * rows - the same shape footprints-publish.ts gives `footprints_event`,
- * extended here because publishing a stream also has to decide whether the
- * tunes and people it performs need a fresh `publish` revision of their own.
+ * rows, in the two steps 「公開待ちにする」 and 「いま公開する」. Publishing a
+ * stream also has to decide whether the tunes and people it performs need a
+ * fresh `publish` revision of their own.
  * genet-streams.ts, genet-tunes.ts and genet-people.ts are everything up to
  * this point - reading, saving and deleting each of the three without ever
  * touching a `revision` row.
@@ -136,7 +136,7 @@ interface LatestRevisionRow {
   body: string | null;
 }
 
-/** The latest `revision` row for every `entity_key` an entity has one for, oldest concerns first - the same query footprints-publish.ts's own `latestRevisions` runs, parameterized here because this file tracks three entities instead of one. */
+/** The latest `revision` row for every `entity_key` an entity has one for, oldest concerns first - parameterized because this file tracks three entities instead of one. */
 async function latestRevisions(env: Env, entity: string): Promise<LatestRevisionRow[]> {
   const { results } = await env.DB.prepare(
     `SELECT r.entity_key, r.revision_id, r.action, r.body

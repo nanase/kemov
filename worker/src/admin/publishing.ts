@@ -37,6 +37,9 @@ export interface PublishTarget {
   target: string;
   /** Where in `PUBLIC_DATA` the JSON lives. */
   objectKey: string;
+  /** The working table and its key column, which the revision is logged only while the row is still in. */
+  table: string;
+  keyColumn: string;
   /**
    * The public JSON's text, built from the latest revision of every entity of
    * `entity` with `change` applied over its own: a `publish` body in place of
@@ -52,8 +55,15 @@ export interface RevisionChange {
   body: Record<string, unknown> | null;
 }
 
+/**
+ * `revisionId` is null when the row was gone by the time the batch ran - a
+ * delete in between - and no revision was logged for it. `publicationId` is
+ * null when, besides, no revision of `entity` exists at all: a publication
+ * names the newest revision it was built from, and there is none.
+ */
 export type PublishOutcome =
-  { written: true; revisionId: number; publicationId: number; byteLength: number } | { written: false; error: string };
+  | { written: true; revisionId: number | null; publicationId: number | null; byteLength: number }
+  | { written: false; error: string };
 
 export interface LatestRevisionRow {
   entity_key: string;
@@ -101,7 +111,14 @@ export function liveBodies(latest: readonly LatestRevisionRow[], change: Revisio
  * names the revision this same batch logged.
  *
  * `{ written: false }` is answered, and nothing run, when the JSON cannot be
- * written. A failure of the batch itself is thrown, as any D1 failure is.
+ * written to R2. A failure to read what the JSON is built from, and a failure
+ * of the batch, are thrown, as any D1 failure is.
+ *
+ * The revision is logged only while the row is still there, as
+ * `revisionStatement` (lib/revision.ts) cannot say: a row deleted between the
+ * caller's read and this batch gets no `publish` revision, so the next build
+ * of the JSON leaves it out again instead of keeping it there for good with
+ * no row left to withdraw.
  */
 export async function publishChange(
   env: Env,
@@ -110,10 +127,9 @@ export async function publishChange(
   rowStatements: readonly D1PreparedStatement[],
   now: Date,
 ): Promise<PublishOutcome> {
-  let json: string;
+  const json = await target.buildJson(env, now, change);
 
   try {
-    json = await target.buildJson(env, now, change);
     await env.PUBLIC_DATA.put(target.objectKey, json, {
       httpMetadata: { contentType: 'application/json; charset=UTF-8' },
     });
@@ -126,18 +142,23 @@ export async function publishChange(
   const results = await env.DB.batch([
     ...rowStatements,
     env.DB.prepare(
-      `INSERT INTO revision (entity, entity_key, action, body, created_via) VALUES (?1, ?2, ?3, ?4, 'admin')`,
+      `INSERT INTO revision (entity, entity_key, action, body, created_via)
+       SELECT ?1, ?2, ?3, ?4, 'admin'
+       WHERE EXISTS (SELECT 1 FROM ${target.table} WHERE ${target.keyColumn} = ?2)`,
     ).bind(target.entity, change.key, change.action, change.body === null ? null : JSON.stringify(change.body)),
     env.DB.prepare(
       `INSERT INTO publication (target, last_revision_id, object_key, byte_length)
-       SELECT ?1, MAX(revision_id), ?2, ?3 FROM revision WHERE entity = ?4`,
+       SELECT ?1, MAX(revision_id), ?2, ?3 FROM revision WHERE entity = ?4 HAVING MAX(revision_id) IS NOT NULL`,
     ).bind(target.target, target.objectKey, jsonByteLength, target.entity),
   ]);
 
+  const revision = results.at(-2)!;
+  const publication = results.at(-1)!;
+
   return {
     written: true,
-    revisionId: results.at(-2)!.meta.last_row_id,
-    publicationId: results.at(-1)!.meta.last_row_id,
+    revisionId: revision.meta.changes > 0 ? revision.meta.last_row_id : null,
+    publicationId: publication.meta.changes > 0 ? publication.meta.last_row_id : null,
     byteLength: jsonByteLength,
   };
 }

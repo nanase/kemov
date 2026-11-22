@@ -155,6 +155,8 @@ export const FOOTPRINTS_TARGET: PublishTarget = {
   entity: 'footprints_event',
   target: 'footprints',
   objectKey: OBJECT_KEY,
+  table: 'footprints_event',
+  keyColumn: 'event_id',
   async buildJson(env: Env, now: Date, change: RevisionChange): Promise<string> {
     return footprintsJson(now, liveBodies(await latestRevisions(env, 'footprints_event'), change)).json;
   },
@@ -165,7 +167,7 @@ export const FOOTPRINTS_TARGET: PublishTarget = {
  * sent were saved anyway. `errors` carries the messages alone, the shape
  * every other refusal under /admin/api has.
  */
-function refusal(problems: readonly PublishProblem[], saved: boolean): Response {
+function refusalResponse(problems: readonly PublishProblem[], saved: boolean): Response {
   return jsonResponse({ errors: problems.map((p) => p.message), problems, saved }, { status: 400 });
 }
 
@@ -175,7 +177,7 @@ function refusal(problems: readonly PublishProblem[], saved: boolean): Response 
  * `saved: true` and the row as it now stands, so the screen can tell it
  * apart from a request that changed nothing.
  */
-async function notWritten(env: Env, eventId: number, outcome: Extract<PublishOutcome, { written: false }>) {
+async function notWrittenResponse(env: Env, eventId: number, outcome: Extract<PublishOutcome, { written: false }>) {
   const saved = await readEvent(env, eventId);
 
   return jsonResponse(
@@ -188,8 +190,14 @@ async function notWritten(env: Env, eventId: number, outcome: Extract<PublishOut
   );
 }
 
-/** The 200 once a change reached the public JSON: the row as it now stands, and what was recorded for it. */
-async function written(env: Env, eventId: number, outcome: Extract<PublishOutcome, { written: true }>) {
+/**
+ * The 200 once a change reached the public JSON: the row as it now stands,
+ * and what was recorded for it. 404 when the row was deleted before the
+ * change could be recorded, as when it was gone before the request came.
+ */
+async function writtenResponse(env: Env, eventId: number, outcome: Extract<PublishOutcome, { written: true }>) {
+  if (outcome.revisionId === null) return errorResponse(404, `no footprints event ${eventId}`);
+
   const saved = await readEvent(env, eventId);
 
   return jsonResponse({
@@ -222,7 +230,7 @@ async function saveAndPublish(env: Env, existing: FootprintsEvent, fields: Event
   if (problems.length > 0) {
     if (!wasPublished) await env.DB.batch(saveStatements(env, eventId, fields));
 
-    return refusal(problems, !wasPublished);
+    return refusalResponse(problems, !wasPublished);
   }
 
   const outcome = await publishChange(
@@ -236,10 +244,10 @@ async function saveAndPublish(env: Env, existing: FootprintsEvent, fields: Event
   if (!outcome.written) {
     await env.DB.batch(saveStatements(env, eventId, fields));
 
-    return await notWritten(env, eventId, outcome);
+    return await notWrittenResponse(env, eventId, outcome);
   }
 
-  return await written(env, eventId, outcome);
+  return await writtenResponse(env, eventId, outcome);
 }
 
 /**
@@ -326,7 +334,7 @@ export async function withdrawEvent(
 
   if (!outcome.written) return errorResponse(502, `${OBJECT_KEY} could not be written: ${outcome.error}`);
 
-  return await written(env, eventId, outcome);
+  return await writtenResponse(env, eventId, outcome);
 }
 
 /** The `last_revision_id` of the newest `publication` row for `target`, or 0 when there has never been one. */

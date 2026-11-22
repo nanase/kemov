@@ -599,8 +599,8 @@ export function saveStatements(
       `UPDATE footprints_event
           SET date_precision = ?1, start_date = ?2, starts_at = ?3, end_date = ?4, kind = ?5, emphasized = ?6,
               title = ?7, place = ?8, supplement = ?9, video_id = ?10, source_pending = ?11, memo = ?12,
-              status = COALESCE(?14, status), updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE event_id = ?13`,
+              status = COALESCE(?13, status), updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE event_id = ?14`,
     ).bind(
       fields.datePrecision,
       fields.startDate,
@@ -614,8 +614,8 @@ export function saveStatements(
       fields.videoId,
       fields.sourcePending ? 1 : 0,
       fields.memo,
-      eventId,
       status ?? null,
+      eventId,
     ),
     env.DB.prepare('DELETE FROM footprints_event_member WHERE event_id = ?1').bind(eventId),
     env.DB.prepare('DELETE FROM footprints_event_source WHERE event_id = ?1').bind(eventId),
@@ -630,7 +630,11 @@ export function saveStatements(
  * that would fail is refused without being saved. The timestamps are left as
  * they were: nothing built from this reads them.
  */
-export function withFields(saved: FootprintsEvent, fields: EventFields, status: string): FootprintsEvent {
+export function withFields(
+  saved: FootprintsEvent,
+  fields: EventFields,
+  status: 'draft' | 'published',
+): FootprintsEvent {
   return {
     event: {
       ...saved.event,

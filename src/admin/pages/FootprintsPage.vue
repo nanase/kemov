@@ -30,6 +30,9 @@ const selectedId = ref<number | null>(null);
 const detail = ref(false);
 // ＋ 足す: the edit panel holds a new event, not yet created (#277's 6-12).
 const adding = ref(false);
+// Whether the edit panel's request is on its way. Selecting another row
+// meanwhile would unmount the panel, and its answer would never reach the table.
+const inspectorBusy = ref(false);
 // Which published rows the public JSON has not caught up with - the edit
 // panel says so. Null when it could not be read.
 const pending = ref<FootprintsPending | null>(null);
@@ -135,6 +138,7 @@ async function reload(): Promise<void> {
 
 /** A row clicked in the table: asks first when the open one has changes that would be lost. */
 function selectRow(eventId: number): void {
+  if (inspectorBusy.value) return;
   if ((adding.value || eventId !== selectedId.value) && !confirmDiscard()) return;
 
   openRow(eventId);
@@ -147,6 +151,7 @@ function openRow(eventId: number): void {
 }
 
 function startAdding(): void {
+  if (inspectorBusy.value) return;
   if (!adding.value && !confirmDiscard()) return;
 
   adding.value = true;
@@ -166,20 +171,30 @@ function back(): void {
 // A filter can leave the open row out of the table, which closes its panel,
 // so changing one asks first, as selecting another row does.
 function setStatus(value: string): void {
+  if (inspectorBusy.value) return;
   if (value !== status.value && confirmDiscard()) status.value = value;
 }
 
 function setQuery(event: Event): void {
   const input = event.target as HTMLInputElement;
 
-  if (confirmDiscard()) q.value = input.value;
+  if (!inspectorBusy.value && confirmDiscard()) q.value = input.value;
   else input.value = q.value;
 }
 
 async function created(eventId: number): Promise<void> {
   adding.value = false;
+  inspectorBusy.value = false;
   // The panel shows another row until the reload ends, held by `reloading`.
   await reload();
+
+  // A table that could not be read says nothing about the filter.
+  if (loadError.value !== null) {
+    detail.value = false;
+    showToast(SAVE_TOAST.saveDraft);
+
+    return;
+  }
 
   // A new event is always a draft - the status or title filter can leave it
   // out of the table. Pointing the panel at it anyway would edit a row the
@@ -311,6 +326,7 @@ onMounted(() => {
       @changed="reload"
       @created="created"
       @back="back"
+      @busy="inspectorBusy = $event"
     />
   </div>
 </template>

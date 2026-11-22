@@ -47,7 +47,11 @@ export function canPublishFootprints(state: FootprintsPending): boolean {
   return state.pending.length > 0;
 }
 
-/** The 状態 chip for one row. Every あしあと screen draws it from here. */
+/**
+ * The 状態 chip for one row. Every あしあと screen draws it from here. Not
+ * `publishMarkFor` (publish-mark.ts): that one tells 公開待ち from 公開 for a
+ * data publishing in two steps, and あしあと has no 公開待ち since #281.
+ */
 export function footprintsMarkFor(status: string): PublishMark {
   return status === 'published' ? { label: '公開中', tone: 'published' } : { label: '下書き', tone: 'draft' };
 }
@@ -118,7 +122,11 @@ function savedAnyway(body: unknown): boolean {
  * - A 502 that says it saved is a save that went through while the public
  *   JSON could not be written. The button to press again is the one the row
  *   shows now: a draft stays a draft, so 「公開」 is still there
- * - Anything else is a save that failed, said as before #281
+ * - Anything else is a request that failed, said as before #281. A 404, a
+ *   409 or a 5xx may mean the row is not what the screen shows - deleted or
+ *   withdrawn elsewhere, or written before a later step failed - so the table
+ *   is read again. A 400 changed nothing, and reading again would put back the
+ *   fields over what was typed
  */
 export function footprintsAnswerFor(action: FootAction, status: string | null, error: unknown): FootprintsAnswer {
   if (error === null) {
@@ -169,11 +177,12 @@ export function footprintsAnswerFor(action: FootAction, status: string | null, e
 
   const message = error instanceof Error ? error.message : String(error);
   const field = fieldForSaveError(message);
+  const answered = error instanceof AdminApiError ? error.status : 0;
 
   return {
     kind: 'band',
     band: { title: PUBLISH_TEXT.failed, lines: [], note: message },
     fields: field === null ? [] : [field],
-    changed: false,
+    changed: answered === 404 || answered === 409 || answered >= 500,
   };
 }

@@ -5,6 +5,7 @@ import FootprintsInspector from '../components/FootprintsInspector.vue';
 import GenetStreamReview from '../components/GenetStreamReview.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import { toFormFields, type FootprintsMember } from '../lib/footprints';
+import { footprintsMarkFor } from '../lib/footprints-publish';
 import {
   moveSelection,
   reviewRows,
@@ -14,7 +15,6 @@ import {
   type ReviewInbox,
   type ReviewRow,
 } from '../lib/inbox';
-import { footprintsMarkFor } from '../lib/footprints-publish';
 import { refreshPublishBadge } from '../lib/publish-badge';
 import { publishMarkFor } from '../lib/publish-mark';
 import { showToast } from '../lib/toast';
