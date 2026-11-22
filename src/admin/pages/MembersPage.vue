@@ -65,6 +65,14 @@ const newForm = ref<NewMemberFields | null>(null);
 const fields = ref<MemberFormFields | null>(null);
 const saving = ref(false);
 const listSaving = ref(false);
+
+/**
+ * A row's 保存 or 削除, or the list's 保存, is under way. Nothing starts another
+ * request or changes what the panel shows until it is answered, so the answer
+ * (an error, the panel closing, a read of the list) lands on the member it was
+ * asked for; the buttons that would are disabled and their handlers return.
+ */
+const busy = computed(() => listSaving.value || saving.value);
 const confirmingRemove = ref(false);
 const errorMessage = ref<string | null>(null);
 const errorField = ref<MemberFieldKey | null>(null);
@@ -244,9 +252,7 @@ async function load(): Promise<void> {
 }
 
 function selectRow(channelId: string): void {
-  // The edit panel is inert while 保存 or 削除 is in flight; so is the choice of what it shows,
-  // or the answer (an error, the panel closing) would land on the member chosen meanwhile.
-  if (listSaving.value || saving.value) return;
+  if (busy.value) return;
 
   // A click on the row the banner is about shows the error there, as the
   // banner's own button does: the banner has said all it had to. Only a click
@@ -277,6 +283,8 @@ function back(): void {
 }
 
 function addMember(): void {
+  if (busy.value) return;
+
   // A form already open is replaced by a blank one, and a member's typed changes go with it.
   if (!confirmDiscard()) return;
 
@@ -334,6 +342,8 @@ function move(channelId: string, delta: -1 | 1): void {
 }
 
 function discard(): void {
+  if (busy.value) return;
+
   clearDraft();
   listError.value = null;
   rowError.value = null;
@@ -373,7 +383,7 @@ async function showAddedMemberError(channelId: string, message: string): Promise
 function openErrorRow(): void {
   const error = rowError.value;
 
-  if (error === null || listSaving.value || !confirmDiscard()) return;
+  if (error === null || busy.value || !confirmDiscard()) return;
 
   rowError.value = null;
 
@@ -386,6 +396,8 @@ function openErrorRow(): void {
 }
 
 async function saveList(): Promise<void> {
+  if (busy.value) return;
+
   listSaving.value = true;
   listError.value = null;
   rowError.value = null;
@@ -545,21 +557,16 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
         <span class="grow"></span>
         <span class="sub num">{{ rows.length }} 人</span>
         <!-- Always there, unsaved changes or not: a 409 from 保存 says to reload, and the draft is kept across it. -->
-        <button
-          class="btn quiet"
-          type="button"
-          :disabled="loading || listSaving || saving"
-          @click="confirmDiscard() && load()"
-        >
+        <button class="btn quiet" type="button" :disabled="loading || busy" @click="confirmDiscard() && load()">
           再読み込み
         </button>
         <template v-if="dirty">
-          <button class="btn quiet" type="button" :disabled="listSaving" @click="discard">
+          <button class="btn quiet" type="button" :disabled="busy" @click="discard">
             {{ MEMBER_TEXT.discard }}
           </button>
-          <button class="btn primary" type="button" :disabled="listSaving" @click="saveList">保存</button>
+          <button class="btn primary" type="button" :disabled="busy" @click="saveList">保存</button>
         </template>
-        <button class="btn" type="button" :disabled="listSaving || saving" @click="addMember">＋ メンバーを足す</button>
+        <button class="btn" type="button" :disabled="busy" @click="addMember">＋ メンバーを足す</button>
       </div>
       <div class="scroller">
         <div v-if="loadError" class="empty-note">
@@ -575,7 +582,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
           <div class="hint">{{ MEMBER_TEXT.rowErrorLead(shownRowError.name, shownRowError.channelId) }}</div>
           <div class="hint">{{ shownRowError.message }}</div>
           <div class="stack">
-            <button class="btn" type="button" :disabled="listSaving" @click="openErrorRow">
+            <button class="btn" type="button" :disabled="busy" @click="openErrorRow">
               {{ MEMBER_TEXT.openErrorRow }}
             </button>
           </div>
@@ -644,7 +651,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
     </div>
 
     <!-- inert while a request is in flight: the list's 保存 already carries the draft as it was, and what is typed meanwhile would be cleared with it; a row's 保存, a 削除 or a read of the list is answered with saved values, which would meet a field typed in just then. -->
-    <div v-if="activeFields" class="inspector" :inert="loading || listSaving || saving || undefined">
+    <div v-if="activeFields" class="inspector" :inert="loading || busy || undefined">
       <SplitHandle />
       <div class="inspector-head">
         <div>

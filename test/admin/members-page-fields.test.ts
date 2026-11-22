@@ -44,17 +44,33 @@ describe('MembersPage.vue fields', () => {
   // the panel and the choice of row are not open to the user while it is under way, so
   // the answer cannot land on a member chosen meanwhile or meet a field typed in just then.
   test('the edit panel is inert while any request is in flight', () => {
-    expect(page).toContain('class="inspector" :inert="loading || listSaving || saving || undefined"');
+    expect(page).toContain('class="inspector" :inert="loading || busy || undefined"');
   });
 
-  test('a row cannot be chosen while a row or the list is being saved or deleted', () => {
-    expect(page).toMatch(
-      /function selectRow\([^)]*\): void \{\s*(\/\/[^\n]*\n\s*)*if \(listSaving\.value \|\| saving\.value\) return;/,
-    );
-  });
+  // `busy` is a row's 保存 or 削除, or the list's 保存. Whatever would start another request or change what
+  // the panel shows is refused while it is on: the handler returns, and the button is disabled.
+  test.each(['selectRow', 'addMember', 'openErrorRow', 'discard', 'saveList'])(
+    '%s returns while a request is under way',
+    (name) => {
+      const start = page.search(new RegExp(`function ${name}\\(`));
 
-  test('a new member cannot be started while a row or the list is being saved or deleted', () => {
-    expect(page).toContain(':disabled="listSaving || saving" @click="addMember"');
+      expect(start).toBeGreaterThan(-1);
+
+      const body = page.slice(start).split(/\n(?:async )?function /)[0]!;
+
+      expect(body).toContain('busy.value');
+    },
+  );
+
+  test.each(['discard', 'saveList', 'addMember', 'openErrorRow'])(
+    'the button for %s is disabled while a request is under way',
+    (name) => {
+      expect(page).toMatch(new RegExp(`:disabled="busy" @click="${name}"`));
+    },
+  );
+
+  test('再読み込み is disabled while a request is under way', () => {
+    expect(page).toContain(':disabled="loading || busy" @click="confirmDiscard() && load()"');
   });
 
   // 「メンバーを足す」 is open with no row chosen (`selectedId` null): neither a read of the
