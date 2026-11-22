@@ -635,8 +635,8 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
       </div>
     </div>
 
-    <!-- inert while 保存 is in flight: the request already carries the draft as it was, and what is typed meanwhile would be cleared with it. -->
-    <div v-if="activeFields" class="inspector" :inert="listSaving || undefined">
+    <!-- inert while 保存 is in flight: the request already carries the draft as it was, and what is typed meanwhile would be cleared with it. Also while the list is read: its answer resets the fields to the saved values, over what is typed after the read began. -->
+    <div v-if="activeFields" class="inspector" :inert="loading || listSaving || undefined">
       <SplitHandle />
       <div class="inspector-head">
         <div>
