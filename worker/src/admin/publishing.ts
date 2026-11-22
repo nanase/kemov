@@ -6,8 +6,8 @@ import type { RevisionEntity } from '../lib/revision';
  * The publishing flow #277 decided (#281): a row is a draft or it is live,
  * and 「公開」, a live row's 「保存」 and 「非公開に戻す」 each reach the public
  * JSON in the one request that pressed them - there is no 「いま公開する」 in
- * between any more. あしあと goes through this first; 登録者数の節目 (#283)
- * and ジェネット楽曲一覧 (#284) follow the same way.
+ * between. Written for あしあと first, and so that 登録者数の節目 (#283) and
+ * ジェネット楽曲一覧 (#284) can go through it too.
  *
  * What is the same for all three lives here: the order of the writes, and
  * what is left behind when one of them fails. What differs - which fields a

@@ -16,11 +16,12 @@ export const EDITING_TEXT = {
 } as const;
 
 /**
- * The toasts #277's 1c decided. あしあと uses all of them since #281
- * (lib/footprints-publish.ts). A data still publishing in two steps uses
- * `saveToastFor` instead: its published row's save does not reach the public
- * site until the 公開 screen's 「いま公開する」, so `savePublished` would say
- * something untrue there.
+ * The toasts #277's 1c decided. `publish`, `savePublished` and `withdraw` are
+ * for a data whose save reaches the public site in the same request (#281). A
+ * data still publishing in two steps uses `saveToastFor` instead: its
+ * published row's save does not reach the public site until the 公開
+ * screen's 「いま公開する」, so `savePublished` would say something untrue
+ * there.
  */
 export const SAVE_TOAST = {
   publish: '公開しました。本番に出ています',
