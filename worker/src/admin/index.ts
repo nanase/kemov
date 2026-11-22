@@ -2,6 +2,7 @@ import type { CertsCache } from '../lib/access';
 import { isAdminEmail, verifyAccess } from '../lib/access';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
+import { lookupChannel } from './channel-lookup';
 import { ackCollectTask, listCollectTasks, markCollectTaskUnavailable, retryCollectTask } from './collect-tasks';
 import { createEvent, deleteEvent, getEvent, listEvents } from './footprints';
 import { pendingFootprints, publishEvent, publishFootprintsNow, saveEvent, withdrawEvent } from './footprints-publish';
@@ -370,6 +371,14 @@ export async function handleAdminRequest(
     if (sub === 'publish') return await listPublishInbox(env);
 
     return errorResponse(404, `no endpoint at ${pathname}`);
+  }
+
+  if (segments.length === 4 && name === 'channel-lookup' && id !== undefined) {
+    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
+
+    // The same fetch that reaches Access's keys: a test or the local harness
+    // hands one in that answers for YouTube too, and a real call has none.
+    return await lookupChannel(env, id, fetchImpl);
   }
 
   if (segments.length === 3 && name === 'members') {
