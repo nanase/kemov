@@ -10,11 +10,14 @@
  */
 
 import { AdminApiError } from './api';
-import { SAVE_TOAST } from './editing';
+import { EDITING_TEXT, SAVE_TOAST } from './editing';
 import type { PublishMark } from './publish-mark';
 
 /** What the buttons at the bottom of the edit panel do. */
 export type PublishAction = 'publish' | 'save' | 'withdraw';
+
+/** What `publishAnswerFor` answers for: the buttons above, and 削除. */
+export type AnsweredAction = PublishAction | 'delete';
 
 /**
  * The 状態 chip for one row: its status, and nothing else - every publish
@@ -88,6 +91,7 @@ export const PUBLISH_TEXT = {
   withdrawnBehind: '非公開に戻しましたが、本番から外せませんでした',
   withdrawnBehindNote: '公開中のほかの行を「保存」すると、本番からも外れます。',
   failed: '保存できません',
+  removeFailed: '削除できません',
   changedTitle: '本番は前の内容のままです',
   changedBody: '「保存」を押すと、いまの内容が本番に出ます。',
 } as const;
@@ -197,11 +201,12 @@ function statusNow(body: unknown, rowKey: string): string | null {
  */
 export function publishAnswerFor<F extends string>(
   shape: AnswerShape<F>,
-  action: PublishAction,
+  action: AnsweredAction,
   status: string | null,
   error: unknown,
 ): PublishAnswer<F> {
   if (error === null) {
+    if (action === 'delete') return { kind: 'done', toast: EDITING_TEXT.removed };
     if (action === 'publish') return { kind: 'done', toast: SAVE_TOAST.publish };
     if (action === 'withdraw') return { kind: 'done', toast: SAVE_TOAST.withdraw };
 
@@ -265,7 +270,7 @@ export function publishAnswerFor<F extends string>(
 
   return {
     kind: 'band',
-    band: { title: PUBLISH_TEXT.failed, lines: [], note: message },
+    band: { title: action === 'delete' ? PUBLISH_TEXT.removeFailed : PUBLISH_TEXT.failed, lines: [], note: message },
     fields: field === null ? [] : [field],
     changed: answered === 404 || answered === 409 || answered >= 500,
   };

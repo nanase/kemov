@@ -6,7 +6,7 @@
  */
 
 import { fieldForSaveError, type MilestoneFieldKey } from './subscriber-milestones';
-import { publishAnswerFor, type PublishAction, type PublishAnswer } from './publishing';
+import { publishAnswerFor, type AnsweredAction, type PublishAnswer } from './publishing';
 
 export interface PendingMilestoneEntry {
   milestoneId: number;
@@ -81,7 +81,7 @@ export interface MilestonesPublishResult {
 export type MilestonesAnswer = PublishAnswer<MilestoneFieldKey>;
 
 /** lib/publishing.ts's `publishAnswerFor` for a milestone: the row comes back as `milestone`. */
-export function milestonesAnswerFor(action: PublishAction, status: string | null, error: unknown): MilestonesAnswer {
+export function milestonesAnswerFor(action: AnsweredAction, status: string | null, error: unknown): MilestonesAnswer {
   return publishAnswerFor({ rowKey: 'milestone', fieldForSaveError }, action, status, error);
 }
 

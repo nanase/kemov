@@ -199,3 +199,21 @@ describe('footprintsAnswerFor', () => {
     });
   });
 });
+
+// 削除 is answered as 削除, not as a save: a 409 for a row published elsewhere
+// says so under its own heading.
+describe('footprintsAnswerFor on 削除', () => {
+  test('says it was deleted', () => {
+    expect(footprintsAnswerFor('delete', 'draft', null)).toEqual({ kind: 'done', toast: '削除しました' });
+  });
+
+  test('a refused delete is headed 削除できません, and the table is read again', () => {
+    const error = new AdminApiError(409, { error: 'a published event cannot be deleted' });
+
+    expect(footprintsAnswerFor('delete', 'draft', error)).toMatchObject({
+      kind: 'band',
+      band: { title: '削除できません', note: 'a published event cannot be deleted' },
+      changed: true,
+    });
+  });
+});

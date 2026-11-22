@@ -15,6 +15,7 @@ import {
   liveMarkFor,
   publishFootFor,
   PUBLISH_TEXT,
+  type AnsweredAction,
   type PublishAction,
   type PublishBand,
 } from '../lib/publishing';
@@ -238,7 +239,7 @@ function send(action: PublishAction): Promise<unknown> {
  * it names marked. The table is read again whenever the row may have
  * changed, a refusal that saved a draft's fields included.
  */
-async function run(action: PublishAction, request: () => Promise<unknown>, toast?: string): Promise<void> {
+async function run(action: AnsweredAction, request: () => Promise<unknown>, toast?: string): Promise<void> {
   if (locked.value) return;
 
   const status = props.milestone?.status ?? null;
@@ -311,7 +312,7 @@ async function create(): Promise<void> {
 }
 
 function remove(): Promise<void> {
-  return run('save', () => deleteJson(`/subscribers/milestones/${milestoneId.value}`), EDITING_TEXT.removed);
+  return run('delete', () => deleteJson(`/subscribers/milestones/${milestoneId.value}`));
 }
 
 /** ← 一覧 and a new milestone's やめる: what is let go here is thrown away. */

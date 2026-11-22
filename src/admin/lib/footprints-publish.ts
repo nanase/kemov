@@ -6,7 +6,7 @@
  */
 
 import { fieldForSaveError, type EventFieldKey } from './footprints';
-import { publishAnswerFor, type PublishAction, type PublishAnswer } from './publishing';
+import { publishAnswerFor, type AnsweredAction, type PublishAnswer } from './publishing';
 
 export interface PendingFootprintsEntry {
   eventId: number;
@@ -52,6 +52,6 @@ export const FOOTPRINTS_BEHIND_TEXT = '本番のあしあとが記録と食い�
 export type FootprintsAnswer = PublishAnswer<EventFieldKey>;
 
 /** lib/publishing.ts's `publishAnswerFor` for an event: the row comes back as `event`. */
-export function footprintsAnswerFor(action: PublishAction, status: string | null, error: unknown): FootprintsAnswer {
+export function footprintsAnswerFor(action: AnsweredAction, status: string | null, error: unknown): FootprintsAnswer {
   return publishAnswerFor({ rowKey: 'event', fieldForSaveError }, action, status, error);
 }

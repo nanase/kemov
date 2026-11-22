@@ -23,6 +23,7 @@ import {
   liveMarkFor,
   publishFootFor,
   PUBLISH_TEXT,
+  type AnsweredAction,
   type PublishAction,
   type PublishBand,
 } from '../lib/publishing';
@@ -169,7 +170,7 @@ function send(action: PublishAction): Promise<unknown> {
  * `changedAnyway` says got part of the way, included.
  */
 async function run(
-  action: PublishAction,
+  action: AnsweredAction,
   request: () => Promise<unknown>,
   toast?: string,
   changedAnyway: () => boolean = () => false,
@@ -239,7 +240,7 @@ async function create(): Promise<void> {
 }
 
 function remove(): Promise<void> {
-  return run('save', () => deleteJson(`/footprints/events/${eventId.value}`), EDITING_TEXT.removed);
+  return run('delete', () => deleteJson(`/footprints/events/${eventId.value}`));
 }
 
 /** 確認待ち's 承認: 「公開」, the fields as they stand. */
@@ -249,7 +250,7 @@ function approve(): Promise<void> {
 
 /** 確認待ち's 却下: the row was never published, so it is deleted outright. */
 function reject(): Promise<void> {
-  return run('save', () => deleteJson(`/footprints/events/${eventId.value}`), REJECTED_TOAST);
+  return run('delete', () => deleteJson(`/footprints/events/${eventId.value}`), REJECTED_TOAST);
 }
 
 /**
