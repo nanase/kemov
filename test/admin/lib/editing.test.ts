@@ -13,7 +13,6 @@ const EVENT: FootprintsEvent = {
   place: null,
   supplement: null,
   videoId: null,
-  sourcePending: false,
   memo: null,
   status: 'draft',
   createdAt: '2026-11-01T00:00:00Z',

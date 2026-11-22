@@ -41,8 +41,16 @@ function readOne<T>(read: () => T): PreviewReadout<T> {
   }
 }
 
-/** One あしあと event as the timeline would publish it. The memo is left out, as publishing leaves it out. */
-export function publicEventOf(fields: EventFormFields, eventId: number): PreviewReadout<FootprintEvent> {
+/**
+ * One あしあと event as the timeline would publish it. The memo is left out, as
+ * publishing leaves it out. `sourcePending` is what the judgement of its
+ * sources (source-check.ts) says, which publishing works out the same way.
+ */
+export function publicEventOf(
+  fields: EventFormFields,
+  eventId: number,
+  sourcePending: boolean,
+): PreviewReadout<FootprintEvent> {
   const body = {
     published_at: null,
     events: [
@@ -58,7 +66,7 @@ export function publicEventOf(fields: EventFormFields, eventId: number): Preview
         place: fields.place,
         supplement: fields.supplement,
         video_id: fields.videoId,
-        source_pending: fields.sourcePending,
+        source_pending: sourcePending,
         channel_ids: [...fields.channelIds].sort(),
         lead_channel_ids: [...fields.leadChannelIds].sort(),
         sources: fields.sources.map((source) => ({ url: source.url, title: source.title })),

@@ -5,14 +5,7 @@ import { publishEvent, withdrawEvent } from '../src/admin/footprints-publish';
 import { publishStream } from '../src/admin/genet-publish';
 import { createStream } from '../src/admin/genet-streams';
 import { createTune } from '../src/admin/genet-tunes';
-import {
-  confirmEventSources,
-  deferStream,
-  inboxCounts,
-  listPublishInbox,
-  listReviewInbox,
-  listSourceInbox,
-} from '../src/admin/inbox';
+import { deferStream, inboxCounts, listPublishInbox, listReviewInbox, listSourceInbox } from '../src/admin/inbox';
 import { createMilestone } from '../src/admin/subscriber-milestones';
 import { publishMilestone } from '../src/admin/subscriber-milestones-publish';
 import { clearEverything } from './reset-db';
@@ -38,7 +31,6 @@ async function createValidEvent(overrides: Record<string, unknown> = {}): Promis
     place: null,
     supplement: null,
     videoId: null,
-    sourcePending: false,
     memo: null,
     channelIds: [],
     sources: [{ url: WHITELISTED_SOURCE, title: null }],
@@ -162,63 +154,39 @@ describe('listReviewInbox', () => {
 });
 
 describe('listSourceInbox', () => {
-  test('lists every event still waiting for its sources, published or not', async () => {
-    const pendingDraft = await createValidEvent({ sourcePending: true, sources: [] });
-    const pendingPublished = await createValidEvent({ sourcePending: true, startDate: '2026-01-01' });
+  test('lists every event short of sources, published or not', async () => {
+    const noSources = await createValidEvent({ sources: [] });
+    const oneHost = await createValidEvent({
+      startDate: '2026-01-01',
+      sources: [
+        { url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa', title: null },
+        { url: 'https://youtu.be/bbbbbbbbbbb', title: null },
+      ],
+    });
 
     await createValidEvent();
-    await publish(pendingPublished);
+    await createValidEvent({
+      sources: [
+        { url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa', title: null },
+        { url: 'https://ameblo.jp/someone/entry-1', title: null },
+      ],
+    });
+    await publish(oneHost);
 
     const body = await json<{ events: { eventId: number }[] }>(listSourceInbox(env));
 
-    expect(body.events.map((e) => e.eventId)).toEqual([pendingDraft, pendingPublished]);
-  });
-});
-
-describe('confirmEventSources', () => {
-  test('clears sourcePending when a source is on the whitelist', async () => {
-    const eventId = await createValidEvent({ sourcePending: true });
-
-    const response = await confirmEventSources(env, eventId);
-
-    expect(response.status).toEqual(200);
-    expect((await json<{ event: { sourcePending: boolean } }>(response)).event.sourcePending).toEqual(false);
-
-    const stored = await env.DB.prepare('SELECT source_pending FROM footprints_event WHERE event_id = ?1')
-      .bind(eventId)
-      .first<{ source_pending: number }>();
-
-    expect(stored!.source_pending).toEqual(0);
+    expect(body.events.map((e) => e.eventId)).toEqual([noSources, oneHost]);
   });
 
-  test('refuses sources publishing would refuse, and leaves the row waiting', async () => {
-    const eventId = await createValidEvent({
-      sourcePending: true,
-      sources: [{ url: 'https://example.com/a', title: null }],
-    });
+  // The whitelist is read when the list is, so an entry added since counts at once.
+  test('judges by the whitelist as it is now', async () => {
+    await createValidEvent({ sources: [{ url: 'https://ameblo.jp/someone/entry-1', title: null }] });
 
-    const response = await confirmEventSources(env, eventId);
+    expect((await json<{ events: { eventId: number }[] }>(listSourceInbox(env))).events).toHaveLength(1);
 
-    expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({
-      errors: ['no source is in the whitelist and the sources are not on two hosts'],
-    });
+    await env.DB.prepare('INSERT INTO source_whitelist (prefix) VALUES (?1)').bind('https://ameblo.jp/someone').run();
 
-    const stored = await env.DB.prepare('SELECT source_pending FROM footprints_event WHERE event_id = ?1')
-      .bind(eventId)
-      .first<{ source_pending: number }>();
-
-    expect(stored!.source_pending).toEqual(1);
-  });
-
-  test('refuses an event with no sources', async () => {
-    const eventId = await createValidEvent({ sourcePending: true, sources: [] });
-
-    expect(await json(confirmEventSources(env, eventId))).toEqual({ errors: ['there are no sources'] });
-  });
-
-  test('answers 404 for an event that does not exist', async () => {
-    expect((await confirmEventSources(env, 1)).status).toEqual(404);
+    expect((await json<{ events: { eventId: number }[] }>(listSourceInbox(env))).events).toEqual([]);
   });
 });
 
@@ -362,7 +330,7 @@ describe('listPublishInbox', () => {
 
 describe('inboxCounts', () => {
   test('counts each screen the way its list does', async () => {
-    await createValidEvent({ sourcePending: true, sources: [] });
+    await createValidEvent({ sources: [] });
     await createValidStream('fffffffff01');
 
     const queued = await createValidEvent();

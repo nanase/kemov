@@ -3,6 +3,7 @@ import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 import { isSchemaDate, isSchemaMonth, isSchemaTimestamp, japanDateOf } from '../lib/time';
+import { sourcesEnough } from '../../../src/admin/lib/source-check';
 
 /**
  * Reading, saving and deleting `footprints_event` (#141, #140): the
@@ -47,7 +48,6 @@ export interface EventRow {
   place: string | null;
   supplement: string | null;
   video_id: string | null;
-  source_pending: number;
   status: string;
   memo: string | null;
   created_at: string;
@@ -83,7 +83,6 @@ export function present(saved: FootprintsEvent) {
     place: event.place,
     supplement: event.supplement,
     videoId: event.video_id,
-    sourcePending: event.source_pending === 1,
     status: event.status,
     memo: event.memo,
     createdAt: event.created_at,
@@ -102,8 +101,11 @@ export function present(saved: FootprintsEvent) {
  * published". Key order follows the "あしあと" example in #141's design
  * comment; `memo`, `status`, `created_via` and the timestamp columns are
  * left out, because they are not part of the public shape either.
+ *
+ * `source_pending` is not a column (#282): it says the sources are not
+ * enough by `whitelist`, judged the way the admin screen judges them.
  */
-export function publicShapeOf(saved: FootprintsEvent) {
+export function publicShapeOf(saved: FootprintsEvent, whitelist: readonly string[]) {
   const { event } = saved;
 
   return {
@@ -118,7 +120,10 @@ export function publicShapeOf(saved: FootprintsEvent) {
     place: event.place,
     supplement: event.supplement,
     video_id: event.video_id,
-    source_pending: event.source_pending === 1,
+    source_pending: !sourcesEnough(
+      saved.sources.map((source) => source.url),
+      whitelist,
+    ),
     channel_ids: [...saved.channelIds].sort(),
     lead_channel_ids: [...saved.leadChannelIds].sort(),
     sources: saved.sources.map((source) => ({ url: source.url, title: source.title })),
@@ -133,7 +138,7 @@ export function publicShapeOf(saved: FootprintsEvent) {
 export async function readEvent(env: Env, eventId: number): Promise<FootprintsEvent | null> {
   const event = await env.DB.prepare(
     `SELECT event_id, date_precision, start_date, starts_at, end_date, kind, emphasized, title, place,
-            supplement, video_id, source_pending, status, memo, created_at, updated_at
+            supplement, video_id, status, memo, created_at, updated_at
        FROM footprints_event
       WHERE event_id = ?1`,
   )
@@ -172,7 +177,7 @@ export async function readEvents(env: Env, eventIds: readonly number[]): Promise
       const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
       const { results } = await env.DB.prepare(
         `SELECT event_id, date_precision, start_date, starts_at, end_date, kind, emphasized, title, place,
-                  supplement, video_id, source_pending, status, memo, created_at, updated_at
+                  supplement, video_id, status, memo, created_at, updated_at
              FROM footprints_event
             WHERE event_id IN (${placeholders})`,
       )
@@ -363,7 +368,6 @@ export interface EventFields {
   place: string | null;
   supplement: string | null;
   videoId: string | null;
-  sourcePending: boolean;
   memo: string | null;
   channelIds: string[];
   leadChannelIds: string[];
@@ -414,14 +418,10 @@ function readEventFields(body: Record<string, unknown>): EventFields | { error: 
 
   // Checked rather than coerced (body.emphasized === true / !== false, as an
   // earlier version of this function did): a truthy non-boolean like the
-  // string "true", or sourcePending: null, would otherwise silently save as
-  // the opposite of what its own type suggests instead of failing loudly.
+  // string "true" would otherwise silently save as the opposite of what its
+  // own type suggests instead of failing loudly.
   if (body.emphasized !== undefined && typeof body.emphasized !== 'boolean') {
     return { error: 'emphasized must be a boolean' };
-  }
-
-  if (body.sourcePending !== undefined && typeof body.sourcePending !== 'boolean') {
-    return { error: 'sourcePending must be a boolean' };
   }
 
   // No CHECK and no format rule stands behind these, so a number sent for a
@@ -443,7 +443,6 @@ function readEventFields(body: Record<string, unknown>): EventFields | { error: 
     place: (body.place as string | null) ?? null,
     supplement: (body.supplement as string | null) ?? null,
     videoId: (body.videoId as string | null) ?? null,
-    sourcePending: (body.sourcePending as boolean | undefined) ?? true,
     memo: (body.memo as string | null) ?? null,
     // Deduped here, once, rather than left for memberStatements to insert
     // twice: footprints_event_member's primary key is (event_id, channel_id),
@@ -568,8 +567,8 @@ export async function createEvent(env: Env, body: Record<string, unknown>): Prom
     env.DB.prepare(
       `INSERT INTO footprints_event
          (date_precision, start_date, starts_at, end_date, kind, emphasized, title, place, supplement,
-          video_id, source_pending, status, memo)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'draft', ?12)`,
+          video_id, status, memo)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'draft', ?11)`,
     ).bind(
       fields.datePrecision,
       fields.startDate,
@@ -581,7 +580,6 @@ export async function createEvent(env: Env, body: Record<string, unknown>): Prom
       fields.place,
       fields.supplement,
       fields.videoId,
-      fields.sourcePending ? 1 : 0,
       fields.memo,
     ),
     ...memberStatementsForNewEvent(env, fields),
@@ -610,9 +608,9 @@ export function saveStatements(
     env.DB.prepare(
       `UPDATE footprints_event
           SET date_precision = ?1, start_date = ?2, starts_at = ?3, end_date = ?4, kind = ?5, emphasized = ?6,
-              title = ?7, place = ?8, supplement = ?9, video_id = ?10, source_pending = ?11, memo = ?12,
-              status = COALESCE(?13, status), updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE event_id = ?14`,
+              title = ?7, place = ?8, supplement = ?9, video_id = ?10, memo = ?11,
+              status = COALESCE(?12, status), updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE event_id = ?13`,
     ).bind(
       fields.datePrecision,
       fields.startDate,
@@ -624,7 +622,6 @@ export function saveStatements(
       fields.place,
       fields.supplement,
       fields.videoId,
-      fields.sourcePending ? 1 : 0,
       fields.memo,
       status ?? null,
       eventId,
@@ -660,7 +657,6 @@ export function withFields(
       place: fields.place,
       supplement: fields.supplement,
       video_id: fields.videoId,
-      source_pending: fields.sourcePending ? 1 : 0,
       status,
       memo: fields.memo,
     },

@@ -10,14 +10,7 @@ import { createPerson, deletePerson, getPerson, listPeople, updatePerson } from 
 import { pendingGenetMusic, publishGenetMusicNow, publishStream, withdrawStream } from './genet-publish';
 import { createStream, deleteStream, getStream, listStreams, updateStream } from './genet-streams';
 import { createTune, deleteTune, getTune, listTunes, updateTune } from './genet-tunes';
-import {
-  confirmEventSources,
-  deferStream,
-  inboxCounts,
-  listPublishInbox,
-  listReviewInbox,
-  listSourceInbox,
-} from './inbox';
+import { deferStream, inboxCounts, listPublishInbox, listReviewInbox, listSourceInbox } from './inbox';
 import { addMember, deleteMember, listMembers, saveMembers, updateMember } from './members';
 import { listPublications } from './publications';
 import { getRevision, listRevisions, readRevisionId } from './revisions';
@@ -177,7 +170,6 @@ export async function handleAdminRequest(
 
       return 'error' in body ? body.error : await withdrawEvent(env, eventId, body.value, instant);
     }
-    if (action === 'confirm-source') return await confirmEventSources(env, eventId);
 
     return errorResponse(404, `no endpoint at ${pathname}`);
   }

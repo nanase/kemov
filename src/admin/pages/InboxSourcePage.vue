@@ -5,18 +5,21 @@ import FootprintsInspector from '../components/FootprintsInspector.vue';
 import { AdminApiError, getJson } from '../lib/api';
 import { kindLabel, type FootprintsEvent, type FootprintsMember } from '../lib/footprints';
 import { footprintsMarkFor, type FootprintsPending } from '../lib/footprints-publish';
+import { readWhitelistPrefixes } from '../lib/footprints-sources';
 import { selectionAfterReload } from '../lib/inbox';
 import { confirmDiscard } from '../lib/unsaved-guard';
 
 /**
- * やること > 出典の確認待ち (#141): every あしあと row still marked so, whether
- * or not it is published. The panel is あしあと's own; its main button saves
- * the sources and clears the mark once they back the event.
+ * やること > 出典の確認待ち (#141): every あしあと row whose sources are not
+ * enough, whether or not it is published - the worker judges them as
+ * publishing does (#282). The panel is あしあと's own, buttons included. The
+ * screen goes in #285, where あしあと's 出典不足だけ takes its place.
  */
 
 const events = ref<FootprintsEvent[]>([]);
 const members = ref<FootprintsMember[]>([]);
 const pending = ref<FootprintsPending | null>(null);
+const whitelist = ref<string[] | null>(null);
 const loading = ref(false);
 const loaded = ref(false);
 const loadError = ref<string | null>(null);
@@ -83,9 +86,18 @@ function selectRow(eventId: number): void {
   detail.value = true;
 }
 
+async function loadWhitelist(): Promise<void> {
+  try {
+    whitelist.value = await readWhitelistPrefixes();
+  } catch {
+    whitelist.value = null;
+  }
+}
+
 onMounted(() => {
   load();
   loadMembers();
+  loadWhitelist();
 });
 </script>
 
@@ -161,7 +173,7 @@ onMounted(() => {
       :event="selected"
       :members="members"
       :pending="pending"
-      mode="source"
+      :whitelist="whitelist"
       :inert="loading || undefined"
       @changed="load"
       @back="detail = false"

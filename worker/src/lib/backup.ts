@@ -266,7 +266,6 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
       'place',
       'supplement',
       'video_id',
-      'source_pending',
       'status',
       'memo',
       'created_via',

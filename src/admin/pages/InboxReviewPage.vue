@@ -6,6 +6,7 @@ import GenetStreamReview from '../components/GenetStreamReview.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import { toFormFields, type FootprintsMember } from '../lib/footprints';
 import { footprintsMarkFor } from '../lib/footprints-publish';
+import { isShortOfSources, readWhitelistPrefixes, SOURCE_TEXT } from '../lib/footprints-sources';
 import {
   moveSelection,
   reviewRows,
@@ -33,6 +34,8 @@ import { confirmDiscard } from '../lib/unsaved-guard';
 
 const inbox = ref<ReviewInbox | null>(null);
 const members = ref<FootprintsMember[]>([]);
+// The 出典ホワイトリスト's prefixes, or null while they are unknown.
+const whitelist = ref<string[] | null>(null);
 const loading = ref(false);
 const loadError = ref<string | null>(null);
 const selectedKey = ref<string | null>(null);
@@ -87,6 +90,14 @@ async function load(): Promise<void> {
     loadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
     if (generation === loadGeneration) loading.value = false;
+  }
+}
+
+async function loadWhitelist(): Promise<void> {
+  try {
+    whitelist.value = await readWhitelistPrefixes();
+  } catch {
+    whitelist.value = null;
   }
 }
 
@@ -187,6 +198,7 @@ async function onKeydown(event: KeyboardEvent): Promise<void> {
 onMounted(() => {
   load();
   loadMembers();
+  loadWhitelist();
   document.addEventListener('keydown', onKeydown);
 });
 
@@ -281,7 +293,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
                 </span>
               </td>
               <td>
-                <span v-if="row.kind === 'event' && row.event.sourcePending" class="chip alarm">出典の確認待ち</span>
+                <span v-if="row.kind === 'event' && isShortOfSources(row.event, whitelist)" class="chip alarm">{{
+                  SOURCE_TEXT.shortChip
+                }}</span>
                 <span v-else-if="row.kind === 'event'" class="chip" :class="footprintsMarkFor(row.status).tone">{{
                   footprintsMarkFor(row.status).label
                 }}</span>
@@ -312,6 +326,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
         :event="selected.event"
         :members="members"
         :pending="null"
+        :whitelist="whitelist"
         mode="review"
         :inert="loading || undefined"
         @changed="load"

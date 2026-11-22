@@ -68,8 +68,7 @@ export type EventFieldKey =
   | 'sources'
   | 'channelIds'
   | 'leadChannelIds'
-  | 'emphasized'
-  | 'sourcePending';
+  | 'emphasized';
 
 // endDate before startDate: "endDate is before startDate" names both, and
 // endDate is the one actually out of range - the message's own subject.
@@ -81,7 +80,7 @@ const FIELD_MARKERS: readonly [RegExp, EventFieldKey][] = [
   [/\bkind\b/, 'kind'],
   [/\btitle\b/, 'title'],
   [/\bvideoId\b/, 'videoId'],
-  [/\bsource(s|Pending)?\b/, 'sources'],
+  [/\bsources?\b/, 'sources'],
   // Before channelIds: "every leadChannelIds entry must also be in channelIds" names both.
   [/\bleadChannelIds\b/, 'leadChannelIds'],
   [/\bchannelId(s)?\b/, 'channelIds'],
@@ -172,7 +171,6 @@ export interface FootprintsEvent {
   place: string | null;
   supplement: string | null;
   videoId: string | null;
-  sourcePending: boolean;
   status: string;
   memo: string | null;
   createdAt: string;
@@ -195,7 +193,6 @@ export interface EventFormFields {
   place: string | null;
   supplement: string | null;
   videoId: string | null;
-  sourcePending: boolean;
   memo: string | null;
   channelIds: string[];
   /** The members among `channelIds` the event is about: a debut's own member, not its guests. */
@@ -216,7 +213,6 @@ export function toFormFields(event: FootprintsEvent): EventFormFields {
     place: event.place,
     supplement: event.supplement,
     videoId: event.videoId,
-    sourcePending: event.sourcePending,
     memo: event.memo,
     channelIds: [...event.channelIds],
     leadChannelIds: [...event.leadChannelIds],
@@ -237,7 +233,6 @@ export function emptyFormFields(today: string): EventFormFields {
     place: null,
     supplement: null,
     videoId: null,
-    sourcePending: true,
     memo: null,
     channelIds: [],
     leadChannelIds: [],

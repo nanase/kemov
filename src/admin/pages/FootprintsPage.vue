@@ -13,12 +13,17 @@ import {
   type FootprintsMember,
 } from '../lib/footprints';
 import { footprintsMarkFor, type FootprintsPending } from '../lib/footprints-publish';
+import { isShortOfSources, readWhitelistPrefixes, SOURCE_TEXT } from '../lib/footprints-sources';
 import { countText } from '../lib/list-count';
 import { useListTotal } from '../lib/list-total';
 import { showToast } from '../lib/toast';
 import { confirmDiscard } from '../lib/unsaved-guard';
 
-/** あしあと (#144, task 9's own admin screen) - the table and its edit panel. */
+/**
+ * あしあと (#144, task 9's own admin screen) - the table and its edit panel.
+ * 出典不足だけ narrows the rows already read to those short of sources
+ * (#277's decision 2b), judged here against the whitelist.
+ */
 
 const events = ref<FootprintsEvent[]>([]);
 const members = ref<FootprintsMember[]>([]);
@@ -36,6 +41,10 @@ const inspectorBusy = ref(false);
 // Which published rows the public JSON has not caught up with - the edit
 // panel says so. Null when it could not be read.
 const pending = ref<FootprintsPending | null>(null);
+// The 出典ホワイトリスト's prefixes, or null while they are unknown: no row
+// is called short of sources then, and 出典不足だけ cannot be pressed.
+const whitelist = ref<string[] | null>(null);
+const shortOnly = ref(false);
 
 // `/footprints?event=<id>` is where the 公開 screen's rows lead. Read once,
 // for the first list that arrives; later loads keep whatever is selected.
@@ -43,7 +52,14 @@ const route = useRoute();
 let requestedId = typeof route.query.event === 'string' ? Number(route.query.event) : Number.NaN;
 
 const selected = computed(() => events.value.find((e) => e.eventId === selectedId.value) ?? null);
-const filtered = computed(() => status.value !== 'all' || q.value.trim() !== '');
+const shownShortOnly = computed(() => shortOnly.value && whitelist.value !== null);
+const filtered = computed(() => status.value !== 'all' || q.value.trim() !== '' || shownShortOnly.value);
+const shortCount = computed(() =>
+  whitelist.value === null ? null : events.value.filter((e) => isShortOfSources(e, whitelist.value)).length,
+);
+const shown = computed(() =>
+  shownShortOnly.value ? events.value.filter((e) => isShortOfSources(e, whitelist.value)) : events.value,
+);
 const listTotal = useListTotal(
   async () => (await getJson<{ events: FootprintsEvent[] }>('/footprints/events')).events.length,
 );
@@ -76,9 +92,9 @@ async function load(): Promise<void> {
     if (generation !== loadGeneration) return;
 
     events.value = body.events;
-    listTotal.update(events.value.length, filtered.value);
+    listTotal.update(shown.value.length, filtered.value);
 
-    if (selectedId.value !== null && !events.value.some((e) => e.eventId === selectedId.value)) {
+    if (selectedId.value !== null && !shown.value.some((e) => e.eventId === selectedId.value)) {
       selectedId.value = null;
       detail.value = false;
     }
@@ -89,10 +105,10 @@ async function load(): Promise<void> {
     // inboxTable auto-selects. This does not open the narrow layout's
     // detail view; only clicking a row does that. Not while a new event is
     // being entered there.
-    if (selectedId.value === null && !adding.value && events.value.length > 0) {
-      const requested = events.value.find((e) => e.eventId === requestedId);
+    if (selectedId.value === null && !adding.value && shown.value.length > 0) {
+      const requested = shown.value.find((e) => e.eventId === requestedId);
 
-      selectedId.value = (requested ?? events.value[0]!).eventId;
+      selectedId.value = (requested ?? shown.value[0]!).eventId;
       // Unlike the default above, a row asked for by name is opened, so a
       // narrow screen lands on its edit panel rather than on the table.
       if (requested !== undefined) detail.value = true;
@@ -164,7 +180,7 @@ function back(): void {
 
   if (adding.value) {
     adding.value = false;
-    selectedId.value = events.value[0]?.eventId ?? null;
+    selectedId.value = shown.value[0]?.eventId ?? null;
   }
 }
 
@@ -173,6 +189,17 @@ function back(): void {
 function setStatus(value: string): void {
   if (inspectorBusy.value) return;
   if (value !== status.value && confirmDiscard()) status.value = value;
+}
+
+function toggleShortOnly(): void {
+  if (inspectorBusy.value || !confirmDiscard()) return;
+
+  shortOnly.value = !shortOnly.value;
+
+  if (!adding.value && !shown.value.some((e) => e.eventId === selectedId.value)) {
+    selectedId.value = shown.value[0]?.eventId ?? null;
+    detail.value = false;
+  }
 }
 
 function setQuery(event: Event): void {
@@ -199,13 +226,21 @@ async function created(eventId: number): Promise<void> {
   // A new event is always a draft - the status or title filter can leave it
   // out of the table. Pointing the panel at it anyway would edit a row the
   // table does not show.
-  if (events.value.some((e) => e.eventId === eventId)) {
+  if (shown.value.some((e) => e.eventId === eventId)) {
     openRow(eventId);
     showToast(SAVE_TOAST.saveDraft);
   } else {
-    selectedId.value = events.value[0]?.eventId ?? null;
+    selectedId.value = shown.value[0]?.eventId ?? null;
     detail.value = false;
     showToast(`${SAVE_TOAST.saveDraft}（いまの絞り込みには出ません）`);
+  }
+}
+
+async function loadWhitelist(): Promise<void> {
+  try {
+    whitelist.value = await readWhitelistPrefixes();
+  } catch {
+    whitelist.value = null;
   }
 }
 
@@ -224,6 +259,7 @@ onMounted(() => {
   load();
   loadPending();
   loadMembers();
+  loadWhitelist();
 });
 </script>
 
@@ -243,6 +279,11 @@ onMounted(() => {
             {{ opt.label }}
           </button>
         </div>
+        <div class="seg">
+          <button type="button" :aria-pressed="shownShortOnly" :disabled="whitelist === null" @click="toggleShortOnly">
+            {{ SOURCE_TEXT.shortOnly }} <span class="num">{{ shortCount ?? '' }}</span>
+          </button>
+        </div>
         <input
           :value="q"
           type="text"
@@ -252,7 +293,7 @@ onMounted(() => {
           @input="setQuery"
         />
         <span class="grow"></span>
-        <span class="sub num">{{ countText(events.length, listTotal.total.value, filtered) }}</span>
+        <span class="sub num">{{ countText(shown.length, listTotal.total.value, filtered) }}</span>
         <button class="btn" type="button" @click="startAdding">＋ 足す</button>
       </div>
       <div class="scroller">
@@ -277,7 +318,7 @@ onMounted(() => {
           </thead>
           <tbody>
             <tr
-              v-for="e in events"
+              v-for="e in shown"
               :key="e.eventId"
               :aria-selected="e.eventId === selectedId"
               tabindex="0"
@@ -306,7 +347,7 @@ onMounted(() => {
                 </span>
               </td>
               <td>
-                <span v-if="e.sourcePending" class="chip alarm">出典の確認待ち</span>
+                <span v-if="isShortOfSources(e, whitelist)" class="chip alarm">{{ SOURCE_TEXT.shortChip }}</span>
                 <span v-else class="sub">{{ e.sources.length }} 件</span>
               </td>
               <td class="num sub">{{ e.eventId }}</td>
@@ -322,6 +363,7 @@ onMounted(() => {
       :event="adding ? null : selected"
       :members="members"
       :pending="pending"
+      :whitelist="whitelist"
       :inert="loading || reloading > 0 || undefined"
       @changed="reload"
       @created="created"

@@ -27,7 +27,6 @@ function event(eventId: number, startDate: string, status = 'draft'): Footprints
     place: null,
     supplement: null,
     videoId: null,
-    sourcePending: false,
     status,
     memo: null,
     createdAt: '2026-10-01T00:00:00Z',

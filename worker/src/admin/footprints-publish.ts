@@ -1,6 +1,7 @@
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
-import { hasTwoHosts, isWhitelistedSource, readSourceWhitelist } from '../lib/source-whitelist';
+import { readSourceWhitelist } from '../lib/source-whitelist';
+import { sourcesEnough } from '../../../src/admin/lib/source-check';
 import { formatTimestamp } from '../lib/time';
 import {
   present,
@@ -46,7 +47,7 @@ const OBJECT_KEY = 'footprints/events.json';
  * stands (#277's decision 1d) - the screen does not check these again.
  */
 export interface PublishProblem {
-  field: 'title' | 'leadChannelIds' | 'sources' | 'videoId';
+  field: 'title' | 'leadChannelIds' | 'videoId';
   message: string;
 }
 
@@ -60,14 +61,11 @@ export interface PublishProblem {
  * any of them that is wrong, so nothing that can be saved fails them. What
  * is left is what only publishing asks for.
  *
- * A source is enough when it is on `whitelist`, or when the sources together
- * come from two different hosts (#175): the whitelist lists what one source
- * can vouch for alone, and a source it does not list can still be backed by
- * another on a different host. `whitelist` is read by the caller, so this
- * stays a function of what it is given.
+ * Sources are not among them (#277's decision 2): an event short of them is
+ * published all the same, and the timeline says 「出典の確認待ち」 on it.
  */
-function publishProblems(saved: FootprintsEvent, whitelist: readonly string[]): PublishProblem[] {
-  const { event, sources } = saved;
+function publishProblems(saved: FootprintsEvent): PublishProblem[] {
+  const { event } = saved;
   const problems: PublishProblem[] = [];
 
   if (event.title === '') problems.push({ field: 'title', message: '題を書いてください。' });
@@ -79,14 +77,6 @@ function publishProblems(saved: FootprintsEvent, whitelist: readonly string[]): 
     problems.push({ field: 'leadChannelIds', message: 'デビューの出来事は、主役を 1 人以上選んでください。' });
   }
 
-  if (event.source_pending === 0 && sourcesProblem(sources, whitelist) !== null) {
-    problems.push({
-      field: 'sources',
-      message:
-        '出典が足りません。「出典の確認待ち」を外すには、ホワイトリストに載った出典を 1 つ足すか、別のサイトの出典を足してください。',
-    });
-  }
-
   if (event.video_id !== null && event.video_id.length !== VIDEO_ID_LENGTH) {
     problems.push({
       field: 'videoId',
@@ -95,24 +85,6 @@ function publishProblems(saved: FootprintsEvent, whitelist: readonly string[]): 
   }
 
   return problems;
-}
-
-/**
- * Why `sources` do not back an event, or null when they do: at least one
- * source, and one of them on `whitelist` or two of them on different hosts.
- * Publishing checks it for a row that says its sources are confirmed, and
- * 「出典を確かめた」 (inbox.ts) checks it before letting a row say so.
- */
-export function sourcesProblem(sources: readonly { url: string }[], whitelist: readonly string[]): string | null {
-  const urls = sources.map((source) => source.url);
-
-  if (urls.length === 0) return 'there are no sources';
-
-  if (!urls.some((url) => isWhitelistedSource(url, whitelist)) && !hasTwoHosts(urls)) {
-    return 'no source is in the whitelist and the sources are not on two hosts';
-  }
-
-  return null;
 }
 
 /**
@@ -140,9 +112,29 @@ function currentShape(parsed: Record<string, unknown>): Record<string, unknown> 
   );
 }
 
+/**
+ * `body` with `source_pending` judged again by `whitelist` (#282). A body
+ * says how its sources were judged when it was published, and the public
+ * JSON says how they are judged now: a whitelist changed since, or a mark
+ * set by hand before the judgement replaced it, is not carried over.
+ */
+function judgedAgain(body: Record<string, unknown>, whitelist: readonly string[]): Record<string, unknown> {
+  const sources = (body.sources ?? []) as { url: string }[];
+
+  return {
+    ...body,
+    source_pending: !sourcesEnough(
+      sources.map((source) => source.url),
+      whitelist,
+    ),
+  };
+}
+
 /** `footprints/events.json`'s text for `bodies`: every event on the timeline, by date and then by id. */
-function footprintsJson(now: Date, bodies: readonly Record<string, unknown>[]): string {
-  const events = bodies.map((body) => currentShape(body) as { event_id: number; start_date: string });
+function footprintsJson(now: Date, bodies: readonly Record<string, unknown>[], whitelist: readonly string[]): string {
+  const events = bodies.map(
+    (body) => judgedAgain(currentShape(body), whitelist) as { event_id: number; start_date: string },
+  );
 
   events.sort((a, b) =>
     a.start_date === b.start_date ? a.event_id - b.event_id : a.start_date < b.start_date ? -1 : 1,
@@ -151,17 +143,26 @@ function footprintsJson(now: Date, bodies: readonly Record<string, unknown>[]): 
   return JSON.stringify({ published_at: formatTimestamp(now), events });
 }
 
-/** What publishing.ts needs to know about あしあと. */
-export const FOOTPRINTS_TARGET: PublishTarget = {
-  entity: 'footprints_event',
-  target: 'footprints',
-  objectKey: OBJECT_KEY,
-  table: 'footprints_event',
-  keyColumn: 'event_id',
-  buildJson(now: Date, latest: readonly LatestRevisionRow[], change: RevisionChange | null): string {
-    return footprintsJson(now, liveBodies(latest, change));
-  },
-};
+const TARGET = 'footprints';
+
+/**
+ * What publishing.ts needs to know about あしあと, with the whitelist every
+ * event's sources are judged by in the JSON it builds. The caller reads it
+ * once a request, so the JSON written and the JSON built again to check the
+ * write judge by the same list.
+ */
+function footprintsTarget(whitelist: readonly string[]): PublishTarget {
+  return {
+    entity: 'footprints_event',
+    target: TARGET,
+    objectKey: OBJECT_KEY,
+    table: 'footprints_event',
+    keyColumn: 'event_id',
+    buildJson(now: Date, latest: readonly LatestRevisionRow[], change: RevisionChange | null): string {
+      return footprintsJson(now, liveBodies(latest, change), whitelist);
+    },
+  };
+}
 
 /**
  * The 400 a refused publish answers: every problem, and whether the fields
@@ -230,7 +231,7 @@ async function saveAndPublish(env: Env, existing: FootprintsEvent, fields: Event
   const eventId = existing.event.event_id;
   const wasPublished = existing.event.status === 'published';
   const next = withFields(existing, fields, 'published');
-  const problems = publishProblems(next, await readSourceWhitelist(env));
+  const problems = publishProblems(next);
 
   if (problems.length > 0) {
     if (!wasPublished) await env.DB.batch(saveStatements(env, eventId, fields));
@@ -238,10 +239,11 @@ async function saveAndPublish(env: Env, existing: FootprintsEvent, fields: Event
     return refusalResponse(problems, !wasPublished);
   }
 
+  const whitelist = await readSourceWhitelist(env);
   const outcome = await publishChange(
     env,
-    FOOTPRINTS_TARGET,
-    { key: String(eventId), action: 'publish', body: publicShapeOf(next) },
+    footprintsTarget(whitelist),
+    { key: String(eventId), action: 'publish', body: publicShapeOf(next, whitelist) },
     saveStatements(env, eventId, fields, 'published'),
     now,
   );
@@ -333,7 +335,7 @@ export async function withdrawEvent(
 
   const outcome = await publishChange(
     env,
-    FOOTPRINTS_TARGET,
+    footprintsTarget(await readSourceWhitelist(env)),
     { key: String(eventId), action: 'withdraw', body: null },
     saveStatements(env, eventId, fields, 'draft'),
     now,
@@ -377,7 +379,7 @@ async function lastPublishedRevisionId(env: Env, target: string): Promise<number
  * `revision` does not, with nothing waiting to show it.
  */
 export async function pendingFootprints(env: Env): Promise<Response> {
-  const { pending, latest } = await readWaiting(env);
+  const [{ pending, latest }, whitelist] = await Promise.all([readWaiting(env), readSourceWhitelist(env)]);
 
   const { results: publishedEvents } = await env.DB.prepare(
     `SELECT event_id FROM footprints_event WHERE status = 'published' ORDER BY event_id`,
@@ -403,13 +405,17 @@ export async function pendingFootprints(env: Env): Promise<Response> {
 
     if (saved === undefined) continue;
 
-    const current = JSON.stringify(publicShapeOf(saved));
-    const publishedBody = JSON.stringify(currentShape(JSON.parse(revision.body) as Record<string, unknown>));
+    // Both judged by today's whitelist, as the JSON is: a change to the
+    // whitelist alone is not a change to the row.
+    const current = JSON.stringify(publicShapeOf(saved, whitelist));
+    const publishedBody = JSON.stringify(
+      judgedAgain(currentShape(JSON.parse(revision.body) as Record<string, unknown>), whitelist),
+    );
 
     if (current !== publishedBody) changed.push({ eventId, title: saved.event.title });
   }
 
-  return jsonResponse({ pending, changed, behind: await isBehind(env, FOOTPRINTS_TARGET.target) });
+  return jsonResponse({ pending, changed, behind: await isBehind(env, TARGET) });
 }
 
 export interface WaitingFootprintsEntry {
@@ -468,11 +474,11 @@ export async function publishFootprintsNow(env: Env, now: Date): Promise<Respons
 
   const newestRevisionId = latest.reduce((max, row) => Math.max(max, row.revision_id), 0);
 
-  if (newestRevisionId <= lastRevisionId && !(await isBehind(env, FOOTPRINTS_TARGET.target))) {
+  if (newestRevisionId <= lastRevisionId && !(await isBehind(env, TARGET))) {
     return jsonResponse({ published: false });
   }
 
-  const outcome = await republish(env, FOOTPRINTS_TARGET, now);
+  const outcome = await republish(env, footprintsTarget(await readSourceWhitelist(env)), now);
 
   if (!outcome.current) return errorResponse(502, `${OBJECT_KEY} could not be brought up to date: ${outcome.error}`);
 

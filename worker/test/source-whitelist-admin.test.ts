@@ -160,8 +160,8 @@ describe('deleteSourceWhitelist', () => {
   // and an event already published stays published either way.
   test('does not refuse a prefix an event source still matches, or touch the event', async () => {
     await env.DB.prepare(
-      `INSERT INTO footprints_event (date_precision, start_date, kind, title, source_pending, status)
-       VALUES ('day', '2026-01-01', 'other', 'イベント', 0, 'published')`,
+      `INSERT INTO footprints_event (date_precision, start_date, kind, title, status)
+       VALUES ('day', '2026-01-01', 'other', 'イベント', 'published')`,
     ).run();
     await env.DB.prepare(
       `INSERT INTO footprints_event_source (event_id, position, url) VALUES (1, 1, 'https://partner.example/a')`,
