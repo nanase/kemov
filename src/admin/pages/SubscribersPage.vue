@@ -12,9 +12,13 @@ import {
   milestonesQuery,
   type SubscriberMilestone,
 } from '../lib/subscriber-milestones';
+import { SAVE_TOAST } from '../lib/editing';
+import { countText } from '../lib/list-count';
+import { useListTotal } from '../lib/list-total';
 import { bulkPublishTargets, publishInTurn, type BulkPublishOutcome } from '../lib/subscriber-milestones-bulk';
 import { milestoneMarkFor, type MilestonesPending } from '../lib/subscriber-milestones-publish';
 import { showToast } from '../lib/toast';
+import { confirmDiscard } from '../lib/unsaved-guard';
 
 /**
  * 登録者数の節目 (#225) - the table and its edit panel, laid out as
@@ -61,6 +65,10 @@ const route = useRoute();
 let requestedId = typeof route.query.milestone === 'string' ? Number(route.query.milestone) : Number.NaN;
 
 const selected = computed(() => milestones.value.find((m) => m.milestoneId === selectedId.value) ?? null);
+const filtered = computed(() => channelId.value !== 'all' || status.value !== 'all');
+const listTotal = useListTotal(
+  async () => (await getJson<{ milestones: SubscriberMilestone[] }>('/subscribers/milestones')).milestones.length,
+);
 const linkable = computed(() => linkableEvents(events.value));
 // While a list is loading or failed to load, `milestones` is not what the
 // filters ask for, so the button acts on nothing until it is.
@@ -103,6 +111,7 @@ async function load(): Promise<void> {
     if (generation !== loadGeneration) return;
 
     milestones.value = body.milestones;
+    listTotal.update(milestones.value.length, filtered.value);
 
     if (selectedId.value !== null && !milestones.value.some((m) => m.milestoneId === selectedId.value)) {
       selectedId.value = null;
@@ -144,8 +153,23 @@ async function loadPending(): Promise<void> {
   }
 }
 
-function reload(): Promise<unknown> {
-  return Promise.all([load(), loadPending()]);
+/**
+ * reload() calls on their way. `loading` alone ends with the list, before
+ * 公開待ち is read and so before created() opens the new row over whatever
+ * was typed into the row shown meanwhile.
+ */
+const reloading = ref(0);
+
+async function reload(): Promise<void> {
+  // A save can add a row, and a delete takes one away.
+  listTotal.invalidate();
+  reloading.value += 1;
+
+  try {
+    await Promise.all([load(), loadPending()]);
+  } finally {
+    reloading.value -= 1;
+  }
 }
 
 async function loadMembers(): Promise<void> {
@@ -164,13 +188,22 @@ async function loadEvents(): Promise<void> {
   }
 }
 
+/** A row clicked in the table: asks first when the open one has changes that would be lost. */
 function selectRow(milestoneId: number): void {
+  if ((adding.value || milestoneId !== selectedId.value) && !confirmDiscard()) return;
+
+  openRow(milestoneId);
+}
+
+function openRow(milestoneId: number): void {
   adding.value = false;
   selectedId.value = milestoneId;
   detail.value = true;
 }
 
 function startAdding(): void {
+  if (!adding.value && !confirmDiscard()) return;
+
   adding.value = true;
   selectedId.value = null;
   detail.value = true;
@@ -185,19 +218,33 @@ function back(): void {
   }
 }
 
+// A filter can leave the open row out of the table, which closes its panel,
+// so changing one asks first, as selecting another row does.
+function setStatus(value: string): void {
+  if (value !== status.value && confirmDiscard()) status.value = value;
+}
+
+function setChannel(event: Event): void {
+  const select = event.target as HTMLSelectElement;
+
+  if (confirmDiscard()) channelId.value = select.value;
+  else select.value = channelId.value;
+}
+
 async function created(milestoneId: number): Promise<void> {
   adding.value = false;
+  // The panel shows another row until the reload ends, held by `reloading`.
   await reload();
 
   // The filters can leave a new row out of the table; pointing the panel at it
   // anyway would edit a row the table does not show.
   if (milestones.value.some((m) => m.milestoneId === milestoneId)) {
-    selectRow(milestoneId);
-    showToast('保存しました');
+    openRow(milestoneId);
+    showToast(SAVE_TOAST.saveDraft);
   } else {
     selectedId.value = milestones.value[0]?.milestoneId ?? null;
     detail.value = false;
-    showToast('保存しました（いまの絞り込みには出ません）');
+    showToast(`${SAVE_TOAST.saveDraft}（いまの絞り込みには出ません）`);
   }
 }
 
@@ -205,13 +252,15 @@ async function created(milestoneId: number): Promise<void> {
  * Sends each draft the table shows through 「公開待ちにする」, one at a time
  * (lib/subscriber-milestones-bulk.ts). The filters are locked meanwhile, so
  * the table stays the one the confirmation counted. The list is read again
- * afterwards, stopped or not.
+ * afterwards, stopped or not, and that puts the open panel's saved fields
+ * back - so its unsaved changes are asked about too, after the run itself is
+ * agreed to, so that declining the run keeps them.
  */
 async function publishShownDrafts(): Promise<void> {
   const targets = bulkTargets.value;
 
   if (targets.length === 0 || inspectorBusy.value) return;
-  if (!window.confirm(bulkConfirmText(targets.length)) || inspectorBusy.value) return;
+  if (!window.confirm(bulkConfirmText(targets.length)) || inspectorBusy.value || !confirmDiscard()) return;
 
   bulkOutcome.value = null;
   bulkProgress.value = { done: 0, total: targets.length };
@@ -262,7 +311,7 @@ onMounted(() => {
     <div class="pane">
       <div class="toolbar">
         <h2>登録者数の節目</h2>
-        <select v-model="channelId" aria-label="メンバーで絞る" :disabled="bulkProgress !== null">
+        <select :value="channelId" aria-label="メンバーで絞る" :disabled="bulkProgress !== null" @change="setChannel">
           <option value="all">すべてのメンバー</option>
           <option v-for="m in members" :key="m.channelId" :value="m.channelId">{{ m.name }}</option>
         </select>
@@ -273,13 +322,13 @@ onMounted(() => {
             type="button"
             :aria-pressed="status === opt.value"
             :disabled="bulkProgress !== null"
-            @click="status = opt.value"
+            @click="setStatus(opt.value)"
           >
             {{ opt.label }}
           </button>
         </div>
         <span class="grow"></span>
-        <span class="sub num">{{ milestones.length }} 件</span>
+        <span class="sub num">{{ countText(milestones.length, listTotal.total.value, filtered) }}</span>
         <button
           class="btn"
           type="button"
@@ -335,7 +384,9 @@ onMounted(() => {
         <div v-if="loadError" class="empty-note">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
-          <button class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
+          <button class="btn quiet" type="button" :disabled="loading" @click="confirmDiscard() && load()">
+            再読み込み
+          </button>
         </div>
         <table class="grid">
           <thead>
@@ -392,6 +443,7 @@ onMounted(() => {
         </div>
       </div>
     </div>
+    <!-- inert while the list is read, or read again after a save: the answer puts the open row's saved fields back, or leaves the row out of the table and closes the panel, over anything typed meanwhile. -->
     <SubscriberMilestoneInspector
       v-if="adding || selected"
       :key="adding ? 'new' : selected!.milestoneId"
@@ -402,6 +454,7 @@ onMounted(() => {
       :pending="pending"
       :bulk-running="bulkProgress !== null"
       :track-write="trackWrite"
+      :inert="loading || reloading > 0 || undefined"
       @changed="reload"
       @created="created"
       @back="back"

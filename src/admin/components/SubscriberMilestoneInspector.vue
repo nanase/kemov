@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router';
 
 import { AdminApiError, deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
+import { EDITING_TEXT, sameFields, saveToastFor } from '../lib/editing';
 import type { FootprintsEvent, FootprintsMember } from '../lib/footprints';
 import { CHANGED_NOTICE, PUBLISH_QUEUED_TOAST, waitingNoticeFor, WITHDRAW_QUEUED_TOAST } from '../lib/publish-mark';
 import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
@@ -28,7 +29,9 @@ import {
   type MilestonesPending,
 } from '../lib/subscriber-milestones-publish';
 import { showToast } from '../lib/toast';
+import { confirmDiscard, useUnsavedGuard } from '../lib/unsaved-guard';
 
+import DeleteButton from './DeleteButton.vue';
 import SplitHandle from './SplitHandle.vue';
 
 /**
@@ -76,6 +79,16 @@ const saving = ref(false);
 const locked = computed(() => saving.value || props.bulkRunning);
 const errorMessage = ref<string | null>(null);
 const errorField = ref<MilestoneFieldKey | null>(null);
+
+/** Against the saved row, or a new milestone's blank fields: anything typed into a new one is unsaved. */
+const dirty = computed(() => !sameFields(fields.value, initialFields()));
+
+useUnsavedGuard(
+  () => dirty.value,
+  () => {
+    fields.value = initialFields();
+  },
+);
 
 // A refetch hands the same row back as a new object, and the fields follow
 // what was saved. The error is left alone: a refetch can follow a failed step
@@ -177,7 +190,7 @@ function save(): Promise<void> {
 
     await putJson(`/subscribers/milestones/${milestoneId.value}`, toRequestBody(fields.value));
     emit('changed');
-    showToast('保存しました');
+    showToast(saveToastFor(props.milestone?.status ?? 'draft'));
   });
 }
 
@@ -204,8 +217,13 @@ function remove(): Promise<void> {
   return withErrorHandling(async () => {
     await deleteJson(`/subscribers/milestones/${milestoneId.value}`);
     emit('changed');
-    showToast('削除しました');
+    showToast(EDITING_TEXT.removed);
   });
+}
+
+/** ← 一覧 and a new milestone's やめる: what is let go here is thrown away. */
+function back(): void {
+  if (confirmDiscard()) emit('back');
 }
 
 useCrumbDetail(() => heading.value);
@@ -229,9 +247,12 @@ const previewEvent = computed(() => {
     <div class="inspector-head">
       <div>
         <h3>{{ heading }}</h3>
-        <div v-if="milestone" class="stack">
-          <span v-if="mark" class="chip" :class="mark.tone">{{ mark.label }}</span>
-          <span class="chip kind">{{ announcerLabel(milestone.announcedBy) }}</span>
+        <div v-if="milestone || dirty" class="stack">
+          <template v-if="milestone">
+            <span v-if="mark" class="chip" :class="mark.tone">{{ mark.label }}</span>
+            <span class="chip kind">{{ announcerLabel(milestone.announcedBy) }}</span>
+          </template>
+          <span v-if="dirty" class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
         </div>
       </div>
       <PreviewButton />
@@ -368,12 +389,10 @@ const previewEvent = computed(() => {
         >
           {{ buttons.withdrawLabel }}
         </button>
-        <button class="btn back quiet" type="button" @click="emit('back')">← 一覧</button>
+        <button class="btn back quiet" type="button" @click="back">← 一覧</button>
         <span class="grow"></span>
         <span class="foot-sep" aria-hidden="true"></span>
-        <button class="btn danger" type="button" :disabled="locked || buttons.deleteDisabled" @click="remove">
-          削除
-        </button>
+        <DeleteButton :disabled="locked || buttons.deleteDisabled" @remove="remove" />
         <!-- In the foot rather than the body, so it is in view beside the button it explains. -->
         <div v-if="buttons.deleteDisabled" class="hint delete-hint">
           公開中の節目は削除できません。先に「下書きに戻す」を押してください
@@ -381,7 +400,7 @@ const previewEvent = computed(() => {
       </template>
       <template v-else>
         <span class="grow"></span>
-        <button class="btn quiet" type="button" :disabled="saving" @click="emit('back')">やめる</button>
+        <button class="btn quiet" type="button" :disabled="saving" @click="back">やめる</button>
       </template>
     </div>
   </div>
