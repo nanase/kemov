@@ -223,6 +223,23 @@ describe('editWouldBeLost', () => {
     expect(editWouldBeLost(null, { ...toFormFields(MEMBER), ...changed }, MEMBER)).toBe(true);
   });
 
+  // The same test the other edit panels use (editing.ts's sameFields): a box
+  // typed in and erased again holds '' where the saved value is null.
+  test.each(['twitch', 'twitter', 'globalname'] as const)(
+    'is false for a saved member whose %s was typed in and erased again',
+    (key) => {
+      expect(editWouldBeLost(null, { ...toFormFields(MEMBER), [key]: '' }, { ...MEMBER, [key]: null })).toBe(false);
+    },
+  );
+
+  test('is false for a new-member form whose nullable box was typed in and erased again', () => {
+    expect(editWouldBeLost({ ...blankNewMember(), twitter: '', globalname: '' }, null, null)).toBe(false);
+  });
+
+  test('is true for a saved member whose required box was erased, which is not the same as null', () => {
+    expect(editWouldBeLost(null, { ...toFormFields(MEMBER), name: '' }, MEMBER)).toBe(true);
+  });
+
   test('looks at the new-member form first when both are there', () => {
     expect(editWouldBeLost(blankNewMember(), { ...toFormFields(MEMBER), name: 'x' }, MEMBER)).toBe(false);
   });

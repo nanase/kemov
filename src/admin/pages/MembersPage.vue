@@ -40,6 +40,8 @@ import {
 import { clearDraft, draft } from '../lib/members-draft';
 import { forgetPublicData, PREVIEW_NOTES, previewOpen } from '../lib/preview';
 import { showToast } from '../lib/toast';
+import { EDITING_TEXT } from '../lib/editing';
+import { confirmDiscard, useUnsavedGuard } from '../lib/unsaved-guard';
 
 /**
  * メンバー (#144's data screens task, #211) - #158's `GET`/`PUT
@@ -164,6 +166,28 @@ const activeName = computed(() =>
 );
 const activeEnded = computed(() => (selected.value ?? selectedAdded.value)?.activityEndDate);
 
+/**
+ * What is typed in the edit panel and not yet kept (#286): a 「メンバーを足す」
+ * form that is not blank, or a saved member's fields that differ from the saved
+ * ones. An added member's own fields are not it - they are the draft's, which
+ * the list's 未保存 already says. Not the same as `dirty`, which is the list's.
+ */
+const editDirty = computed(() => editWouldBeLost(newForm.value, fields.value, selected.value));
+
+/** What 変更を捨てる does: the panel shows what it showed before anything was typed. */
+function discardEdit(): void {
+  if (newForm.value !== null) {
+    newForm.value = blankNewMember();
+  } else if (selected.value !== null) {
+    fields.value = toFormFields(selected.value);
+  }
+
+  errorMessage.value = null;
+  errorField.value = null;
+}
+
+useUnsavedGuard(() => editDirty.value, discardEdit);
+
 watch(selected, (member) => {
   fields.value = member === null ? null : toFormFields(member);
   errorMessage.value = null;
@@ -218,6 +242,9 @@ function selectRow(channelId: string): void {
     return;
   }
 
+  // Another row replaces what the edit panel shows; unsaved typing goes only if the user says so (#286).
+  if (channelId !== selectedId.value && !confirmDiscard()) return;
+
   // What a failed save said is about the member it was shown for.
   if (channelId !== selectedId.value) {
     errorMessage.value = null;
@@ -230,10 +257,13 @@ function selectRow(channelId: string): void {
 }
 
 function back(): void {
-  detail.value = false;
+  if (confirmDiscard()) detail.value = false;
 }
 
 function addMember(): void {
+  // A form already open is replaced by a blank one, and a member's typed changes go with it.
+  if (!confirmDiscard()) return;
+
   newForm.value = blankNewMember();
   selectedId.value = null;
   errorMessage.value = null;
@@ -316,11 +346,16 @@ async function showAddedMemberError(channelId: string, message: string): Promise
   errorField.value = fieldForSaveError(message);
 }
 
-/** The button over the list: the user chose to move, so what is typed in the edit panel goes, as it does for a click on a row. */
+/**
+ * The button over the list, and a click on that row: the user chose to move,
+ * so what is typed in the edit panel goes - once they have said it may (#286).
+ * Only the move the save's 400 would have made itself is automatic and asks
+ * nothing; that one stays over the list instead (`rowError`).
+ */
 function openErrorRow(): void {
   const error = rowError.value;
 
-  if (error === null || listSaving.value) return;
+  if (error === null || listSaving.value || !confirmDiscard()) return;
 
   rowError.value = null;
 
@@ -491,7 +526,9 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
         <span class="grow"></span>
         <span class="sub num">{{ rows.length }} 人</span>
         <!-- Always there, unsaved changes or not: a 409 from 保存 says to reload, and the draft is kept across it. -->
-        <button class="btn quiet" type="button" :disabled="loading || listSaving" @click="load">再読み込み</button>
+        <button class="btn quiet" type="button" :disabled="loading || listSaving" @click="confirmDiscard() && load()">
+          再読み込み
+        </button>
         <template v-if="dirty">
           <button class="btn quiet" type="button" :disabled="listSaving" @click="discard">
             {{ MEMBER_TEXT.discard }}
@@ -593,7 +630,10 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
             <span class="chip" :class="{ published: activeEnded === null }">{{
               activeEnded === null ? '活動中' : '活動終了'
             }}</span>
-            <span v-if="selectedAdded" class="chip waiting">{{ MEMBER_TEXT.unsaved }}</span>
+            <span v-if="selectedAdded || editDirty" class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
+          </div>
+          <div v-else-if="editDirty" class="stack">
+            <span class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
           </div>
         </div>
         <PreviewButton />
