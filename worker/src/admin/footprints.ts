@@ -424,6 +424,14 @@ function readEventFields(body: Record<string, unknown>): EventFields | { error: 
     return { error: 'sourcePending must be a boolean' };
   }
 
+  // No CHECK and no format rule stands behind these, so a number sent for a
+  // title would otherwise be saved, and published, as it was sent.
+  for (const field of ['title', 'place', 'supplement', 'memo'] as const) {
+    if (body[field] !== undefined && body[field] !== null && typeof body[field] !== 'string') {
+      return { error: `${field} must be a string or null` };
+    }
+  }
+
   return {
     datePrecision: (body.datePrecision as string) ?? null,
     startDate: (body.startDate as string) ?? null,

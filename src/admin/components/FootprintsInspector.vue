@@ -303,7 +303,8 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
     </div>
 
     <div class="inspector-main" :class="{ 'with-preview': previewOpen }">
-      <div class="inspector-body">
+      <!-- inert while a request is on its way: it already carries the fields as they were, and its answer opens the saved row or puts the saved fields back over anything typed meanwhile. -->
+      <div class="inspector-body" :inert="saving || undefined">
         <div v-if="band" class="panel flag" role="alert">
           <h4>{{ band.title }}</h4>
           <ul v-if="band.lines.length > 0" class="reasons">
