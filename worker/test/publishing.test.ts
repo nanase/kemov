@@ -498,6 +498,81 @@ describe('publishChange when its batch fails', () => {
   });
 });
 
+describe('isBehind when writes land out of order', () => {
+  // A 「いま公開する」 starts its write, a withdraw starts, lands, checks and
+  // clears its own after it, and only then does the older write land - with
+  // the withdrawn event in it - and its own check cannot read `revision`.
+  test('stays true for an older write that lands after a newer one was checked', async () => {
+    const eventId = await insertEvent('一');
+
+    await publishChange(env, TARGET, publishOf(eventId), [], NOW);
+
+    const held = stop();
+    let released = false;
+    const late: Env = {
+      ...env,
+      PUBLIC_DATA: withBucket({
+        put: async (key: string, value: string, options?: R2PutOptions) => {
+          held.reach();
+          await held.released;
+          released = true;
+
+          return await env.PUBLIC_DATA.put(key, value, options);
+        },
+      }).PUBLIC_DATA,
+      DB: new Proxy(env.DB, {
+        get(target, property) {
+          if (property === 'prepare') {
+            return (sql: string) => {
+              if (released && sql.includes('FROM revision r')) throw new Error('D1 is down');
+
+              return target.prepare(sql);
+            };
+          }
+
+          const value = Reflect.get(target, property) as unknown;
+
+          return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+        },
+      }),
+    };
+
+    const stale = republish(late, TARGET, NOW);
+
+    await held.reached;
+    expect(
+      (await publishChange(env, TARGET, { key: String(eventId), action: 'withdraw', body: null }, [], NOW)).written,
+    ).toBe(true);
+    expect(await publishedEvents()).toEqual([]);
+
+    held.release();
+
+    expect((await stale).current).toBe(false);
+    expect(await publishedEvents()).toEqual([eventId]);
+    expect(await isBehind(env, TARGET.target)).toBe(true);
+
+    // 「いま公開する」 pressed again builds it from `revision`, and clears the
+    // older write too: R2 had answered it before this check looked.
+    expect((await republish(env, TARGET, NOW)).current).toBe(true);
+    expect(await publishedEvents()).toEqual([]);
+    expect(await isBehind(env, TARGET.target)).toBe(false);
+  });
+
+  // A request that ended without clearing its row - its write long landed or
+  // failed - is cleared by the next check that passes.
+  test('clears a row left long enough ago by any check that passes', async () => {
+    await env.DB.prepare(
+      "INSERT INTO publication_write (target, started_at) VALUES ('footprints', strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-1 hour'))",
+    ).run();
+
+    expect(await isBehind(env, TARGET.target)).toBe(true);
+
+    await publishChange(env, TARGET, publishOf(await insertEvent('一')), [], NOW);
+
+    expect(await isBehind(env, TARGET.target)).toBe(false);
+  });
+});
+
 describe('isBehind', () => {
   test('is false before anything was written, and after a write checked up to date', async () => {
     expect(await isBehind(env, TARGET.target)).toBe(false);
@@ -515,32 +590,47 @@ describe('isBehind', () => {
     expect(await isBehind(env, TARGET.target)).toBe(true);
   });
 
-  // The first request's own check passes, but a write was counted after its
-  // own and R2 failed to answer it: R2 may have taken it all the same, and
-  // only a check of that write could say otherwise.
-  test('stays true when a write counted after this one was never checked', async () => {
+  // The first request's own check passes while another's write is still on
+  // its way to R2: it may land after that check, so only a later check can
+  // clear it.
+  test('stays true while another write is still on its way when a check passes', async () => {
     const first = await insertEvent('一');
     const second = await insertEvent('二');
     const held = stop();
-    const holding = withBatch((async (statements: D1PreparedStatement[]) => {
-      held.reach();
-      await held.released;
+    const holding = withBucket({
+      put: async (key: string, value: string, options?: R2PutOptions) => {
+        held.reach();
+        await held.released;
 
-      return await env.DB.batch(statements);
-    }) as D1Database['batch']);
+        return await env.PUBLIC_DATA.put(key, value, options);
+      },
+    });
 
-    const firstOutcome = publishChange(holding, TARGET, publishOf(first), [], NOW);
+    const secondOutcome = publishChange(holding, TARGET, publishOf(second), [], NOW);
 
     await held.reached;
-    expect(await publishChange(R2_DOWN, TARGET, publishOf(second), [], NOW)).toMatchObject({
-      written: false,
-      recorded: false,
-    });
+    expect((await publishChange(env, TARGET, publishOf(first), [], NOW)).written).toBe(true);
+    expect(await isBehind(env, TARGET.target)).toBe(true);
 
     held.release();
 
-    expect((await firstOutcome).written).toBe(true);
+    expect((await secondOutcome).written).toBe(true);
+    expect(await publishedEvents()).toEqual([first, second]);
+    expect(await isBehind(env, TARGET.target)).toBe(false);
+  });
+
+  // R2 failed to answer it, so it may have been taken - but it is no longer on
+  // its way, and a check that looks at R2 after that sees what it left.
+  test('is cleared by a later passing check for a write R2 failed to answer', async () => {
+    expect(await publishChange(R2_DOWN, TARGET, publishOf(await insertEvent('一')), [], NOW)).toMatchObject({
+      written: false,
+      recorded: false,
+    });
     expect(await isBehind(env, TARGET.target)).toBe(true);
+
+    await publishChange(env, TARGET, publishOf(await insertEvent('二')), [], NOW);
+
+    expect(await isBehind(env, TARGET.target)).toBe(false);
   });
 });
 

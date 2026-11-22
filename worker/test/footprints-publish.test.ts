@@ -739,7 +739,7 @@ describe('publishFootprintsNow', () => {
     const eventId = await createPublishedEvent({ title: '外す' });
 
     expect((await withdrawEvent(env, eventId, validBody(), LATER)).status).toEqual(200);
-    await env.DB.prepare("UPDATE publication_write SET started = started + 1 WHERE target = 'footprints'").run();
+    await env.DB.prepare("INSERT INTO publication_write (target, finished) VALUES ('footprints', 1)").run();
     await env.PUBLIC_DATA.put(OBJECT_KEY, JSON.stringify({ published_at: 'stale', events: [{ event_id: eventId }] }));
 
     const pendingBefore = (await (await pendingFootprints(env)).json()) as { pending: unknown[]; behind: boolean };

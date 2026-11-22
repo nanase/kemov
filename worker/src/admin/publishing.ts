@@ -41,14 +41,23 @@ import type { RevisionEntity } from '../lib/revision';
  *
  * What no check in the request can mend - a write it could not bring up to
  * date, or a batch that failed after the JSON was written and could not be
- * built again - is left counted in `publication_write` (migration 0014):
- * every write is counted there before it is sent, and only a write checked
- * up to date marks the count as confirmed. `isBehind` reads it, and the 公開
- * screen offers 「いま公開する」 while it says so.
+ * built again - is left in `publication_write` (migration 0014): a row is
+ * added there before each write is sent, and taken away by a check that
+ * passed after it - the request's own, or another's once R2 had answered
+ * the write. `isBehind` reads it, and the 公開 screen offers 「いま公開する」
+ * while it says so.
  */
 
 /** How many times the JSON is built again after the batch, before the request says it may be behind. */
 export const REBUILD_LIMIT = 3;
+
+/**
+ * How old a `publication_write` row that never finished is before any
+ * request's passing check clears it: no write is still on its way to R2
+ * that long after it started, so its request ended before R2 answered it,
+ * and a check that passed after that has seen whatever it left.
+ */
+export const ABANDONED_WRITE_MINUTES = 10;
 
 export interface PublishTarget {
   entity: RevisionEntity;
@@ -144,66 +153,90 @@ function newestRevisionId(latest: readonly LatestRevisionRow[]): number {
 }
 
 /**
- * Counts one more write of `target`'s JSON in `publication_write`, and
- * answers the count it is - before the write is sent, so the JSON is never
- * written without D1 knowing that it may now be behind.
+ * Adds the `publication_write` row for one write of `target`'s JSON, and
+ * answers its id - before the write is sent, so the JSON is never written
+ * without D1 knowing that it may now be behind.
  */
-async function countWrite(env: Env, target: PublishTarget): Promise<number> {
-  const row = await env.DB.prepare(
-    `INSERT INTO publication_write (target, started) VALUES (?1, 1)
-     ON CONFLICT (target) DO UPDATE SET started = started + 1
-     RETURNING started`,
-  )
+async function startWrite(env: Env, target: PublishTarget): Promise<number> {
+  const row = await env.DB.prepare('INSERT INTO publication_write (target) VALUES (?1) RETURNING write_id')
     .bind(target.target)
-    .first<{ started: number }>();
+    .first<{ write_id: number }>();
 
-  return row!.started;
+  return row!.write_id;
 }
 
 /**
- * Says the write counted as `ticket` was checked up to date - only while it
- * is still the newest write counted, as a later one may have written over
- * it. A failure here is not answered: the count stays unconfirmed, and the
- * 公開 screen offers to build the JSON again, which costs nothing.
+ * Takes away the rows of `writeIds` - this request's own writes, and the
+ * writes R2 had answered before its check looked at R2 - and every row of
+ * `target` older than `ABANDONED_WRITE_MINUTES`. Another request's write
+ * still on its way stays: it may land after this check, and only a check
+ * after it can say it did no harm. A failure here is not answered: the rows
+ * stay, and the 公開 screen offers to build the JSON again, which costs
+ * nothing.
  */
-async function confirmWrite(env: Env, target: PublishTarget, ticket: number): Promise<void> {
+async function clearWrites(env: Env, target: PublishTarget, writeIds: readonly number[]): Promise<void> {
   try {
-    await env.DB.prepare('UPDATE publication_write SET confirmed = ?2 WHERE target = ?1 AND started = ?2')
-      .bind(target.target, ticket)
+    await env.DB.prepare(
+      `DELETE FROM publication_write
+        WHERE target = ?1
+          AND (write_id IN (SELECT value FROM json_each(?2))
+               OR started_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?3))`,
+    )
+      .bind(target.target, JSON.stringify(writeIds), `-${ABANDONED_WRITE_MINUTES} minutes`)
       .run();
   } catch {
-    // Left unconfirmed; see above.
+    // Left in place; see above.
   }
 }
 
-/** Whether a write of `target`'s JSON was sent that no check has found up to date since. */
+/** Whether a write of `target`'s JSON was sent that its own check has not found up to date. */
 export async function isBehind(env: Env, target: string): Promise<boolean> {
-  const row = await env.DB.prepare('SELECT started > confirmed AS behind FROM publication_write WHERE target = ?1')
-    .bind(target)
-    .first<{ behind: number }>();
+  const row = await env.DB.prepare('SELECT 1 FROM publication_write WHERE target = ?1 LIMIT 1').bind(target).first();
 
-  return row !== null && row.behind === 1;
-}
-
-/** Writes `json` to `target`'s object, and answers the version R2 gave this write. */
-async function putObject(env: Env, target: PublishTarget, json: string): Promise<string> {
-  const put = await env.PUBLIC_DATA.put(target.objectKey, json, {
-    httpMetadata: { contentType: 'application/json; charset=UTF-8' },
-  });
-
-  return put.version;
+  return row !== null;
 }
 
 /**
- * Counts the write, then writes `json` to `target`'s object, and answers the
- * version R2 gave it with the count. A failure to count is thrown before
- * anything is sent; a failure of R2 is thrown with the count left
- * unconfirmed, since R2 may have taken a write it then failed to answer.
+ * Writes `json` to `target`'s object, and answers the version R2 gave this
+ * write. Once R2 has answered, either way, the write's row is marked
+ * finished: a write R2 failed may still have been taken, but it is no longer
+ * on its way, so a check that looks at R2 after this sees what it left.
  */
-async function putJson(env: Env, target: PublishTarget, json: string): Promise<{ version: string; ticket: number }> {
-  const ticket = await countWrite(env, target);
+async function putObject(env: Env, target: PublishTarget, json: string, writeId: number): Promise<string> {
+  try {
+    const put = await env.PUBLIC_DATA.put(target.objectKey, json, {
+      httpMetadata: { contentType: 'application/json; charset=UTF-8' },
+    });
 
-  return { version: await putObject(env, target, json), ticket };
+    return put.version;
+  } finally {
+    await env.DB.prepare('UPDATE publication_write SET finished = 1 WHERE write_id = ?1')
+      .bind(writeId)
+      .run()
+      // Left unfinished, it is cleared once it is old enough.
+      .catch(() => null);
+  }
+}
+
+/** The rows of `target`'s writes that R2 has answered. */
+async function finishedWrites(env: Env, target: PublishTarget): Promise<number[]> {
+  const { results } = await env.DB.prepare('SELECT write_id FROM publication_write WHERE target = ?1 AND finished = 1')
+    .bind(target.target)
+    .all<{ write_id: number }>();
+
+  return results.map((row) => row.write_id);
+}
+
+/**
+ * Adds the write's row, then writes `json` to `target`'s object, and answers
+ * the version R2 gave it with the row's id. A failure to add the row is
+ * thrown before anything is sent; a failure of R2 is thrown with the row
+ * left in place, since R2 may have taken a write it then failed to answer.
+ */
+async function putJson(env: Env, target: PublishTarget, json: string): Promise<{ version: string; writeId: number }> {
+  const writeId = await startWrite(env, target);
+
+  return { version: await putObject(env, target, json, writeId), writeId };
 }
 
 /**
@@ -215,8 +248,8 @@ interface Written {
   builtFrom: number;
   own: { key: string; revisionId: number } | null;
   version: string;
-  /** Its count in `publication_write`. */
-  ticket: number;
+  /** The `publication_write` rows of every write this request has sent. */
+  writeIds: readonly number[];
   byteLength: number;
 }
 
@@ -229,11 +262,15 @@ function hasNewer(latest: readonly LatestRevisionRow[], written: Written): boole
   );
 }
 
-/** A JSON found up to date: the revisions it was last checked against, and what was written. */
+/**
+ * A JSON found up to date: the revisions it was last checked against, what
+ * was written, and the writes R2 had answered before the check looked at it.
+ */
 interface UpToDate {
   current: true;
   latest: readonly LatestRevisionRow[];
   written: Written;
+  finishedBefore: readonly number[];
 }
 
 /**
@@ -269,15 +306,19 @@ async function bringUpToDate(
     }
 
     if (checkable && !hasNewer(latest, written)) {
+      let finishedBefore: number[];
       let head: R2Object | null;
 
+      // Read before R2 is looked at: a write answered after that may have
+      // landed after the JSON the check finds.
       try {
+        finishedBefore = await finishedWrites(env, target);
         head = await env.PUBLIC_DATA.head(target.objectKey);
       } catch (error) {
         return { current: false, error: String(error) };
       }
 
-      if (head?.version === written.version) return { current: true, latest, written };
+      if (head?.version === written.version) return { current: true, latest, written, finishedBefore };
     }
 
     if (rebuilds === REBUILD_LIMIT) {
@@ -287,10 +328,13 @@ async function bringUpToDate(
     const json = target.buildJson(now, latest, null);
 
     try {
+      const put = await putJson(env, target, json);
+
       written = {
         builtFrom: newestRevisionId(latest),
         own: null,
-        ...(await putJson(env, target, json)),
+        version: put.version,
+        writeIds: [...written.writeIds, put.writeId],
         byteLength: byteLength(json),
       };
     } catch (error) {
@@ -312,8 +356,8 @@ async function bringUpToDate(
  * the JSON cannot be written to R2. A failure to read what the JSON is built
  * from, or to count the write, is thrown before anything is written, as any
  * D1 failure is. So is a failure of the batch, once the JSON was built again
- * from `revision` - which the failed batch left as it was - or left counted
- * as behind when that could not be done either.
+ * from `revision` - which the failed batch left as it was - or left in
+ * `publication_write` when that could not be done either.
  *
  * The revision is logged only while the row is still there, as
  * `revisionStatement` (lib/revision.ts) cannot say: a row deleted between the
@@ -329,16 +373,16 @@ export async function publishChange(
 ): Promise<PublishOutcome> {
   const before = await latestRevisions(env, target.entity);
   const json = target.buildJson(now, before, change);
-  const ticket = await countWrite(env, target);
+  const writeId = await startWrite(env, target);
   let version: string;
 
   try {
-    version = await putObject(env, target, json);
+    version = await putObject(env, target, json, writeId);
   } catch (error) {
     return { written: false, recorded: false, error: String(error) };
   }
 
-  const first = { builtFrom: newestRevisionId(before), version, ticket, byteLength: byteLength(json) };
+  const first = { builtFrom: newestRevisionId(before), version, writeIds: [writeId], byteLength: byteLength(json) };
   let results: D1Result[];
 
   try {
@@ -352,7 +396,7 @@ export async function publishChange(
     ]);
   } catch (error) {
     // The JSON has a change nothing recorded: built again from `revision`,
-    // or left counted as behind for the 公開 screen when that fails too.
+    // or left in `publication_write` for the 公開 screen when that fails too.
     const repaired = await bringUpToDate(env, target, now, { ...first, own: null }, false);
 
     if (repaired.current) await settle(env, target, repaired).catch(() => null);
@@ -381,9 +425,9 @@ export async function publishChange(
   };
 }
 
-/** What follows a JSON found up to date: its write confirmed, and its `publication` row. Answers the row's id. */
+/** What follows a JSON found up to date: this request's writes cleared, and its `publication` row. Answers the row's id. */
 async function settle(env: Env, target: PublishTarget, upToDate: UpToDate): Promise<number | null> {
-  await confirmWrite(env, target, upToDate.written.ticket);
+  await clearWrites(env, target, [...upToDate.written.writeIds, ...upToDate.finishedBefore]);
 
   return await recordPublication(env, target, upToDate);
 }
@@ -442,7 +486,13 @@ export async function republish(
     env,
     target,
     now,
-    { builtFrom: newestRevisionId(before), own: null, ...put, byteLength: byteLength(json) },
+    {
+      builtFrom: newestRevisionId(before),
+      own: null,
+      version: put.version,
+      writeIds: [put.writeId],
+      byteLength: byteLength(json),
+    },
     true,
   );
 
