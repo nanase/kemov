@@ -41,7 +41,7 @@ describe('publishInTurn', () => {
 
     const outcome = await publishInTurn(
       [milestone(3, 'draft'), milestone(2, 'draft')],
-      async (id) => {
+      async ({ milestoneId: id }) => {
         calls.push(id);
       },
       (done) => progress.push(done),
@@ -57,7 +57,7 @@ describe('publishInTurn', () => {
     const started: number[] = [];
     const answers: (() => void)[] = [];
 
-    const running = publishInTurn([milestone(1, 'draft'), milestone(2, 'draft')], (id) => {
+    const running = publishInTurn([milestone(1, 'draft'), milestone(2, 'draft')], ({ milestoneId: id }) => {
       started.push(id);
 
       return new Promise<void>((resolve) => answers.push(resolve));
@@ -76,9 +76,12 @@ describe('publishInTurn', () => {
   test('skips a row the check refuses (400) and goes on', async () => {
     const refused = milestone(2, 'draft');
 
-    const outcome = await publishInTurn([milestone(1, 'draft'), refused, milestone(3, 'draft')], async (id) => {
-      if (id === 2) throw REFUSED;
-    });
+    const outcome = await publishInTurn(
+      [milestone(1, 'draft'), refused, milestone(3, 'draft')],
+      async ({ milestoneId: id }) => {
+        if (id === 2) throw REFUSED;
+      },
+    );
 
     expect(outcome).toEqual({
       total: 3,
@@ -99,7 +102,7 @@ describe('publishInTurn', () => {
 
     const outcome = await publishInTurn(
       [milestone(1, 'draft'), milestone(2, 'draft'), failed, milestone(4, 'draft')],
-      async (id) => {
+      async ({ milestoneId: id }) => {
         calls.push(id);
         if (id === 2) throw REFUSED;
         if (id === 3) throw error;
@@ -117,7 +120,7 @@ describe('publishInTurn', () => {
   // A 404 (the row was deleted since the list was read) is not a refused
   // check: the list the run started from is no longer the database's.
   test('stops at any other 4xx too', async () => {
-    const outcome = await publishInTurn([milestone(1, 'draft'), milestone(2, 'draft')], async (id) => {
+    const outcome = await publishInTurn([milestone(1, 'draft'), milestone(2, 'draft')], async ({ milestoneId: id }) => {
       if (id === 1) throw new AdminApiError(404, { error: 'no subscriber milestone 1' });
     });
 

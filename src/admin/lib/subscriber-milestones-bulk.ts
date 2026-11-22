@@ -1,9 +1,9 @@
 /**
- * まとめて公開待ちにする on the 登録者数の節目 screen (#237). There is no bulk
+ * まとめて公開する on the 登録者数の節目 screen (#237, #283). There is no bulk
  * endpoint: each row goes through the same `POST .../:milestoneId/publish`
- * as the edit panel's own button, so every row gets the worker's source
- * check and its own `publish` revision exactly as if it had been pressed by
- * hand.
+ * as the edit panel's own 「公開」, with the fields it was saved with, so
+ * every row gets the worker's source check, its own `publish` revision and
+ * the public JSON written, exactly as if it had been pressed by hand.
  */
 
 import { AdminApiError } from './api';
@@ -37,20 +37,21 @@ export function bulkPublishTargets(shown: readonly SubscriberMilestone[]): Subsc
 /**
  * Publishes `targets` one at a time, each request waiting for the one before.
  * A 400 is the check refusing that row, so the row is skipped and the run
- * goes on. Anything else - the network, a 5xx, a 404 for a row deleted since
- * the list was read - stops the run there: the rows after it are not tried.
+ * goes on. Anything else - the network, a 5xx (the public JSON could not be
+ * written among them), a 404 for a row deleted since the list was read -
+ * stops the run there: the rows after it are not tried.
  * `onProgress` is told how many rows have been answered, stopped row aside.
  */
 export async function publishInTurn(
   targets: readonly SubscriberMilestone[],
-  publish: (milestoneId: number) => Promise<unknown>,
+  publish: (milestone: SubscriberMilestone) => Promise<unknown>,
   onProgress?: (done: number) => void,
 ): Promise<BulkPublishOutcome> {
   const outcome: BulkPublishOutcome = { total: targets.length, published: 0, skipped: [], stopped: null };
 
   for (const milestone of targets) {
     try {
-      await publish(milestone.milestoneId);
+      await publish(milestone);
       outcome.published++;
     } catch (error) {
       if (!(error instanceof AdminApiError) || error.status !== 400) {

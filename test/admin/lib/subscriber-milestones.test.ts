@@ -7,7 +7,6 @@ import {
   fieldForSaveError,
   formatCount,
   linkableEvents,
-  milestoneButtonsFor,
   milestonesQuery,
   milestoneTitle,
   toFormFields,
@@ -139,28 +138,6 @@ describe('fieldForSaveError', () => {
 
   test('is null for a message about no field', () => {
     expect(fieldForSaveError('withdraw this milestone before deleting it')).toBeNull();
-  });
-});
-
-// The worker refuses to delete a published milestone (409), so the button is
-// disabled until it is withdrawn.
-describe('milestoneButtonsFor', () => {
-  test('a draft can be sent to 公開待ち and deleted', () => {
-    expect(milestoneButtonsFor('draft', null)).toEqual({
-      publishLabel: '公開待ちにする',
-      withdrawLabel: null,
-      deleteDisabled: false,
-    });
-  });
-
-  test('a published row can be withdrawn, not deleted, and is sent to 公開待ち again only once it changed', () => {
-    expect(milestoneButtonsFor('published', false)).toEqual({
-      publishLabel: null,
-      withdrawLabel: '下書きに戻す',
-      deleteDisabled: true,
-    });
-    expect(milestoneButtonsFor('published', true).publishLabel).toEqual('公開待ちにする');
-    expect(milestoneButtonsFor('published', null).publishLabel).toEqual('公開待ちにする');
   });
 });
 

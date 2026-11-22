@@ -1,7 +1,6 @@
 import {
   emptyFormFields,
   fieldForSaveError,
-  footprintsFootFor,
   footprintsQuery,
   kindLabel,
   KINDS,
@@ -165,39 +164,6 @@ describe('emptyFormFields', () => {
       channelIds: [],
       leadChannelIds: [],
       sources: [],
-    });
-  });
-});
-
-describe('footprintsFootFor', () => {
-  // #277's decision 1a: 公開 is the primary button of a draft.
-  test('a draft offers 公開 first and 保存, with 削除 enabled', () => {
-    expect(footprintsFootFor('draft')).toEqual({
-      actions: [
-        { action: 'publish', label: '公開' },
-        { action: 'save', label: '保存' },
-      ],
-      note: null,
-      deleteDisabled: false,
-      deleteReason: null,
-    });
-  });
-
-  // A row left `review` by a database the migration has not reached yet is still a draft.
-  test('anything not published is offered what a draft is', () => {
-    expect(footprintsFootFor('review')).toEqual(footprintsFootFor('draft'));
-  });
-
-  // 1a and 6-9: the save reaches the public site, and 削除 says why it cannot be pressed.
-  test('a published event offers 保存 first and 非公開に戻す, with 削除 disabled and why', () => {
-    expect(footprintsFootFor('published')).toEqual({
-      actions: [
-        { action: 'save', label: '保存' },
-        { action: 'withdraw', label: '非公開に戻す' },
-      ],
-      note: '保存すると、すぐ本番に出ます',
-      deleteDisabled: true,
-      deleteReason: '公開中は削除できません。先に「非公開に戻す」を押してください。',
     });
   });
 });

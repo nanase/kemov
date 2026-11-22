@@ -3,13 +3,11 @@ import { computed, defineAsyncComponent, ref, watch } from 'vue';
 
 import {
   emptyFormFields,
-  footprintsFootFor,
   kindLabel,
   KINDS,
   toFormFields,
   type EventFieldKey,
   type EventFormFields,
-  type FootAction,
   type FootprintsEvent,
   type FootprintsMember,
 } from '../lib/footprints';
@@ -17,17 +15,17 @@ import { deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
 import { EDITING_TEXT, sameFields } from '../lib/editing';
 import { REJECTED_TOAST } from '../lib/inbox';
+import { footprintsAnswerFor, isChangedSincePublish, type FootprintsPending } from '../lib/footprints-publish';
 import {
   BAND_NOTE_ID,
   bandReasonId,
   bandReasonIds,
-  footprintsAnswerFor,
-  footprintsMarkFor,
-  isChangedSincePublish,
+  liveMarkFor,
+  publishFootFor,
   PUBLISH_TEXT,
-  type FootprintsPending,
+  type PublishAction,
   type PublishBand,
-} from '../lib/footprints-publish';
+} from '../lib/publishing';
 import { refreshPublishBadge } from '../lib/publish-badge';
 import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
 import { todayJst } from '../lib/snapshots';
@@ -108,8 +106,8 @@ const eventId = computed(() => props.event?.eventId ?? null);
 const changedSincePublish = computed(
   () => props.event?.status === 'published' && isChangedSincePublish(props.pending, props.event.eventId),
 );
-const mark = computed(() => (props.event === null ? null : footprintsMarkFor(props.event.status)));
-const foot = computed(() => footprintsFootFor(props.event?.status ?? 'draft'));
+const mark = computed(() => (props.event === null ? null : liveMarkFor(props.event.status)));
+const foot = computed(() => publishFootFor(props.event?.status ?? 'draft'));
 const selectedMembers = computed(() =>
   fields.value.channelIds.map((channelId) => ({
     channelId,
@@ -155,7 +153,7 @@ function removeSource(index: number): void {
 }
 
 /** The request behind each button. Each sends the fields as they stand; the worker saves them in the same request. */
-function send(action: FootAction): Promise<unknown> {
+function send(action: PublishAction): Promise<unknown> {
   const path = `/footprints/events/${eventId.value}`;
 
   if (action === 'save') return putJson(path, fields.value);
@@ -171,7 +169,7 @@ function send(action: FootAction): Promise<unknown> {
  * `changedAnyway` says got part of the way, included.
  */
 async function run(
-  action: FootAction,
+  action: PublishAction,
   request: () => Promise<unknown>,
   toast?: string,
   changedAnyway: () => boolean = () => false,
@@ -212,7 +210,7 @@ async function run(
   }
 }
 
-function act(action: FootAction): Promise<void> {
+function act(action: PublishAction): Promise<void> {
   return run(action, () => send(action));
 }
 
