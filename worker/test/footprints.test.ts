@@ -130,6 +130,30 @@ describe('createEvent', () => {
     expect(response.status).toEqual(400);
   });
 
+  test.each([
+    ['title', 123],
+    ['place', true],
+    ['supplement', { text: 'a' }],
+    ['memo', ['a']],
+  ])('refuses a %s that is not a string, without creating anything', async (key, value) => {
+    const response = await createEvent(env, validBody({ [key]: value }));
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ error: `${key} must be a string or null` });
+    expect((await listEvents(env, null, null).then((r) => r.json())) as { events: unknown[] }).toEqual({ events: [] });
+  });
+
+  test('accepts null for title, place, supplement and memo, and saves an empty title', async () => {
+    const response = await createEvent(env, validBody({ title: null, place: null, supplement: null, memo: null }));
+
+    expect(response.status).toEqual(201);
+
+    const body = (await response.json()) as { event: { title: string; place: string | null } };
+
+    expect(body.event.title).toEqual('');
+    expect(body.event.place).toBeNull();
+  });
+
   test('emphasized defaults to false and sourcePending defaults to true when left out', async () => {
     const body = validBody();
 

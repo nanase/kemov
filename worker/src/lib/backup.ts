@@ -141,14 +141,19 @@ export interface TableShape {
 }
 
 /**
- * The tables the backup carries, and why `collect_task` and `chat_author` are
- * absent.
+ * The tables the backup carries, and why `collect_task`, `chat_author` and
+ * `publication_write` are absent.
  *
- * Those two hold where collection has got to, not what it found. Both
+ * The first two hold where collection has got to, not what it found. Both
  * rebuild themselves from `channel` and `video` within a tick or two, and
  * restoring them would be worse than losing them: a day-old cursor sends the
  * chat job back through a replay it has already read, and a next_attempt_at
  * from yesterday holds back work that is due now.
+ *
+ * `publication_write` says whether the public JSON in R2 may be behind
+ * `revision` at the moment it is read. A day-old copy says nothing about the
+ * R2 a restore finds, and the next publish of each target builds its JSON
+ * from the restored `revision` either way.
  */
 export const BACKED_UP_TABLES: readonly TableShape[] = [
   // Ordered as a restore has to apply them: a table with a foreign key to

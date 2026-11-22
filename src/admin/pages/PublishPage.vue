@@ -7,6 +7,7 @@ import type { FootprintsMember } from '../lib/footprints';
 import {
   canPublishFootprints,
   footprintsMarkFor,
+  PUBLISH_TEXT,
   type ChangedFootprintsEntry,
   type FootprintsPending,
   type PendingFootprintsEntry,
@@ -48,11 +49,16 @@ import { showToast } from '../lib/toast';
 
 const pending = ref<PendingFootprintsEntry[]>([]);
 const changed = ref<ChangedFootprintsEntry[]>([]);
+const behind = ref(false);
 const loading = ref(false);
 const loadError = ref<string | null>(null);
 const publishing = ref(false);
 
-const footprintsState = computed<FootprintsPending>(() => ({ pending: pending.value, changed: changed.value }));
+const footprintsState = computed<FootprintsPending>(() => ({
+  pending: pending.value,
+  changed: changed.value,
+  behind: behind.value,
+}));
 
 const genetPending = ref<PendingGenetEntry[]>([]);
 const genetChanged = ref<ChangedGenetEntry[]>([]);
@@ -107,6 +113,7 @@ async function load(): Promise<void> {
 
     pending.value = body.pending;
     changed.value = body.changed;
+    behind.value = body.behind;
   } catch (error) {
     loadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
@@ -253,12 +260,12 @@ onMounted(async () => {
             </div>
             <div v-if="changed.length > 0" class="panel flag">
               <h4>公開後に変更があった行</h4>
-              <div class="hint">{{ CHANGED_ROWS_HINT }}</div>
+              <div class="hint">{{ PUBLISH_TEXT.changedBody }}</div>
               <ul class="change-list">
                 <li v-for="c in changed" :key="c.eventId">
                   <span class="change-title">{{ c.title }}</span>
-                  <span class="chip" :class="footprintsMarkFor('published', c.eventId, footprintsState).tone">{{
-                    footprintsMarkFor('published', c.eventId, footprintsState).label
+                  <span class="chip" :class="footprintsMarkFor('published').tone">{{
+                    footprintsMarkFor('published').label
                   }}</span>
                   <RouterLink class="btn" :to="{ path: '/footprints', query: { event: c.eventId } }">
                     できごとの画面へ
@@ -276,6 +283,7 @@ onMounted(async () => {
                 いま公開する
               </button>
             </div>
+            <div v-if="!loading && behind" class="hint">{{ PUBLISH_TEXT.behind }}</div>
             <div v-if="!loading && !canPublishFootprints(footprintsState) && changed.length > 0" class="hint">
               公開を待っているものがありません
             </div>

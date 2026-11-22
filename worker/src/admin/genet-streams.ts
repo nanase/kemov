@@ -635,9 +635,8 @@ export async function deleteStream(env: Env, videoId: string): Promise<Response>
   // delete a stream that is published by the time the batch actually runs -
   // genet_stream has no ON DELETE CASCADE, so each DELETE needs its own
   // guard, not just the parent row's. Every statement re-checks the current
-  // status itself rather than trusting `existing`, the same way
-  // footprints-publish.ts's own publish/withdraw gate a revision INSERT on
-  // the row EXISTS finds at batch time.
+  // status itself rather than trusting `existing`, the same way a revision
+  // INSERT is gated on the row EXISTS finds at batch time.
   await env.DB.batch([
     env.DB.prepare(
       `DELETE FROM genet_scene

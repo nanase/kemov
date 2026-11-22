@@ -41,6 +41,7 @@ export async function clearEverything(): Promise<void> {
     'source_whitelist',
     'channel_snapshot_exclusion',
     'video_override',
+    'publication_write',
     'publication',
     'revision',
     'channel_snapshot',

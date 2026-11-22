@@ -1,7 +1,7 @@
 import {
   emptyFormFields,
   fieldForSaveError,
-  footprintsButtonsFor,
+  footprintsFootFor,
   footprintsQuery,
   kindLabel,
   KINDS,
@@ -30,12 +30,15 @@ describe('kindLabel', () => {
   });
 });
 
-// The filter is a query on the status column, which has three values. 公開待ち
-// is not one of them (#185), so it must not become an option: the count of
-// what the filter answers and the chips shown would then disagree.
+// The filter is a query on the status column. 「あとで」 (`review`) is gone
+// since #281, and 公開待ち never was a status (#185).
 describe('STATUS_OPTIONS', () => {
-  test('filters by the three statuses and nothing else', () => {
-    expect(STATUS_OPTIONS.map((o) => o.value)).toEqual(['all', 'draft', 'review', 'published']);
+  test('filters by the two statuses #277 decided, and nothing else', () => {
+    expect(STATUS_OPTIONS).toEqual([
+      { value: 'all', label: 'すべて' },
+      { value: 'draft', label: '下書き' },
+      { value: 'published', label: '公開中' },
+    ]);
   });
 });
 
@@ -166,35 +169,35 @@ describe('emptyFormFields', () => {
   });
 });
 
-describe('footprintsButtonsFor', () => {
-  test('a draft or review event offers 公開待ちにする, with 削除 enabled', () => {
-    for (const status of ['draft', 'review']) {
-      expect(footprintsButtonsFor(status, false)).toEqual({
-        publishLabel: '公開待ちにする',
-        withdrawLabel: null,
-        deleteDisabled: false,
-      });
-    }
-  });
-
-  test('a published event that is unchanged only offers 下書きに戻す, with 削除 disabled', () => {
-    expect(footprintsButtonsFor('published', false)).toEqual({
-      publishLabel: null,
-      withdrawLabel: '下書きに戻す',
-      deleteDisabled: true,
+describe('footprintsFootFor', () => {
+  // #277's decision 1a: 公開 is the primary button of a draft.
+  test('a draft offers 公開 first and 保存, with 削除 enabled', () => {
+    expect(footprintsFootFor('draft')).toEqual({
+      actions: [
+        { action: 'publish', label: '公開' },
+        { action: 'save', label: '保存' },
+      ],
+      note: null,
+      deleteDisabled: false,
+      deleteReason: null,
     });
   });
 
-  // Saving never adds a version, so this is the only way a changed row gets one (#201).
-  test('a published event changed since it was published offers 公開待ちにする again', () => {
-    expect(footprintsButtonsFor('published', true)).toEqual({
-      publishLabel: '公開待ちにする',
-      withdrawLabel: '下書きに戻す',
-      deleteDisabled: true,
-    });
+  // A row left `review` by a database the migration has not reached yet is still a draft.
+  test('anything not published is offered what a draft is', () => {
+    expect(footprintsFootFor('review')).toEqual(footprintsFootFor('draft'));
   });
 
-  test('a published event whose change is unknown offers 公開待ちにする too, rather than no way forward', () => {
-    expect(footprintsButtonsFor('published', null).publishLabel).toEqual('公開待ちにする');
+  // 1a and 6-9: the save reaches the public site, and 削除 says why it cannot be pressed.
+  test('a published event offers 保存 first and 非公開に戻す, with 削除 disabled and why', () => {
+    expect(footprintsFootFor('published')).toEqual({
+      actions: [
+        { action: 'save', label: '保存' },
+        { action: 'withdraw', label: '非公開に戻す' },
+      ],
+      note: '保存すると、すぐ本番に出ます',
+      deleteDisabled: true,
+      deleteReason: '公開中は削除できません。先に「非公開に戻す」を押してください。',
+    });
   });
 });

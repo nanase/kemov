@@ -16,10 +16,12 @@ export const EDITING_TEXT = {
 } as const;
 
 /**
- * The toasts #277's 1c decided. Only `saveDraft` matches what a button does
- * today: a published row's save does not reach the public site until the 公開
+ * The toasts #277's 1c decided. `publish`, `savePublished` and `withdraw` are
+ * for a data whose save reaches the public site in the same request (#281). A
+ * data still publishing in two steps uses `saveToastFor` instead: its
+ * published row's save does not reach the public site until the 公開
  * screen's 「いま公開する」, so `savePublished` would say something untrue
- * there. The rest wait for the new publishing flow (#281 and after).
+ * there.
  */
 export const SAVE_TOAST = {
   publish: '公開しました。本番に出ています',
@@ -30,7 +32,7 @@ export const SAVE_TOAST = {
   saved: '保存しました',
 } as const;
 
-/** The toast after saving a row whose `status` is `status`, while publishing still takes the 公開 screen. */
+/** The toast after saving a row whose `status` is `status`, for a data whose publishing still takes the 公開 screen. */
 export function saveToastFor(status: string): string {
   return status === 'published' ? SAVE_TOAST.saved : SAVE_TOAST.saveDraft;
 }

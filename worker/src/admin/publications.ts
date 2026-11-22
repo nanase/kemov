@@ -4,8 +4,7 @@ import { jsonResponse } from '../lib/json';
 /**
  * Reading `publication` (#141's "版の履歴" screen also shows this, #144's
  * task 13). Read-only and append-only, the same as revisions.ts - nothing
- * here writes a row; footprints-publish.ts's own `publishFootprintsNow` is
- * the one place that does.
+ * here writes a row; publishing a data does.
  */
 
 // Unlike collect-tasks.ts's or revisions.ts's own caps, this one is never hit

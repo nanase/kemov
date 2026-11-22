@@ -3,9 +3,9 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import FootprintsInspector from '../components/FootprintsInspector.vue';
-import { AdminApiError, getJson, postJson } from '../lib/api';
+import { AdminApiError, getJson } from '../lib/api';
+import { SAVE_TOAST } from '../lib/editing';
 import {
-  emptyFormFields,
   footprintsQuery,
   kindLabel,
   STATUS_OPTIONS,
@@ -15,7 +15,6 @@ import {
 import { footprintsMarkFor, type FootprintsPending } from '../lib/footprints-publish';
 import { countText } from '../lib/list-count';
 import { useListTotal } from '../lib/list-total';
-import { todayJst } from '../lib/snapshots';
 import { showToast } from '../lib/toast';
 import { confirmDiscard } from '../lib/unsaved-guard';
 
@@ -29,10 +28,13 @@ const status = ref('all');
 const q = ref('');
 const selectedId = ref<number | null>(null);
 const detail = ref(false);
+// ＋ 足す: the edit panel holds a new event, not yet created (#277's 6-12).
 const adding = ref(false);
-// What the 状態 chip needs that the row's `status` cannot say: whether the
-// public JSON has caught up with it. Null when it could not be read, so a
-// failed request does not draw every published row as already public.
+// Whether the edit panel's request is on its way. Selecting another row
+// meanwhile would unmount the panel, and its answer would never reach the table.
+const inspectorBusy = ref(false);
+// Which published rows the public JSON has not caught up with - the edit
+// panel says so. Null when it could not be read.
 const pending = ref<FootprintsPending | null>(null);
 
 // `/footprints?event=<id>` is where the 公開 screen's rows lead. Read once,
@@ -85,8 +87,9 @@ async function load(): Promise<void> {
     // the mock, which never leaves it empty - so the first row is selected
     // by default, the same as the やること screens the mock's own
     // inboxTable auto-selects. This does not open the narrow layout's
-    // detail view; only clicking a row does that.
-    if (selectedId.value === null && events.value.length > 0) {
+    // detail view; only clicking a row does that. Not while a new event is
+    // being entered there.
+    if (selectedId.value === null && !adding.value && events.value.length > 0) {
       const requested = events.value.find((e) => e.eventId === requestedId);
 
       selectedId.value = (requested ?? events.value[0]!).eventId;
@@ -113,70 +116,96 @@ async function loadPending(): Promise<void> {
   }
 }
 
-/** After a save, a move to 公開待ち, a withdraw or a delete: the rows and what is waiting both changed. */
-function reload(): Promise<unknown> {
-  // A delete changes how many rows there are in all.
-  listTotal.invalidate();
+/**
+ * reload() calls on their way. `loading` alone ends with the list, before
+ * the pending list is read and so before created() opens the new row over
+ * whatever was typed into the row shown meanwhile.
+ */
+const reloading = ref(0);
 
-  return Promise.all([load(), loadPending()]);
+/** After a save, a publish, a withdraw or a delete: the rows and which of them the public JSON is behind both changed. */
+async function reload(): Promise<void> {
+  // A save can add a row, and a delete takes one away.
+  listTotal.invalidate();
+  reloading.value += 1;
+
+  try {
+    await Promise.all([load(), loadPending()]);
+  } finally {
+    reloading.value -= 1;
+  }
 }
 
 /** A row clicked in the table: asks first when the open one has changes that would be lost. */
 function selectRow(eventId: number): void {
-  // ＋ 足す opens its new row once created; another row chosen meanwhile would be replaced.
-  if (adding.value) return;
-  if (eventId !== selectedId.value && !confirmDiscard()) return;
+  if (inspectorBusy.value) return;
+  if ((adding.value || eventId !== selectedId.value) && !confirmDiscard()) return;
 
   openRow(eventId);
 }
 
 function openRow(eventId: number): void {
+  adding.value = false;
   selectedId.value = eventId;
+  detail.value = true;
+}
+
+function startAdding(): void {
+  if (inspectorBusy.value) return;
+  if (!adding.value && !confirmDiscard()) return;
+
+  adding.value = true;
+  selectedId.value = null;
   detail.value = true;
 }
 
 function back(): void {
   detail.value = false;
+
+  if (adding.value) {
+    adding.value = false;
+    selectedId.value = events.value[0]?.eventId ?? null;
+  }
 }
 
 // A filter can leave the open row out of the table, which closes its panel,
 // so changing one asks first, as selecting another row does.
 function setStatus(value: string): void {
+  if (inspectorBusy.value) return;
   if (value !== status.value && confirmDiscard()) status.value = value;
 }
 
 function setQuery(event: Event): void {
   const input = event.target as HTMLInputElement;
 
-  if (confirmDiscard()) q.value = input.value;
+  if (!inspectorBusy.value && confirmDiscard()) q.value = input.value;
   else input.value = q.value;
 }
 
-async function addEvent(): Promise<void> {
-  if (!confirmDiscard()) return;
+async function created(eventId: number): Promise<void> {
+  adding.value = false;
+  inspectorBusy.value = false;
+  // The panel shows another row until the reload ends, held by `reloading`.
+  await reload();
 
-  adding.value = true;
+  // A table that could not be read says nothing about the filter.
+  if (loadError.value !== null) {
+    detail.value = false;
+    showToast(SAVE_TOAST.saveDraft);
 
-  try {
-    const body = await postJson<{ event: { eventId: number } }>('/footprints/events', emptyFormFields(todayJst()));
+    return;
+  }
 
-    // After the POST rather than before: a load while it is on its way would
-    // count the list without the new row, and count it as fresh.
-    listTotal.invalidate();
-    await load();
-
-    // A new event is always a draft with an empty title - the active status
-    // or title filter can exclude it from `events`. Selecting it anyway
-    // would point the inspector at an event the list doesn't show.
-    if (events.value.some((e) => e.eventId === body.event.eventId)) {
-      openRow(body.event.eventId);
-    } else {
-      showToast('作りました（いまの絞り込みには出ません）');
-    }
-  } catch (error) {
-    showToast(error instanceof AdminApiError ? error.message : String(error));
-  } finally {
-    adding.value = false;
+  // A new event is always a draft - the status or title filter can leave it
+  // out of the table. Pointing the panel at it anyway would edit a row the
+  // table does not show.
+  if (events.value.some((e) => e.eventId === eventId)) {
+    openRow(eventId);
+    showToast(SAVE_TOAST.saveDraft);
+  } else {
+    selectedId.value = events.value[0]?.eventId ?? null;
+    detail.value = false;
+    showToast(`${SAVE_TOAST.saveDraft}（いまの絞り込みには出ません）`);
   }
 }
 
@@ -224,7 +253,7 @@ onMounted(() => {
         />
         <span class="grow"></span>
         <span class="sub num">{{ countText(events.length, listTotal.total.value, filtered) }}</span>
-        <button class="btn" type="button" :disabled="adding" @click="addEvent">＋ 足す</button>
+        <button class="btn" type="button" @click="startAdding">＋ 足す</button>
       </div>
       <div class="scroller">
         <div v-if="loadError" class="empty-note">
@@ -257,8 +286,8 @@ onMounted(() => {
               @keydown.space.prevent="selectRow(e.eventId)"
             >
               <td>
-                <span class="chip" :class="footprintsMarkFor(e.status, e.eventId, pending).tone">{{
-                  footprintsMarkFor(e.status, e.eventId, pending).label
+                <span class="chip" :class="footprintsMarkFor(e.status).tone">{{
+                  footprintsMarkFor(e.status).label
                 }}</span>
               </td>
               <td class="num">{{ e.startDate }}<span v-if="e.datePrecision === 'month'" class="sub"> 月のみ</span></td>
@@ -286,16 +315,18 @@ onMounted(() => {
         </table>
       </div>
     </div>
-    <!-- inert while the list is read, or ＋ 足す is on its way: the answer puts the open row's saved fields back, or leaves the row out of the table and closes the panel, over anything typed meanwhile. -->
+    <!-- inert while the list is read, or read again after a save: the answer puts the open row's saved fields back, or leaves the row out of the table and closes the panel, over anything typed meanwhile. -->
     <FootprintsInspector
-      v-if="selected"
-      :key="selected.eventId"
-      :event="selected"
+      v-if="adding || selected"
+      :key="adding ? 'new' : selected!.eventId"
+      :event="adding ? null : selected"
       :members="members"
       :pending="pending"
-      :inert="adding || loading || undefined"
+      :inert="loading || reloading > 0 || undefined"
       @changed="reload"
+      @created="created"
       @back="back"
+      @busy="inspectorBusy = $event"
     />
   </div>
 </template>

@@ -128,8 +128,8 @@ onMounted(() => {
               @keydown.enter="selectRow(e.eventId)"
             >
               <td>
-                <span class="chip" :class="footprintsMarkFor(e.status, e.eventId, pending).tone">{{
-                  footprintsMarkFor(e.status, e.eventId, pending).label
+                <span class="chip" :class="footprintsMarkFor(e.status).tone">{{
+                  footprintsMarkFor(e.status).label
                 }}</span>
               </td>
               <td class="num">{{ e.startDate }}</td>
@@ -154,6 +154,7 @@ onMounted(() => {
         </table>
       </div>
     </div>
+    <!-- inert while the list is read, or read again after a save: the answer puts the open row's saved fields back, or leaves the row out of the list and closes the panel, over anything typed meanwhile. -->
     <FootprintsInspector
       v-if="selected"
       :key="selected.eventId"
@@ -161,6 +162,7 @@ onMounted(() => {
       :members="members"
       :pending="pending"
       mode="source"
+      :inert="loading || undefined"
       @changed="load"
       @back="detail = false"
     />
