@@ -1,4 +1,4 @@
-import { callYouTubeApi, chunkIds, uploadsPlaylistId, YOUTUBE_MAX_RESULTS } from '../src/lib/youtube';
+import { callYouTubeApi, chunkIds, uploadsPlaylistId, YOUTUBE_MAX_RESULTS, YouTubeApiError } from '../src/lib/youtube';
 
 describe('callYouTubeApi', () => {
   test('builds the URL from the base, the path, the params and the key', async () => {
@@ -25,6 +25,24 @@ describe('callYouTubeApi', () => {
     const fetchImpl = vi.fn(async () => new Response('quota exceeded', { status: 403 }));
 
     await expect(callYouTubeApi('channels', 'k3y', {}, fetchImpl)).rejects.toThrow(/403/);
+  });
+
+  test('carries the status and the reason of the API error it throws', async () => {
+    const body = JSON.stringify({ error: { code: 404, errors: [{ reason: 'channelNotFound' }] } });
+    const fetchImpl = vi.fn(async () => new Response(body, { status: 404 }));
+
+    const error = await callYouTubeApi('channels', 'k3y', {}, fetchImpl).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(YouTubeApiError);
+    expect(error).toMatchObject({ status: 404, reason: 'channelNotFound' });
+  });
+
+  test('has no reason when the error body is not the API JSON', async () => {
+    const fetchImpl = vi.fn(async () => new Response('quota exceeded', { status: 403 }));
+
+    const error = await callYouTubeApi('channels', 'k3y', {}, fetchImpl).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ status: 403, reason: undefined });
   });
 });
 

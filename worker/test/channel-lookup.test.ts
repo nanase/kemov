@@ -82,6 +82,37 @@ describe('lookupChannel', () => {
     expect(calls.images).toEqual([]);
   });
 
+  test('answers 404 when YouTube itself answers 404 channelNotFound', async () => {
+    const { fetchImpl, calls } = fakeFetch(
+      () =>
+        new Response(JSON.stringify({ error: { code: 404, errors: [{ reason: 'channelNotFound' }] } }), {
+          status: 404,
+        }),
+    );
+
+    const response = await lookup(fetchImpl);
+
+    expect(response.status).toEqual(404);
+    expect(await response.json()).toMatchObject({ code: 'channel_not_found' });
+    expect(calls.images).toEqual([]);
+  });
+
+  test('answers 502 when YouTube answers 404 for any other reason', async () => {
+    const { fetchImpl } = fakeFetch(
+      () => new Response(JSON.stringify({ error: { errors: [{ reason: 'notFound' }] } }), { status: 404 }),
+    );
+
+    expect((await lookup(fetchImpl)).status).toEqual(502);
+  });
+
+  test('answers 502 when channelNotFound comes with a status other than 404', async () => {
+    const { fetchImpl } = fakeFetch(
+      () => new Response(JSON.stringify({ error: { errors: [{ reason: 'channelNotFound' }] } }), { status: 403 }),
+    );
+
+    expect((await lookup(fetchImpl)).status).toEqual(502);
+  });
+
   test('answers 404 when the only item is a different channel', async () => {
     const { fetchImpl } = fakeFetch(() => Response.json({ items: [{ id: 'UCother', snippet: { title: 'x' } }] }));
 

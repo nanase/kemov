@@ -1,7 +1,7 @@
 import { isAllowedChannelIconHost, resizeChannelIconUrl } from '../api/image';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
-import { callYouTubeApi } from '../lib/youtube';
+import { callYouTubeApi, YouTubeApiError } from '../lib/youtube';
 import { CHANNEL_ID_PATTERN } from './members';
 
 /**
@@ -25,7 +25,8 @@ import { CHANNEL_ID_PATTERN } from './members';
  *   against the id.
  * - 400 for an id that is not `UC` and 22 characters, before YouTube is asked.
  * - 404 with `code: 'channel_not_found'` when Channels.list names no such
- *   channel. The screen blocks adding.
+ *   channel, whether it answers with no item or with its own 404
+ *   `channelNotFound`. The screen blocks adding.
  * - 502 when YouTube could not be asked or did not answer properly. This is
  *   not "not found": the id may be right.
  */
@@ -97,8 +98,12 @@ export async function lookupChannel(env: Env, channelId: string, fetchImpl: type
 
     item = response.items?.find((candidate) => candidate.id === channelId);
   } catch (error) {
-    console.error('channel-lookup: Channels.list failed', error);
-    return errorResponse(502, 'YouTube could not be asked about the channel');
+    // Only this reason on a 404 means the id names no channel. Quota, a
+    // forbidden key and the like say nothing about the id, so they stay 502.
+    if (!(error instanceof YouTubeApiError && error.status === 404 && error.reason === 'channelNotFound')) {
+      console.error('channel-lookup: Channels.list failed', error);
+      return errorResponse(502, 'YouTube could not be asked about the channel');
+    }
   }
 
   // `code` is what tells this 404 from any other: a route that does not exist
