@@ -241,7 +241,7 @@ async function load(): Promise<void> {
 
 function selectRow(channelId: string): void {
   // The edit panel is inert while 保存 is in flight; so is the choice of what it shows.
-  if (listSaving.value) return;
+  if (listSaving.value || saving.value) return;
 
   // A click on the row the banner is about shows the error there, as the
   // banner's own button does: the banner has said all it had to. Only a click
@@ -642,8 +642,8 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
       </div>
     </div>
 
-    <!-- inert while 保存 is in flight: the request already carries the draft as it was, and what is typed meanwhile would be cleared with it. Also while the list is read: its answer resets the fields to the saved values, over what is typed after the read began. -->
-    <div v-if="activeFields" class="inspector" :inert="loading || listSaving || undefined">
+    <!-- inert while 保存 is in flight: the request already carries the draft as it was, and what is typed meanwhile would be cleared with it. Also while a member's own 保存 or the list is read: the answer resets the fields to the saved values, over what is typed after the request began. -->
+    <div v-if="activeFields" class="inspector" :inert="loading || listSaving || saving || undefined">
       <SplitHandle />
       <div class="inspector-head">
         <div>
