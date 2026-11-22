@@ -38,37 +38,58 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 
 ## あしあと
 
-| メソッド | パス                                                  | 返すもの                                                                     |
-| -------- | ----------------------------------------------------- | ---------------------------------------------------------------------------- |
-| GET      | `/admin/api/footprints/events`                        | `footprints_event` の全行と、それぞれのメンバーと出典                        |
-| GET      | `/admin/api/footprints/events/<できごと ID>`          | 1 行と、そのメンバーと出典                                                   |
-| POST     | `/admin/api/footprints/events`                        | `draft` で作成した後の行                                                     |
-| PUT      | `/admin/api/footprints/events/<できごと ID>`          | 行・メンバー・出典を置き換えた後の行。`status` は変えない                    |
-| DELETE   | `/admin/api/footprints/events/<できごと ID>`          | `{}`。`published` のできごとなら 409                                         |
-| POST     | `/admin/api/footprints/events/<できごと ID>/publish`  | 検証し、`status` を `published` にした後の行                                 |
-| POST     | `/admin/api/footprints/events/<できごと ID>/withdraw` | `status` を `draft` に戻した後の行                                           |
-| GET      | `/admin/api/footprints/pending`                       | 公開した JSON にまだ入っていないできごとと、公開した後に行が変わったできごと |
-| POST     | `/admin/api/footprints/publish`                       | 何かを公開したかどうかと、公開したならそのできごとの数                       |
+| メソッド | パス                                                  | 返すもの                                                                                     |
+| -------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| GET      | `/admin/api/footprints/events`                        | `footprints_event` の全行と、それぞれのメンバーと出典                                        |
+| GET      | `/admin/api/footprints/events/<できごと ID>`          | 1 行と、そのメンバーと出典                                                                   |
+| POST     | `/admin/api/footprints/events`                        | `draft` で作成した後の行                                                                     |
+| PUT      | `/admin/api/footprints/events/<できごと ID>`          | 「保存」。下書きなら保存した後の行。公開中なら、保存して JSON を書き直した後の行             |
+| DELETE   | `/admin/api/footprints/events/<できごと ID>`          | `{}`。`published` のできごとなら 409                                                         |
+| POST     | `/admin/api/footprints/events/<できごと ID>/publish`  | 「公開」。保存し、検証し、JSON を書き直した後の行                                            |
+| POST     | `/admin/api/footprints/events/<できごと ID>/withdraw` | 「非公開に戻す」。JSON から外し、`draft` として保存した後の行。`published` でなければ 409    |
+| GET      | `/admin/api/footprints/pending`                       | 公開の JSON がまだ写していない版と、公開中なのに公開の JSON と違うできごと                   |
+| POST     | `/admin/api/footprints/publish`                       | 公開の JSON がまだ写していない版から JSON を作り直したかどうかと、作り直したならできごとの数 |
 
-`GET /admin/api/footprints/events` は、クエリパラメーターの `status` と `q`（`title` の部分文字列）で一覧を絞ります。
+`GET /admin/api/footprints/events` は、クエリパラメーターの `status`（`draft` か `published`）と `q`（`title` の部分文字列）で一覧を絞ります。
 
-できごとは、保存した時点では効かず、公開の門を通ります。
+できごとの状態は、下書き（`draft`）と公開中（`published`）の 2 つです（#277、#281）。公開待ちはありません。公開・公開中の保存・非公開に戻すは、どれも 1 回の要求で公開の JSON（`footprints/events.json`）まで書き直します。
 
-- 作成・更新・削除は `revision` を記録しない
-- `publish` と `withdraw` だけが、`status` の変更と同じ `db.batch` で `revision` を記録する
+| 操作         | 要求                | 本文       | 通ったとき                                                         |
+| ------------ | ------------------- | ---------- | ------------------------------------------------------------------ |
+| 下書きの保存 | `PUT`（下書きの行） | すべての欄 | 欄を保存する。`revision` は記録しない                              |
+| 公開         | `POST .../publish`  | すべての欄 | 欄を保存し、`status` を `published` にし、`publish` の版を記録する |
+| 公開中の保存 | `PUT`（公開中の行） | すべての欄 | 欄を保存し、`publish` の版を記録する                               |
+| 非公開に戻す | `POST .../withdraw` | すべての欄 | 欄を保存し、`status` を `draft` にし、`withdraw` の版を記録する    |
 
-`POST .../publish` は、できごとに公開の条件が揃っていなければ、満たしていない条件をまとめて 400 で返します。条件は次のとおりです。
+公開・公開中の保存・非公開に戻すは、まず公開の JSON を作って `PUBLIC_DATA` に書きます。書けたときだけ、欄・`status`・`revision`・`publication` を 1 回の `db.batch` で記録します。公開の JSON は、今までどおり各できごとの最新の版から作ります。
+
+公開の条件を満たさないときは、満たしていない条件をまとめて 400 で返します。本文は次のとおりです。
+
+- `problems`: 欄の名前（`field`）と、編集の欄に出す文（`message`）の組の並び
+- `errors`: `problems` の文だけの並び
+- `saved`: 送った欄を保存したかどうか
+  - 公開では `true`。欄は下書きのまま保存する
+  - 公開中の保存では `false`。行も公開の JSON も前の内容のまま残す
+
+条件は次のとおりです。
 
 - `title` が空でない
 - `sourcePending: false` なら、数に入る出典がある（[出典のホワイトリスト](#出典のホワイトリスト)）
 - `videoId` が 11 文字
 - `kind` が `debut` なら、`leadChannelIds` が 1 つ以上ある
 
+公開の JSON を書けなかったときは、502 を返します。
+
+- 公開と公開中の保存では、欄だけを保存し、`saved: true` と保存した後の行を返す
+  - 下書きは下書きのまま、公開中の行は前の版のまま残る
+  - 公開中の行は、次の「保存」まで公開の JSON と食い違う。`GET .../pending` はこれを `changed` として返す
+- 非公開に戻すでは、何も変えない
+
+公開の処理のうち、書く順と失敗したときに残すものは `worker/src/admin/publishing.ts` の `publishChange` にあります。あしあとに固有の部分（欄、条件、版の中身、JSON の形）は `worker/src/admin/footprints-publish.ts` にあります。登録者数の節目とジェネット楽曲一覧も、同じ形に移す予定です（#283、#284）。
+
 `leadChannelIds` は、`channelIds` のうち出来事の主役のメンバーです。`channelIds` に無い ID を含めると、保存の時点で 400 を返します。主役が無いデビューも、下書きとしては保存できます。
 
-公開済みのできごとをもう一度公開しても構いません。`GET .../pending` が「変わった」と報告したできごとは、こうして今の行に合った `publish` の版を得ます。
-
-`POST /admin/api/footprints/publish` は、最新の操作が `withdraw` でないできごとそれぞれの最新の `revision` から `footprints/events.json` を作り、`PUBLIC_DATA` に書きます。そのうえで、読んだ中で最も新しい `revision_id` を記録した `publication` の行を 1 つ足します。前回より新しいものが無ければ、何も書きません。
+`GET .../pending` と `POST /admin/api/footprints/publish` は、公開の画面のために #285 まで残します。#281 より前の流れで公開待ちにした版は、`POST /admin/api/footprints/publish` か、次の公開・公開中の保存・非公開に戻すのどれかで公開の JSON に入ります。どれも、各できごとの最新の版から JSON を作るためです。
 
 主役（`lead_channel_ids`）は、migration 0011 で足しました。それより前の `publish` の版は、このキーを持ちません。JSON を作るときと `GET .../pending` が比べるときは、この版を主役なし（`[]`）として読みます。
 
@@ -233,18 +254,19 @@ JSON は `shape_version` と `channel_id` も持ちます。
 | GET      | `/admin/api/inbox/review`                                   | 確認待ちの出来事と配信。配信が演奏する曲の題も返す                                                 |
 | GET      | `/admin/api/inbox/source`                                   | `sourcePending` が true の出来事のすべて。`status` を問わない                                      |
 | GET      | `/admin/api/inbox/publish`                                  | 次の「いま公開する」が扱うものを、公開の JSON ごとに題と日付を付けて返す。押して何か起きるかも返す |
-| POST     | `/admin/api/footprints/events/<できごと ID>/defer`          | `status` を `review` にした後の行。`published` の出来事なら 409                                    |
 | POST     | `/admin/api/footprints/events/<できごと ID>/confirm-source` | `sourcePending` を false にした後の行。出典が公開の条件を満たさなければ 400                        |
 | POST     | `/admin/api/genet/streams/<動画 ID>/defer`                  | `{ "status": "review" }`。`published` の配信なら 409                                               |
 
 確認待ちに並ぶのは、次の行です。
 
 - `status` が `draft` で、`import` か `publish` の版が無い行。公開してから取り下げた行は入りません
-- `status` が `review` の行。「あとで」に回した行で、まだ見ていない行の後ろに並べます
+- `status` が `review` の配信。「あとで」に回した配信で、まだ見ていない行の後ろに並べます
 
-承認は各行の `POST .../publish`、却下は各行の `DELETE` を使います。ここに専用のエンドポイントはありません。
+あしあとの「あとで」は #281 でなくしました。`status` が `review` だった出来事は、migration 0013 で `draft` に移しました。表の CHECK は `review` を許したままですが、コードはもう書きません。
 
-`defer` と `confirm-source` は、保存と同じく `revision` を記録しません。そのため、公開中の出来事の出典を確かめても、公開の JSON はそのままです。`POST .../publish` を通すと反映されます。
+承認は各行の `POST .../publish`、却下は各行の `DELETE` を使います。ここに専用のエンドポイントはありません。あしあとの承認は、行の欄を本文に送ります。
+
+`defer` と `confirm-source` は、保存と同じく `revision` を記録しません。そのため、公開中の出来事の出典を確かめても、公開の JSON はそのままです。あしあとで「保存」を押すと反映されます。
 
 公開待ちの登録者数の節目には、`eventChanged` の節目も入ります。`latestAction` は `event_changed` です。
 
