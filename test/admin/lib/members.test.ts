@@ -258,25 +258,20 @@ describe('keepEdit', () => {
     expect(keepEdit({ ...toFormFields(MEMBER), twitch: '' }, MEMBER)).toBeNull();
   });
 
-  test('keeps what is typed, for the member it was typed for', () => {
-    expect(keepEdit({ ...toFormFields(MEMBER), name: 'ケープ編集中' }, MEMBER)).toEqual({
+  test('keeps only the fields that were typed in, for the member they were typed for', () => {
+    expect(keepEdit({ ...toFormFields(MEMBER), name: 'ケープ編集中', twitch: 'kemov_tw' }, MEMBER)).toEqual({
       channelId: MEMBER.channelId,
-      fields: { ...toFormFields(MEMBER), name: 'ケープ編集中' },
+      changes: { name: 'ケープ編集中', twitch: 'kemov_tw' },
     });
   });
 
-  test('keeps a copy, so typing on does not change what was set aside', () => {
-    const fields = { ...toFormFields(MEMBER), name: 'a' };
-    const kept = keepEdit(fields, MEMBER);
-
-    fields.name = 'b';
-
-    expect(kept?.fields.name).toEqual('a');
+  test('keeps a field cleared to null, which is a change', () => {
+    expect(keepEdit({ ...toFormFields(MEMBER), twitter: null }, MEMBER)?.changes).toEqual({ twitter: null });
   });
 });
 
 describe('fieldsAfterReload', () => {
-  const kept = { channelId: MEMBER.channelId, fields: { ...toFormFields(MEMBER), name: 'ケープ編集中' } };
+  const kept = { channelId: MEMBER.channelId, changes: { name: 'ケープ編集中' } };
 
   test('is null when no member is open', () => {
     expect(fieldsAfterReload(kept, null)).toBeNull();
@@ -287,21 +282,29 @@ describe('fieldsAfterReload', () => {
     expect(fieldsAfterReload(null, MEMBER)).toEqual(toFormFields(MEMBER));
   });
 
-  test('shows what was kept when the same member is open', () => {
-    expect(fieldsAfterReload(kept, { ...MEMBER, displayOrder: 0 })).toEqual(kept.fields);
+  test('puts what was kept over the saved values when the same member is open', () => {
+    expect(fieldsAfterReload(kept, { ...MEMBER, displayOrder: 0 })).toEqual({
+      ...toFormFields(MEMBER),
+      name: 'ケープ編集中',
+    });
+  });
+
+  test('shows what somebody else changed meanwhile in a field that was not typed in', () => {
+    // The list was saved while another person gave the member a twitter id.
+    const reloaded = { ...MEMBER, twitter: 'kemov_new' };
+
+    expect(fieldsAfterReload(kept, reloaded)).toEqual({ ...toFormFields(reloaded), name: 'ケープ編集中' });
+  });
+
+  test('shows what was typed in a field somebody else also changed meanwhile', () => {
+    const reloaded = { ...MEMBER, name: '別の人が付けた名前' };
+
+    expect(fieldsAfterReload(kept, reloaded)?.name).toEqual('ケープ編集中');
   });
 
   test('shows the saved values of another member, not what was kept for this one', () => {
     const other = { ...MEMBER, channelId: 'UCother', name: '別のメンバー' };
 
     expect(fieldsAfterReload(kept, other)).toEqual(toFormFields(other));
-  });
-
-  test('gives a copy, so typing on does not change what was kept', () => {
-    const shown = fieldsAfterReload(kept, MEMBER);
-
-    shown!.name = 'x';
-
-    expect(kept.fields.name).toEqual('ケープ編集中');
   });
 });

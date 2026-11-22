@@ -188,12 +188,10 @@ export function fieldForSaveError(message: string): MemberFieldKey | null {
 /**
  * Whether showing a different member in the edit panel would throw away what
  * is typed in it: a 「メンバーを足す」 form that is not blank, or a saved
- * member's fields that differ from the saved ones. The panel's 未保存 chip and
- * its confirmation before leaving ask the same thing (#286), so there is one
- * answer for all three.
+ * member's fields that differ from the saved ones.
  *
- * "The same" is `sameFields`' - the one every edit panel uses - so a nullable
- * box typed in and erased again, which holds '' where null was, is not a change.
+ * Fields are compared with `sameFields`, so a nullable box typed in and erased
+ * again, which holds '' where null was, is not a change.
  */
 export function editWouldBeLost(
   newForm: NewMemberFields | null,
@@ -205,31 +203,42 @@ export function editWouldBeLost(
   return fields !== null && saved !== null && !sameFields(fields, toFormFields(saved));
 }
 
-/** A saved member's typed changes, set aside while the list is read again. */
+/** The fields typed in a saved member's edit panel, set aside while the list is read again. */
 export interface KeptEdit {
   channelId: string;
-  fields: MemberFormFields;
+  changes: Partial<MemberFormFields>;
 }
 
 /**
- * The changes typed in the edit panel for a saved member, or null when there
- * are none. Taken before the list's 保存, which reads the list again and would
- * otherwise show the saved values over what is typed (#286).
+ * The fields of `fields` that differ from `saved`, or null when none do. Taken
+ * before the list's 保存, which reads the list again and would otherwise show
+ * the saved values over what is typed (#286).
+ *
+ * Only the fields typed in are kept: the others are read again with the list,
+ * so a change made to them meanwhile is not turned back by an older copy.
  */
 export function keepEdit(fields: MemberFormFields | null, saved: Member | null): KeptEdit | null {
-  if (fields === null || saved === null || sameFields(fields, toFormFields(saved))) return null;
+  if (fields === null || saved === null) return null;
 
-  return { channelId: saved.channelId, fields: { ...fields } };
+  const base = toFormFields(saved);
+  const changes: Record<string, unknown> = {};
+
+  for (const key of Object.keys(base) as (keyof MemberFormFields)[]) {
+    if (!sameFields(fields[key], base[key])) changes[key] = fields[key];
+  }
+
+  return Object.keys(changes).length === 0 ? null : { channelId: saved.channelId, changes };
 }
 
 /**
- * What the edit panel shows once the list was read again: the changes set
- * aside for that member, or else the saved values. Null when no member is open.
+ * What the edit panel shows once the list was read again: the saved values of
+ * `member`, with the fields set aside for that member put over them. Null when
+ * no member is open.
  */
 export function fieldsAfterReload(kept: KeptEdit | null, member: Member | null): MemberFormFields | null {
   if (member === null) return null;
 
-  return kept?.channelId === member.channelId ? { ...kept.fields } : toFormFields(member);
+  return kept?.channelId === member.channelId ? { ...toFormFields(member), ...kept.changes } : toFormFields(member);
 }
 
 /**

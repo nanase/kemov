@@ -171,8 +171,8 @@ const activeEnded = computed(() => (selected.value ?? selectedAdded.value)?.acti
 /**
  * What is typed in the edit panel and not yet kept (#286): a 「メンバーを足す」
  * form that is not blank, or a saved member's fields that differ from the saved
- * ones. An added member's own fields are not it - they are the draft's, which
- * the list's 未保存 already says. Not the same as `dirty`, which is the list's.
+ * ones. An added member's own fields are not it: they are the draft's, and
+ * `dirty` covers the draft.
  */
 const editDirty = computed(() => editWouldBeLost(newForm.value, fields.value, selected.value));
 
