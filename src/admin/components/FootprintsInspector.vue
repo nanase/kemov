@@ -1,31 +1,33 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref, watch } from 'vue';
-import { RouterLink } from 'vue-router';
 
 import {
-  fieldForSaveError,
-  footprintsButtonsFor,
+  emptyFormFields,
+  footprintsFootFor,
   kindLabel,
   KINDS,
   toFormFields,
   type EventFieldKey,
   type EventFormFields,
+  type FootAction,
   type FootprintsEvent,
   type FootprintsMember,
 } from '../lib/footprints';
-import { AdminApiError, deleteJson, postJson, putJson } from '../lib/api';
+import { deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, sameFields, saveToastFor } from '../lib/editing';
-import { APPROVED_TOAST, DEFERRED_TOAST, REJECTED_TOAST } from '../lib/inbox';
+import { EDITING_TEXT, sameFields } from '../lib/editing';
+import { REJECTED_TOAST } from '../lib/inbox';
 import {
+  footprintsAnswerFor,
   footprintsMarkFor,
   isChangedSincePublish,
-  waitingEntryFor,
+  PUBLISH_TEXT,
   type FootprintsPending,
+  type PublishBand,
 } from '../lib/footprints-publish';
 import { refreshPublishBadge } from '../lib/publish-badge';
-import { CHANGED_NOTICE, PUBLISH_QUEUED_TOAST, waitingNoticeFor, WITHDRAW_QUEUED_TOAST } from '../lib/publish-mark';
 import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
+import { todayJst } from '../lib/snapshots';
 import { showToast } from '../lib/toast';
 import { confirmDiscard, useUnsavedGuard } from '../lib/unsaved-guard';
 
@@ -33,22 +35,23 @@ import DeleteButton from './DeleteButton.vue';
 import SplitHandle from './SplitHandle.vue';
 
 /**
- * 編集パネル for one あしあと row (#144). `event` is the row the table
- * already fetched - `present()` in `worker/src/admin/footprints.ts` already
- * carries every field this panel edits, so this does not fetch it again.
+ * 編集パネル for one あしあと row (#144), or for a new one when `event` is
+ * null. A new event is not created until it is saved (#277's 6-12), the same
+ * as a new 登録者数の節目.
  *
- * The panel keeps its own editable copy (`fields`), reset from `event`
- * whenever the selected row changes, and never writes back into `event`
- * itself - the table's own row only changes once the parent refetches after
- * a save, publish, withdraw or delete succeeds.
+ * `event` is the row the table already fetched - `present()` in
+ * `worker/src/admin/footprints.ts` already carries every field this panel
+ * edits, so this does not fetch it again. The panel keeps its own editable
+ * copy (`fields`), and never writes back into `event` itself - the table's
+ * own row only changes once the parent refetches.
  *
  * `mode` is where the panel was opened from, and decides only the buttons at
- * the bottom (#141): あしあと's own (保存 / 公開待ちにする / 削除), 確認待ち's
- * (承認 / あとで / 却下) or 出典の確認待ち's (出典を確かめた / 保存).
+ * the bottom: あしあと's own (#277's decision 1a), 確認待ち's (承認 / 却下)
+ * or 出典の確認待ち's (出典を確かめた / 保存).
  */
 const props = withDefaults(
   defineProps<{
-    event: FootprintsEvent;
+    event: FootprintsEvent | null;
     members: FootprintsMember[];
     /** `GET /footprints/pending`, or null when it could not be read. */
     pending: FootprintsPending | null;
@@ -56,48 +59,61 @@ const props = withDefaults(
   }>(),
   { mode: 'data' },
 );
-const emit = defineEmits<{ changed: []; back: [] }>();
+const emit = defineEmits<{ changed: []; created: [eventId: number]; back: [] }>();
 
-const fields = ref<EventFormFields>(toFormFields(props.event));
+// Taken once: a blank row opened before midnight must not turn unsaved at it.
+const blank = emptyFormFields(todayJst());
+
+function initialFields(): EventFormFields {
+  return props.event === null ? structuredClone(blank) : toFormFields(props.event);
+}
+
+const fields = ref<EventFormFields>(initialFields());
 
 useCrumbDetail(() => fields.value.title);
 
 const saving = ref(false);
-const errorMessage = ref<string | null>(null);
-const errorField = ref<EventFieldKey | null>(null);
+const band = ref<PublishBand | null>(null);
+const invalidFields = ref<readonly EventFieldKey[]>([]);
 const memberPickerOpen = ref(false);
 
-/** Whether the fields differ from the row as saved - the 未保存 chip, and what asks before they are thrown away. */
-const dirty = computed(() => !sameFields(fields.value, toFormFields(props.event)));
+/** Against the saved row, or a new row's blank fields: the 未保存 chip, and what asks before they are thrown away. */
+const dirty = computed(() => !sameFields(fields.value, initialFields()));
 
 useUnsavedGuard(
   () => dirty.value,
   () => {
-    fields.value = toFormFields(props.event);
+    fields.value = initialFields();
   },
 );
 
+// A refetch hands the same row back as a new object, and the fields follow
+// what was saved. The band is left alone: a refetch follows a refused
+// publish too, and the band is still the answer to it. Selecting another row
+// mounts a new panel (the page keys it by id), which starts clean.
 watch(
   () => props.event,
-  (event) => {
-    fields.value = toFormFields(event);
-    errorMessage.value = null;
-    errorField.value = null;
+  () => {
+    fields.value = initialFields();
   },
 );
 
-const waiting = computed(() => waitingEntryFor(props.pending, props.event.eventId));
-const changedSincePublish = computed(() => isChangedSincePublish(props.pending, props.event.eventId));
-const mark = computed(() => footprintsMarkFor(props.event.status, props.event.eventId, props.pending));
-const buttons = computed(() =>
-  footprintsButtonsFor(props.event.status, props.pending === null ? null : changedSincePublish.value),
+const eventId = computed(() => props.event?.eventId ?? null);
+const changedSincePublish = computed(
+  () => props.event?.status === 'published' && isChangedSincePublish(props.pending, props.event.eventId),
 );
+const mark = computed(() => (props.event === null ? null : footprintsMarkFor(props.event.status)));
+const foot = computed(() => footprintsFootFor(props.event?.status ?? 'draft'));
 const selectedMembers = computed(() =>
   fields.value.channelIds.map((channelId) => ({
     channelId,
     member: props.members.find((m) => m.channelId === channelId),
   })),
 );
+
+function invalid(field: EventFieldKey): boolean {
+  return invalidFields.value.includes(field);
+}
 
 function toggleMember(channelId: string): void {
   const at = fields.value.channelIds.indexOf(channelId);
@@ -117,7 +133,7 @@ function toggleLead(channelId: string): void {
   else fields.value.leadChannelIds.splice(at, 1);
 }
 
-/** A debut with no lead cannot be published (footprints-publish.ts), so the panel says so before 公開待ちにする does. */
+/** A debut with no lead cannot be published (footprints-publish.ts), so the panel says so before 公開 does. */
 const needsLead = computed(() => fields.value.kind === 'debut' && fields.value.leadChannelIds.length === 0);
 
 function addSource(): void {
@@ -128,105 +144,124 @@ function removeSource(index: number): void {
   fields.value.sources.splice(index, 1);
 }
 
-async function withErrorHandling(action: () => Promise<void>): Promise<void> {
+/** The request behind each button. Each sends the fields as they stand; the worker saves them in the same request. */
+function send(action: FootAction): Promise<unknown> {
+  const path = `/footprints/events/${eventId.value}`;
+
+  if (action === 'save') return putJson(path, fields.value);
+
+  return postJson(`${path}/${action}`, fields.value);
+}
+
+/**
+ * Runs `request`, then says what came of it (`footprintsAnswerFor`): a toast
+ * when it went through, otherwise the band above the fields and the fields
+ * it names marked. The table is read again whenever the row changed, a
+ * refusal that saved a draft's fields included.
+ */
+async function run(action: FootAction, request: () => Promise<unknown>, toast?: string): Promise<void> {
+  if (saving.value) return;
+
+  const status = props.event?.status ?? null;
+  let error: unknown = null;
+
   saving.value = true;
-  errorMessage.value = null;
-  errorField.value = null;
+  band.value = null;
+  invalidFields.value = [];
 
   try {
-    await action();
+    await request();
+  } catch (caught) {
+    error = caught;
+  } finally {
+    saving.value = false;
+  }
+
+  const answer = footprintsAnswerFor(action, status, error);
+
+  if (answer.kind === 'done') {
+    emit('changed');
+    void refreshPublishBadge();
+    showToast(toast ?? answer.toast);
+
+    return;
+  }
+
+  band.value = answer.band;
+  invalidFields.value = answer.fields;
+
+  if (answer.changed) {
+    emit('changed');
+    void refreshPublishBadge();
+  }
+}
+
+function act(action: FootAction): Promise<void> {
+  return run(action, () => send(action));
+}
+
+/** A new row's 保存: creates it, and the page opens it once the table has it. */
+async function create(): Promise<void> {
+  if (saving.value) return;
+
+  saving.value = true;
+  band.value = null;
+  invalidFields.value = [];
+
+  try {
+    const body = await postJson<{ event: { eventId: number } }>('/footprints/events', fields.value);
+
+    emit('created', body.event.eventId);
   } catch (error) {
-    if (error instanceof AdminApiError) {
-      errorMessage.value = error.message;
-      errorField.value = fieldForSaveError(error.message);
-    } else {
-      errorMessage.value = String(error);
+    const answer = footprintsAnswerFor('save', null, error);
+
+    if (answer.kind === 'band') {
+      band.value = answer.band;
+      invalidFields.value = answer.fields;
     }
   } finally {
     saving.value = false;
   }
 }
 
-function save(): Promise<void> {
-  return withErrorHandling(async () => {
-    await putJson(`/footprints/events/${props.event.eventId}`, fields.value);
-    emit('changed');
-    // Saving a published row's content makes it 「公開後に変更あり」, which the badge counts.
-    void refreshPublishBadge();
-    showToast(saveToastFor(props.event.status));
-  });
-}
-
-/** Saves the fields, then moves the row one step: to 公開待ち (`publish`) or back to a draft (`withdraw`). Neither writes the public JSON - that is the 公開 screen's 「いま公開する」. */
-function moveStatus(action: 'publish' | 'withdraw'): Promise<void> {
-  return withErrorHandling(async () => {
-    await putJson(`/footprints/events/${props.event.eventId}`, fields.value);
-    await postJson(`/footprints/events/${props.event.eventId}/${action}`, {});
-    emit('changed');
-    void refreshPublishBadge();
-    showToast(action === 'withdraw' ? WITHDRAW_QUEUED_TOAST : PUBLISH_QUEUED_TOAST);
-  });
-}
-
 function remove(): Promise<void> {
-  return withErrorHandling(async () => {
-    await deleteJson(`/footprints/events/${props.event.eventId}`);
-    emit('changed');
-    showToast(EDITING_TEXT.removed);
-  });
+  return run('save', () => deleteJson(`/footprints/events/${eventId.value}`), EDITING_TEXT.removed);
 }
 
-/** 確認待ち's 承認: the fields as they stand, then 公開待ち - the same two steps as 「公開待ちにする」. */
-async function approve(): Promise<void> {
-  // `A` reaches here without the button, which is what otherwise stops a second press.
-  if (saving.value) return;
-
-  return withErrorHandling(async () => {
-    await putJson(`/footprints/events/${props.event.eventId}`, fields.value);
-    await postJson(`/footprints/events/${props.event.eventId}/publish`, {});
-    emit('changed');
-    void refreshPublishBadge();
-    showToast(APPROVED_TOAST);
-  });
-}
-
-/** 確認待ち's 「あとで」: keeps what was typed, and moves the row behind the ones not yet looked at. */
-function defer(): Promise<void> {
-  return withErrorHandling(async () => {
-    await putJson(`/footprints/events/${props.event.eventId}`, fields.value);
-    await postJson(`/footprints/events/${props.event.eventId}/defer`, {});
-    emit('changed');
-    void refreshPublishBadge();
-    showToast(DEFERRED_TOAST);
-  });
+/** 確認待ち's 承認: 「公開」, the fields as they stand. */
+function approve(): Promise<void> {
+  return act('publish');
 }
 
 /** 確認待ち's 却下: the row was never published, so it is deleted outright. */
 function reject(): Promise<void> {
-  return withErrorHandling(async () => {
-    await deleteJson(`/footprints/events/${props.event.eventId}`);
-    emit('changed');
-    void refreshPublishBadge();
-    showToast(REJECTED_TOAST);
-  });
+  return run('save', () => deleteJson(`/footprints/events/${eventId.value}`), REJECTED_TOAST);
 }
 
-/** 出典の確認待ち's 「出典を確かめた」: the sources as typed, then the mark cleared - refused when they would not pass publishing. */
+/**
+ * 出典の確認待ち's 「出典を確かめた」: the fields as typed - which for a
+ * published row is its 「保存」, on the public timeline at once - then the
+ * mark cleared, refused when the sources would not pass publishing. Clearing
+ * the mark logs no revision, so a published row's public copy still says
+ * 確認待ち until its next 保存.
+ */
 function confirmSource(): Promise<void> {
-  return withErrorHandling(async () => {
-    await putJson(`/footprints/events/${props.event.eventId}`, fields.value);
-    await postJson(`/footprints/events/${props.event.eventId}/confirm-source`, {});
-    emit('changed');
-    void refreshPublishBadge();
-    showToast(
-      props.event.status === 'published'
-        ? '出典を確かめました。本番の年表を直すには、あしあとでこの行の「公開待ちにする」を押します'
-        : '出典を確かめました',
-    );
-  });
+  const toast =
+    props.event?.status === 'published'
+      ? '出典を確かめました。本番の年表を直すには、あしあとでこの行の「保存」を押します'
+      : '出典を確かめました';
+
+  return run(
+    'save',
+    async () => {
+      await send('save');
+      await postJson(`/footprints/events/${eventId.value}/confirm-source`, {});
+    },
+    toast,
+  );
 }
 
-/** ← 一覧: on a narrow screen the panel stays behind the list, so what is let go here is thrown away, not kept for later. */
+/** ← 一覧 and a new row's やめる: on a narrow screen the panel stays behind the list, so what is let go here is thrown away, not kept for later. */
 function back(): void {
   if (confirmDiscard()) emit('back');
 }
@@ -246,7 +281,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
       <div>
         <h3>{{ fields.title || '（無題）' }}</h3>
         <div class="stack">
-          <span class="chip" :class="mark.tone">{{ mark.label }}</span>
+          <span v-if="mark" class="chip" :class="mark.tone">{{ mark.label }}</span>
           <span class="chip kind">{{ kindLabel(fields.kind) }}</span>
           <span v-if="dirty" class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
         </div>
@@ -256,22 +291,17 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
 
     <div class="inspector-main" :class="{ 'with-preview': previewOpen }">
       <div class="inspector-body">
-        <div v-if="errorMessage" class="panel flag">
-          <h4>保存できません</h4>
-          <div class="hint">{{ errorMessage }}</div>
-        </div>
-
-        <div v-if="waiting" class="panel">
-          <h4>{{ waitingNoticeFor(event.status).title }}</h4>
-          <div class="hint">{{ waitingNoticeFor(event.status).body }}</div>
-          <div>
-            <RouterLink class="btn" to="/publish">公開画面へ</RouterLink>
-          </div>
+        <div v-if="band" class="panel flag" role="alert">
+          <h4>{{ band.title }}</h4>
+          <ul v-if="band.lines.length > 0" class="reasons">
+            <li v-for="(line, i) in band.lines" :key="i">{{ line }}</li>
+          </ul>
+          <div v-if="band.note" class="hint">{{ band.note }}</div>
         </div>
 
         <div v-if="changedSincePublish" class="panel flag">
-          <h4>{{ CHANGED_NOTICE.title }}</h4>
-          <div class="hint">{{ CHANGED_NOTICE.body }}</div>
+          <h4>{{ PUBLISH_TEXT.changedTitle }}</h4>
+          <div class="hint">{{ PUBLISH_TEXT.changedBody }}</div>
         </div>
 
         <div v-if="fields.sourcePending" class="panel flag">
@@ -282,11 +312,11 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
         <div class="row2">
           <div class="field">
             <label for="f-date">日付</label>
-            <input id="f-date" v-model="fields.startDate" type="text" :aria-invalid="errorField === 'startDate'" />
+            <input id="f-date" v-model="fields.startDate" type="text" :aria-invalid="invalid('startDate')" />
           </div>
           <div class="field">
             <label for="f-prec">日付の細かさ</label>
-            <select id="f-prec" v-model="fields.datePrecision" :aria-invalid="errorField === 'datePrecision'">
+            <select id="f-prec" v-model="fields.datePrecision" :aria-invalid="invalid('datePrecision')">
               <option value="day">日まで</option>
               <option value="month">月まで</option>
             </select>
@@ -295,10 +325,10 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
 
         <div class="field span2">
           <label for="f-title">題</label>
-          <input id="f-title" v-model="fields.title" type="text" :aria-invalid="errorField === 'title'" />
+          <input id="f-title" v-model="fields.title" type="text" :aria-invalid="invalid('title')" />
         </div>
 
-        <div class="field">
+        <div v-if="event" class="field">
           <label for="f-eid">event_id</label>
           <input id="f-eid" type="text" :value="event.eventId" readonly />
         </div>
@@ -306,7 +336,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
         <div class="row2">
           <div class="field">
             <label for="f-kind">種類</label>
-            <select id="f-kind" v-model="fields.kind" :aria-invalid="errorField === 'kind'">
+            <select id="f-kind" v-model="fields.kind" :aria-invalid="invalid('kind')">
               <option v-for="k in KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
             </select>
           </div>
@@ -331,7 +361,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
         <div
           v-if="selectedMembers.length > 0 || fields.kind === 'debut'"
           class="panel span2"
-          :class="{ flag: needsLead || errorField === 'leadChannelIds' }"
+          :class="{ flag: needsLead || invalid('leadChannelIds') }"
         >
           <h4>主役</h4>
           <div v-if="selectedMembers.length > 0" class="stack">
@@ -349,7 +379,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
           </div>
           <div class="hint">
             <template v-if="selectedMembers.length === 0">先に関わったメンバーを選んでください。</template>
-            <template v-else-if="needsLead">デビューは、主役を 1 人以上選ばないと公開待ちにできません。</template>
+            <template v-else-if="needsLead">デビューは、主役を 1 人以上選ばないと公開できません。</template>
             <template v-else>この出来事が誰のものかを選びます。デビューでは本人を選び、ゲストは選びません。</template>
           </div>
         </div>
@@ -364,7 +394,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
           <textarea id="f-memo" v-model="fields.memo"></textarea>
         </div>
 
-        <div class="panel" :class="{ flag: errorField === 'sources' }">
+        <div class="panel" :class="{ flag: invalid('sources') }">
           <h4>出典</h4>
           <div v-for="(source, i) in fields.sources" :key="i" class="source-row">
             <input v-model="source.url" type="text" placeholder="https://..." aria-label="出典の URL" />
@@ -388,7 +418,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
 
         <div class="field">
           <label for="f-video">動画 ID</label>
-          <input id="f-video" v-model="fields.videoId" type="text" :aria-invalid="errorField === 'videoId'" />
+          <input id="f-video" v-model="fields.videoId" type="text" :aria-invalid="invalid('videoId')" />
         </div>
 
         <div class="panel">
@@ -406,13 +436,12 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
         </div>
       </div>
       <PreviewPane v-if="previewOpen" :note="PREVIEW_NOTES.published">
-        <FootprintsPreview :fields="fields" :event-id="event.eventId" />
+        <FootprintsPreview :fields="fields" :event-id="eventId ?? 0" />
       </PreviewPane>
     </div>
 
     <div v-if="mode === 'review'" class="inspector-foot">
-      <button class="btn primary" type="button" :disabled="saving" @click="approve">承認して公開待ちにする</button>
-      <button class="btn" type="button" :disabled="saving" @click="defer">あとで</button>
+      <button class="btn primary" type="button" :disabled="saving" @click="approve">承認</button>
       <button class="btn back quiet" type="button" @click="back">← 一覧</button>
       <span class="grow"></span>
       <span class="foot-sep" aria-hidden="true"></span>
@@ -420,21 +449,32 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
     </div>
     <div v-else-if="mode === 'source'" class="inspector-foot">
       <button class="btn primary" type="button" :disabled="saving" @click="confirmSource">出典を確かめた</button>
-      <button class="btn" type="button" :disabled="saving" @click="save">保存</button>
+      <button class="btn" type="button" :disabled="saving" @click="act('save')">保存</button>
       <button class="btn back quiet" type="button" @click="back">← 一覧</button>
     </div>
+    <div v-else-if="event === null" class="inspector-foot">
+      <button class="btn primary" type="button" :disabled="saving" @click="create">保存</button>
+      <span class="grow"></span>
+      <button class="btn quiet" type="button" :disabled="saving" @click="back">やめる</button>
+    </div>
     <div v-else class="inspector-foot">
-      <button class="btn primary" type="button" :disabled="saving" @click="save">保存</button>
-      <button v-if="buttons.publishLabel" class="btn" type="button" :disabled="saving" @click="moveStatus('publish')">
-        {{ buttons.publishLabel }}
+      <button
+        v-for="(button, i) in foot.actions"
+        :key="button.action"
+        class="btn"
+        :class="{ primary: i === 0 }"
+        type="button"
+        :disabled="saving"
+        @click="act(button.action)"
+      >
+        {{ button.label }}
       </button>
-      <button v-if="buttons.withdrawLabel" class="btn" type="button" :disabled="saving" @click="moveStatus('withdraw')">
-        {{ buttons.withdrawLabel }}
-      </button>
+      <span v-if="foot.note" class="hint">{{ foot.note }}</span>
       <button class="btn back quiet" type="button" @click="back">← 一覧</button>
       <span class="grow"></span>
       <span class="foot-sep" aria-hidden="true"></span>
-      <DeleteButton :disabled="saving || buttons.deleteDisabled" @remove="remove" />
+      <DeleteButton :disabled="saving || foot.deleteDisabled" @remove="remove" />
+      <span v-if="foot.deleteReason" class="hint">{{ foot.deleteReason }}</span>
     </div>
 
     <div v-if="memberPickerOpen" class="picker" @mousedown.self="memberPickerOpen = false">
@@ -460,3 +500,13 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
     </div>
   </div>
 </template>
+
+<style scoped>
+/* The reasons a publish was refused, one each, as the worker gave them. */
+.reasons {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--k-text-2);
+  font-size: var(--a-small);
+}
+</style>

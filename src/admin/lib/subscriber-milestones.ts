@@ -5,12 +5,19 @@
  * tested without touching the DOM, the same split lib/footprints.ts uses.
  */
 
-import {
-  footprintsButtonsFor,
-  type FootprintsButtons,
-  type FootprintsEvent,
-  type FootprintsSource,
-} from './footprints';
+import type { FootprintsEvent, FootprintsSource } from './footprints';
+
+/**
+ * What the table can filter by: the `status` column. 確認中 and 公開 are the
+ * two-step publishing's, which 節目 keeps until #283 brings it to 下書き and
+ * 公開中 as あしあと has.
+ */
+export const STATUS_OPTIONS: readonly { value: string; label: string }[] = [
+  { value: 'all', label: 'すべて' },
+  { value: 'draft', label: '下書き' },
+  { value: 'review', label: '確認中' },
+  { value: 'published', label: '公開' },
+];
 
 /** `worker/src/admin/subscriber-milestones.ts`'s own `ANNOUNCERS`, in the same order. */
 export const ANNOUNCERS: readonly { value: string; label: string }[] = [
@@ -154,12 +161,33 @@ const FIELD_MARKERS: readonly [RegExp, MilestoneFieldKey][] = [
 ];
 
 /**
- * The edit panel's status buttons and whether 削除 is disabled. A milestone
- * moves through the same two steps as an event, and the worker refuses to
- * delete a published one (409) the same way, so the answer is an event's.
+ * The edit panel's status buttons and whether 削除 is disabled. A published
+ * milestone can be withdrawn, and can be sent to 公開待ち again - that second
+ * one is how a row changed since it was published gets a version matching its
+ * current content, since saving never adds one. Deleting one is refused (409)
+ * until it is withdrawn.
  */
-export function milestoneButtonsFor(status: string, changed: boolean | null): FootprintsButtons {
-  return footprintsButtonsFor(status, changed);
+export interface MilestoneButtons {
+  publishLabel: '公開待ちにする' | null;
+  withdrawLabel: '下書きに戻す' | null;
+  deleteDisabled: boolean;
+}
+
+/**
+ * `changed` is whether the row differs from what it was published as
+ * (`isChangedSincePublish`), or null when that is unknown - a published row is
+ * then offered 公開待ちにする rather than left with no way forward.
+ */
+export function milestoneButtonsFor(status: string, changed: boolean | null): MilestoneButtons {
+  if (status !== 'published') {
+    return { publishLabel: '公開待ちにする', withdrawLabel: null, deleteDisabled: false };
+  }
+
+  return {
+    publishLabel: changed === false ? null : '公開待ちにする',
+    withdrawLabel: '下書きに戻す',
+    deleteDisabled: true,
+  };
 }
 
 /**

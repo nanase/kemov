@@ -1,25 +1,15 @@
+import { AdminApiError } from '@/admin/lib/api';
 import {
   canPublishFootprints,
+  footprintsAnswerFor,
   footprintsMarkFor,
   isChangedSincePublish,
-  waitingEntryFor,
   type FootprintsPending,
 } from '@/admin/lib/footprints-publish';
 
 const NOTHING: FootprintsPending = { pending: [], changed: [] };
 const WAITING: FootprintsPending = { pending: [{ eventId: 3, latestAction: 'publish' }], changed: [] };
 const CHANGED: FootprintsPending = { pending: [], changed: [{ eventId: 5, title: '変わった行' }] };
-
-describe('waitingEntryFor', () => {
-  test('finds the entry for a waiting event', () => {
-    expect(waitingEntryFor(WAITING, 3)).toEqual({ eventId: 3, latestAction: 'publish' });
-  });
-
-  test('is undefined for an event that is not waiting, and when the list is unknown', () => {
-    expect(waitingEntryFor(WAITING, 4)).toBeUndefined();
-    expect(waitingEntryFor(null, 3)).toBeUndefined();
-  });
-});
 
 describe('isChangedSincePublish', () => {
   test('is true only for a listed event', () => {
@@ -29,8 +19,8 @@ describe('isChangedSincePublish', () => {
   });
 });
 
-// The button on the 公開 screen and the chip in the table read the same list:
-// what one calls waiting the other must call waiting too.
+// The button on the 公開 screen reads the same list the worker's own
+// 「いま公開する」 does: what one calls waiting the other must call waiting too.
 describe('canPublishFootprints', () => {
   test('is false with nothing waiting', () => {
     expect(canPublishFootprints(NOTHING)).toBe(false);
@@ -47,28 +37,125 @@ describe('canPublishFootprints', () => {
   });
 });
 
+// #277's decision 1a: the chip is the row's status, and nothing else - every
+// publish reaches the public site in the same request since #281.
 describe('footprintsMarkFor', () => {
-  test('a published row waiting for 「いま公開する」 is 公開待ち', () => {
-    expect(footprintsMarkFor('published', 3, WAITING)).toEqual({ label: '公開待ち', tone: 'waiting' });
+  test('a published row is 公開中', () => {
+    expect(footprintsMarkFor('published')).toEqual({ label: '公開中', tone: 'published' });
   });
 
-  // `status` does not change in the second step, so this is what tells the
-  // two apart after 「いま公開する」 (#185).
-  test('the same row is 公開 once nothing is waiting for it', () => {
-    expect(footprintsMarkFor('published', 3, NOTHING)).toEqual({ label: '公開', tone: 'published' });
+  test('anything else is 下書き', () => {
+    expect(footprintsMarkFor('draft')).toEqual({ label: '下書き', tone: 'draft' });
+    expect(footprintsMarkFor('review')).toEqual({ label: '下書き', tone: 'draft' });
+  });
+});
+
+const PROBLEMS = [
+  { field: 'leadChannelIds', message: 'デビューの出来事は、主役を 1 人以上選んでください。' },
+  { field: 'videoId', message: '動画 ID は 11 文字です。いまは 10 文字です。' },
+];
+
+describe('footprintsAnswerFor', () => {
+  // #277's decision 1c.
+  test.each([
+    ['publish', 'draft', '公開しました。本番に出ています'],
+    ['save', 'published', '保存しました。本番に出ています'],
+    ['save', 'draft', '下書きを保存しました'],
+    ['save', null, '下書きを保存しました'],
+    ['withdraw', 'published', '非公開に戻しました。本番から外れています'],
+  ] as const)('a %s that went through on a %s row says so in a toast', (action, status, toast) => {
+    expect(footprintsAnswerFor(action, status, null)).toEqual({ kind: 'done', toast });
   });
 
-  test('a published row that is not the waiting one is 公開', () => {
-    expect(footprintsMarkFor('published', 4, WAITING)).toEqual({ label: '公開', tone: 'published' });
+  // 1d: the reasons are the worker's, listed as they came.
+  test('a draft refused for publishing lists the reasons, marks their fields and says what was typed was kept', () => {
+    const error = new AdminApiError(400, { errors: [], problems: PROBLEMS, saved: true });
+
+    expect(footprintsAnswerFor('publish', 'draft', error)).toEqual({
+      kind: 'band',
+      band: {
+        title: '公開できません',
+        lines: PROBLEMS.map((p) => p.message),
+        note: '入力した内容は下書きとして保存しました。',
+      },
+      fields: ['leadChannelIds', 'videoId'],
+      changed: true,
+    });
   });
 
-  test('a published row is not called 公開 when the waiting list could not be read', () => {
-    expect(footprintsMarkFor('published', 3, null)).toEqual({ label: '公開（未確認）', tone: 'unknown' });
+  test('a published row whose save was refused says the row and the public site are as they were', () => {
+    const error = new AdminApiError(400, { errors: [], problems: PROBLEMS, saved: false });
+
+    expect(footprintsAnswerFor('save', 'published', error)).toEqual({
+      kind: 'band',
+      band: {
+        title: '保存できません',
+        lines: PROBLEMS.map((p) => p.message),
+        note: '公開中の行は、公開の条件を満たさないと保存できません。本番は前の内容のままです。',
+      },
+      fields: ['leadChannelIds', 'videoId'],
+      changed: false,
+    });
   });
 
-  test('a draft stays 下書き even while its withdrawal is waiting', () => {
-    const withdrawing: FootprintsPending = { pending: [{ eventId: 3, latestAction: 'withdraw' }], changed: [] };
+  // A draft stays a draft when the JSON cannot be written, so 「公開」 is the
+  // button to press again; a published row's is 「保存」.
+  test.each([
+    ['publish', 'draft', '保存しましたが、本番に出せませんでした。もう一度「公開」を押してください。'],
+    ['save', 'published', '保存しましたが、本番に出せませんでした。もう一度「保存」を押してください。'],
+  ] as const)('a %s on a %s row that saved but could not reach the public site says so', (action, status, title) => {
+    const error = new AdminApiError(502, { error: 'saved, but …', saved: true, event: null });
 
-    expect(footprintsMarkFor('draft', 3, withdrawing)).toEqual({ label: '下書き', tone: 'draft' });
+    expect(footprintsAnswerFor(action, status, error)).toEqual({
+      kind: 'band',
+      band: { title, lines: [], note: null },
+      fields: [],
+      changed: true,
+    });
+  });
+
+  test('a withdraw that could not reach the public site says nothing changed', () => {
+    const error = new AdminApiError(502, { error: 'footprints/events.json could not be written' });
+
+    expect(footprintsAnswerFor('withdraw', 'published', error)).toEqual({
+      kind: 'band',
+      band: {
+        title: '非公開に戻せません',
+        lines: [],
+        note: '本番を書き直せませんでした。行は公開中のまま、本番も前の内容のままです。もう一度「非公開に戻す」を押してください。',
+      },
+      fields: [],
+      changed: false,
+    });
+  });
+
+  test('a save the schema refused says what the worker said, and marks the field it names', () => {
+    const error = new AdminApiError(400, { error: 'startDate must be YYYY-MM-DD' });
+
+    expect(footprintsAnswerFor('save', 'draft', error)).toEqual({
+      kind: 'band',
+      band: { title: '保存できません', lines: [], note: 'startDate must be YYYY-MM-DD' },
+      fields: ['startDate'],
+      changed: false,
+    });
+  });
+
+  // A 502 without `saved` did not say it saved anything, so it is not called a save.
+  test('a 502 that does not say it saved is a failure, not a save', () => {
+    const error = new AdminApiError(502, { error: 'bad gateway' });
+
+    expect(footprintsAnswerFor('publish', 'draft', error)).toMatchObject({
+      kind: 'band',
+      band: { title: '保存できません', note: 'bad gateway' },
+      changed: false,
+    });
+  });
+
+  test('a request that could not be sent at all is a failure', () => {
+    expect(footprintsAnswerFor('save', 'draft', new TypeError('offline'))).toMatchObject({
+      kind: 'band',
+      band: { title: '保存できません', note: 'offline' },
+      changed: false,
+    });
   });
 });

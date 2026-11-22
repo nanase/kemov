@@ -24,16 +24,11 @@ export const KINDS: readonly { value: string; label: string }[] = [
   { value: 'other', label: 'その他' },
 ];
 
-/**
- * What the table can filter by: the `status` column, which is all the query
- * can see. 公開待ち is not in it - it comes from `GET /footprints/pending`, not
- * from a column - so it is only ever a chip (`footprintsMarkFor`), never an option.
- */
+/** What the table can filter by: the `status` column, in the three steps #277's decision 3 gives each data. */
 export const STATUS_OPTIONS: readonly { value: string; label: string }[] = [
   { value: 'all', label: 'すべて' },
   { value: 'draft', label: '下書き' },
-  { value: 'review', label: '確認中' },
-  { value: 'published', label: '公開' },
+  { value: 'published', label: '公開中' },
 ];
 
 export function kindLabel(kind: string): string {
@@ -101,33 +96,54 @@ export function fieldForSaveError(message: string): EventFieldKey | null {
   return null;
 }
 
-/**
- * The edit panel's status buttons and whether 削除 is disabled. A published
- * event can be withdrawn, and can be sent to 公開待ち again - that second one
- * is how a row changed since it was published gets a version matching its
- * current content, since saving never adds one. Deleting one is refused (409)
- * until it is withdrawn.
- */
-export interface FootprintsButtons {
-  publishLabel: '公開待ちにする' | null;
-  withdrawLabel: '下書きに戻す' | null;
-  deleteDisabled: boolean;
-}
+/** What the buttons at the bottom of the edit panel do. */
+export type FootAction = 'publish' | 'save' | 'withdraw';
 
 /**
- * `changed` is whether the row differs from what it was published as
- * (`isChangedSincePublish`), or null when that is unknown - a published row is
- * then offered 公開待ちにする rather than left with no way forward.
+ * The edit panel's buttons, left to right, the first being the primary one,
+ * and what is said beside them (#277's decision 1a, 6-9). The worker refuses
+ * to delete a published event (409), so 削除 is shown but cannot be pressed,
+ * with the reason beside it.
  */
-export function footprintsButtonsFor(status: string, changed: boolean | null): FootprintsButtons {
-  if (status !== 'published') {
-    return { publishLabel: '公開待ちにする', withdrawLabel: null, deleteDisabled: false };
+export interface FootprintsFoot {
+  actions: readonly { action: FootAction; label: string }[];
+  /** Beside the buttons, or null. */
+  note: string | null;
+  deleteDisabled: boolean;
+  /** Why 削除 cannot be pressed, or null when it can. */
+  deleteReason: string | null;
+}
+
+export const FOOT_TEXT = {
+  publish: '公開',
+  save: '保存',
+  withdraw: '非公開に戻す',
+  liveNote: '保存すると、すぐ本番に出ます',
+  deleteReason: '公開中は削除できません。先に「非公開に戻す」を押してください。',
+} as const;
+
+/** The buttons for a saved row whose `status` is `status`. A row not yet saved has its own (保存 and やめる). */
+export function footprintsFootFor(status: string): FootprintsFoot {
+  if (status === 'published') {
+    return {
+      actions: [
+        { action: 'save', label: FOOT_TEXT.save },
+        { action: 'withdraw', label: FOOT_TEXT.withdraw },
+      ],
+      note: FOOT_TEXT.liveNote,
+      deleteDisabled: true,
+      deleteReason: FOOT_TEXT.deleteReason,
+    };
   }
 
   return {
-    publishLabel: changed === false ? null : '公開待ちにする',
-    withdrawLabel: '下書きに戻す',
-    deleteDisabled: true,
+    actions: [
+      { action: 'publish', label: FOOT_TEXT.publish },
+      { action: 'save', label: FOOT_TEXT.save },
+    ],
+    note: null,
+    deleteDisabled: false,
+    deleteReason: null,
   };
 }
 
@@ -208,7 +224,7 @@ export function toFormFields(event: FootprintsEvent): EventFormFields {
   };
 }
 
-/** A new event's starting fields - `＋ 足す` in the table's toolbar creates a draft with these, open for editing right away. */
+/** A new event's starting fields - what `＋ 足す` opens the edit panel with. Nothing is created until it is saved (#277's 6-12). */
 export function emptyFormFields(today: string): EventFormFields {
   return {
     datePrecision: 'day',

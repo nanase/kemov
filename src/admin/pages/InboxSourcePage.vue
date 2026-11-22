@@ -128,8 +128,8 @@ onMounted(() => {
               @keydown.enter="selectRow(e.eventId)"
             >
               <td>
-                <span class="chip" :class="footprintsMarkFor(e.status, e.eventId, pending).tone">{{
-                  footprintsMarkFor(e.status, e.eventId, pending).label
+                <span class="chip" :class="footprintsMarkFor(e.status).tone">{{
+                  footprintsMarkFor(e.status).label
                 }}</span>
               </td>
               <td class="num">{{ e.startDate }}</td>

@@ -257,8 +257,8 @@ onMounted(async () => {
               <ul class="change-list">
                 <li v-for="c in changed" :key="c.eventId">
                   <span class="change-title">{{ c.title }}</span>
-                  <span class="chip" :class="footprintsMarkFor('published', c.eventId, footprintsState).tone">{{
-                    footprintsMarkFor('published', c.eventId, footprintsState).label
+                  <span class="chip" :class="footprintsMarkFor('published').tone">{{
+                    footprintsMarkFor('published').label
                   }}</span>
                   <RouterLink class="btn" :to="{ path: '/footprints', query: { event: c.eventId } }">
                     できごとの画面へ
