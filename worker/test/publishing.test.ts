@@ -4,6 +4,7 @@ import {
   liveBodies,
   publishChange,
   REBUILD_LIMIT,
+  republish,
   type LatestRevisionRow,
   type PublishTarget,
   type RevisionChange,
@@ -67,6 +68,42 @@ function withBatch(batch: D1Database['batch']): Env {
   const db = new Proxy(env.DB, {
     get(target, property) {
       if (property === 'batch') return batch;
+
+      const value = Reflect.get(target, property) as unknown;
+
+      return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+    },
+  });
+
+  return { ...env, DB: db };
+}
+
+/** `env` whose `publication` insert waits at `held` before it runs, the rest left to the real database. */
+function withHeldPublication(held: ReturnType<typeof stop>): Env {
+  const db = new Proxy(env.DB, {
+    get(target, property) {
+      if (property === 'prepare') {
+        return (sql: string) => {
+          const statement = target.prepare(sql);
+
+          if (!sql.includes('INSERT INTO publication')) return statement;
+
+          return {
+            bind: (...values: unknown[]) => {
+              const bound = statement.bind(...values);
+
+              return {
+                run: async () => {
+                  held.reach();
+                  await held.released;
+
+                  return await bound.run();
+                },
+              };
+            },
+          };
+        };
+      }
 
       const value = Reflect.get(target, property) as unknown;
 
@@ -346,6 +383,82 @@ describe('publishChange', () => {
       revisionId: expect.any(Number),
       error: expect.stringContaining('R2 is down'),
     });
+    expect(await publications()).toEqual([]);
+  });
+
+  // Both JSONs checked out; the one checked first records last. The newest
+  // publication row must still name the newest revision, or a published row
+  // would count as waiting.
+  test('does not let an older publication land after a newer one', async () => {
+    const first = await insertEvent('一');
+    const second = await insertEvent('二');
+    const held = stop();
+
+    const firstOutcome = publishChange(withHeldPublication(held), TARGET, publishOf(first), [], NOW);
+
+    await held.reached;
+
+    const secondOutcome = await publishChange(env, TARGET, publishOf(second), [], NOW);
+
+    held.release();
+
+    expect(await firstOutcome).toMatchObject({ written: true, publicationId: null });
+    expect(secondOutcome).toMatchObject({ written: true, publicationId: expect.any(Number) });
+    expect(await publishedEvents()).toEqual([first, second]);
+    expect((await publications()).map((p) => p.last_revision_id)).toEqual([
+      Math.max(...(await revisions()).map((r) => r.revision_id)),
+    ]);
+  });
+});
+
+describe('republish', () => {
+  test('writes the JSON from the recorded revisions and records a publication naming the newest', async () => {
+    const eventId = await insertEvent('一');
+
+    await publishChange(env, TARGET, publishOf(eventId), [], NOW);
+
+    const outcome = await republish(env, TARGET, NOW);
+
+    expect(outcome).toMatchObject({ current: true, publicationId: expect.any(Number) });
+    expect(await publishedEvents()).toEqual([eventId]);
+  });
+
+  // 「いま公開する」 read the revisions before a 「公開」 was recorded, and its
+  // write lands after that publish finished.
+  test('does not write over a publish that finished while it was building', async () => {
+    const first = await insertEvent('一');
+    const second = await insertEvent('二');
+
+    await publishChange(env, TARGET, publishOf(first), [], NOW);
+
+    const held = stop();
+    let puts = 0;
+    const holding = withBucket({
+      put: async (key: string, value: string, options?: R2PutOptions) => {
+        puts += 1;
+
+        if (puts === 1) {
+          held.reach();
+          await held.released;
+        }
+
+        return await env.PUBLIC_DATA.put(key, value, options);
+      },
+    });
+
+    const outcome = republish(holding, TARGET, NOW);
+
+    await held.reached;
+    expect((await publishChange(env, TARGET, publishOf(second), [], NOW)).written).toBe(true);
+
+    held.release();
+
+    expect((await outcome).current).toBe(true);
+    expect(await publishedEvents()).toEqual([first, second]);
+  });
+
+  test('throws when the JSON cannot be written, and records nothing', async () => {
+    await expect(republish(R2_DOWN, TARGET, NOW)).rejects.toThrow('R2 is down');
     expect(await publications()).toEqual([]);
   });
 });

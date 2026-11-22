@@ -1,4 +1,3 @@
-import { byteLength } from '../lib/backup';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 import { hasTwoHosts, isWhitelistedSource, readSourceWhitelist } from '../lib/source-whitelist';
@@ -19,6 +18,7 @@ import {
   latestRevisions,
   liveBodies,
   publishChange,
+  republish,
   type LatestRevisionRow,
   type PublishOutcome,
   type PublishTarget,
@@ -140,14 +140,14 @@ function currentShape(parsed: Record<string, unknown>): Record<string, unknown> 
 }
 
 /** `footprints/events.json`'s text for `bodies`: every event on the timeline, by date and then by id. */
-function footprintsJson(now: Date, bodies: readonly Record<string, unknown>[]): { json: string; eventCount: number } {
+function footprintsJson(now: Date, bodies: readonly Record<string, unknown>[]): string {
   const events = bodies.map((body) => currentShape(body) as { event_id: number; start_date: string });
 
   events.sort((a, b) =>
     a.start_date === b.start_date ? a.event_id - b.event_id : a.start_date < b.start_date ? -1 : 1,
   );
 
-  return { json: JSON.stringify({ published_at: formatTimestamp(now), events }), eventCount: events.length };
+  return JSON.stringify({ published_at: formatTimestamp(now), events });
 }
 
 /** What publishing.ts needs to know about あしあと. */
@@ -158,7 +158,7 @@ export const FOOTPRINTS_TARGET: PublishTarget = {
   table: 'footprints_event',
   keyColumn: 'event_id',
   buildJson(now: Date, latest: readonly LatestRevisionRow[], change: RevisionChange | null): string {
-    return footprintsJson(now, liveBodies(latest, change)).json;
+    return footprintsJson(now, liveBodies(latest, change));
   },
 };
 
@@ -448,10 +448,10 @@ async function readWaiting(env: Env): Promise<{ pending: WaitingFootprintsEntry[
  * before #281 is published by it, or by the next publish of any event, which
  * builds from the same revisions.
  *
- * The write to R2 happens before `publication` gains its row, not the other
- * way around: a failure between the two must leave "what was last
- * successfully published" unclaimed rather than pointing at a JSON file
- * that was never actually written.
+ * Written through publishing.ts's `republish`, which checks the JSON again
+ * after writing it as a publish does: a 「公開」 recorded while this was
+ * building would otherwise be written over. 502 when the JSON could not be
+ * brought up to date, with no `publication` row recorded for it.
  */
 export async function publishFootprintsNow(env: Env, now: Date): Promise<Response> {
   const [lastRevisionId, latest] = await Promise.all([
@@ -465,26 +465,14 @@ export async function publishFootprintsNow(env: Env, now: Date): Promise<Respons
     return jsonResponse({ published: false });
   }
 
-  const bodies = latest
-    .filter((row) => row.action !== 'withdraw' && row.body !== null)
-    .map((row) => JSON.parse(row.body!) as Record<string, unknown>);
-  const { json, eventCount } = footprintsJson(now, bodies);
-  const jsonByteLength = byteLength(json);
+  const outcome = await republish(env, FOOTPRINTS_TARGET, now);
 
-  await env.PUBLIC_DATA.put(OBJECT_KEY, json, {
-    httpMetadata: { contentType: 'application/json; charset=UTF-8' },
-  });
-
-  const inserted = await env.DB.prepare(
-    `INSERT INTO publication (target, last_revision_id, object_key, byte_length) VALUES ('footprints', ?1, ?2, ?3)`,
-  )
-    .bind(newestRevisionId, OBJECT_KEY, jsonByteLength)
-    .run();
+  if (!outcome.current) return errorResponse(502, `${OBJECT_KEY} could not be brought up to date: ${outcome.error}`);
 
   return jsonResponse({
     published: true,
-    publicationId: inserted.meta.last_row_id,
-    eventCount,
-    byteLength: jsonByteLength,
+    publicationId: outcome.publicationId,
+    eventCount: liveBodies(outcome.latest, null).length,
+    byteLength: outcome.byteLength,
   });
 }

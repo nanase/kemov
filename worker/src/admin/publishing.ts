@@ -35,7 +35,9 @@ import type { RevisionEntity } from '../lib/revision';
  * revision recorded before its check, and a revision recorded after that
  * belongs to a request that checks later still and finds the JSON is not
  * its own. Only then is the `publication` row recorded, naming the newest
- * revision the JSON was checked against.
+ * revision the JSON was checked against - unless a newer one was recorded
+ * first. 「いま公開する」 goes through the same check (`republish`), so it
+ * cannot write over a publish either.
  */
 
 /** How many times the JSON is built again after the batch, before the request says it may be behind. */
@@ -70,7 +72,9 @@ export interface RevisionChange {
  * `revisionId` is null when the row was gone by the time the batch ran - a
  * delete in between - and no revision was logged for it. `publicationId` is
  * null when, besides, no revision of `entity` exists at all: a publication
- * names the newest revision it was built from, and there is none.
+ * names the newest revision it was built from, and there is none. It is null
+ * too when another request already recorded a publication naming a newer
+ * revision (`recordPublication`).
  *
  * `written: false` with `recorded: false` is a JSON that could not be
  * written, and nothing recorded. With `recorded: true`, the row and its
@@ -162,11 +166,18 @@ function hasNewer(latest: readonly LatestRevisionRow[], written: Written): boole
   );
 }
 
+/** A JSON found up to date: the revisions it was last checked against, and what was written. */
+interface UpToDate {
+  current: true;
+  latest: readonly LatestRevisionRow[];
+  written: Written;
+}
+
 /**
  * Builds the JSON again from `revision` until nothing was recorded that it
  * lacks and no other request wrote it since, at most `REBUILD_LIMIT` times.
- * Answers the newest revision it was last checked against, or why it could
- * not be brought up to date.
+ * Answers the revisions it was last checked against, or why it could not be
+ * brought up to date.
  *
  * `trusted` is false when `first` is wrong in a way `revision` cannot show:
  * it carries a change that was never recorded, so it is built again
@@ -178,7 +189,7 @@ async function bringUpToDate(
   now: Date,
   first: Written,
   trusted: boolean,
-): Promise<{ current: true; newest: number; written: Written } | { current: false; error: string }> {
+): Promise<UpToDate | { current: false; error: string }> {
   let written = first;
   let checkable = trusted;
 
@@ -194,7 +205,7 @@ async function bringUpToDate(
         return { current: false, error: String(error) };
       }
 
-      if (head?.version === written.version) return { current: true, newest: newestRevisionId(latest), written };
+      if (head?.version === written.version) return { current: true, latest, written };
     }
 
     if (rebuilds === REBUILD_LIMIT) {
@@ -278,20 +289,78 @@ export async function publishChange(
 
   if (!upToDate.current) return { written: false, recorded: true, revisionId, error: upToDate.error };
 
-  // With no revision of `entity` at all, there is none for a publication to name.
-  const publication =
-    upToDate.newest === 0
-      ? null
-      : await env.DB.prepare(
-          'INSERT INTO publication (target, last_revision_id, object_key, byte_length) VALUES (?1, ?2, ?3, ?4)',
-        )
-          .bind(target.target, upToDate.newest, target.objectKey, upToDate.written.byteLength)
-          .run();
-
   return {
     written: true,
     revisionId,
-    publicationId: publication === null ? null : publication.meta.last_row_id,
+    publicationId: await recordPublication(env, target, upToDate),
+    byteLength: upToDate.written.byteLength,
+  };
+}
+
+/**
+ * Records the `publication` row for a JSON found up to date, naming the
+ * newest revision it was checked against, and answers its id.
+ *
+ * Null, and nothing recorded, when there is no revision of `entity` at all,
+ * or when a `publication` row of `target` already names a newer revision:
+ * another request checked its own JSON after this one and recorded it
+ * first, and the newest row - which is what says what is still waiting -
+ * must not go back to an older revision. One statement, so no other insert
+ * can come between the look and the insert.
+ */
+async function recordPublication(env: Env, target: PublishTarget, upToDate: UpToDate): Promise<number | null> {
+  const newest = newestRevisionId(upToDate.latest);
+
+  if (newest === 0) return null;
+
+  const inserted = await env.DB.prepare(
+    `INSERT INTO publication (target, last_revision_id, object_key, byte_length)
+     SELECT ?1, ?2, ?3, ?4
+     WHERE NOT EXISTS (SELECT 1 FROM publication WHERE target = ?1 AND last_revision_id > ?2)`,
+  )
+    .bind(target.target, newest, target.objectKey, upToDate.written.byteLength)
+    .run();
+
+  return inserted.meta.changes > 0 ? inserted.meta.last_row_id : null;
+}
+
+/**
+ * Builds `target`'s JSON from `revision` alone and writes it, with no change
+ * of its own - あしあと's 「いま公開する」 until #285 - then brings it up to
+ * date and records the `publication` row as `publishChange` does, so that a
+ * `publishChange` running alongside is not written over.
+ *
+ * A failure to write the JSON the first time is thrown, as nothing was
+ * recorded. One to bring it up to date is answered: the JSON may be behind,
+ * and no `publication` row says otherwise. `latest` is what the JSON was
+ * last built from and checked against.
+ */
+export async function republish(
+  env: Env,
+  target: PublishTarget,
+  now: Date,
+): Promise<
+  | { current: true; latest: readonly LatestRevisionRow[]; publicationId: number | null; byteLength: number }
+  | { current: false; error: string }
+> {
+  const before = await latestRevisions(env, target.entity);
+  const json = target.buildJson(now, before, null);
+  const version = await putJson(env, target, json);
+
+  const upToDate = await bringUpToDate(
+    env,
+    target,
+    now,
+    { builtFrom: newestRevisionId(before), own: null, version, byteLength: byteLength(json) },
+    true,
+  );
+
+  if (!upToDate.current) return upToDate;
+
+  return {
+    current: true,
+    latest: upToDate.latest,
+    publicationId: await recordPublication(env, target, upToDate),
     byteLength: upToDate.written.byteLength,
   };
 }
