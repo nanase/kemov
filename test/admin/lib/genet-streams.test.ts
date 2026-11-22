@@ -1,6 +1,8 @@
 import {
   emptyFormFields,
   fieldForSaveError,
+  moveEntries,
+  performanceMoves,
   toFormFields,
   withoutItem,
   type GenetStream,
@@ -108,5 +110,67 @@ describe('fieldForSaveError', () => {
 describe('withoutItem', () => {
   test('removes the item at the given index only', () => {
     expect(withoutItem(['a', 'b', 'c'], 1)).toEqual(['a', 'c']);
+  });
+});
+
+describe('performanceMoves', () => {
+  test('follows each tune to its new index', () => {
+    expect(performanceMoves([11, 22, 33], [33, 11, 22])).toEqual(
+      new Map([
+        [0, 1],
+        [1, 2],
+        [2, 0],
+      ]),
+    );
+  });
+
+  test('leaves out a tune the new order no longer holds', () => {
+    expect(performanceMoves([11, 22, 33], [11, 33])).toEqual(
+      new Map([
+        [0, 0],
+        [2, 1],
+      ]),
+    );
+  });
+
+  // The same tune twice in one stream: the k-th goes to the k-th, so neither
+  // copy takes the other's fields.
+  test('pairs a repeated tune in order', () => {
+    expect(performanceMoves([11, 22, 11], [22, 11, 44, 11])).toEqual(
+      new Map([
+        [0, 1],
+        [1, 0],
+        [2, 3],
+      ]),
+    );
+  });
+
+  test('a repeated tune held fewer times keeps only its first copies', () => {
+    expect(performanceMoves([11, 11], [11])).toEqual(new Map([[0, 0]]));
+  });
+});
+
+describe('moveEntries', () => {
+  test('moves each kept key and drops the rest', () => {
+    const byIndex = new Map([
+      [0, 'a'],
+      [1, 'b'],
+      [2, 'c'],
+    ]);
+
+    expect(
+      moveEntries(
+        byIndex,
+        new Map([
+          [0, 1],
+          [2, 0],
+        ]),
+      ),
+    ).toEqual(
+      new Map([
+        [1, 'a'],
+        [0, 'c'],
+      ]),
+    );
   });
 });
