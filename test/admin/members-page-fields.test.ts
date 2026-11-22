@@ -58,7 +58,9 @@ describe('MembersPage.vue fields', () => {
 
       const body = page.slice(start).split(/\n(?:async )?function /)[0]!;
 
-      expect(body).toContain('busy.value');
+      // An `if` whose condition has `busy.value` (not negated) and that returns at once: reversing the
+      // guard (`!busy.value`) or dropping the `return` fails it.
+      expect(body).toMatch(/if \([^\n]*(?<!!)\bbusy\.value\b[^\n]*\) return;/);
     },
   );
 
