@@ -666,8 +666,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
             <input v-if="newForm" id="f-cid" v-model="newForm.channelId" type="text" placeholder="UC…" />
             <input v-else id="f-cid" type="text" :value="selectedId" readonly />
             <div v-if="newForm" :id="LOOKUP_ID" class="lookup" aria-live="polite">
-              <p v-if="lookupShown === 'waiting'" class="hint">{{ LOOKUP_TEXT.waiting }}</p>
-              <p v-else-if="lookupShown === 'loading'" class="lookup-row hint">
+              <p v-if="lookupShown === 'loading'" class="lookup-row hint">
                 <span class="lookup-icon" aria-hidden="true"></span>
                 {{ LOOKUP_TEXT.loading }}
               </p>
