@@ -23,6 +23,8 @@ import {
   blankNewMember,
   editWouldBeLost,
   fieldForSaveError,
+  fieldsAfterReload,
+  keepEdit,
   isHexColor,
   memberOfListSaveError,
   moveId,
@@ -376,11 +378,23 @@ async function saveList(): Promise<void> {
 
   for (const member of draft.added) normalizeColors(member);
 
+  // Reading the list again after the save replaces the saved member's fields
+  // with the saved values; what is typed there was not part of this save.
+  const kept = keepEdit(fields.value, selected.value);
+
   try {
     await putJson('/members', { add: draft.added, order: orderedIds.value });
     forgetPublicData();
     clearDraft();
     await load();
+
+    // `watch(selected)` resets the fields once the list is read, and runs
+    // after this line: put what was typed back once it has.
+    if (kept !== null) {
+      await nextTick();
+      fields.value = fieldsAfterReload(kept, selected.value);
+    }
+
     showToast('保存しました');
   } catch (error) {
     const channelId =
@@ -522,7 +536,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
     <div class="pane">
       <div class="toolbar">
         <h2>メンバー</h2>
-        <span v-if="dirty" class="chip waiting">{{ MEMBER_TEXT.unsaved }}</span>
+        <span v-if="dirty" class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
         <span class="grow"></span>
         <span class="sub num">{{ rows.length }} 人</span>
         <!-- Always there, unsaved changes or not: a 409 from 保存 says to reload, and the draft is kept across it. -->
@@ -550,7 +564,6 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
           <h4>保存できません</h4>
           <div class="hint">{{ MEMBER_TEXT.rowErrorLead(shownRowError.name, shownRowError.channelId) }}</div>
           <div class="hint">{{ shownRowError.message }}</div>
-          <div class="hint">{{ MEMBER_TEXT.rowErrorKept }}</div>
           <div class="stack">
             <button class="btn" type="button" :disabled="listSaving" @click="openErrorRow">
               {{ MEMBER_TEXT.openErrorRow }}
@@ -607,7 +620,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
               </td>
               <td>
                 {{ m.name }}
-                <span v-if="m.isNew" class="chip waiting">{{ MEMBER_TEXT.unsaved }}</span>
+                <span v-if="m.isNew" class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
               </td>
               <td class="num sub">{{ m.activityStartDate }}</td>
               <td class="num sub">{{ m.activityEndDate ?? '—' }}</td>

@@ -2,7 +2,9 @@ import {
   blankNewMember,
   editWouldBeLost,
   fieldForSaveError,
+  fieldsAfterReload,
   isHexColor,
+  keepEdit,
   memberOfListSaveError,
   moveId,
   normalizeColor,
@@ -242,5 +244,64 @@ describe('editWouldBeLost', () => {
 
   test('looks at the new-member form first when both are there', () => {
     expect(editWouldBeLost(blankNewMember(), { ...toFormFields(MEMBER), name: 'x' }, MEMBER)).toBe(false);
+  });
+});
+
+describe('keepEdit', () => {
+  test('is null when nothing is open', () => {
+    expect(keepEdit(null, null)).toBeNull();
+    expect(keepEdit(toFormFields(MEMBER), null)).toBeNull();
+  });
+
+  test('is null for a saved member shown as it was saved, or typed in and erased again', () => {
+    expect(keepEdit(toFormFields(MEMBER), MEMBER)).toBeNull();
+    expect(keepEdit({ ...toFormFields(MEMBER), twitch: '' }, MEMBER)).toBeNull();
+  });
+
+  test('keeps what is typed, for the member it was typed for', () => {
+    expect(keepEdit({ ...toFormFields(MEMBER), name: 'ケープ編集中' }, MEMBER)).toEqual({
+      channelId: MEMBER.channelId,
+      fields: { ...toFormFields(MEMBER), name: 'ケープ編集中' },
+    });
+  });
+
+  test('keeps a copy, so typing on does not change what was set aside', () => {
+    const fields = { ...toFormFields(MEMBER), name: 'a' };
+    const kept = keepEdit(fields, MEMBER);
+
+    fields.name = 'b';
+
+    expect(kept?.fields.name).toEqual('a');
+  });
+});
+
+describe('fieldsAfterReload', () => {
+  const kept = { channelId: MEMBER.channelId, fields: { ...toFormFields(MEMBER), name: 'ケープ編集中' } };
+
+  test('is null when no member is open', () => {
+    expect(fieldsAfterReload(kept, null)).toBeNull();
+    expect(fieldsAfterReload(null, null)).toBeNull();
+  });
+
+  test('shows the saved values when nothing was kept', () => {
+    expect(fieldsAfterReload(null, MEMBER)).toEqual(toFormFields(MEMBER));
+  });
+
+  test('shows what was kept when the same member is open', () => {
+    expect(fieldsAfterReload(kept, { ...MEMBER, displayOrder: 0 })).toEqual(kept.fields);
+  });
+
+  test('shows the saved values of another member, not what was kept for this one', () => {
+    const other = { ...MEMBER, channelId: 'UCother', name: '別のメンバー' };
+
+    expect(fieldsAfterReload(kept, other)).toEqual(toFormFields(other));
+  });
+
+  test('gives a copy, so typing on does not change what was kept', () => {
+    const shown = fieldsAfterReload(kept, MEMBER);
+
+    shown!.name = 'x';
+
+    expect(kept.fields.name).toEqual('ケープ編集中');
   });
 });

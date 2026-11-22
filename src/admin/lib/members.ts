@@ -91,7 +91,6 @@ export function blankNewMember(): NewMemberFields {
 export const MEMBER_TEXT = {
   moveUp: (name: string) => `${name}を上へ`,
   moveDown: (name: string) => `${name}を下へ`,
-  unsaved: '未保存',
   discard: '元に戻す',
   addHeading: 'メンバーを足す',
   addToList: '一覧に足す',
@@ -107,7 +106,6 @@ export const MEMBER_TEXT = {
   pickColor: (label: string) => `${label} の色を選ぶ`,
   rowErrorLead: (name: string, channelId: string) =>
     `足した行「${name || '名前なし'}」（${channelId}）に誤りがあります。`,
-  rowErrorKept: '編集の欄に入力中の内容があったので、その行へは移りませんでした。',
   openErrorRow: '該当の行を表示',
 } as const;
 
@@ -205,6 +203,33 @@ export function editWouldBeLost(
   if (newForm !== null) return !sameFields(newForm, blankNewMember());
 
   return fields !== null && saved !== null && !sameFields(fields, toFormFields(saved));
+}
+
+/** A saved member's typed changes, set aside while the list is read again. */
+export interface KeptEdit {
+  channelId: string;
+  fields: MemberFormFields;
+}
+
+/**
+ * The changes typed in the edit panel for a saved member, or null when there
+ * are none. Taken before the list's 保存, which reads the list again and would
+ * otherwise show the saved values over what is typed (#286).
+ */
+export function keepEdit(fields: MemberFormFields | null, saved: Member | null): KeptEdit | null {
+  if (fields === null || saved === null || sameFields(fields, toFormFields(saved))) return null;
+
+  return { channelId: saved.channelId, fields: { ...fields } };
+}
+
+/**
+ * What the edit panel shows once the list was read again: the changes set
+ * aside for that member, or else the saved values. Null when no member is open.
+ */
+export function fieldsAfterReload(kept: KeptEdit | null, member: Member | null): MemberFormFields | null {
+  if (member === null) return null;
+
+  return kept?.channelId === member.channelId ? { ...kept.fields } : toFormFields(member);
 }
 
 /**
