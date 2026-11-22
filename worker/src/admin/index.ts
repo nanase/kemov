@@ -3,15 +3,14 @@ import { isAdminEmail, verifyAccess } from '../lib/access';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 import { ackCollectTask, listCollectTasks, markCollectTaskUnavailable, retryCollectTask } from './collect-tasks';
-import { createEvent, deleteEvent, getEvent, listEvents, updateEvent } from './footprints';
-import { pendingFootprints, publishEvent, publishFootprintsNow, withdrawEvent } from './footprints-publish';
+import { createEvent, deleteEvent, getEvent, listEvents } from './footprints';
+import { pendingFootprints, publishEvent, publishFootprintsNow, saveEvent, withdrawEvent } from './footprints-publish';
 import { createPerson, deletePerson, getPerson, listPeople, updatePerson } from './genet-people';
 import { pendingGenetMusic, publishGenetMusicNow, publishStream, withdrawStream } from './genet-publish';
 import { createStream, deleteStream, getStream, listStreams, updateStream } from './genet-streams';
 import { createTune, deleteTune, getTune, listTunes, updateTune } from './genet-tunes';
 import {
   confirmEventSources,
-  deferEvent,
   deferStream,
   inboxCounts,
   listPublishInbox,
@@ -156,7 +155,7 @@ export async function handleAdminRequest(
 
     const body = await readJsonObject(request);
 
-    return 'error' in body ? body.error : await updateEvent(env, eventId, body.value);
+    return 'error' in body ? body.error : await saveEvent(env, eventId, body.value, instant);
   }
 
   if (segments.length === 6 && name === 'footprints' && sub === 'events' && id2 !== undefined) {
@@ -166,9 +165,17 @@ export async function handleAdminRequest(
 
     if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
 
-    if (action === 'publish') return await publishEvent(env, eventId);
-    if (action === 'withdraw') return await withdrawEvent(env, eventId);
-    if (action === 'defer') return await deferEvent(env, eventId);
+    if (action === 'publish') {
+      const body = await readJsonObject(request);
+
+      return 'error' in body ? body.error : await publishEvent(env, eventId, body.value, instant);
+    }
+
+    if (action === 'withdraw') {
+      const body = await readJsonObject(request);
+
+      return 'error' in body ? body.error : await withdrawEvent(env, eventId, body.value, instant);
+    }
     if (action === 'confirm-source') return await confirmEventSources(env, eventId);
 
     return errorResponse(404, `no endpoint at ${pathname}`);

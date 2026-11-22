@@ -1,7 +1,14 @@
 import { env } from 'cloudflare:test';
 
-import { createEvent, updateEvent } from '../src/admin/footprints';
-import { pendingFootprints, publishEvent, publishFootprintsNow, withdrawEvent } from '../src/admin/footprints-publish';
+import { createEvent, getEvent, updateEvent } from '../src/admin/footprints';
+import {
+  pendingFootprints,
+  publishEvent,
+  publishFootprintsNow,
+  saveEvent,
+  withdrawEvent,
+} from '../src/admin/footprints-publish';
+import type { Env } from '../src/lib/env';
 import { clearEverything } from './reset-db';
 
 async function clearPublicData(): Promise<void> {
@@ -19,10 +26,23 @@ beforeEach(async () => {
 });
 
 const NOW = new Date('2026-09-18T00:00:00Z');
+const LATER = new Date('2026-09-19T00:00:00Z');
+const OBJECT_KEY = 'footprints/events.json';
 const WHITELISTED_PREFIX = 'https://kemono-friends.jp/';
 const WHITELISTED_SOURCE = `${WHITELISTED_PREFIX}some-article`;
 const SOURCES_NOT_ENOUGH =
-  'sourcePending is false but no source is in the whitelist and the sources are not on two hosts';
+  '出典が足りません。「出典の確認待ち」を外すには、ホワイトリストに載った出典を 1 つ足すか、別のサイトの出典を足してください。';
+const NO_TITLE = '題を入れてください。';
+
+/** `env` with an R2 that refuses every write - what a publish meets when the public JSON cannot be written. */
+const R2_DOWN: Env = {
+  ...env,
+  PUBLIC_DATA: {
+    get: (key: string) => env.PUBLIC_DATA.get(key),
+    list: () => env.PUBLIC_DATA.list(),
+    put: () => Promise.reject(new Error('R2 is down')),
+  } as unknown as R2Bucket,
+};
 
 function source(url: string) {
   return { url, title: null };
@@ -55,6 +75,15 @@ async function createValidEvent(overrides: Record<string, unknown> = {}): Promis
   return body.event.eventId;
 }
 
+/** A draft created and published with the same fields. */
+async function createPublishedEvent(overrides: Record<string, unknown> = {}): Promise<number> {
+  const eventId = await createValidEvent(overrides);
+
+  expect((await publishEvent(env, eventId, validBody(overrides), NOW)).status).toEqual(200);
+
+  return eventId;
+}
+
 async function insertChannel(channelId: string): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO channel (channel_id, name, fullname, color_key, color_sub, color_light, color_back, activity_start_date)
@@ -64,13 +93,46 @@ async function insertChannel(channelId: string): Promise<void> {
     .run();
 }
 
+async function revisionRows(): Promise<{ entity_key: string; action: string; body: string | null }[]> {
+  const { results } = await env.DB.prepare(
+    "SELECT entity_key, action, body FROM revision WHERE entity = 'footprints_event' ORDER BY revision_id",
+  ).all<{ entity_key: string; action: string; body: string | null }>();
+
+  return results;
+}
+
+async function publicationRows(): Promise<{ last_revision_id: number; object_key: string }[]> {
+  const { results } = await env.DB.prepare(
+    "SELECT last_revision_id, object_key FROM publication WHERE target = 'footprints' ORDER BY publication_id",
+  ).all<{ last_revision_id: number; object_key: string }>();
+
+  return results;
+}
+
+interface PublishedJson {
+  published_at: string;
+  events: { event_id: number; title: string; [key: string]: unknown }[];
+}
+
+async function readPublished(): Promise<PublishedJson | null> {
+  const object = await env.PUBLIC_DATA.get(OBJECT_KEY);
+
+  if (object === null) return null;
+
+  return JSON.parse(await object.text()) as PublishedJson;
+}
+
+async function readRow(eventId: number): Promise<{ status: string; title: string }> {
+  return (await (await getEvent(env, eventId)).json()) as { status: string; title: string };
+}
+
 /**
  * Publishes `eventId`, then logs a second `publish` whose body has no
  * `lead_channel_ids` - what every event published before migration 0011
  * still has as its latest revision.
  */
 async function publishAsBeforeLeads(eventId: number): Promise<void> {
-  await publishEvent(env, eventId);
+  await publishEvent(env, eventId, validBody(), NOW);
 
   const rows = await revisionRows();
   const body = JSON.parse(rows.at(-1)!.body!) as Record<string, unknown>;
@@ -84,92 +146,148 @@ async function publishAsBeforeLeads(eventId: number): Promise<void> {
     .run();
 }
 
-async function revisionRows(): Promise<{ entity_key: string; action: string; body: string | null }[]> {
-  const { results } = await env.DB.prepare(
-    "SELECT entity_key, action, body FROM revision WHERE entity = 'footprints_event' ORDER BY revision_id",
-  ).all<{ entity_key: string; action: string; body: string | null }>();
-
-  return results;
-}
-
 describe('publishEvent', () => {
   test('answers 404 for an event that does not exist', async () => {
-    expect((await publishEvent(env, 1)).status).toEqual(404);
+    expect((await publishEvent(env, 1, validBody(), NOW)).status).toEqual(404);
   });
 
-  test('publishes a ready event and logs a publish revision', async () => {
-    const eventId = await createValidEvent();
+  test('saves the fields sent, publishes, and writes the JSON in one request', async () => {
+    const eventId = await createValidEvent({ title: '下書きの題' });
 
-    const response = await publishEvent(env, eventId);
+    const response = await publishEvent(env, eventId, validBody({ title: '公開の題' }), NOW);
 
     expect(response.status).toEqual(200);
 
-    const body = (await response.json()) as { event: { status: string }; revisionId: number };
+    const body = (await response.json()) as {
+      event: { status: string; title: string };
+      revisionId: number;
+      publicationId: number;
+    };
 
-    expect(body.event.status).toEqual('published');
-    expect(typeof body.revisionId).toEqual('number');
+    expect(body.event).toMatchObject({ status: 'published', title: '公開の題' });
 
     const rows = await revisionRows();
 
     expect(rows).toEqual([{ entity_key: String(eventId), action: 'publish', body: expect.any(String) }]);
+    expect(JSON.parse(rows[0]!.body!)).toMatchObject({ title: '公開の題' });
+
+    const published = await readPublished();
+
+    expect(published!.published_at).toEqual('2026-09-18T00:00:00Z');
+    expect(published!.events.map((e) => [e.event_id, e.title])).toEqual([[eventId, '公開の題']]);
+    expect(await publicationRows()).toEqual([{ last_revision_id: body.revisionId, object_key: OBJECT_KEY }]);
   });
 
-  test('refuses an empty title, and changes nothing', async () => {
-    const eventId = await createValidEvent({ title: '' });
+  test('keeps the other events in the JSON', async () => {
+    const first = await createPublishedEvent({ title: '一つ目' });
+    const second = await createValidEvent({ title: '二つ目' });
 
-    const response = await publishEvent(env, eventId);
+    await publishEvent(env, second, validBody({ title: '二つ目' }), LATER);
+
+    expect((await readPublished())!.events.map((e) => e.event_id)).toEqual([first, second]);
+  });
+
+  test('orders the JSON by startDate, then by eventId', async () => {
+    const later = await createPublishedEvent({ startDate: '2025-03-01' });
+    const earlierA = await createPublishedEvent({ startDate: '2025-01-01' });
+    const earlierB = await createPublishedEvent({ startDate: '2025-01-01' });
+
+    expect((await readPublished())!.events.map((event) => event.event_id)).toEqual(
+      [earlierA, earlierB].sort((a, b) => a - b).concat(later),
+    );
+  });
+
+  test('refuses an event not ready, saves what was sent as a draft, and leaves the JSON alone', async () => {
+    const eventId = await createValidEvent({ title: '下書きの題' });
+
+    const response = await publishEvent(env, eventId, validBody({ title: '', memo: '直したメモ' }), NOW);
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ errors: ['title must not be empty'] });
+    expect(await response.json()).toEqual({
+      errors: [NO_TITLE],
+      problems: [{ field: 'title', message: NO_TITLE }],
+      saved: true,
+    });
     expect(await revisionRows()).toEqual([]);
+    expect(await publicationRows()).toEqual([]);
+    expect(await readPublished()).toBeNull();
+    expect(await readRow(eventId)).toMatchObject({ status: 'draft', title: '' });
+  });
 
-    const stored = await env.DB.prepare('SELECT status FROM footprints_event WHERE event_id = ?1')
-      .bind(eventId)
-      .first<{ status: string }>();
+  test('refuses fields the schema refuses, and saves nothing', async () => {
+    const eventId = await createValidEvent({ title: '下書きの題' });
 
-    expect(stored!.status).toEqual('draft');
+    const response = await publishEvent(env, eventId, validBody({ title: '新しい題', startDate: '2025-1-1' }), NOW);
+
+    expect(response.status).toEqual(400);
+    expect(await readRow(eventId)).toMatchObject({ status: 'draft', title: '下書きの題' });
+    expect(await revisionRows()).toEqual([]);
+  });
+
+  test('saves the fields as a draft, and says so, when the JSON cannot be written', async () => {
+    const eventId = await createValidEvent({ title: '下書きの題' });
+
+    const response = await publishEvent(R2_DOWN, eventId, validBody({ title: '公開の題' }), NOW);
+
+    expect(response.status).toEqual(502);
+
+    const body = (await response.json()) as { saved: boolean; event: { status: string; title: string } };
+
+    expect(body.saved).toEqual(true);
+    expect(body.event).toMatchObject({ status: 'draft', title: '公開の題' });
+    expect(await readRow(eventId)).toMatchObject({ status: 'draft', title: '公開の題' });
+    expect(await revisionRows()).toEqual([]);
+    expect(await publicationRows()).toEqual([]);
+    expect(await readPublished()).toBeNull();
   });
 
   test('refuses sourcePending=false with no sources', async () => {
-    const eventId = await createValidEvent({ sources: [] });
+    const eventId = await createValidEvent();
 
-    const response = await publishEvent(env, eventId);
+    const response = await publishEvent(env, eventId, validBody({ sources: [] }), NOW);
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ errors: ['sourcePending is false but there are no sources'] });
+    expect(((await response.json()) as { problems: unknown[] }).problems).toEqual([
+      { field: 'sources', message: SOURCES_NOT_ENOUGH },
+    ]);
   });
 
   test('refuses sourcePending=false when no source is in the whitelist', async () => {
-    const eventId = await createValidEvent({ sources: [source('https://ameblo.jp/someone/entry-1')] });
-
-    const response = await publishEvent(env, eventId);
+    const eventId = await createValidEvent();
+    const response = await publishEvent(
+      env,
+      eventId,
+      validBody({ sources: [source('https://ameblo.jp/someone/entry-1')] }),
+      NOW,
+    );
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ errors: [SOURCES_NOT_ENOUGH] });
+    expect(((await response.json()) as { errors: string[] }).errors).toEqual([SOURCES_NOT_ENOUGH]);
   });
 
   // #175: a source the whitelist does not name is enough when another one, on
   // a different host, backs it.
   test('allows sourcePending=false when the sources are on two different hosts, though none is in the whitelist', async () => {
-    const eventId = await createValidEvent({
-      sources: [source('https://www.youtube.com/watch?v=aaaaaaaaaaa'), source('https://x.com/Partner_KEMOV/status/1')],
-    });
+    const eventId = await createValidEvent();
+    const sources = [
+      source('https://www.youtube.com/watch?v=aaaaaaaaaaa'),
+      source('https://x.com/Partner_KEMOV/status/1'),
+    ];
 
-    expect((await publishEvent(env, eventId)).status).toEqual(200);
+    expect((await publishEvent(env, eventId, validBody({ sources }), NOW)).status).toEqual(200);
   });
 
   test('refuses two sources on the same host, though none is in the whitelist', async () => {
-    const eventId = await createValidEvent({
-      sources: [
-        source('https://www.youtube.com/watch?v=aaaaaaaaaaa'),
-        source('https://www.youtube.com/watch?v=bbbbbbbbbbb'),
-      ],
-    });
+    const eventId = await createValidEvent();
+    const sources = [
+      source('https://www.youtube.com/watch?v=aaaaaaaaaaa'),
+      source('https://www.youtube.com/watch?v=bbbbbbbbbbb'),
+    ];
 
-    const response = await publishEvent(env, eventId);
+    const response = await publishEvent(env, eventId, validBody({ sources }), NOW);
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ errors: [SOURCES_NOT_ENOUGH] });
+    expect(((await response.json()) as { errors: string[] }).errors).toEqual([SOURCES_NOT_ENOUGH]);
   });
 
   test.each([
@@ -182,29 +300,29 @@ describe('publishEvent', () => {
       'https://youtube.com/watch?v=aaaaaaaaaaa',
     ],
   ])('refuses %s, which are one host', async (_name, first, second) => {
-    const eventId = await createValidEvent({ sources: [source(first), source(second)] });
+    const eventId = await createValidEvent();
 
-    const response = await publishEvent(env, eventId);
+    const response = await publishEvent(env, eventId, validBody({ sources: [source(first), source(second)] }), NOW);
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ errors: [SOURCES_NOT_ENOUGH] });
+    expect(((await response.json()) as { errors: string[] }).errors).toEqual([SOURCES_NOT_ENOUGH]);
   });
 
   test.each(['https://youtube.com/watch?v=aaaaaaaaaaa', 'https://youtu.be/aaaaaaaaaaa'])(
     'allows x.com with %s, which are two hosts',
     async (video) => {
-      const eventId = await createValidEvent({
-        sources: [source('https://x.com/Partner_KEMOV/status/1'), source(video)],
-      });
+      const eventId = await createValidEvent();
+      const sources = [source('https://x.com/Partner_KEMOV/status/1'), source(video)];
 
-      expect((await publishEvent(env, eventId)).status).toEqual(200);
+      expect((await publishEvent(env, eventId, validBody({ sources }), NOW)).status).toEqual(200);
     },
   );
 
   test('refuses one source outside the whitelist, however many hosts it might have', async () => {
-    const eventId = await createValidEvent({ sources: [source('https://www.youtube.com/watch?v=aaaaaaaaaaa')] });
+    const eventId = await createValidEvent();
+    const sources = [source('https://www.youtube.com/watch?v=aaaaaaaaaaa')];
 
-    expect((await publishEvent(env, eventId)).status).toEqual(400);
+    expect((await publishEvent(env, eventId, validBody({ sources }), NOW)).status).toEqual(400);
   });
 
   // The whitelist is read from D1 at the moment of publishing, so an edit
@@ -213,165 +331,230 @@ describe('publishEvent', () => {
     const eventId = await createValidEvent();
 
     await env.DB.prepare('DELETE FROM source_whitelist').run();
-    expect((await publishEvent(env, eventId)).status).toEqual(400);
+    expect((await publishEvent(env, eventId, validBody(), NOW)).status).toEqual(400);
 
     await env.DB.prepare('INSERT INTO source_whitelist (prefix) VALUES (?1)').bind(WHITELISTED_PREFIX).run();
-    expect((await publishEvent(env, eventId)).status).toEqual(200);
+    expect((await publishEvent(env, eventId, validBody(), NOW)).status).toEqual(200);
   });
 
   test('does not look at the sources of an event whose sourcePending is true', async () => {
-    const eventId = await createValidEvent({
-      sourcePending: true,
-      sources: [source('https://ameblo.jp/someone/entry-1')],
-    });
+    const eventId = await createValidEvent();
+    const body = validBody({ sourcePending: true, sources: [source('https://ameblo.jp/someone/entry-1')] });
 
-    expect((await publishEvent(env, eventId)).status).toEqual(200);
+    expect((await publishEvent(env, eventId, body, NOW)).status).toEqual(200);
   });
 
   test('allows sourcePending=true with no sources', async () => {
-    const eventId = await createValidEvent({ sourcePending: true, sources: [] });
+    const eventId = await createValidEvent();
 
-    expect((await publishEvent(env, eventId)).status).toEqual(200);
+    expect((await publishEvent(env, eventId, validBody({ sourcePending: true, sources: [] }), NOW)).status).toEqual(
+      200,
+    );
   });
 
   test('refuses a videoId that is not 11 characters', async () => {
-    const eventId = await createValidEvent({ videoId: 'short' });
+    const eventId = await createValidEvent();
 
-    const response = await publishEvent(env, eventId);
+    const response = await publishEvent(env, eventId, validBody({ videoId: 'short' }), NOW);
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ errors: ['videoId must be 11 characters'] });
+    expect(((await response.json()) as { problems: unknown[] }).problems).toEqual([
+      { field: 'videoId', message: '動画 ID は 11 文字です。いまは 5 文字です。' },
+    ]);
   });
 
   test('refuses a debut with no lead', async () => {
     await insertChannel('UCa');
 
-    const eventId = await createValidEvent({ kind: 'debut', channelIds: ['UCa'] });
-    const response = await publishEvent(env, eventId);
+    const eventId = await createValidEvent();
+    const response = await publishEvent(env, eventId, validBody({ kind: 'debut', channelIds: ['UCa'] }), NOW);
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ errors: ['a debut needs at least one leadChannelIds entry'] });
+    expect(((await response.json()) as { problems: unknown[] }).problems).toEqual([
+      { field: 'leadChannelIds', message: 'デビューの出来事は、主役を 1 人以上選んでください。' },
+    ]);
   });
 
   test('publishes a debut with its lead, and the guests stay members only', async () => {
     await insertChannel('UCa');
     await insertChannel('UCb');
 
-    const eventId = await createValidEvent({ kind: 'debut', channelIds: ['UCb', 'UCa'], leadChannelIds: ['UCb'] });
+    const eventId = await createValidEvent();
+    const body = validBody({ kind: 'debut', channelIds: ['UCb', 'UCa'], leadChannelIds: ['UCb'] });
 
-    expect((await publishEvent(env, eventId)).status).toEqual(200);
-    expect(JSON.parse((await revisionRows())[0].body!)).toMatchObject({
+    expect((await publishEvent(env, eventId, body, NOW)).status).toEqual(200);
+    expect(JSON.parse((await revisionRows())[0]!.body!)).toMatchObject({
       channel_ids: ['UCa', 'UCb'],
       lead_channel_ids: ['UCb'],
     });
   });
 
   test('collects every failing condition in one answer', async () => {
-    const eventId = await createValidEvent({ title: '', videoId: 'short', sources: [] });
-
-    const response = await publishEvent(env, eventId);
-    const body = (await response.json()) as { errors: string[] };
-
-    expect(body.errors).toEqual([
-      'title must not be empty',
-      'sourcePending is false but there are no sources',
-      'videoId must be 11 characters',
-    ]);
-  });
-
-  test('publishing again logs a second publish revision, matching the current row', async () => {
     const eventId = await createValidEvent();
 
-    await publishEvent(env, eventId);
-    await updateEvent(env, eventId, validBody({ title: 'revised title' }));
+    const response = await publishEvent(env, eventId, validBody({ title: '', videoId: 'short', sources: [] }), NOW);
+    const body = (await response.json()) as { errors: string[] };
 
-    const response = await publishEvent(env, eventId);
+    expect(body.errors).toEqual([NO_TITLE, SOURCES_NOT_ENOUGH, '動画 ID は 11 文字です。いまは 5 文字です。']);
+  });
+
+  test('emphasized and sourcePending are booleans in the published JSON', async () => {
+    await createPublishedEvent({ emphasized: true, sourcePending: false });
+
+    expect((await readPublished())!.events[0]).toMatchObject({ emphasized: true, source_pending: false });
+  });
+
+  test('writes lead_channel_ids for an event published before leads, as none', async () => {
+    const before = await createValidEvent();
+
+    await publishAsBeforeLeads(before);
+
+    // Any later publish builds the JSON from every event's latest revision.
+    await createPublishedEvent();
+
+    const published = await readPublished();
+    const old = published!.events.find((e) => e.event_id === before)!;
+
+    expect(Object.keys(old)).toContain('lead_channel_ids');
+    expect(old).toMatchObject({ channel_ids: [], lead_channel_ids: [] });
+  });
+});
+
+describe('saveEvent', () => {
+  test('answers 404 for an event that does not exist', async () => {
+    expect((await saveEvent(env, 1, validBody(), NOW)).status).toEqual(404);
+  });
+
+  test('saves a draft as a draft, without a revision or the JSON', async () => {
+    const eventId = await createValidEvent();
+
+    const response = await saveEvent(env, eventId, validBody({ title: '' }), NOW);
 
     expect(response.status).toEqual(200);
-    expect(await revisionRows()).toHaveLength(2);
+    expect(await readRow(eventId)).toMatchObject({ status: 'draft', title: '' });
+    expect(await revisionRows()).toEqual([]);
+    expect(await readPublished()).toBeNull();
+  });
+
+  test('puts a published event’s save on the public timeline at once', async () => {
+    const eventId = await createPublishedEvent({ title: '前の題' });
+
+    const response = await saveEvent(env, eventId, validBody({ title: '新しい題' }), LATER);
+
+    expect(response.status).toEqual(200);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '新しい題' });
 
     const rows = await revisionRows();
 
-    expect(JSON.parse(rows[1].body!)).toMatchObject({ title: 'revised title' });
+    expect(rows.map((row) => row.action)).toEqual(['publish', 'publish']);
+    expect(JSON.parse(rows[1]!.body!)).toMatchObject({ title: '新しい題' });
+
+    const published = await readPublished();
+
+    expect(published!.published_at).toEqual('2026-09-19T00:00:00Z');
+    expect(published!.events.map((e) => e.title)).toEqual(['新しい題']);
+    expect(await publicationRows()).toHaveLength(2);
   });
 
-  // Mirrors publishEvent's own batch, run against a row that is already gone
-  // by the time it executes - the state a concurrent deleteEvent would leave
-  // behind after publishEvent's own readEvent already found the row. The
-  // INSERT's WHERE EXISTS must keep the revision from growing even though
-  // nothing stops the UPDATE itself from running (and changing nothing).
-  test('does not log a revision when its batch runs after the row is already gone', async () => {
-    // No sources or channelIds, so the delete below needs nothing else
-    // removed first: footprints_event_source/_member both foreign-key back
-    // to footprints_event.
-    const eventId = await createValidEvent({ sources: [] });
+  test('refuses a published event’s save that would not publish, and changes nothing', async () => {
+    const eventId = await createPublishedEvent({ title: '前の題' });
+    const before = await readPublished();
 
-    await env.DB.prepare('DELETE FROM footprints_event WHERE event_id = ?1').bind(eventId).run();
+    const response = await saveEvent(env, eventId, validBody({ title: '', memo: '直したメモ' }), LATER);
 
-    await env.DB.batch([
-      env.DB.prepare(`UPDATE footprints_event SET status = 'published' WHERE event_id = ?1`).bind(eventId),
-      env.DB.prepare(
-        `INSERT INTO revision (entity, entity_key, action, body, created_via)
-         SELECT 'footprints_event', ?1, 'publish', ?2, 'admin'
-         WHERE EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1)`,
-      ).bind(String(eventId), JSON.stringify({ event_id: eventId })),
-    ]);
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({
+      errors: [NO_TITLE],
+      problems: [{ field: 'title', message: NO_TITLE }],
+      saved: false,
+    });
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '前の題' });
+    expect(await revisionRows()).toHaveLength(1);
+    expect(await readPublished()).toEqual(before);
+  });
 
-    expect(await revisionRows()).toHaveLength(0);
+  test('saves a published event’s fields, and says so, when the JSON cannot be written', async () => {
+    const eventId = await createPublishedEvent({ title: '前の題' });
+    const before = await readPublished();
+
+    const response = await saveEvent(R2_DOWN, eventId, validBody({ title: '新しい題' }), LATER);
+
+    expect(response.status).toEqual(502);
+    expect(((await response.json()) as { saved: boolean }).saved).toEqual(true);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '新しい題' });
+    expect(await revisionRows()).toHaveLength(1);
+    expect(await publicationRows()).toHaveLength(1);
+    expect(await readPublished()).toEqual(before);
   });
 });
 
 describe('withdrawEvent', () => {
   test('answers 404 for an event that does not exist', async () => {
-    expect((await withdrawEvent(env, 1)).status).toEqual(404);
+    expect((await withdrawEvent(env, 1, validBody(), NOW)).status).toEqual(404);
   });
 
-  test('sets status to draft and logs a withdraw revision with a null body', async () => {
+  test('answers 409 for an event that is not published', async () => {
     const eventId = await createValidEvent();
 
-    await publishEvent(env, eventId);
+    expect((await withdrawEvent(env, eventId, validBody(), NOW)).status).toEqual(409);
+    expect(await revisionRows()).toEqual([]);
+  });
 
-    const response = await withdrawEvent(env, eventId);
+  test('takes the event off the JSON, saves the fields as a draft and logs a withdraw revision', async () => {
+    const kept = await createPublishedEvent({ title: '残る' });
+    const eventId = await createPublishedEvent({ title: '外す' });
+
+    // A title that would not publish: a draft does not have to.
+    const response = await withdrawEvent(env, eventId, validBody({ title: '' }), LATER);
 
     expect(response.status).toEqual(200);
-
-    const body = (await response.json()) as { event: { status: string } };
-
-    expect(body.event.status).toEqual('draft');
+    expect(((await response.json()) as { event: { status: string; title: string } }).event).toMatchObject({
+      status: 'draft',
+      title: '',
+    });
 
     const rows = await revisionRows();
 
-    expect(rows[rows.length - 1]).toEqual({ entity_key: String(eventId), action: 'withdraw', body: null });
+    expect(rows.at(-1)).toEqual({ entity_key: String(eventId), action: 'withdraw', body: null });
+    expect((await readPublished())!.events.map((e) => e.event_id)).toEqual([kept]);
+    expect(await publicationRows()).toHaveLength(3);
+  });
+
+  test('changes nothing when the JSON cannot be written', async () => {
+    const eventId = await createPublishedEvent();
+    const before = await readPublished();
+
+    const response = await withdrawEvent(R2_DOWN, eventId, validBody({ title: '新しい題' }), LATER);
+
+    expect(response.status).toEqual(502);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: 'デビュー' });
+    expect(await revisionRows()).toHaveLength(1);
+    expect(await readPublished()).toEqual(before);
   });
 });
 
 describe('pendingFootprints', () => {
-  test('lists an event whose latest revision has not been published yet', async () => {
-    const eventId = await createValidEvent();
+  test('is empty once an event is published', async () => {
+    await createPublishedEvent();
 
-    await publishEvent(env, eventId);
+    const body = (await pendingFootprints(env).then((r) => r.json())) as { pending: unknown[]; changed: unknown[] };
 
-    const response = await pendingFootprints(env);
-    const body = (await response.json()) as { pending: { eventId: number; latestAction: string }[] };
+    expect(body).toEqual({ pending: [], changed: [] });
+  });
+
+  test('lists an event whose latest revision the JSON was not written from', async () => {
+    const eventId = await createPublishedEvent();
+
+    await publishAsBeforeLeads(eventId);
+
+    const body = (await pendingFootprints(env).then((r) => r.json())) as { pending: unknown[] };
 
     expect(body.pending).toEqual([{ eventId, latestAction: 'publish' }]);
   });
 
-  test('is empty once "publish now" has caught up', async () => {
-    const eventId = await createValidEvent();
-
-    await publishEvent(env, eventId);
-    await publishFootprintsNow(env, NOW);
-
-    const body = (await pendingFootprints(env).then((r) => r.json())) as { pending: unknown[] };
-
-    expect(body.pending).toEqual([]);
-  });
-
   test('does not report a memo-only edit as changed', async () => {
-    const eventId = await createValidEvent();
+    const eventId = await createPublishedEvent();
 
-    await publishEvent(env, eventId);
     await updateEvent(env, eventId, validBody({ memo: 'a different memo' }));
 
     const body = (await pendingFootprints(env).then((r) => r.json())) as { changed: unknown[] };
@@ -394,20 +577,32 @@ describe('pendingFootprints', () => {
   test('reports a debut published before leads as changed once it has one', async () => {
     await insertChannel('UCa');
 
-    const eventId = await createValidEvent({ kind: 'debut', channelIds: ['UCa'], leadChannelIds: ['UCa'] });
-
-    await publishAsBeforeLeads(eventId);
-
-    const body = (await pendingFootprints(env).then((r) => r.json())) as { changed: { eventId: number }[] };
-
-    expect(body.changed).toEqual([{ eventId, title: 'デビュー' }]);
-  });
-
-  test('reports a title edit as changed', async () => {
     const eventId = await createValidEvent();
 
-    await publishEvent(env, eventId);
-    await updateEvent(env, eventId, validBody({ title: 'a new title' }));
+    await publishEvent(env, eventId, validBody({ kind: 'debut', channelIds: ['UCa'], leadChannelIds: ['UCa'] }), NOW);
+
+    const rows = await revisionRows();
+    const body = JSON.parse(rows.at(-1)!.body!) as Record<string, unknown>;
+
+    delete body.lead_channel_ids;
+
+    await env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body, created_via) VALUES ('footprints_event', ?1, 'publish', ?2, 'admin')`,
+    )
+      .bind(String(eventId), JSON.stringify(body))
+      .run();
+
+    const pending = (await pendingFootprints(env).then((r) => r.json())) as { changed: { eventId: number }[] };
+
+    expect(pending.changed).toEqual([{ eventId, title: 'デビュー' }]);
+  });
+
+  // The one way a published row can differ from what it was published as
+  // since #281: its save went through, the JSON did not.
+  test('reports a published event whose save could not reach the JSON as changed', async () => {
+    const eventId = await createPublishedEvent();
+
+    await saveEvent(R2_DOWN, eventId, validBody({ title: 'a new title' }), LATER);
 
     const body = (await pendingFootprints(env).then((r) => r.json())) as { changed: { eventId: number }[] };
 
@@ -416,14 +611,6 @@ describe('pendingFootprints', () => {
 });
 
 describe('publishFootprintsNow', () => {
-  async function readPublished(): Promise<{ published_at: string; events: { event_id: number }[] } | null> {
-    const object = await env.PUBLIC_DATA.get('footprints/events.json');
-
-    if (object === null) return null;
-
-    return JSON.parse(await object.text());
-  }
-
   test('writes nothing and answers published: false when nothing is pending', async () => {
     const response = await publishFootprintsNow(env, NOW);
 
@@ -431,83 +618,30 @@ describe('publishFootprintsNow', () => {
     expect(await readPublished()).toBeNull();
   });
 
-  test('writes the JSON and adds a publication row', async () => {
-    const eventId = await createValidEvent();
+  test('answers published: false once every publish has written the JSON', async () => {
+    await createPublishedEvent();
 
-    await publishEvent(env, eventId);
+    expect(await (await publishFootprintsNow(env, LATER)).json()).toEqual({ published: false });
+  });
 
-    const response = await publishFootprintsNow(env, NOW);
+  // What the two-step publishing before #281 can leave behind: a revision
+  // logged, and the JSON not yet written from it.
+  test('writes a revision left waiting, and adds a publication row', async () => {
+    const eventId = await createPublishedEvent({ title: '前の題' });
 
-    expect(response.status).toEqual(200);
+    await updateEvent(env, eventId, validBody({ title: '待っていた題' }));
+    await env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body, created_via)
+       VALUES ('footprints_event', ?1, 'publish', ?2, 'admin')`,
+    )
+      .bind(String(eventId), JSON.stringify({ event_id: eventId, start_date: '2025-01-01', title: '待っていた題' }))
+      .run();
 
+    const response = await publishFootprintsNow(env, LATER);
     const body = (await response.json()) as { published: boolean; eventCount: number };
 
-    expect(body.published).toEqual(true);
-    expect(body.eventCount).toEqual(1);
-
-    const published = await readPublished();
-
-    expect(published!.published_at).toEqual('2026-09-18T00:00:00Z');
-    expect(published!.events).toHaveLength(1);
-    expect(published!.events[0].event_id).toEqual(eventId);
-
-    const publication = await env.DB.prepare(
-      "SELECT target, object_key FROM publication WHERE target = 'footprints'",
-    ).first();
-
-    expect(publication).toEqual({ target: 'footprints', object_key: 'footprints/events.json' });
-  });
-
-  test('leaves out an event whose latest revision is a withdraw', async () => {
-    const eventId = await createValidEvent();
-
-    await publishEvent(env, eventId);
-    await withdrawEvent(env, eventId);
-    await publishFootprintsNow(env, NOW);
-
-    const published = await readPublished();
-
-    expect(published!.events).toEqual([]);
-  });
-
-  test('orders events by startDate then eventId', async () => {
-    const later = await createValidEvent({ startDate: '2025-03-01' });
-    const earlierA = await createValidEvent({ startDate: '2025-01-01' });
-    const earlierB = await createValidEvent({ startDate: '2025-01-01' });
-
-    await publishEvent(env, later);
-    await publishEvent(env, earlierA);
-    await publishEvent(env, earlierB);
-
-    await publishFootprintsNow(env, NOW);
-
-    const published = await readPublished();
-
-    expect(published!.events.map((event) => event.event_id)).toEqual(
-      [earlierA, earlierB].sort((a, b) => a - b).concat(later),
-    );
-  });
-
-  test('writes lead_channel_ids for an event published before leads, as none', async () => {
-    const eventId = await createValidEvent();
-
-    await publishAsBeforeLeads(eventId);
-    await publishFootprintsNow(env, NOW);
-
-    const published = await readPublished();
-
-    expect(Object.keys(published!.events[0]!)).toContain('lead_channel_ids');
-    expect(published!.events[0]).toMatchObject({ channel_ids: [], lead_channel_ids: [] });
-  });
-
-  test('emphasized and sourcePending are booleans in the published JSON', async () => {
-    const eventId = await createValidEvent({ emphasized: true, sourcePending: false });
-
-    await publishEvent(env, eventId);
-    await publishFootprintsNow(env, NOW);
-
-    const published = await readPublished();
-
-    expect(published!.events[0]).toMatchObject({ emphasized: true, source_pending: false });
+    expect(body).toMatchObject({ published: true, eventCount: 1 });
+    expect((await readPublished())!.events.map((e) => e.title)).toEqual(['待っていた題']);
+    expect(await publicationRows()).toHaveLength(2);
   });
 });

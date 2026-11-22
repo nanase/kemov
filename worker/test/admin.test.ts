@@ -431,18 +431,16 @@ describe('handleAdminRequest routing to footprints', () => {
   });
 
   test('routes POST .../publish and .../withdraw', async () => {
-    const created = await post('/admin/api/footprints/events', {
-      ...minimalEventBody,
-      sourcePending: true,
-      sources: [],
-    });
+    const fields = { ...minimalEventBody, sourcePending: true, sources: [] };
+    const created = await post('/admin/api/footprints/events', fields);
     const { event } = (await created.json()) as { event: { eventId: number } };
 
-    const published = await post(`/admin/api/footprints/events/${event.eventId}/publish`, {});
+    // 「公開」 sends the fields, the same as a PUT (#281).
+    const published = await post(`/admin/api/footprints/events/${event.eventId}/publish`, fields);
 
     expect(published.status).toEqual(200);
 
-    const withdrawn = await post(`/admin/api/footprints/events/${event.eventId}/withdraw`, {});
+    const withdrawn = await post(`/admin/api/footprints/events/${event.eventId}/withdraw`, fields);
 
     expect(withdrawn.status).toEqual(200);
 

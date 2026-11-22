@@ -1,13 +1,12 @@
 import { env } from 'cloudflare:test';
 
-import { createEvent } from '../src/admin/footprints';
-import { publishEvent, publishFootprintsNow, withdrawEvent } from '../src/admin/footprints-publish';
+import { createEvent, getEvent } from '../src/admin/footprints';
+import { publishEvent, withdrawEvent } from '../src/admin/footprints-publish';
 import { publishStream } from '../src/admin/genet-publish';
 import { createStream } from '../src/admin/genet-streams';
 import { createTune } from '../src/admin/genet-tunes';
 import {
   confirmEventSources,
-  deferEvent,
   deferStream,
   inboxCounts,
   listPublishInbox,
@@ -48,6 +47,25 @@ async function createValidEvent(overrides: Record<string, unknown> = {}): Promis
   const body = (await response.json()) as { event: { eventId: number } };
 
   return body.event.eventId;
+}
+
+/** 「公開」 with the event's own fields, as saved. */
+async function publish(eventId: number): Promise<Response> {
+  const saved = (await (await getEvent(env, eventId)).json()) as Record<string, unknown>;
+
+  return await publishEvent(env, eventId, saved, NOW);
+}
+
+/**
+ * A revision newer than the last time footprints/events.json was written -
+ * what the two-step publishing before #281 left behind until 「いま公開する」.
+ */
+async function leaveWaiting(eventId: number, action: 'publish' | 'withdraw'): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO revision (entity, entity_key, action, body, created_via) VALUES ('footprints_event', ?1, ?2, ?3, 'admin')`,
+  )
+    .bind(String(eventId), action, action === 'publish' ? JSON.stringify({ event_id: eventId }) : null)
+    .run();
 }
 
 async function createValidStream(videoId: string, publishedAt = '2026-01-01T00:00:00Z'): Promise<string> {
@@ -99,24 +117,29 @@ describe('listReviewInbox', () => {
     const published = await createValidEvent({ title: '公開' });
     const withdrawn = await createValidEvent({ title: '取り下げ' });
 
-    await publishEvent(env, published);
-    await publishEvent(env, withdrawn);
-    await withdrawEvent(env, withdrawn);
+    await publish(published);
+    await publish(withdrawn);
+    await withdrawEvent(
+      env,
+      withdrawn,
+      (await (await getEvent(env, withdrawn)).json()) as Record<string, unknown>,
+      NOW,
+    );
 
     const body = await json<ReviewBody>(listReviewInbox(env));
 
     expect(body.events.map((e) => e.eventId)).toEqual([draft]);
   });
 
-  test('puts rows put off with あとで behind the ones not yet looked at', async () => {
-    const later = await createValidEvent({ startDate: '2021-01-01' });
-    const fresh = await createValidEvent({ startDate: '2024-01-01' });
+  test('puts streams put off with あとで behind the ones not yet looked at', async () => {
+    const later = await createValidStream('aaaaaaaaaaa', '2021-01-01T00:00:00Z');
+    const fresh = await createValidStream('bbbbbbbbbbb', '2024-01-01T00:00:00Z');
 
-    await deferEvent(env, later);
+    await deferStream(env, later);
 
     const body = await json<ReviewBody>(listReviewInbox(env));
 
-    expect(body.events.map((e) => [e.eventId, e.status])).toEqual([
+    expect(body.streams.map((s) => [s.videoId, s.status])).toEqual([
       [fresh, 'draft'],
       [later, 'review'],
     ]);
@@ -144,7 +167,7 @@ describe('listSourceInbox', () => {
     const pendingPublished = await createValidEvent({ sourcePending: true, startDate: '2026-01-01' });
 
     await createValidEvent();
-    await publishEvent(env, pendingPublished);
+    await publish(pendingPublished);
 
     const body = await json<{ events: { eventId: number }[] }>(listSourceInbox(env));
 
@@ -199,22 +222,19 @@ describe('confirmEventSources', () => {
   });
 });
 
-describe('deferEvent and deferStream', () => {
-  test('refuse a published row and leave it published', async () => {
-    const eventId = await createValidEvent();
+describe('deferStream', () => {
+  test('refuses a published stream and leaves it published', async () => {
     const videoId = await createValidStream('ccccccccccc');
 
-    await publishEvent(env, eventId);
     await publishStream(env, videoId);
 
-    expect((await deferEvent(env, eventId)).status).toEqual(409);
     expect((await deferStream(env, videoId)).status).toEqual(409);
 
-    const event = await env.DB.prepare('SELECT status FROM footprints_event WHERE event_id = ?1')
-      .bind(eventId)
+    const stream = await env.DB.prepare('SELECT status FROM genet_stream WHERE video_id = ?1')
+      .bind(videoId)
       .first<{ status: string }>();
 
-    expect(event!.status).toEqual('published');
+    expect(stream!.status).toEqual('published');
   });
 
   test('move a stream to review without logging a revision', async () => {
@@ -231,8 +251,7 @@ describe('deferEvent and deferStream', () => {
     expect(revisions!.n).toEqual(0);
   });
 
-  test('answer 404 for a row that does not exist', async () => {
-    expect((await deferEvent(env, 1)).status).toEqual(404);
+  test('answers 404 for a stream that does not exist', async () => {
     expect((await deferStream(env, 'nonexistent')).status).toEqual(404);
   });
 });
@@ -253,13 +272,12 @@ describe('listPublishInbox', () => {
   test('lists what the next run would publish or take down, with titles and dates', async () => {
     const live = await createValidEvent({ title: '公開済み', startDate: '2024-05-05' });
 
-    await publishEvent(env, live);
-    await publishFootprintsNow(env, NOW);
+    await publish(live);
 
     const queued = await createValidEvent({ title: '公開待ち', startDate: '2025-02-02' });
 
-    await publishEvent(env, queued);
-    await withdrawEvent(env, live);
+    await leaveWaiting(queued, 'publish');
+    await leaveWaiting(live, 'withdraw');
 
     const videoId = await createValidStream('eeeeeeeeeee', '2026-01-31T16:00:00Z');
 
@@ -349,7 +367,8 @@ describe('inboxCounts', () => {
 
     const queued = await createValidEvent();
 
-    await publishEvent(env, queued);
+    await publish(queued);
+    await leaveWaiting(queued, 'publish');
 
     expect(await json(inboxCounts(env))).toEqual({ review: 2, source: 1, publish: 1 });
   });

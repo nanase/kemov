@@ -1,20 +1,53 @@
 import { byteLength } from '../lib/backup';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
-import { revisionStatement } from '../lib/revision';
 import { hasTwoHosts, isWhitelistedSource, readSourceWhitelist } from '../lib/source-whitelist';
 import { formatTimestamp } from '../lib/time';
-import { present, publicShapeOf, readEvent, readEvents, type FootprintsEvent } from './footprints';
+import {
+  present,
+  publicShapeOf,
+  readEvent,
+  readEvents,
+  saveStatements,
+  updateEvent,
+  validatedFields,
+  withFields,
+  type EventFields,
+  type FootprintsEvent,
+} from './footprints';
+import {
+  latestRevisions,
+  liveBodies,
+  publishChange,
+  type LatestRevisionRow,
+  type PublishOutcome,
+  type PublishTarget,
+  type RevisionChange,
+} from './publishing';
 
 /**
- * Publishing `footprints_event` (#141): the validation that lets a row
- * become part of the public JSON, withdrawing it back to a draft, and
- * building `footprints/events.json` itself from `revision` rather than from
- * the working rows. footprints.ts is everything up to this point - reading,
- * saving and deleting an event without ever touching a `revision` row.
+ * Publishing `footprints_event` (#141, #281): the validation that lets a row
+ * become part of the public JSON, and the three requests that change what the
+ * public timeline shows - 「公開」 on a draft, 「保存」 on a published row and
+ * 「非公開に戻す」. Each of them writes `footprints/events.json` itself,
+ * through publishing.ts's `publishChange`. footprints.ts is everything else:
+ * reading, saving a draft and deleting an event, without ever touching a
+ * `revision` row.
  */
 
 const VIDEO_ID_LENGTH = 11;
+
+const OBJECT_KEY = 'footprints/events.json';
+
+/**
+ * One way an event falls short of publishing: the field of the form it is
+ * about, and the sentence the edit panel lists under 「公開できません」 as it
+ * stands (#277's decision 1d) - the screen does not check these again.
+ */
+export interface PublishProblem {
+  field: 'title' | 'leadChannelIds' | 'sources' | 'videoId';
+  message: string;
+}
 
 /**
  * Every way `saved` falls short of what `publish` requires, collected
@@ -22,11 +55,9 @@ const VIDEO_ID_LENGTH = 11;
  * failing condition back in one answer, not a round trip per fix.
  *
  * `date_precision`, `start_date`, `starts_at`, `end_date`, `kind` and every
- * `channelIds` entry are not checked again here: D1's own CHECKs and
- * foreign keys already refuse a row or a member that breaks any of them,
- * for a draft exactly as much as for a published event, so nothing that
- * exists in the table can fail those. What is left is what only publishing
- * asks for.
+ * `channelIds` entry are not checked here: saving a draft already refuses
+ * any of them that is wrong, so nothing that can be saved fails them. What
+ * is left is what only publishing asks for.
  *
  * A source is enough when it is on `whitelist`, or when the sources together
  * come from two different hosts (#175): the whitelist lists what one source
@@ -34,27 +65,32 @@ const VIDEO_ID_LENGTH = 11;
  * another on a different host. `whitelist` is read by the caller, so this
  * stays a function of what it is given.
  */
-function publishProblems(saved: FootprintsEvent, whitelist: readonly string[]): string[] {
+function publishProblems(saved: FootprintsEvent, whitelist: readonly string[]): PublishProblem[] {
   const { event, sources } = saved;
-  const problems: string[] = [];
+  const problems: PublishProblem[] = [];
 
-  if (event.title === '') problems.push('title must not be empty');
+  if (event.title === '') problems.push({ field: 'title', message: '題を入れてください。' });
 
   // The upcoming list counts days and years from a debut for its leads
   // alone. A debut with none would count for nobody, and saying so here is
   // what keeps that from passing unnoticed.
   if (event.kind === 'debut' && saved.leadChannelIds.length === 0) {
-    problems.push('a debut needs at least one leadChannelIds entry');
+    problems.push({ field: 'leadChannelIds', message: 'デビューの出来事は、主役を 1 人以上選んでください。' });
   }
 
-  if (event.source_pending === 0) {
-    const problem = sourcesProblem(sources, whitelist);
-
-    if (problem !== null) problems.push(`sourcePending is false but ${problem}`);
+  if (event.source_pending === 0 && sourcesProblem(sources, whitelist) !== null) {
+    problems.push({
+      field: 'sources',
+      message:
+        '出典が足りません。「出典の確認待ち」を外すには、ホワイトリストに載った出典を 1 つ足すか、別のサイトの出典を足してください。',
+    });
   }
 
   if (event.video_id !== null && event.video_id.length !== VIDEO_ID_LENGTH) {
-    problems.push(`videoId must be ${VIDEO_ID_LENGTH} characters`);
+    problems.push({
+      field: 'videoId',
+      message: `動画 ID は ${VIDEO_ID_LENGTH} 文字です。いまは ${event.video_id.length} 文字です。`,
+    });
   }
 
   return problems;
@@ -79,98 +115,6 @@ export function sourcesProblem(sources: readonly { url: string }[], whitelist: r
 }
 
 /**
- * POST /admin/api/footprints/events/:eventId/publish.
- *
- * 400 with every failing condition when `saved` is not ready; otherwise
- * `status` becomes `published` and a `publish` revision is logged, in one
- * `db.batch` so the row and its history cannot come apart if one half
- * fails. Publishing an already-published event is allowed - it is how a
- * "changed since it was published" event gets a fresh revision that matches
- * its current row, without going through withdraw first.
- */
-export async function publishEvent(env: Env, eventId: number): Promise<Response> {
-  const saved = await readEvent(env, eventId);
-
-  if (saved === null) return errorResponse(404, `no footprints event ${eventId}`);
-
-  const problems = publishProblems(saved, await readSourceWhitelist(env));
-
-  if (problems.length > 0) return jsonResponse({ errors: problems }, { status: 400 });
-
-  // The existence check above answers 404 for an event already gone when the
-  // request arrived, but a concurrent updateEvent or deleteEvent can still
-  // touch the row between that check and this batch running - the admin site
-  // is used by one person at a time, behind Cloudflare Access, so this does
-  // not add a `version` column to close that window; if that stops being
-  // true, this is where one belongs. Gating the revision INSERT on EXISTS,
-  // the same way video-overrides.ts's deleteVideoOverride does for the same
-  // kind of race, ties "did we log a revision" to the row as this batch
-  // actually found it: a concurrent delete still lets the UPDATE run (SET on
-  // a row that no longer exists changes nothing), but no revision is logged
-  // for an event that is no longer there to publish. `status` is not part of
-  // the UPDATE's own WHERE: publishing an already-published event is meant
-  // to succeed (see this function's own doc comment above), not be treated
-  // as the same "nothing to do" case as a deleted row.
-  //
-  // This closes the delete race, not an update race: a concurrent updateEvent
-  // that finishes after `readEvent` above but before this batch runs still
-  // logs a `publish` revision built from the now-stale `saved` - EXISTS only
-  // asks whether a row is there, not whether it is the one this function
-  // read. Accepted for the same reason as the missing `version` column above,
-  // and closed the same way once there is one: a conditional UPDATE and a
-  // revision INSERT gated on it actually having changed the row, rather than
-  // on the row merely existing.
-  const results = await env.DB.batch([
-    env.DB.prepare(`UPDATE footprints_event SET status = 'published' WHERE event_id = ?1`).bind(eventId),
-    env.DB.prepare(
-      `INSERT INTO revision (entity, entity_key, action, body, created_via)
-       SELECT 'footprints_event', ?1, 'publish', ?2, 'admin'
-       WHERE EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1)`,
-    ).bind(String(eventId), JSON.stringify(publicShapeOf(saved))),
-  ]);
-
-  // `saved` with status overridden, rather than a second readEvent: nothing
-  // but status changed, and readEvent is a query plus two more in parallel.
-  return jsonResponse({
-    event: present(withStatus(saved, 'published')),
-    revisionId: results[1].meta.last_row_id,
-  });
-}
-
-/**
- * POST /admin/api/footprints/events/:eventId/withdraw. `status` becomes
- * `draft` and a `withdraw` revision (a `null` body - the schema requires it,
- * and there is nothing left to publish) is logged, in one `db.batch`.
- */
-export async function withdrawEvent(env: Env, eventId: number): Promise<Response> {
-  const saved = await readEvent(env, eventId);
-
-  if (saved === null) return errorResponse(404, `no footprints event ${eventId}`);
-
-  const results = await env.DB.batch([
-    env.DB.prepare(`UPDATE footprints_event SET status = 'draft' WHERE event_id = ?1`).bind(eventId),
-    revisionStatement(env.DB, 'footprints_event', String(eventId), 'withdraw', null),
-  ]);
-
-  return jsonResponse({
-    event: present(withStatus(saved, 'draft')),
-    revisionId: results[1].meta.last_row_id,
-  });
-}
-
-/** `saved` with its event row's status overridden - what a batch that changed only `status` leaves the caller to report back. */
-function withStatus(saved: FootprintsEvent, status: string): FootprintsEvent {
-  return { ...saved, event: { ...saved.event, status } };
-}
-
-interface LatestRevisionRow {
-  entity_key: string;
-  revision_id: number;
-  action: string;
-  body: string | null;
-}
-
-/**
  * A `publish` revision's body in the shape `publicShapeOf` gives one now.
  *
  * `lead_channel_ids` came after the first publishes (migration 0011), and a
@@ -178,9 +122,7 @@ interface LatestRevisionRow {
  * read as no lead then and still does: an event published before that has
  * not been republished since.
  */
-function currentShape(body: string): Record<string, unknown> {
-  const parsed = JSON.parse(body) as Record<string, unknown>;
-
+function currentShape(parsed: Record<string, unknown>): Record<string, unknown> {
   if ('lead_channel_ids' in parsed) return parsed;
 
   // Rebuilt rather than assigned, so the key lands where publicShapeOf puts
@@ -197,20 +139,194 @@ function currentShape(body: string): Record<string, unknown> {
   );
 }
 
-/** The latest `revision` row for every `footprints_event` entity_key that has one, oldest concerns first. */
-async function latestRevisions(env: Env): Promise<LatestRevisionRow[]> {
-  const { results } = await env.DB.prepare(
-    `SELECT r.entity_key, r.revision_id, r.action, r.body
-       FROM revision r
-       JOIN (SELECT entity_key, MAX(revision_id) AS revision_id
-               FROM revision
-              WHERE entity = 'footprints_event'
-              GROUP BY entity_key) latest
-         ON latest.entity_key = r.entity_key AND latest.revision_id = r.revision_id
-      WHERE r.entity = 'footprints_event'`,
-  ).all<LatestRevisionRow>();
+/** `footprints/events.json`'s text for `bodies`: every event on the timeline, by date and then by id. */
+function footprintsJson(now: Date, bodies: readonly Record<string, unknown>[]): { json: string; eventCount: number } {
+  const events = bodies.map((body) => currentShape(body) as { event_id: number; start_date: string });
 
-  return results;
+  events.sort((a, b) =>
+    a.start_date === b.start_date ? a.event_id - b.event_id : a.start_date < b.start_date ? -1 : 1,
+  );
+
+  return { json: JSON.stringify({ published_at: formatTimestamp(now), events }), eventCount: events.length };
+}
+
+/** What publishing.ts needs to know about あしあと. */
+export const FOOTPRINTS_TARGET: PublishTarget = {
+  entity: 'footprints_event',
+  target: 'footprints',
+  objectKey: OBJECT_KEY,
+  async buildJson(env: Env, now: Date, change: RevisionChange): Promise<string> {
+    return footprintsJson(now, liveBodies(await latestRevisions(env, 'footprints_event'), change)).json;
+  },
+};
+
+/**
+ * The 400 a refused publish answers: every problem, and whether the fields
+ * sent were saved anyway. `errors` carries the messages alone, the shape
+ * every other refusal under /admin/api has.
+ */
+function refusal(problems: readonly PublishProblem[], saved: boolean): Response {
+  return jsonResponse({ errors: problems.map((p) => p.message), problems, saved }, { status: 400 });
+}
+
+/**
+ * The answer when the fields were saved but the public JSON could not be
+ * written: 502, since what failed is R2 behind this worker, with
+ * `saved: true` and the row as it now stands, so the screen can tell it
+ * apart from a request that changed nothing.
+ */
+async function notWritten(env: Env, eventId: number, outcome: Extract<PublishOutcome, { written: false }>) {
+  const saved = await readEvent(env, eventId);
+
+  return jsonResponse(
+    {
+      error: `saved, but ${OBJECT_KEY} could not be written: ${outcome.error}`,
+      saved: true,
+      event: saved === null ? null : present(saved),
+    },
+    { status: 502 },
+  );
+}
+
+/** The 200 once a change reached the public JSON: the row as it now stands, and what was recorded for it. */
+async function written(env: Env, eventId: number, outcome: Extract<PublishOutcome, { written: true }>) {
+  const saved = await readEvent(env, eventId);
+
+  return jsonResponse({
+    event: saved === null ? null : present(saved),
+    revisionId: outcome.revisionId,
+    publicationId: outcome.publicationId,
+  });
+}
+
+/**
+ * Saves `fields` over `existing` and puts the result on the public timeline,
+ * or refuses. 「公開」 on a draft and 「保存」 on a published row both come
+ * here, and differ only in what a refusal leaves behind:
+ *
+ * - A draft's fields are saved anyway, and it stays a draft: a draft is
+ *   where an event not ready yet belongs, and what was typed is kept
+ * - A published row is left exactly as it was: saving it would leave the row
+ *   and the public timeline saying different things (#277's decision 1d)
+ *
+ * When the JSON cannot be written, the fields are saved and nothing else
+ * changes - a draft stays a draft, a published row keeps its last revision -
+ * and 502 says so.
+ */
+async function saveAndPublish(env: Env, existing: FootprintsEvent, fields: EventFields, now: Date): Promise<Response> {
+  const eventId = existing.event.event_id;
+  const wasPublished = existing.event.status === 'published';
+  const next = withFields(existing, fields, 'published');
+  const problems = publishProblems(next, await readSourceWhitelist(env));
+
+  if (problems.length > 0) {
+    if (!wasPublished) await env.DB.batch(saveStatements(env, eventId, fields));
+
+    return refusal(problems, !wasPublished);
+  }
+
+  const outcome = await publishChange(
+    env,
+    FOOTPRINTS_TARGET,
+    { key: String(eventId), action: 'publish', body: publicShapeOf(next) },
+    saveStatements(env, eventId, fields, 'published'),
+    now,
+  );
+
+  if (!outcome.written) {
+    await env.DB.batch(saveStatements(env, eventId, fields));
+
+    return await notWritten(env, eventId, outcome);
+  }
+
+  return await written(env, eventId, outcome);
+}
+
+/**
+ * POST /admin/api/footprints/events/:eventId/publish - 「公開」. The body is
+ * the event's fields, the same as a PUT's: what is typed is saved, checked
+ * and published in this one request (#281). An event already published is
+ * saved as `saveEvent` saves one.
+ */
+export async function publishEvent(
+  env: Env,
+  eventId: number,
+  body: Record<string, unknown>,
+  now: Date,
+): Promise<Response> {
+  const existing = await readEvent(env, eventId);
+
+  if (existing === null) return errorResponse(404, `no footprints event ${eventId}`);
+
+  const fields = await validatedFields(env, body);
+
+  if ('error' in fields) return fields.error;
+
+  return await saveAndPublish(env, existing, fields, now);
+}
+
+/**
+ * PUT /admin/api/footprints/events/:eventId - 「保存」. A draft is saved as a
+ * draft (footprints.ts's `updateEvent`). A published event's save reaches
+ * the public timeline at once, and is refused, leaving the row and the
+ * timeline as they were, when the fields would not pass publishing.
+ */
+export async function saveEvent(
+  env: Env,
+  eventId: number,
+  body: Record<string, unknown>,
+  now: Date,
+): Promise<Response> {
+  const existing = await readEvent(env, eventId);
+
+  if (existing === null) return errorResponse(404, `no footprints event ${eventId}`);
+
+  if (existing.event.status !== 'published') return await updateEvent(env, eventId, body);
+
+  const fields = await validatedFields(env, body);
+
+  if ('error' in fields) return fields.error;
+
+  return await saveAndPublish(env, existing, fields, now);
+}
+
+/**
+ * POST /admin/api/footprints/events/:eventId/withdraw - 「非公開に戻す」.
+ * The body is the event's fields, the same as a PUT's: what is typed is kept,
+ * as the draft the event becomes. Takes the event off
+ * `footprints/events.json`, then saves the fields as a draft and logs a
+ * `withdraw` revision (a `null` body - the schema requires it, and there is
+ * nothing left to publish). Nothing at all changes when the JSON cannot be
+ * written, and 502 says so. 409 for an event that is not published: there is
+ * nothing on the timeline to take off.
+ */
+export async function withdrawEvent(
+  env: Env,
+  eventId: number,
+  body: Record<string, unknown>,
+  now: Date,
+): Promise<Response> {
+  const saved = await readEvent(env, eventId);
+
+  if (saved === null) return errorResponse(404, `no footprints event ${eventId}`);
+
+  if (saved.event.status !== 'published') return errorResponse(409, 'only a published event can be withdrawn');
+
+  const fields = await validatedFields(env, body);
+
+  if ('error' in fields) return fields.error;
+
+  const outcome = await publishChange(
+    env,
+    FOOTPRINTS_TARGET,
+    { key: String(eventId), action: 'withdraw', body: null },
+    saveStatements(env, eventId, fields, 'draft'),
+    now,
+  );
+
+  if (!outcome.written) return errorResponse(502, `${OBJECT_KEY} could not be written: ${outcome.error}`);
+
+  return await written(env, eventId, outcome);
 }
 
 /** The `last_revision_id` of the newest `publication` row for `target`, or 0 when there has never been one. */
@@ -228,11 +344,14 @@ async function lastPublishedRevisionId(env: Env, target: string): Promise<number
  * GET /admin/api/footprints/pending.
  *
  * "公開を待っているもの": an entity whose latest revision is newer than the
- * last "いま公開する" run. "公開後に変更あり": a `published` event whose
- * working row no longer matches the `publish` revision that made it live -
- * comparing the parsed shapes rather than the raw JSON text, so a
- * difference in key order alone (there should not be one, but this does not
- * lean on that) is not reported as a change.
+ * last time the JSON was written. "公開後に変更あり": a `published` event
+ * whose working row no longer matches the `publish` revision that made it
+ * live - comparing the parsed shapes rather than the raw JSON text, so a
+ * difference in key order alone is not reported as a change.
+ *
+ * Since #281 every publish writes the JSON, so nothing waits once the rows
+ * from before it have been published again; and a published row changes
+ * only together with its revision, unless the JSON could not be written.
  */
 export async function pendingFootprints(env: Env): Promise<Response> {
   const { pending, latest } = await readWaiting(env);
@@ -262,7 +381,7 @@ export async function pendingFootprints(env: Env): Promise<Response> {
     if (saved === undefined) continue;
 
     const current = JSON.stringify(publicShapeOf(saved));
-    const publishedBody = JSON.stringify(currentShape(revision.body));
+    const publishedBody = JSON.stringify(currentShape(JSON.parse(revision.body) as Record<string, unknown>));
 
     if (current !== publishedBody) changed.push({ eventId, title: saved.event.title });
   }
@@ -276,9 +395,10 @@ export interface WaitingFootprintsEntry {
 }
 
 /**
- * Every event whose latest revision is newer than the last "いま公開する" -
- * what that run would act on. `pendingFootprints` and the やること screens'
- * 公開待ち (inbox.ts) both read it here, so the two cannot count differently.
+ * Every event whose latest revision is newer than the last time the JSON was
+ * written - what "いま公開する" would act on. `pendingFootprints` and the
+ * やること screens' 公開待ち (inbox.ts) both read it here, so the two cannot
+ * count differently.
  */
 export async function waitingFootprints(env: Env): Promise<WaitingFootprintsEntry[]> {
   return (await readWaiting(env)).pending;
@@ -288,7 +408,7 @@ export async function waitingFootprints(env: Env): Promise<WaitingFootprintsEntr
 async function readWaiting(env: Env): Promise<{ pending: WaitingFootprintsEntry[]; latest: LatestRevisionRow[] }> {
   const [lastRevisionId, latest] = await Promise.all([
     lastPublishedRevisionId(env, 'footprints'),
-    latestRevisions(env),
+    latestRevisions(env, 'footprints_event'),
   ]);
 
   const pending = latest
@@ -304,7 +424,11 @@ async function readWaiting(env: Env): Promise<{ pending: WaitingFootprintsEntry[
  * `footprints_event` entity whose latest action is not `withdraw`, writes it
  * to `PUBLIC_DATA`, and appends one `publication` row. Nothing is written,
  * and 200 answers `{ published: false }`, when there is nothing newer than
- * the last run.
+ * the last time the JSON was written.
+ *
+ * Kept for the 公開 screen until it goes (#285): a row left waiting from
+ * before #281 is published by it, or by the next publish of any event, which
+ * builds from the same revisions.
  *
  * The write to R2 happens before `publication` gains its row, not the other
  * way around: a failure between the two must leave "what was last
@@ -314,7 +438,7 @@ async function readWaiting(env: Env): Promise<{ pending: WaitingFootprintsEntry[
 export async function publishFootprintsNow(env: Env, now: Date): Promise<Response> {
   const [lastRevisionId, latest] = await Promise.all([
     lastPublishedRevisionId(env, 'footprints'),
-    latestRevisions(env),
+    latestRevisions(env, 'footprints_event'),
   ]);
 
   const newestRevisionId = latest.reduce((max, row) => Math.max(max, row.revision_id), 0);
@@ -323,32 +447,26 @@ export async function publishFootprintsNow(env: Env, now: Date): Promise<Respons
     return jsonResponse({ published: false });
   }
 
-  const events = latest
+  const bodies = latest
     .filter((row) => row.action !== 'withdraw' && row.body !== null)
-    .map((row) => currentShape(row.body!) as { event_id: number; start_date: string });
-
-  events.sort((a, b) =>
-    a.start_date === b.start_date ? a.event_id - b.event_id : a.start_date < b.start_date ? -1 : 1,
-  );
-
-  const objectKey = 'footprints/events.json';
-  const json = JSON.stringify({ published_at: formatTimestamp(now), events });
+    .map((row) => JSON.parse(row.body!) as Record<string, unknown>);
+  const { json, eventCount } = footprintsJson(now, bodies);
   const jsonByteLength = byteLength(json);
 
-  await env.PUBLIC_DATA.put(objectKey, json, {
+  await env.PUBLIC_DATA.put(OBJECT_KEY, json, {
     httpMetadata: { contentType: 'application/json; charset=UTF-8' },
   });
 
   const inserted = await env.DB.prepare(
     `INSERT INTO publication (target, last_revision_id, object_key, byte_length) VALUES ('footprints', ?1, ?2, ?3)`,
   )
-    .bind(newestRevisionId, objectKey, jsonByteLength)
+    .bind(newestRevisionId, OBJECT_KEY, jsonByteLength)
     .run();
 
   return jsonResponse({
     published: true,
     publicationId: inserted.meta.last_row_id,
-    eventCount: events.length,
+    eventCount,
     byteLength: jsonByteLength,
   });
 }

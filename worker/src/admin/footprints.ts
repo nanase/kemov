@@ -229,7 +229,7 @@ const D1_LIKE_PATTERN_BYTE_LIMIT = 50;
 /** GET /admin/api/footprints/events - optionally narrowed by status and by a substring of title. */
 export async function listEvents(env: Env, status: string | null, q: string | null): Promise<Response> {
   if (status !== null && !isStatus(status)) {
-    return errorResponse(400, `status must be one of draft, review, published`);
+    return errorResponse(400, `status must be one of draft, published`);
   }
 
   let pattern: string | null = null;
@@ -292,8 +292,10 @@ export async function getEvent(env: Env, eventId: number): Promise<Response> {
   return jsonResponse(present(saved));
 }
 
-function isStatus(value: unknown): value is 'draft' | 'review' | 'published' {
-  return value === 'draft' || value === 'review' || value === 'published';
+// `review` (「あとで」) is gone since #281; migration 0013 made every such
+// row a draft, though the table's CHECK still allows it.
+function isStatus(value: unknown): value is 'draft' | 'published' {
+  return value === 'draft' || value === 'published';
 }
 
 /**
@@ -471,7 +473,10 @@ async function unknownChannelIds(env: Env, channelIds: readonly string[]): Promi
  * shape (readEventFields), then format (eventFieldsProblem), then whether
  * every member actually exists.
  */
-async function validatedFields(env: Env, body: Record<string, unknown>): Promise<EventFields | { error: Response }> {
+export async function validatedFields(
+  env: Env,
+  body: Record<string, unknown>,
+): Promise<EventFields | { error: Response }> {
   const fields = readEventFields(body);
 
   if ('error' in fields) return { error: errorResponse(400, fields.error) };
@@ -578,26 +583,23 @@ export async function createEvent(env: Env, body: Record<string, unknown>): Prom
 }
 
 /**
- * PUT /admin/api/footprints/events/:eventId. Replaces members and sources
- * along with the row; `status` is left untouched - #141's table keeps
- * publishing and withdrawing as their own operations. Logs no `revision`,
- * same as createEvent.
+ * The statements that save `fields` over event `eventId`'s row, members and
+ * sources - and `status` too, when one is given. A plain draft save
+ * (`updateEvent`) and footprints-publish.ts's publishing both run these, the
+ * latter in the same batch as the revision it logs.
  */
-export async function updateEvent(env: Env, eventId: number, body: Record<string, unknown>): Promise<Response> {
-  const existing = await readEvent(env, eventId);
-
-  if (existing === null) return errorResponse(404, `no footprints event ${eventId}`);
-
-  const fields = await validatedFields(env, body);
-
-  if ('error' in fields) return fields.error;
-
-  await env.DB.batch([
+export function saveStatements(
+  env: Env,
+  eventId: number,
+  fields: EventFields,
+  status?: 'draft' | 'published',
+): D1PreparedStatement[] {
+  return [
     env.DB.prepare(
       `UPDATE footprints_event
           SET date_precision = ?1, start_date = ?2, starts_at = ?3, end_date = ?4, kind = ?5, emphasized = ?6,
               title = ?7, place = ?8, supplement = ?9, video_id = ?10, source_pending = ?11, memo = ?12,
-              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+              status = COALESCE(?14, status), updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         WHERE event_id = ?13`,
     ).bind(
       fields.datePrecision,
@@ -613,12 +615,63 @@ export async function updateEvent(env: Env, eventId: number, body: Record<string
       fields.sourcePending ? 1 : 0,
       fields.memo,
       eventId,
+      status ?? null,
     ),
     env.DB.prepare('DELETE FROM footprints_event_member WHERE event_id = ?1').bind(eventId),
     env.DB.prepare('DELETE FROM footprints_event_source WHERE event_id = ?1').bind(eventId),
     ...memberStatements(env, eventId, fields),
     ...sourceStatements(env, eventId, fields.sources),
-  ]);
+  ];
+}
+
+/**
+ * `saved` as it would read with `fields` saved over it and `status` set -
+ * what publishing checks and logs before anything is written, so a live row
+ * that would fail is refused without being saved. The timestamps are left as
+ * they were: nothing built from this reads them.
+ */
+export function withFields(saved: FootprintsEvent, fields: EventFields, status: string): FootprintsEvent {
+  return {
+    event: {
+      ...saved.event,
+      date_precision: fields.datePrecision,
+      start_date: fields.startDate,
+      starts_at: fields.startsAt,
+      end_date: fields.endDate,
+      kind: fields.kind,
+      emphasized: fields.emphasized ? 1 : 0,
+      title: fields.title,
+      place: fields.place,
+      supplement: fields.supplement,
+      video_id: fields.videoId,
+      source_pending: fields.sourcePending ? 1 : 0,
+      status,
+      memo: fields.memo,
+    },
+    // Sorted as readEvent reads them back, so the answer reads the same
+    // either way.
+    channelIds: [...fields.channelIds].sort(),
+    leadChannelIds: [...fields.leadChannelIds].sort(),
+    sources: fields.sources,
+  };
+}
+
+/**
+ * Saves a draft's fields. Replaces members and sources along with the row;
+ * `status` is left untouched, and no `revision` is logged, same as
+ * createEvent. A published event's save reaches the public site, and that
+ * is footprints-publish.ts's `saveEvent`.
+ */
+export async function updateEvent(env: Env, eventId: number, body: Record<string, unknown>): Promise<Response> {
+  const existing = await readEvent(env, eventId);
+
+  if (existing === null) return errorResponse(404, `no footprints event ${eventId}`);
+
+  const fields = await validatedFields(env, body);
+
+  if ('error' in fields) return fields.error;
+
+  await env.DB.batch(saveStatements(env, eventId, fields));
 
   const saved = await readEvent(env, eventId);
 
