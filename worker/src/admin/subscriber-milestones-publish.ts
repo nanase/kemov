@@ -1,157 +1,176 @@
-import { byteLength } from '../lib/backup';
-import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
-import { revisionStatement } from '../lib/revision';
-import { hasOwnVideoSource, hasTwoHosts, isWhitelistedSource, readSourceWhitelist } from '../lib/source-whitelist';
+import {
+  countedHost,
+  hasTwoHosts,
+  isWhitelistedSource,
+  ownVideoIdsOf,
+  readSourceWhitelist,
+  youtubeVideoIdOf,
+} from '../lib/source-whitelist';
 import { formatTimestamp } from '../lib/time';
 import {
-  eventLinkProblem,
+  isBehind,
+  latestRevisions,
+  liveBodies,
+  publishChange,
+  republish,
+  type LatestRevisionRow,
+  type PublishOutcome,
+  type PublishTarget,
+  type RevisionChange,
+} from './publishing';
+import {
   present,
   publishedBodyOf,
   readMilestone,
   readMilestones,
+  saveStatements,
+  updateMilestone,
+  validatedFields,
+  withFields,
+  type MilestoneFields,
   type SubscriberMilestone,
 } from './subscriber-milestones';
 
 /**
- * Publishing `subscriber_milestone` (#225): the check that lets a row into
- * the public JSON, withdrawing it back to a draft, and building
- * `subscribers/milestones.json` from `revision` rather than from the working
- * rows, in two steps: 「公開待ちにする」 logs a `publish` revision, and
- * 「いま公開する」 writes the JSON.
+ * Publishing `subscriber_milestone` (#225, #283): the check that lets a row
+ * into the public JSON, and the three requests that change what the public
+ * site shows - 「公開」 on a draft, 「保存」 on a published row and
+ * 「非公開に戻す」. Each of them writes `subscribers/milestones.json` itself,
+ * through publishing.ts's `publishChange`, as footprints-publish.ts does for
+ * あしあと.
  *
  * A JSON of its own rather than a part of `footprints/events.json` (HQ's call
  * on #225): the statistics and member pages that draw these would otherwise
  * read the whole timeline, and every fix to a number would publish the
- * timeline again.
+ * timeline again. It names each linked event as the timeline has it, so it is
+ * built from `footprints_event`'s revisions too, and an event's publish
+ * builds it again when that changes what it says (#277's 6-6,
+ * `republishMilestonesForEvents`).
  */
 
+const OBJECT_KEY = 'subscribers/milestones.json';
+
 /**
- * Every way `saved` falls short of what `publish` requires, collected rather
- * than stopped at the first one.
+ * The sentence the edit panel lists under 「公開できません」 when the sources
+ * are not enough, as #283 decided it. Unlike あしあと's, a milestone that
+ * lacks them is not published (#277's 6-7).
+ */
+export const SOURCES_PROBLEM = '出典が足りません。ホワイトリストの出典か、別のサイトの出典を足してください。';
+
+/** One way a milestone falls short of publishing: the field of the form it is about, and the sentence for it. */
+export interface PublishProblem {
+  field: 'sources';
+  message: string;
+}
+
+/**
+ * What one source counts as (#277's 2a), in the order the sources are:
  *
- * The sources are enough on the same terms as an event's (#175): one on the
- * whitelist, or sources on two different hosts. A video of the milestone's own
- * channel that `video` holds counts as one on the whitelist (#225). A number a listener
+ * - `whitelist`: on the whitelist
+ * - `own_video`: a video of the milestone's own channel that `video` holds,
+ *   which counts as one on the whitelist (#225) - a stream the member showed
+ *   the number in is the member's own statement
+ * - `host`: neither, named by the host it is counted under (`countedHost`).
+ *   `sameSite` when a source before it is on that host too, so it adds no
+ *   host of its own. `host` is null for text no host can be read from
+ */
+export type SourceMark =
+  { kind: 'whitelist' } | { kind: 'own_video' } | { kind: 'host'; host: string | null; sameSite: boolean };
+
+export interface SourcesJudgement {
+  marks: SourceMark[];
+  enough: boolean;
+}
+
+/**
+ * Whether `urls` back a milestone of `channelId` that `announcedBy`
+ * announced, and what each of them counts as.
+ *
+ * Enough on the same terms as an event's (#175): one on the whitelist, or
+ * sources on two different hosts - with a video of the milestone's own
+ * channel counted as one on the whitelist (#225). A number a listener
  * announced is the exception #225 decided: that listener's post is the
  * source, and one is enough, whatever its host. Its URL is kept for the
  * admin site and never published (see `publicEntryOf`).
  *
- * The link to an event is checked again here, not only on save: the event's
- * own kind can have changed since.
+ * The screen asks this through `POST /admin/api/subscribers/source-check` as
+ * the sources are typed, and publishing asks it again, so the two cannot
+ * disagree.
  */
-async function publishProblems(env: Env, saved: SubscriberMilestone, whitelist: readonly string[]): Promise<string[]> {
-  const { milestone, sources } = saved;
-  const problems: string[] = [];
-  const urls = sources.map((source) => source.url);
+export async function judgeSources(
+  env: Env,
+  input: { channelId: string; announcedBy: string; urls: readonly string[] },
+  whitelist: readonly string[],
+): Promise<SourcesJudgement> {
+  const own = await ownVideoIdsOf(env, input.urls, input.channelId);
+  const hostsSeen = new Set<string>();
 
-  if (urls.length === 0) {
-    problems.push('there are no sources');
-  } else if (
-    milestone.announced_by !== 'listener' &&
-    !urls.some((url) => isWhitelistedSource(url, whitelist)) &&
-    !hasTwoHosts(urls) &&
-    !(await hasOwnVideoSource(env, urls, milestone.channel_id))
-  ) {
-    problems.push('no source is in the whitelist and the sources are not on two hosts');
-  }
+  const marks = input.urls.map((url): SourceMark => {
+    const host = countedHost(url);
+    const sameSite = host !== null && hostsSeen.has(host);
 
-  const linkProblem = await eventLinkProblem(env, milestone.event_id);
+    if (host !== null) hostsSeen.add(host);
 
-  if (linkProblem !== null) problems.push(linkProblem);
+    if (isWhitelistedSource(url, whitelist)) return { kind: 'whitelist' };
 
-  return problems;
+    const videoId = youtubeVideoIdOf(url);
+
+    if (videoId !== null && own.has(videoId)) return { kind: 'own_video' };
+
+    return { kind: 'host', host, sameSite };
+  });
+
+  const enough =
+    input.urls.length > 0 &&
+    (input.announcedBy === 'listener' || marks.some((mark) => mark.kind !== 'host') || hasTwoHosts(input.urls));
+
+  return { marks, enough };
 }
 
 /**
- * POST /admin/api/subscribers/milestones/:milestoneId/publish -
- * 「公開待ちにする」. 400 with every failing condition; otherwise `status`
- * becomes `published` and a `publish` revision is logged in one `db.batch`,
- * gated on the row still being there: a delete between the read and the
- * batch leaves no revision behind. An update in between is not caught, and
- * the revision is built from what was read; the admin site is used by one
- * person at a time. Publishing an already-published milestone is allowed: it
- * is how a row changed since its publish gets a revision that matches it
- * again.
+ * Every way `next` falls short of what publishing requires. Everything else
+ * - the format of each field, and that a linked event exists and is a
+ * milestone - is what saving checks, and `validatedFields` has refused it by
+ * the time this runs.
  */
-export async function publishMilestone(env: Env, milestoneId: number): Promise<Response> {
-  const saved = await readMilestone(env, milestoneId);
+async function publishProblems(env: Env, next: SubscriberMilestone): Promise<PublishProblem[]> {
+  const { milestone, sources } = next;
+  const judgement = await judgeSources(
+    env,
+    { channelId: milestone.channel_id, announcedBy: milestone.announced_by, urls: sources.map((s) => s.url) },
+    await readSourceWhitelist(env),
+  );
 
-  if (saved === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
-
-  const problems = await publishProblems(env, saved, await readSourceWhitelist(env));
-
-  if (problems.length > 0) return jsonResponse({ errors: problems }, { status: 400 });
-
-  const results = await env.DB.batch([
-    env.DB.prepare(`UPDATE subscriber_milestone SET status = 'published' WHERE milestone_id = ?1`).bind(milestoneId),
-    env.DB.prepare(
-      `INSERT INTO revision (entity, entity_key, action, body, created_via)
-       SELECT 'subscriber_milestone', ?1, 'publish', ?2, 'admin'
-       WHERE EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1)`,
-    ).bind(String(milestoneId), JSON.stringify(publishedBodyOf(saved))),
-  ]);
-
-  return jsonResponse({
-    milestone: present(withStatus(saved, 'published')),
-    revisionId: results[1].meta.last_row_id,
-  });
+  return judgement.enough ? [] : [{ field: 'sources', message: SOURCES_PROBLEM }];
 }
 
-/** POST /admin/api/subscribers/milestones/:milestoneId/withdraw. `status` becomes `draft` and a `withdraw` revision is logged, in one `db.batch`. */
-export async function withdrawMilestone(env: Env, milestoneId: number): Promise<Response> {
-  const saved = await readMilestone(env, milestoneId);
+/** The most URLs one source check reads - far more than any milestone has. */
+const SOURCE_CHECK_LIMIT = 50;
 
-  if (saved === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+/**
+ * POST /admin/api/subscribers/source-check - `judgeSources` for the sources
+ * as typed: `{ channelId, announcedBy, urls }`. 400 when the body is not
+ * that shape. Nothing is saved.
+ */
+export async function checkSources(env: Env, body: Record<string, unknown>): Promise<Response> {
+  const { channelId, announcedBy, urls } = body;
 
-  const results = await env.DB.batch([
-    env.DB.prepare(`UPDATE subscriber_milestone SET status = 'draft' WHERE milestone_id = ?1`).bind(milestoneId),
-    revisionStatement(env.DB, 'subscriber_milestone', String(milestoneId), 'withdraw', null),
-  ]);
+  if (typeof channelId !== 'string') return errorResponse(400, 'channelId must be a string');
+  if (typeof announcedBy !== 'string') return errorResponse(400, 'announcedBy must be a string');
 
-  return jsonResponse({
-    milestone: present(withStatus(saved, 'draft')),
-    revisionId: results[1].meta.last_row_id,
-  });
-}
+  if (!Array.isArray(urls) || urls.some((url) => typeof url !== 'string')) {
+    return errorResponse(400, 'urls must be an array of strings');
+  }
 
-function withStatus(saved: SubscriberMilestone, status: string): SubscriberMilestone {
-  return { ...saved, milestone: { ...saved.milestone, status } };
-}
+  if (urls.length > SOURCE_CHECK_LIMIT) {
+    return errorResponse(400, `urls must have at most ${SOURCE_CHECK_LIMIT} entries`);
+  }
 
-interface LatestRevisionRow {
-  entity_key: string;
-  revision_id: number;
-  action: string;
-  body: string | null;
-}
-
-/** The latest `revision` row for every `subscriber_milestone` that has one. */
-async function latestRevisions(env: Env): Promise<LatestRevisionRow[]> {
-  const { results } = await env.DB.prepare(
-    `SELECT r.entity_key, r.revision_id, r.action, r.body
-       FROM revision r
-       JOIN (SELECT entity_key, MAX(revision_id) AS revision_id
-               FROM revision
-              WHERE entity = 'subscriber_milestone'
-              GROUP BY entity_key) latest
-         ON latest.entity_key = r.entity_key AND latest.revision_id = r.revision_id
-      WHERE r.entity = 'subscriber_milestone'`,
-  ).all<LatestRevisionRow>();
-
-  return results;
-}
-
-/** The `last_revision_id` of the newest `publication` row for `target`, or 0 when there has never been one. */
-async function lastPublishedRevisionId(env: Env, target: string): Promise<number> {
-  const row = await env.DB.prepare(
-    `SELECT last_revision_id FROM publication WHERE target = ?1 ORDER BY publication_id DESC LIMIT 1`,
-  )
-    .bind(target)
-    .first<{ last_revision_id: number }>();
-
-  return row?.last_revision_id ?? 0;
+  return jsonResponse(
+    await judgeSources(env, { channelId, announcedBy, urls: urls as string[] }, await readSourceWhitelist(env)),
+  );
 }
 
 /** The body of a `publish` revision, as `publishedBodyOf` wrote it. */
@@ -186,38 +205,12 @@ interface PublicMilestone {
 }
 
 /**
- * The events among `eventIds` that are live on the public timeline right now,
- * as it shows them.
- *
- * "Live" is what `footprints/events.json` was built from, not the events'
- * working rows or their newest revision: the newest `footprints_event`
- * revision of each event no newer than the last footprints publish, when that
- * revision is a `publish`. A title fixed and sent to 公開待ち but not yet
- * published there is not yet the title here either, and an event not on the
- * public timeline at all is not named by this JSON.
+ * The events live on the public timeline, as it shows them, from the latest
+ * `footprints_event` revisions: since #281 every publish of an event writes
+ * the timeline in the same request, so its latest revision is what the
+ * timeline has. An event whose latest revision is a `withdraw` is not on it.
  */
-async function liveEvents(env: Env, eventIds: readonly number[]): Promise<Map<number, LiveEvent>> {
-  const footprintsRevisionId = await lastPublishedRevisionId(env, 'footprints');
-  const keys = [...new Set(eventIds)].map(String);
-
-  const rows = await queryInChunks(keys, async (chunk) => {
-    const placeholders = chunk.map((_, index) => `?${index + 2}`).join(', ');
-    const { results } = await env.DB.prepare(
-      `SELECT r.entity_key, r.action, r.body
-         FROM revision r
-         JOIN (SELECT entity_key, MAX(revision_id) AS revision_id
-                 FROM revision
-                WHERE entity = 'footprints_event' AND revision_id <= ?1 AND entity_key IN (${placeholders})
-                GROUP BY entity_key) latest
-           ON latest.entity_key = r.entity_key AND latest.revision_id = r.revision_id
-        WHERE r.entity = 'footprints_event'`,
-    )
-      .bind(footprintsRevisionId, ...chunk)
-      .all<{ entity_key: string; action: string; body: string | null }>();
-
-    return results;
-  });
-
+function liveEventsOf(rows: readonly LatestRevisionRow[]): Map<number, LiveEvent> {
   const live = new Map<number, LiveEvent>();
 
   for (const row of rows) {
@@ -249,17 +242,229 @@ function publicEntryOf(body: PublishedBody, live: ReadonlyMap<number, LiveEvent>
   };
 }
 
+/** The milestones of the public JSON, built from `latest` (milestones' and events' rows) with `change` applied, by date reached and then by id. */
+function publicMilestones(latest: readonly LatestRevisionRow[], change: RevisionChange | null): PublicMilestone[] {
+  const live = liveEventsOf(latest.filter((row) => row.entity === 'footprints_event'));
+  const bodies = liveBodies(
+    latest.filter((row) => row.entity === 'subscriber_milestone'),
+    change,
+  ) as unknown as PublishedBody[];
+  const milestones = bodies.map((body) => publicEntryOf(body, live));
+
+  milestones.sort((a, b) =>
+    a.reached_date === b.reached_date ? a.milestone_id - b.milestone_id : a.reached_date < b.reached_date ? -1 : 1,
+  );
+
+  return milestones;
+}
+
 /**
- * The shape of the JSON `publishSubscriberMilestonesNow` writes, as
- * genet-publish.ts's `GENET_MUSIC_SHAPE_VERSION` is for its own. Raise it
- * whenever the shape changes, and the next 「いま公開する」 builds again with
- * no newer revision.
+ * The shape of the JSON this writes, as genet-publish.ts's
+ * `GENET_MUSIC_SHAPE_VERSION` is for its own. Raise it whenever the shape
+ * changes, and the next 「いま公開する」 builds again with no newer revision.
  *
  * 1: `milestones`.
  */
 export const SUBSCRIBER_MILESTONES_SHAPE_VERSION = 1;
 
-const OBJECT_KEY = 'subscribers/milestones.json';
+/** What publishing.ts needs to know about 登録者数の節目. */
+export const MILESTONES_TARGET: PublishTarget = {
+  entity: 'subscriber_milestone',
+  alsoBuiltFrom: ['footprints_event'],
+  target: 'subscriber_milestones',
+  objectKey: OBJECT_KEY,
+  table: 'subscriber_milestone',
+  keyColumn: 'milestone_id',
+  buildJson(_env: Env, now: Date, latest: readonly LatestRevisionRow[], change: RevisionChange | null): string {
+    return JSON.stringify({
+      published_at: formatTimestamp(now),
+      shape_version: SUBSCRIBER_MILESTONES_SHAPE_VERSION,
+      milestones: publicMilestones(latest, change),
+    });
+  },
+};
+
+/**
+ * The 400 a refused publish answers, in footprints-publish.ts's shape: every
+ * problem, and whether the fields sent were saved anyway.
+ */
+function refusalResponse(problems: readonly PublishProblem[], saved: boolean): Response {
+  return jsonResponse({ errors: problems.map((p) => p.message), problems, saved }, { status: 400 });
+}
+
+/** The 502 when the fields were saved but the public JSON could not be written, or brought up to date - footprints-publish.ts's `notWrittenResponse`. */
+async function notWrittenResponse(
+  env: Env,
+  milestoneId: number,
+  outcome: Extract<PublishOutcome, { written: false }>,
+): Promise<Response> {
+  const saved = await readMilestone(env, milestoneId);
+
+  return jsonResponse(
+    {
+      error: `saved, but ${OBJECT_KEY} could not be written: ${outcome.error}`,
+      saved: true,
+      milestone: saved === null ? null : present(saved),
+    },
+    { status: 502 },
+  );
+}
+
+/** The 200 once a change reached the public JSON. 404 when the row was deleted before the change could be recorded. */
+async function writtenResponse(
+  env: Env,
+  milestoneId: number,
+  outcome: Extract<PublishOutcome, { written: true }>,
+): Promise<Response> {
+  if (outcome.revisionId === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+
+  const saved = await readMilestone(env, milestoneId);
+
+  return jsonResponse({
+    milestone: saved === null ? null : present(saved),
+    revisionId: outcome.revisionId,
+    publicationId: outcome.publicationId,
+  });
+}
+
+/**
+ * Saves `fields` over `existing` and puts the result on the public site, or
+ * refuses - footprints-publish.ts's `saveAndPublish`, with the same split on
+ * what a refusal leaves: a draft's fields are saved and it stays a draft, a
+ * published row is left exactly as it was.
+ */
+async function saveAndPublish(
+  env: Env,
+  existing: SubscriberMilestone,
+  fields: MilestoneFields,
+  now: Date,
+): Promise<Response> {
+  const milestoneId = existing.milestone.milestone_id;
+  const wasPublished = existing.milestone.status === 'published';
+  const next = withFields(existing, fields, 'published');
+  const problems = await publishProblems(env, next);
+
+  if (problems.length > 0) {
+    if (!wasPublished) await env.DB.batch(saveStatements(env, milestoneId, fields));
+
+    return refusalResponse(problems, !wasPublished);
+  }
+
+  const outcome = await publishChange(
+    env,
+    MILESTONES_TARGET,
+    { key: String(milestoneId), action: 'publish', body: publishedBodyOf(next) },
+    saveStatements(env, milestoneId, fields, 'published'),
+    now,
+  );
+
+  if (!outcome.written) {
+    if (!outcome.recorded) await env.DB.batch(saveStatements(env, milestoneId, fields));
+
+    return await notWrittenResponse(env, milestoneId, outcome);
+  }
+
+  return await writtenResponse(env, milestoneId, outcome);
+}
+
+/**
+ * POST /admin/api/subscribers/milestones/:milestoneId/publish - 「公開」. The
+ * body is the milestone's fields, the same as a PUT's: what is typed is
+ * saved, checked and published in this one request (#283).
+ */
+export async function publishMilestone(
+  env: Env,
+  milestoneId: number,
+  body: Record<string, unknown>,
+  now: Date,
+): Promise<Response> {
+  const existing = await readMilestone(env, milestoneId);
+
+  if (existing === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+
+  const fields = await validatedFields(env, body);
+
+  if ('error' in fields) return fields.error;
+
+  return await saveAndPublish(env, existing, fields, now);
+}
+
+/**
+ * PUT /admin/api/subscribers/milestones/:milestoneId - 「保存」. A draft is
+ * saved as a draft (subscriber-milestones.ts's `updateMilestone`). A
+ * published milestone's save reaches the public site at once, and is
+ * refused, leaving the row and the public site as they were, when the fields
+ * would not pass publishing.
+ */
+export async function saveMilestone(
+  env: Env,
+  milestoneId: number,
+  body: Record<string, unknown>,
+  now: Date,
+): Promise<Response> {
+  const existing = await readMilestone(env, milestoneId);
+
+  if (existing === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+
+  if (existing.milestone.status !== 'published') return await updateMilestone(env, milestoneId, body);
+
+  const fields = await validatedFields(env, body);
+
+  if ('error' in fields) return fields.error;
+
+  return await saveAndPublish(env, existing, fields, now);
+}
+
+/**
+ * POST /admin/api/subscribers/milestones/:milestoneId/withdraw -
+ * 「非公開に戻す」, footprints-publish.ts's `withdrawEvent` for a milestone:
+ * the body is the fields, kept as the draft the milestone becomes. Nothing
+ * at all changes when the JSON cannot be written, and 502 says so. 409 for a
+ * milestone that is not published.
+ */
+export async function withdrawMilestone(
+  env: Env,
+  milestoneId: number,
+  body: Record<string, unknown>,
+  now: Date,
+): Promise<Response> {
+  const saved = await readMilestone(env, milestoneId);
+
+  if (saved === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+
+  if (saved.milestone.status !== 'published') return errorResponse(409, 'only a published milestone can be withdrawn');
+
+  const fields = await validatedFields(env, body);
+
+  if ('error' in fields) return fields.error;
+
+  const outcome = await publishChange(
+    env,
+    MILESTONES_TARGET,
+    { key: String(milestoneId), action: 'withdraw', body: null },
+    saveStatements(env, milestoneId, fields, 'draft'),
+    now,
+  );
+
+  if (!outcome.written) {
+    if (outcome.recorded) return await notWrittenResponse(env, milestoneId, outcome);
+
+    return errorResponse(502, `${OBJECT_KEY} could not be written: ${outcome.error}`);
+  }
+
+  return await writtenResponse(env, milestoneId, outcome);
+}
+
+/** The `last_revision_id` of the newest `publication` row for `target`, or 0 when there has never been one. */
+async function lastPublishedRevisionId(env: Env, target: string): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT last_revision_id FROM publication WHERE target = ?1 ORDER BY publication_id DESC LIMIT 1`,
+  )
+    .bind(target)
+    .first<{ last_revision_id: number }>();
+
+  return row?.last_revision_id ?? 0;
+}
 
 interface StoredJson {
   shapeVersion: number;
@@ -298,70 +503,60 @@ async function storedJson(env: Env): Promise<StoredJson> {
  * disagree - a screen that refuses what the run would do leaves an old JSON
  * with no way to replace it - so both read it from here.
  *
- * - `pending`: a milestone whose latest revision is newer than the last run
+ * - `pending`: a milestone whose latest revision is newer than the last time
+ *   the JSON was written. Since #283 every publish writes the JSON, so only
+ *   a row sent to 公開待ち before then, or one whose JSON could not be
+ *   written, waits
  * - `eventChanged`: a milestone not in `pending` whose linked event, as the
- *   public timeline shows it now, is not what the stored JSON says - the
- *   event was published again with another title or date, or taken off the
- *   timeline. The milestone's own revision has not changed, so nothing but
- *   this says the stored JSON is out of date (HQ's condition on #225)
+ *   public timeline shows it now, is not what the stored JSON says. Its own
+ *   revision has not changed, so nothing but this says the stored JSON is out
+ *   of date (HQ's condition on #225). An event's publish builds the JSON
+ *   again (`republishMilestonesForEvents`), so this is left only when that
+ *   failed
  * - `shapeOutdated`: the stored JSON is in an older shape than this code
  *   builds. With no revision at all there is nothing to build from, so that
  *   is never outdated
+ * - `behind`: a write of the JSON was sent that no check found up to date
+ *   since (publishing.ts's `isBehind`)
  */
 async function publishState(env: Env) {
-  const [lastRevisionId, latest, stored] = await Promise.all([
-    lastPublishedRevisionId(env, 'subscriber_milestones'),
-    latestRevisions(env),
+  const [lastRevisionId, own, events, stored, behind] = await Promise.all([
+    lastPublishedRevisionId(env, MILESTONES_TARGET.target),
+    latestRevisions(env, 'subscriber_milestone'),
+    latestRevisions(env, 'footprints_event'),
     storedJson(env),
+    isBehind(env, MILESTONES_TARGET.target),
   ]);
 
-  const newestRevisionId = latest.reduce((max, row) => Math.max(max, row.revision_id), 0);
-
-  const bodies = latest
-    .filter((row) => row.action !== 'withdraw' && row.body !== null)
-    .map((row) => ({ revisionId: row.revision_id, body: JSON.parse(row.body!) as PublishedBody }));
-
-  const live = await liveEvents(
-    env,
-    bodies.flatMap(({ body }) => (body.event_id === null ? [] : [body.event_id])),
-  );
-
-  const milestones = bodies.map(({ body }) => publicEntryOf(body, live));
-
-  milestones.sort((a, b) =>
-    a.reached_date === b.reached_date ? a.milestone_id - b.milestone_id : a.reached_date < b.reached_date ? -1 : 1,
-  );
-
-  const pending = latest
+  const live = liveEventsOf(events);
+  const pending = own
     .filter((row) => row.revision_id > lastRevisionId)
     .map((row) => ({ milestoneId: Number(row.entity_key), latestAction: row.action }));
-
   const storedById = new Map(stored.milestones.map((entry) => [entry.milestone_id, entry]));
   const eventChanged: { milestoneId: number; eventId: number }[] = [];
 
-  for (const { revisionId, body } of bodies) {
-    if (revisionId > lastRevisionId || body.event_id === null) continue;
+  for (const row of own) {
+    if (row.revision_id > lastRevisionId || row.action === 'withdraw' || row.body === null) continue;
 
+    const body = JSON.parse(row.body) as PublishedBody;
     const entry = storedById.get(body.milestone_id);
 
-    if (entry === undefined) continue;
+    if (body.event_id === null || entry === undefined) continue;
 
-    const built = live.get(body.event_id) ?? null;
-
-    if (JSON.stringify(entry.event ?? null) !== JSON.stringify(built)) {
+    if (JSON.stringify(entry.event ?? null) !== JSON.stringify(live.get(body.event_id) ?? null)) {
       eventChanged.push({ milestoneId: body.milestone_id, eventId: body.event_id });
     }
   }
 
-  const shapeOutdated = newestRevisionId > 0 && stored.shapeVersion < SUBSCRIBER_MILESTONES_SHAPE_VERSION;
+  const shapeOutdated = own.length > 0 && stored.shapeVersion < SUBSCRIBER_MILESTONES_SHAPE_VERSION;
 
   return {
-    newestRevisionId,
-    milestones,
+    own,
     pending,
     eventChanged,
     shapeOutdated,
-    needsBuild: newestRevisionId > lastRevisionId || eventChanged.length > 0 || shapeOutdated,
+    behind,
+    needsBuild: pending.length > 0 || eventChanged.length > 0 || shapeOutdated || behind,
   };
 }
 
@@ -384,14 +579,14 @@ export async function waitingSubscriberMilestones(env: Env): Promise<{
 /**
  * GET /admin/api/subscribers/pending.
  *
- * `pending`, `eventChanged` and `shapeOutdated` are `publishState`'s: any of
- * them is something 「いま公開する」 would write. `changed` is a `published`
- * milestone whose working row no longer matches the `publish` revision that
- * made it live, which needs 「公開待ちにする」 again first, the same as
- * footprints-publish.ts's own `changed`.
+ * `pending`, `eventChanged`, `shapeOutdated` and `behind` are
+ * `publishState`'s: any of them is something 「いま公開する」 would write.
+ * `changed` is a `published` milestone whose working row no longer matches
+ * the `publish` revision that made it live - since #283, one whose save went
+ * through while the JSON could not be written, or one changed before then.
  */
 export async function pendingSubscriberMilestones(env: Env): Promise<Response> {
-  const [state, latest] = await Promise.all([publishState(env), latestRevisions(env)]);
+  const state = await publishState(env);
 
   const { results: publishedRows } = await env.DB.prepare(
     `SELECT milestone_id FROM subscriber_milestone WHERE status = 'published' ORDER BY milestone_id`,
@@ -402,7 +597,7 @@ export async function pendingSubscriberMilestones(env: Env): Promise<Response> {
     publishedRows.map((row) => row.milestone_id),
   );
 
-  const latestByKey = new Map(latest.map((row) => [row.entity_key, row]));
+  const latestByKey = new Map(state.own.map((row) => [row.entity_key, row]));
   const changed: { milestoneId: number }[] = [];
 
   for (const { milestone_id: milestoneId } of publishedRows) {
@@ -422,46 +617,74 @@ export async function pendingSubscriberMilestones(env: Env): Promise<Response> {
     changed,
     eventChanged: state.eventChanged,
     shapeOutdated: state.shapeOutdated,
+    behind: state.behind,
   });
 }
 
 /**
- * POST /admin/api/subscribers/publish - 「いま公開する」. Writes
- * `subscribers/milestones.json` from the latest revision of every milestone
- * whose latest action is not `withdraw`, then appends one `publication` row.
+ * POST /admin/api/subscribers/publish - 「いま公開する」. Builds
+ * `subscribers/milestones.json` from `revision` through publishing.ts's
+ * `republish`, which checks it again after writing it as a publish does.
  * 200 answers `{ published: false }`, and nothing is written, when
- * `publishState` finds nothing to build.
+ * `publishState` finds nothing to build. 502 when the JSON could not be
+ * brought up to date, with no `publication` row recorded for it.
  *
- * R2 is written before `publication` gains its row, for the reason
- * footprints-publish.ts's `publishFootprintsNow` gives.
+ * Kept for the 公開 screen until it goes (#285).
  */
 export async function publishSubscriberMilestonesNow(env: Env, now: Date): Promise<Response> {
   const state = await publishState(env);
 
   if (!state.needsBuild) return jsonResponse({ published: false });
 
-  const json = JSON.stringify({
-    published_at: formatTimestamp(now),
-    shape_version: SUBSCRIBER_MILESTONES_SHAPE_VERSION,
-    milestones: state.milestones,
-  });
-  const jsonByteLength = byteLength(json);
+  const outcome = await republish(env, MILESTONES_TARGET, now);
 
-  await env.PUBLIC_DATA.put(OBJECT_KEY, json, {
-    httpMetadata: { contentType: 'application/json; charset=UTF-8' },
-  });
-
-  const inserted = await env.DB.prepare(
-    `INSERT INTO publication (target, last_revision_id, object_key, byte_length)
-     VALUES ('subscriber_milestones', ?1, ?2, ?3)`,
-  )
-    .bind(state.newestRevisionId, OBJECT_KEY, jsonByteLength)
-    .run();
+  if (!outcome.current) return errorResponse(502, `${OBJECT_KEY} could not be brought up to date: ${outcome.error}`);
 
   return jsonResponse({
     published: true,
-    publicationId: inserted.meta.last_row_id,
-    milestoneCount: state.milestones.length,
-    byteLength: jsonByteLength,
+    publicationId: outcome.publicationId,
+    milestoneCount: publicMilestones(outcome.latest, null).length,
+    byteLength: outcome.byteLength,
   });
+}
+
+/**
+ * Builds `subscribers/milestones.json` again when an event's publish, save
+ * or withdraw changed how it names a linked event (#277's 6-6), to be called
+ * once the event's change was recorded. Nothing is written when the stored
+ * JSON already names every linked event as the timeline has it.
+ *
+ * Never throws: the event's own change went through, and its answer says so.
+ * A milestone this leaves out of date is still `eventChanged` in
+ * `GET /subscribers/pending`, and 「いま公開する」 mends it.
+ */
+export async function republishMilestonesForEvents(env: Env, now: Date): Promise<void> {
+  try {
+    const [own, events, stored] = await Promise.all([
+      latestRevisions(env, 'subscriber_milestone'),
+      latestRevisions(env, 'footprints_event'),
+      storedJson(env),
+    ]);
+    const live = liveEventsOf(events);
+    const linked = new Map<number, number | null>();
+
+    for (const row of own) {
+      if (row.action === 'withdraw' || row.body === null) continue;
+
+      const body = JSON.parse(row.body) as PublishedBody;
+
+      linked.set(body.milestone_id, body.event_id);
+    }
+
+    const stale = stored.milestones.some((entry) => {
+      const eventId = linked.get(entry.milestone_id) ?? null;
+      const expected = eventId === null ? null : (live.get(eventId) ?? null);
+
+      return JSON.stringify(entry.event ?? null) !== JSON.stringify(expected);
+    });
+
+    if (stale) await republish(env, MILESTONES_TARGET, now);
+  } catch {
+    // Left for eventChanged; see above.
+  }
 }

@@ -25,15 +25,17 @@ import {
   type PublishTarget,
   type RevisionChange,
 } from './publishing';
+import { republishMilestonesForEvents } from './subscriber-milestones-publish';
 
 /**
  * Publishing `footprints_event` (#141, #281): the validation that lets a row
  * become part of the public JSON, and the three requests that change what the
  * public timeline shows - 「公開」 on a draft, 「保存」 on a published row and
  * 「非公開に戻す」. Each of them writes `footprints/events.json` itself,
- * through publishing.ts's `publishChange`. footprints.ts is everything else:
- * reading, saving a draft and deleting an event, without ever touching a
- * `revision` row.
+ * through publishing.ts's `publishChange`, and then
+ * `subscribers/milestones.json` when it names the event (#283's 6-6).
+ * footprints.ts is everything else: reading, saving a draft and deleting an
+ * event, without ever touching a `revision` row.
  */
 
 const VIDEO_ID_LENGTH = 11;
@@ -158,7 +160,7 @@ export const FOOTPRINTS_TARGET: PublishTarget = {
   objectKey: OBJECT_KEY,
   table: 'footprints_event',
   keyColumn: 'event_id',
-  buildJson(now: Date, latest: readonly LatestRevisionRow[], change: RevisionChange | null): string {
+  buildJson(_env: Env, now: Date, latest: readonly LatestRevisionRow[], change: RevisionChange | null): string {
     return footprintsJson(now, liveBodies(latest, change));
   },
 };
@@ -248,9 +250,12 @@ async function saveAndPublish(env: Env, existing: FootprintsEvent, fields: Event
 
   if (!outcome.written) {
     if (!outcome.recorded) await env.DB.batch(saveStatements(env, eventId, fields));
+    else await republishMilestonesForEvents(env, now);
 
     return await notWrittenResponse(env, eventId, outcome);
   }
+
+  await republishMilestonesForEvents(env, now);
 
   return await writtenResponse(env, eventId, outcome);
 }
@@ -340,10 +345,14 @@ export async function withdrawEvent(
   );
 
   if (!outcome.written) {
-    if (outcome.recorded) return await notWrittenResponse(env, eventId, outcome);
+    if (!outcome.recorded) return errorResponse(502, `${OBJECT_KEY} could not be written: ${outcome.error}`);
 
-    return errorResponse(502, `${OBJECT_KEY} could not be written: ${outcome.error}`);
+    await republishMilestonesForEvents(env, now);
+
+    return await notWrittenResponse(env, eventId, outcome);
   }
+
+  await republishMilestonesForEvents(env, now);
 
   return await writtenResponse(env, eventId, outcome);
 }
@@ -473,6 +482,8 @@ export async function publishFootprintsNow(env: Env, now: Date): Promise<Respons
   }
 
   const outcome = await republish(env, FOOTPRINTS_TARGET, now);
+
+  await republishMilestonesForEvents(env, now);
 
   if (!outcome.current) return errorResponse(502, `${OBJECT_KEY} could not be brought up to date: ${outcome.error}`);
 

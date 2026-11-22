@@ -22,17 +22,13 @@ import { addMember, deleteMember, listMembers, saveMembers, updateMember } from 
 import { listPublications } from './publications';
 import { getRevision, listRevisions, readRevisionId } from './revisions';
 import { listSnapshots } from './snapshots';
+import { createMilestone, deleteMilestone, getMilestone, listMilestones } from './subscriber-milestones';
 import {
-  createMilestone,
-  deleteMilestone,
-  getMilestone,
-  listMilestones,
-  updateMilestone,
-} from './subscriber-milestones';
-import {
+  checkSources,
   pendingSubscriberMilestones,
   publishMilestone,
   publishSubscriberMilestonesNow,
+  saveMilestone,
   withdrawMilestone,
 } from './subscriber-milestones-publish';
 import {
@@ -195,7 +191,7 @@ export async function handleAdminRequest(
   }
 
   // The same shape as footprints' routes: `sub` is the literal 'milestones',
-  // 'pending' or 'publish', and the id and action follow it.
+  // 'pending', 'publish' or 'source-check', and the id and action follow it.
   if (segments.length === 4 && name === 'subscribers' && sub === 'milestones') {
     if (request.method === 'POST') {
       const body = await readJsonObject(request);
@@ -223,7 +219,7 @@ export async function handleAdminRequest(
 
     const body = await readJsonObject(request);
 
-    return 'error' in body ? body.error : await updateMilestone(env, milestoneId, body.value);
+    return 'error' in body ? body.error : await saveMilestone(env, milestoneId, body.value, instant);
   }
 
   if (segments.length === 6 && name === 'subscribers' && sub === 'milestones' && id2 !== undefined) {
@@ -233,10 +229,27 @@ export async function handleAdminRequest(
 
     if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
 
-    if (action === 'publish') return await publishMilestone(env, milestoneId);
-    if (action === 'withdraw') return await withdrawMilestone(env, milestoneId);
+    if (action === 'publish') {
+      const body = await readJsonObject(request);
+
+      return 'error' in body ? body.error : await publishMilestone(env, milestoneId, body.value, instant);
+    }
+
+    if (action === 'withdraw') {
+      const body = await readJsonObject(request);
+
+      return 'error' in body ? body.error : await withdrawMilestone(env, milestoneId, body.value, instant);
+    }
 
     return errorResponse(404, `no endpoint at ${pathname}`);
+  }
+
+  if (segments.length === 4 && name === 'subscribers' && sub === 'source-check') {
+    if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
+
+    const body = await readJsonObject(request);
+
+    return 'error' in body ? body.error : await checkSources(env, body.value);
   }
 
   if (segments.length === 4 && name === 'subscribers' && sub === 'pending') {

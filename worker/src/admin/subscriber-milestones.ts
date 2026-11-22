@@ -145,14 +145,16 @@ export async function readMilestones(
   return result;
 }
 
-function isStatus(value: unknown): value is 'draft' | 'review' | 'published' {
-  return value === 'draft' || value === 'review' || value === 'published';
+// `review` (確認中) is gone since #283; migration 0015 made every such row a
+// draft, though the table's CHECK still allows it.
+function isStatus(value: unknown): value is 'draft' | 'published' {
+  return value === 'draft' || value === 'published';
 }
 
 /** GET /admin/api/subscribers/milestones - optionally narrowed by channel and by status. Oldest first. */
 export async function listMilestones(env: Env, channelId: string | null, status: string | null): Promise<Response> {
   if (status !== null && !isStatus(status)) {
-    return errorResponse(400, 'status must be one of draft, review, published');
+    return errorResponse(400, 'status must be one of draft, published');
   }
 
   const conditions: string[] = [];
@@ -321,7 +323,7 @@ function parseUrl(url: string): URL | null {
  * footprints event of kind `milestone` - the celebration of the number - is
  * one a milestone may point at (#225's design).
  */
-export async function eventLinkProblem(env: Env, eventId: number | null): Promise<string | null> {
+async function eventLinkProblem(env: Env, eventId: number | null): Promise<string | null> {
   if (eventId === null) return null;
 
   const event = await env.DB.prepare('SELECT kind FROM footprints_event WHERE event_id = ?1')
@@ -334,8 +336,8 @@ export async function eventLinkProblem(env: Env, eventId: number | null): Promis
   return null;
 }
 
-/** Everything createMilestone and updateMilestone both check before touching D1. */
-async function validatedFields(
+/** Everything a create, a save and a publish check before touching D1. */
+export async function validatedFields(
   env: Env,
   body: Record<string, unknown>,
 ): Promise<MilestoneFields | { error: Response }> {
@@ -360,10 +362,17 @@ async function validatedFields(
   return fields;
 }
 
+/**
+ * Source rows for a milestone that already has its row. Inserted only while
+ * that row is still there, for the reason footprints.ts's `memberStatements`
+ * gives: a milestone deleted between the caller's read and its batch would
+ * otherwise fail the whole batch on the foreign key, a publish with it.
+ */
 function sourceStatements(env: Env, milestoneId: number, sources: readonly SourceRow[]): D1PreparedStatement[] {
   return sources.map((source, index) =>
     env.DB.prepare(
-      'INSERT INTO subscriber_milestone_source (milestone_id, position, url, title) VALUES (?1, ?2, ?3, ?4)',
+      `INSERT INTO subscriber_milestone_source (milestone_id, position, url, title)
+       SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1)`,
     ).bind(milestoneId, index + 1, source.url, source.title),
   );
 }
@@ -411,9 +420,72 @@ export async function createMilestone(env: Env, body: Record<string, unknown>): 
 }
 
 /**
- * PUT /admin/api/subscribers/milestones/:milestoneId. Replaces the sources
- * along with the row; `status` is left untouched, and no `revision` is
- * logged - publishing is its own operation, as for an event.
+ * The statements that save `fields` over milestone `milestoneId`'s row and
+ * sources - and `status` too, when one is given. A plain draft save
+ * (`updateMilestone`) and subscriber-milestones-publish.ts's publishing both
+ * run these, the latter in the same batch as the revision it logs.
+ */
+export function saveStatements(
+  env: Env,
+  milestoneId: number,
+  fields: MilestoneFields,
+  status?: 'draft' | 'published',
+): D1PreparedStatement[] {
+  return [
+    env.DB.prepare(
+      `UPDATE subscriber_milestone
+          SET channel_id = ?1, date_precision = ?2, reached_date = ?3, subscriber_count = ?4, announced_by = ?5,
+              event_id = ?6, memo = ?7, status = COALESCE(?8, status),
+              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE milestone_id = ?9`,
+    ).bind(
+      fields.channelId,
+      fields.datePrecision,
+      fields.reachedDate,
+      fields.subscriberCount,
+      fields.announcedBy,
+      fields.eventId,
+      fields.memo,
+      status ?? null,
+      milestoneId,
+    ),
+    env.DB.prepare('DELETE FROM subscriber_milestone_source WHERE milestone_id = ?1').bind(milestoneId),
+    ...sourceStatements(env, milestoneId, fields.sources),
+  ];
+}
+
+/**
+ * `saved` as it would read with `fields` saved over it and `status` set -
+ * what publishing checks and logs before anything is written, as
+ * footprints.ts's `withFields` is for an event. The timestamps are left as
+ * they were: nothing built from this reads them.
+ */
+export function withFields(
+  saved: SubscriberMilestone,
+  fields: MilestoneFields,
+  status: 'draft' | 'published',
+): SubscriberMilestone {
+  return {
+    milestone: {
+      ...saved.milestone,
+      channel_id: fields.channelId,
+      date_precision: fields.datePrecision,
+      reached_date: fields.reachedDate,
+      subscriber_count: fields.subscriberCount,
+      announced_by: fields.announcedBy,
+      event_id: fields.eventId,
+      status,
+      memo: fields.memo,
+    },
+    sources: fields.sources,
+  };
+}
+
+/**
+ * Saves a draft's fields. Replaces the sources along with the row; `status`
+ * is left untouched, and no `revision` is logged. A published milestone's
+ * save reaches the public site, and that is
+ * subscriber-milestones-publish.ts's `saveMilestone`.
  */
 export async function updateMilestone(env: Env, milestoneId: number, body: Record<string, unknown>): Promise<Response> {
   const existing = await readMilestone(env, milestoneId);
@@ -424,25 +496,7 @@ export async function updateMilestone(env: Env, milestoneId: number, body: Recor
 
   if ('error' in fields) return fields.error;
 
-  await env.DB.batch([
-    env.DB.prepare(
-      `UPDATE subscriber_milestone
-          SET channel_id = ?1, date_precision = ?2, reached_date = ?3, subscriber_count = ?4, announced_by = ?5,
-              event_id = ?6, memo = ?7, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE milestone_id = ?8`,
-    ).bind(
-      fields.channelId,
-      fields.datePrecision,
-      fields.reachedDate,
-      fields.subscriberCount,
-      fields.announcedBy,
-      fields.eventId,
-      fields.memo,
-      milestoneId,
-    ),
-    env.DB.prepare('DELETE FROM subscriber_milestone_source WHERE milestone_id = ?1').bind(milestoneId),
-    ...sourceStatements(env, milestoneId, fields.sources),
-  ]);
+  await env.DB.batch(saveStatements(env, milestoneId, fields));
 
   const saved = await readMilestone(env, milestoneId);
 
@@ -451,10 +505,9 @@ export async function updateMilestone(env: Env, milestoneId: number, body: Recor
 
 /**
  * DELETE /admin/api/subscribers/milestones/:milestoneId. 404 when there is no
- * such milestone, 409 when it is `published` - the public JSON is built from
- * `revision`, so a published row has to be withdrawn first for the next
- * publish to leave it out, the same reasoning footprints.ts's deleteEvent
- * gives.
+ * such milestone, 409 when it is `published`: it is on the public site,
+ * and 「非公開に戻す」 is what takes it off, the same reasoning
+ * footprints.ts's deleteEvent gives.
  */
 export async function deleteMilestone(env: Env, milestoneId: number): Promise<Response> {
   const existing = await readMilestone(env, milestoneId);

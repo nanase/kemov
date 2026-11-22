@@ -1,21 +1,45 @@
 import { env } from 'cloudflare:test';
 
 import { createEvent } from '../src/admin/footprints';
-import { publishEvent, saveEvent, withdrawEvent } from '../src/admin/footprints-publish';
-import { createMilestone, updateMilestone } from '../src/admin/subscriber-milestones';
+import { publishEvent, publishFootprintsNow, saveEvent, withdrawEvent } from '../src/admin/footprints-publish';
+import { createMilestone, getMilestone, updateMilestone } from '../src/admin/subscriber-milestones';
 import {
+  checkSources,
   pendingSubscriberMilestones,
   publishMilestone,
   publishSubscriberMilestonesNow,
+  saveMilestone,
+  SOURCES_PROBLEM,
   SUBSCRIBER_MILESTONES_SHAPE_VERSION,
   withdrawMilestone,
 } from '../src/admin/subscriber-milestones-publish';
+import type { Env } from '../src/lib/env';
 import { clearEverything } from './reset-db';
 
 const NOW = new Date('2026-09-25T00:00:00Z');
 const OBJECT_KEY = 'subscribers/milestones.json';
 const WHITELISTED_PREFIX = 'https://x.com/KEMOVP_staff';
-const SOURCES_NOT_ENOUGH = 'no source is in the whitelist and the sources are not on two hosts';
+
+/** `env` with an R2 that refuses every write - what a publish meets when the public JSON cannot be written. */
+const R2_DOWN: Env = {
+  ...env,
+  PUBLIC_DATA: {
+    get: (key: string) => env.PUBLIC_DATA.get(key),
+    list: () => env.PUBLIC_DATA.list(),
+    put: () => Promise.reject(new Error('R2 is down')),
+  } as unknown as R2Bucket,
+};
+
+/** `env` with an R2 whose object always looks written by someone else, so the JSON is never found up to date. */
+const UNSETTLED: Env = {
+  ...env,
+  PUBLIC_DATA: {
+    get: (key: string) => env.PUBLIC_DATA.get(key),
+    list: () => env.PUBLIC_DATA.list(),
+    put: (key: string, value: string, options?: R2PutOptions) => env.PUBLIC_DATA.put(key, value, options),
+    head: () => Promise.resolve({ version: 'someone else' }),
+  } as unknown as R2Bucket,
+};
 
 async function clearPublicData(): Promise<void> {
   const listed = await env.PUBLIC_DATA.list();
@@ -27,11 +51,26 @@ beforeEach(async () => {
   await clearEverything();
   await clearPublicData();
   await env.DB.prepare('INSERT INTO source_whitelist (prefix) VALUES (?1)').bind(WHITELISTED_PREFIX).run();
+  await insertChannel('UCaaa');
+});
+
+async function insertChannel(channelId: string): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO channel (channel_id, name, fullname, color_key, color_sub, color_light, color_back, activity_start_date)
-     VALUES ('UCaaa', 'a', 'a', '#000000', '#000000', '#000000', '#000000', '2021-01-01')`,
-  ).run();
-});
+     VALUES (?1, ?1, ?1, '#000000', '#000000', '#000000', '#000000', '2021-01-01')`,
+  )
+    .bind(channelId)
+    .run();
+}
+
+async function insertVideo(videoId: string, channelId: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO video (video_id, channel_id, title, published_at, availability, live_broadcast_content, fetched_at)
+     VALUES (?1, ?2, 't', '2024-01-29T00:00:00Z', 'public', 'none', '2024-01-29T00:00:00Z')`,
+  )
+    .bind(videoId, channelId)
+    .run();
+}
 
 function body(overrides: Record<string, unknown> = {}) {
   return {
@@ -55,17 +94,25 @@ async function create(overrides: Record<string, unknown> = {}): Promise<number> 
   return ((await response.json()) as { milestone: { milestoneId: number } }).milestone.milestoneId;
 }
 
-async function errorsOf(response: Response): Promise<string[]> {
-  return ((await response.json()) as { errors: string[] }).errors;
+/** A draft created and published with the same fields. */
+async function createPublished(overrides: Record<string, unknown> = {}): Promise<number> {
+  const milestoneId = await create(overrides);
+
+  expect((await publishMilestone(env, milestoneId, body(overrides), NOW)).status).toEqual(200);
+
+  return milestoneId;
+}
+
+function eventFields(title: string, overrides: Record<string, unknown> = {}) {
+  return { datePrecision: 'day', startDate: '2024-01-30', kind: 'milestone', title, sourcePending: true, ...overrides };
 }
 
 /** A footprints event of kind milestone, published and live on the public timeline. */
 async function liveEvent(title: string): Promise<number> {
-  const fields = { datePrecision: 'day', startDate: '2024-01-30', kind: 'milestone', title, sourcePending: true };
-  const response = await createEvent(env, fields);
+  const response = await createEvent(env, eventFields(title));
   const eventId = ((await response.json()) as { event: { eventId: number } }).event.eventId;
 
-  expect((await publishEvent(env, eventId, fields, NOW)).status).toEqual(200);
+  expect((await publishEvent(env, eventId, eventFields(title), NOW)).status).toEqual(200);
 
   return eventId;
 }
@@ -75,38 +122,73 @@ interface Pending {
   changed: { milestoneId: number }[];
   eventChanged: { milestoneId: number; eventId: number }[];
   shapeOutdated: boolean;
+  behind: boolean;
 }
 
 async function pending(): Promise<Pending> {
   return (await (await pendingSubscriberMilestones(env)).json()) as Pending;
 }
 
-async function storedJson(): Promise<{ published_at: string; shape_version: number; milestones: unknown[] }> {
+interface StoredJson {
+  published_at: string;
+  shape_version: number;
+  milestones: { milestone_id: number; [key: string]: unknown }[];
+}
+
+async function storedJson(): Promise<StoredJson | null> {
   const object = await env.PUBLIC_DATA.get(OBJECT_KEY);
 
-  return JSON.parse(await object!.text()) as { published_at: string; shape_version: number; milestones: unknown[] };
+  return object === null ? null : (JSON.parse(await object.text()) as StoredJson);
+}
+
+async function storedMilestones(): Promise<StoredJson['milestones']> {
+  return (await storedJson())!.milestones;
+}
+
+async function revisionRows(): Promise<{ entity_key: string; action: string; body: string | null }[]> {
+  const { results } = await env.DB.prepare(
+    "SELECT entity_key, action, body FROM revision WHERE entity = 'subscriber_milestone' ORDER BY revision_id",
+  ).all<{ entity_key: string; action: string; body: string | null }>();
+
+  return results;
+}
+
+async function publicationCount(): Promise<number> {
+  const row = await env.DB.prepare(
+    "SELECT count(*) AS n FROM publication WHERE target = 'subscriber_milestones'",
+  ).first<{ n: number }>();
+
+  return row!.n;
+}
+
+async function readRow(milestoneId: number): Promise<{ status: string; subscriberCount: number }> {
+  return (await (await getMilestone(env, milestoneId)).json()) as { status: string; subscriberCount: number };
+}
+
+interface Refusal {
+  errors: string[];
+  problems: { field: string; message: string }[];
+  saved: boolean;
 }
 
 describe('publishMilestone', () => {
   test('answers 404 for a milestone that does not exist', async () => {
-    expect((await publishMilestone(env, 1)).status).toEqual(404);
+    expect((await publishMilestone(env, 1, body(), NOW)).status).toEqual(404);
   });
 
-  test('publishes and logs a publish revision holding every field but the memo', async () => {
-    const milestoneId = await create();
+  test('saves the fields sent, publishes, and writes the JSON in one request', async () => {
+    const milestoneId = await create({ subscriberCount: 19000 });
 
-    const response = await publishMilestone(env, milestoneId);
+    const response = await publishMilestone(env, milestoneId, body(), NOW);
 
     expect(response.status).toEqual(200);
     expect(((await response.json()) as { milestone: { status: string } }).milestone.status).toEqual('published');
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published', subscriberCount: 20000 });
 
-    const revision = await env.DB.prepare(
-      "SELECT entity_key, action, body FROM revision WHERE entity = 'subscriber_milestone'",
-    ).first<{ entity_key: string; action: string; body: string }>();
+    const [revision] = await revisionRows();
 
-    expect(revision!.entity_key).toEqual(String(milestoneId));
     expect(revision!.action).toEqual('publish');
-    expect(JSON.parse(revision!.body)).toEqual({
+    expect(JSON.parse(revision!.body!)).toEqual({
       milestone_id: milestoneId,
       channel_id: 'UCaaa',
       date_precision: 'day',
@@ -116,154 +198,8 @@ describe('publishMilestone', () => {
       event_id: null,
       sources: [{ url: `${WHITELISTED_PREFIX}/status/1`, title: '達成の告知' }],
     });
-  });
 
-  test('refuses a milestone with no sources', async () => {
-    const milestoneId = await create({ sources: [] });
-    const response = await publishMilestone(env, milestoneId);
-
-    expect(response.status).toEqual(400);
-    expect(await errorsOf(response)).toEqual(['there are no sources']);
-  });
-
-  test('refuses a member milestone backed by one source off the whitelist', async () => {
-    const milestoneId = await create({ sources: [{ url: 'https://x.com/someone/status/1' }] });
-    const response = await publishMilestone(env, milestoneId);
-
-    expect(response.status).toEqual(400);
-    expect(await errorsOf(response)).toEqual([SOURCES_NOT_ENOUGH]);
-  });
-
-  test('accepts sources off the whitelist on two hosts', async () => {
-    const milestoneId = await create({
-      announcedBy: 'official',
-      sources: [{ url: 'https://x.com/someone/status/1' }, { url: 'https://www.youtube.com/watch?v=abcdefghijk' }],
-    });
-
-    expect((await publishMilestone(env, milestoneId)).status).toEqual(200);
-  });
-
-  // #225's decision 3: a listener's post is enough by itself.
-  test("accepts a listener's milestone backed by that listener's post alone", async () => {
-    const milestoneId = await create({
-      announcedBy: 'listener',
-      sources: [{ url: 'https://x.com/listener/status/1' }],
-    });
-
-    expect((await publishMilestone(env, milestoneId)).status).toEqual(200);
-  });
-
-  async function insertVideo(videoId: string, channelId: string): Promise<void> {
-    await env.DB.prepare(
-      `INSERT INTO video (video_id, channel_id, title, published_at, availability, live_broadcast_content, fetched_at)
-       VALUES (?1, ?2, 't', '2024-01-29T00:00:00Z', 'public', 'none', '2024-01-29T00:00:00Z')`,
-    )
-      .bind(videoId, channelId)
-      .run();
-  }
-
-  // #225: the member's own stream is a source by itself, like a whitelisted one.
-  describe("a video of the milestone's own channel", () => {
-    test.each([
-      'https://www.youtube.com/watch?v=abcdefghijk&t=10s',
-      'https://youtu.be/abcdefghijk',
-      'https://www.youtube.com/live/abcdefghijk',
-    ])('is enough by itself: %s', async (url) => {
-      await insertVideo('abcdefghijk', 'UCaaa');
-
-      const milestoneId = await create({ sources: [{ url }] });
-
-      expect((await publishMilestone(env, milestoneId)).status).toEqual(200);
-    });
-
-    test("is not enough when it is another member's", async () => {
-      await env.DB.prepare(
-        `INSERT INTO channel (channel_id, name, fullname, color_key, color_sub, color_light, color_back, activity_start_date)
-         VALUES ('UCbbb', 'b', 'b', '#000000', '#000000', '#000000', '#000000', '2021-01-01')`,
-      ).run();
-      await insertVideo('abcdefghijk', 'UCbbb');
-
-      const milestoneId = await create({ sources: [{ url: 'https://youtu.be/abcdefghijk' }] });
-      const response = await publishMilestone(env, milestoneId);
-
-      expect(response.status).toEqual(400);
-      expect(await errorsOf(response)).toEqual([SOURCES_NOT_ENOUGH]);
-    });
-
-    test('is not enough when video does not hold it', async () => {
-      const milestoneId = await create({ sources: [{ url: 'https://youtu.be/abcdefghijk' }] });
-      const response = await publishMilestone(env, milestoneId);
-
-      expect(response.status).toEqual(400);
-      expect(await errorsOf(response)).toEqual([SOURCES_NOT_ENOUGH]);
-    });
-
-    test("does not change what a listener's milestone needs", async () => {
-      const milestoneId = await create({
-        announcedBy: 'listener',
-        sources: [{ url: 'https://youtu.be/abcdefghijk' }],
-      });
-
-      expect((await publishMilestone(env, milestoneId)).status).toEqual(200);
-    });
-  });
-
-  test('refuses a linked event whose kind is no longer milestone', async () => {
-    const eventId = await liveEvent('記念配信');
-    const milestoneId = await create({ eventId });
-
-    await saveEvent(env, eventId, { datePrecision: 'day', startDate: '2024-01-30', kind: 'other', title: 'x' }, NOW);
-
-    const response = await publishMilestone(env, milestoneId);
-
-    expect(response.status).toEqual(400);
-    expect(await errorsOf(response)).toEqual([`footprints event ${eventId} is not a milestone`]);
-  });
-});
-
-describe('withdrawMilestone', () => {
-  test('returns the row to draft and logs a withdraw revision', async () => {
-    const milestoneId = await create();
-
-    await publishMilestone(env, milestoneId);
-
-    const response = await withdrawMilestone(env, milestoneId);
-
-    expect(response.status).toEqual(200);
-    expect(((await response.json()) as { milestone: { status: string } }).milestone.status).toEqual('draft');
-
-    const { results } = await env.DB.prepare(
-      "SELECT action, body FROM revision WHERE entity = 'subscriber_milestone' ORDER BY revision_id",
-    ).all<{ action: string; body: string | null }>();
-
-    expect(results.map((row) => row.action)).toEqual(['publish', 'withdraw']);
-    expect(results[1].body).toBeNull();
-  });
-
-  test('answers 404 for a milestone that does not exist', async () => {
-    expect((await withdrawMilestone(env, 1)).status).toEqual(404);
-  });
-});
-
-describe('publishSubscriberMilestonesNow', () => {
-  test('writes nothing when there has never been a revision', async () => {
-    expect(await (await publishSubscriberMilestonesNow(env, NOW)).json()).toEqual({ published: false });
-    expect(await env.PUBLIC_DATA.get(OBJECT_KEY)).toBeNull();
-  });
-
-  test('writes the JSON and a publication row, then nothing more until something changes', async () => {
-    const milestoneId = await create();
-
-    await publishMilestone(env, milestoneId);
-
-    const response = await publishSubscriberMilestonesNow(env, NOW);
-    const result = (await response.json()) as { published: boolean; milestoneCount: number; byteLength: number };
-
-    expect(result).toMatchObject({ published: true, milestoneCount: 1 });
-
-    const stored = await storedJson();
-
-    expect(stored).toEqual({
+    expect(await storedJson()).toEqual({
       published_at: '2026-09-25T00:00:00Z',
       shape_version: SUBSCRIBER_MILESTONES_SHAPE_VERSION,
       milestones: [
@@ -279,180 +215,475 @@ describe('publishSubscriberMilestonesNow', () => {
         },
       ],
     });
-
-    const publication = await env.DB.prepare(
-      "SELECT target, object_key, byte_length FROM publication WHERE target = 'subscriber_milestones'",
-    ).first<{ target: string; object_key: string; byte_length: number }>();
-
-    expect(publication).toEqual({
-      target: 'subscriber_milestones',
-      object_key: OBJECT_KEY,
-      byte_length: result.byteLength,
+    expect(await publicationCount()).toEqual(1);
+    expect(await pending()).toEqual({
+      pending: [],
+      changed: [],
+      eventChanged: [],
+      shapeOutdated: false,
+      behind: false,
     });
-
-    expect(await (await publishSubscriberMilestonesNow(env, NOW)).json()).toEqual({ published: false });
-    expect(await pending()).toEqual({ pending: [], changed: [], eventChanged: [], shapeOutdated: false });
   });
 
-  // #225's decision 3. The revision keeps the URL; only the public JSON drops it.
-  test("leaves a listener's source URLs out of the JSON", async () => {
-    const milestoneId = await create({
+  // #277's 6-7: unlike an event's, a milestone's sources stop the publish.
+  test('refuses sources that are not enough, saves what was sent as a draft, and leaves the JSON alone', async () => {
+    const milestoneId = await create();
+    const sent = body({ subscriberCount: 21000, sources: [{ url: 'https://x.com/someone/status/1' }] });
+
+    const response = await publishMilestone(env, milestoneId, sent, NOW);
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({
+      errors: [SOURCES_PROBLEM],
+      problems: [{ field: 'sources', message: SOURCES_PROBLEM }],
+      saved: true,
+    } satisfies Refusal);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 21000 });
+    expect(await revisionRows()).toEqual([]);
+    expect(await storedJson()).toBeNull();
+  });
+
+  test('refuses a milestone with no sources', async () => {
+    const milestoneId = await create({ sources: [] });
+    const response = await publishMilestone(env, milestoneId, body({ sources: [] }), NOW);
+
+    expect(response.status).toEqual(400);
+    expect(((await response.json()) as Refusal).errors).toEqual([SOURCES_PROBLEM]);
+  });
+
+  test('refuses fields the schema refuses, and saves nothing', async () => {
+    const milestoneId = await create();
+    const response = await publishMilestone(env, milestoneId, body({ subscriberCount: 0 }), NOW);
+
+    expect(response.status).toEqual(400);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 20000 });
+  });
+
+  test('refuses a linked event whose kind is no longer milestone', async () => {
+    const eventId = await liveEvent('記念配信');
+    const milestoneId = await create({ eventId });
+
+    await saveEvent(env, eventId, eventFields('x', { kind: 'other' }), NOW);
+
+    const response = await publishMilestone(env, milestoneId, body({ eventId }), NOW);
+
+    expect(response.status).toEqual(400);
+    expect(await revisionRows()).toEqual([]);
+  });
+
+  test('accepts sources off the whitelist on two hosts', async () => {
+    const sources = [{ url: 'https://x.com/someone/status/1' }, { url: 'https://www.youtube.com/watch?v=abcdefghijk' }];
+    const milestoneId = await create({ announcedBy: 'official', sources });
+
+    expect((await publishMilestone(env, milestoneId, body({ announcedBy: 'official', sources }), NOW)).status).toEqual(
+      200,
+    );
+  });
+
+  // #225's decision 3: a listener's post is enough by itself.
+  test("accepts a listener's milestone backed by that listener's post alone, and leaves its URL out of the JSON", async () => {
+    const overrides = {
       announcedBy: 'listener',
       sources: [{ url: 'https://x.com/listener/status/1', title: 'リスナーの投稿' }],
-    });
+    };
 
-    await publishMilestone(env, milestoneId);
-    await publishSubscriberMilestonesNow(env, NOW);
+    await createPublished(overrides);
 
-    const stored = await storedJson();
-
-    expect(stored.milestones).toEqual([expect.objectContaining({ announced_by: 'listener', sources: [] })]);
-    expect(JSON.stringify(stored)).not.toContain('x.com/listener');
+    expect(await storedMilestones()).toEqual([expect.objectContaining({ announced_by: 'listener', sources: [] })]);
+    expect(JSON.stringify(await storedJson())).not.toContain('x.com/listener');
+    // The revision keeps it.
+    expect((await revisionRows())[0]!.body).toContain('x.com/listener');
   });
 
-  test('leaves withdrawn milestones and drafts out, and orders by the date reached', async () => {
-    const later = await create({ reachedDate: '2024-01-29' });
-    const earlier = await create({ datePrecision: 'month', reachedDate: '2021-12', subscriberCount: 10000 });
-    const withdrawn = await create({ reachedDate: '2023-01-01' });
+  // #225: the member's own stream is a source by itself, like a whitelisted one.
+  test.each([
+    'https://www.youtube.com/watch?v=abcdefghijk&t=10s',
+    'https://youtu.be/abcdefghijk',
+    'https://www.youtube.com/live/abcdefghijk',
+  ])("accepts a video of the milestone's own channel by itself: %s", async (url) => {
+    await insertVideo('abcdefghijk', 'UCaaa');
 
-    await create({ reachedDate: '2022-01-01' });
-    await publishMilestone(env, later);
-    await publishMilestone(env, earlier);
-    await publishMilestone(env, withdrawn);
-    await withdrawMilestone(env, withdrawn);
-    await publishSubscriberMilestonesNow(env, NOW);
+    const milestoneId = await create({ sources: [{ url }] });
 
-    const stored = (await storedJson()) as { milestones: { milestone_id: number }[] };
-
-    expect(stored.milestones.map((m) => m.milestone_id)).toEqual([earlier, later]);
+    expect((await publishMilestone(env, milestoneId, body({ sources: [{ url }] }), NOW)).status).toEqual(200);
   });
 
-  test('builds from the publish revision, not from a row changed since', async () => {
+  test("refuses another member's video alone", async () => {
+    await insertChannel('UCbbb');
+    await insertVideo('abcdefghijk', 'UCbbb');
+
+    const sources = [{ url: 'https://youtu.be/abcdefghijk' }];
+    const milestoneId = await create({ sources });
+
+    expect((await publishMilestone(env, milestoneId, body({ sources }), NOW)).status).toEqual(400);
+  });
+
+  test('saves the fields as a draft, and says so, when the JSON cannot be written', async () => {
     const milestoneId = await create();
 
-    await publishMilestone(env, milestoneId);
-    await updateMilestone(env, milestoneId, body({ subscriberCount: 30000 }));
+    const response = await publishMilestone(R2_DOWN, milestoneId, body({ subscriberCount: 22000 }), NOW);
 
-    expect((await pending()).changed).toEqual([{ milestoneId }]);
+    expect(response.status).toEqual(502);
 
-    await publishSubscriberMilestonesNow(env, NOW);
+    const answer = (await response.json()) as { saved: boolean; milestone: { status: string } };
 
-    expect((await storedJson()).milestones).toEqual([expect.objectContaining({ subscriber_count: 20000 })]);
+    expect(answer).toMatchObject({ saved: true, milestone: { status: 'draft' } });
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 22000 });
+    expect(await revisionRows()).toEqual([]);
+    expect(await storedJson()).toBeNull();
   });
 
-  test('builds again when the stored JSON is in an older shape', async () => {
+  test('publishes the row, and says the JSON may be behind, when it cannot be brought up to date', async () => {
     const milestoneId = await create();
 
-    await publishMilestone(env, milestoneId);
-    await publishSubscriberMilestonesNow(env, NOW);
-    await env.PUBLIC_DATA.put(OBJECT_KEY, JSON.stringify({ milestones: [] }));
+    const response = await publishMilestone(UNSETTLED, milestoneId, body(), NOW);
 
-    expect((await pending()).shapeOutdated).toEqual(true);
-    expect(
-      ((await (await publishSubscriberMilestonesNow(env, NOW)).json()) as { published: boolean }).published,
-    ).toEqual(true);
-    expect((await storedJson()).shape_version).toEqual(SUBSCRIBER_MILESTONES_SHAPE_VERSION);
+    expect(response.status).toEqual(502);
+    expect(await response.json()).toMatchObject({ saved: true, milestone: { status: 'published' } });
+    expect(await revisionRows()).toHaveLength(1);
+    expect(await publicationCount()).toEqual(0);
+    expect((await pending()).behind).toEqual(true);
   });
 });
 
-describe('the linked event', () => {
-  test('is written as the public timeline shows it', async () => {
+describe('saveMilestone', () => {
+  test('answers 404 for a milestone that does not exist', async () => {
+    expect((await saveMilestone(env, 1, body(), NOW)).status).toEqual(404);
+  });
+
+  test('saves a draft as a draft, without a revision or the JSON', async () => {
+    const milestoneId = await create();
+
+    expect((await saveMilestone(env, milestoneId, body({ subscriberCount: 30000 }), NOW)).status).toEqual(200);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 30000 });
+    expect(await revisionRows()).toEqual([]);
+    expect(await storedJson()).toBeNull();
+  });
+
+  test("puts a published milestone's save on the public site at once", async () => {
+    const milestoneId = await createPublished();
+
+    expect((await saveMilestone(env, milestoneId, body({ subscriberCount: 30000 }), NOW)).status).toEqual(200);
+    expect(await storedMilestones()).toEqual([expect.objectContaining({ subscriber_count: 30000 })]);
+    expect((await revisionRows()).map((r) => r.action)).toEqual(['publish', 'publish']);
+    expect((await pending()).changed).toEqual([]);
+  });
+
+  test("refuses a published milestone's save that would not publish, and changes nothing", async () => {
+    const milestoneId = await createPublished();
+    const response = await saveMilestone(env, milestoneId, body({ subscriberCount: 30000, sources: [] }), NOW);
+
+    expect(response.status).toEqual(400);
+    expect(((await response.json()) as Refusal).saved).toEqual(false);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published', subscriberCount: 20000 });
+    expect(await storedMilestones()).toEqual([expect.objectContaining({ subscriber_count: 20000 })]);
+  });
+
+  test("saves a published milestone's fields, and says so, when the JSON cannot be written", async () => {
+    const milestoneId = await createPublished();
+    const response = await saveMilestone(R2_DOWN, milestoneId, body({ subscriberCount: 30000 }), NOW);
+
+    expect(response.status).toEqual(502);
+    expect(await response.json()).toMatchObject({ saved: true, milestone: { status: 'published' } });
+    expect(await storedMilestones()).toEqual([expect.objectContaining({ subscriber_count: 20000 })]);
+    expect((await pending()).changed).toEqual([{ milestoneId }]);
+  });
+});
+
+describe('withdrawMilestone', () => {
+  test('answers 404 for a milestone that does not exist', async () => {
+    expect((await withdrawMilestone(env, 1, body(), NOW)).status).toEqual(404);
+  });
+
+  test('answers 409 for a milestone that is not published', async () => {
+    const milestoneId = await create();
+
+    expect((await withdrawMilestone(env, milestoneId, body(), NOW)).status).toEqual(409);
+  });
+
+  test('takes the milestone off the JSON, saves the fields as a draft and logs a withdraw revision', async () => {
+    const milestoneId = await createPublished();
+    const response = await withdrawMilestone(env, milestoneId, body({ subscriberCount: 25000 }), NOW);
+
+    expect(response.status).toEqual(200);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 25000 });
+
+    const rows = await revisionRows();
+
+    expect(rows.map((row) => row.action)).toEqual(['publish', 'withdraw']);
+    expect(rows[1]!.body).toBeNull();
+    expect(await storedMilestones()).toEqual([]);
+  });
+
+  test('changes nothing when the JSON cannot be written', async () => {
+    const milestoneId = await createPublished();
+
+    expect((await withdrawMilestone(R2_DOWN, milestoneId, body({ subscriberCount: 25000 }), NOW)).status).toEqual(502);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published', subscriberCount: 20000 });
+    expect(await revisionRows()).toHaveLength(1);
+  });
+});
+
+describe('the JSON', () => {
+  test('leaves withdrawn milestones and drafts out, and orders by the date reached', async () => {
+    const later = await createPublished({ reachedDate: '2024-01-29' });
+    const earlier = await createPublished({ datePrecision: 'month', reachedDate: '2021-12', subscriberCount: 10000 });
+    const withdrawn = await createPublished({ reachedDate: '2023-01-01' });
+
+    await create({ reachedDate: '2022-01-01' });
+    await withdrawMilestone(env, withdrawn, body({ reachedDate: '2023-01-01' }), NOW);
+
+    expect((await storedMilestones()).map((m) => m.milestone_id)).toEqual([earlier, later]);
+  });
+
+  test('names the linked event as the public timeline shows it', async () => {
     const eventId = await liveEvent('シマハイ登録者2万人記念配信');
-    const milestoneId = await create({ eventId });
 
-    await publishMilestone(env, milestoneId);
-    await publishSubscriberMilestonesNow(env, NOW);
+    await createPublished({ eventId });
 
-    expect((await storedJson()).milestones).toEqual([
+    expect(await storedMilestones()).toEqual([
       expect.objectContaining({
         event: { event_id: eventId, title: 'シマハイ登録者2万人記念配信', start_date: '2024-01-30' },
       }),
     ]);
   });
 
-  test('is null while the event is not on the public timeline', async () => {
-    const response = await createEvent(env, {
-      datePrecision: 'day',
-      startDate: '2024-01-30',
-      kind: 'milestone',
-      title: '下書きの題',
-    });
+  test('names no event while the event is not on the public timeline', async () => {
+    const response = await createEvent(env, eventFields('下書きの題'));
     const eventId = ((await response.json()) as { event: { eventId: number } }).event.eventId;
 
-    // Left a draft: never on the timeline.
-    const milestoneId = await create({ eventId });
+    await createPublished({ eventId });
 
-    await publishMilestone(env, milestoneId);
-    await publishSubscriberMilestonesNow(env, NOW);
-
-    expect((await storedJson()).milestones).toEqual([expect.objectContaining({ event: null })]);
+    expect(await storedMilestones()).toEqual([expect.objectContaining({ event: null })]);
     expect(JSON.stringify(await storedJson())).not.toContain('下書きの題');
   });
+});
 
-  // HQ's condition on #225: an event fixed on the timeline must not leave the
-  // milestones JSON showing its old title with nothing saying so.
-  test('republished with another title, is reported and built again', async () => {
+// #277's 6-6: an event's publish builds the milestones JSON again when it
+// names the event, so 「いま公開する」 is no longer what brings it up to date.
+describe("an event's change", () => {
+  test('republished with another title, is in the milestones JSON at once', async () => {
     const eventId = await liveEvent('古い題');
-    const milestoneId = await create({ eventId });
 
-    await publishMilestone(env, milestoneId);
-    await publishSubscriberMilestonesNow(env, NOW);
+    await createPublished({ eventId });
+    await saveEvent(env, eventId, eventFields('新しい題'), NOW);
 
-    // A published event's save reaches the timeline at once (#281).
-    await saveEvent(
-      env,
-      eventId,
-      { datePrecision: 'day', startDate: '2024-01-30', kind: 'milestone', title: '新しい題', sourcePending: true },
-      NOW,
-    );
-
-    expect(await pending()).toEqual({
-      pending: [],
-      changed: [],
-      eventChanged: [{ milestoneId, eventId }],
-      shapeOutdated: false,
-    });
-    expect(
-      ((await (await publishSubscriberMilestonesNow(env, NOW)).json()) as { published: boolean }).published,
-    ).toEqual(true);
-    expect((await storedJson()).milestones).toEqual([
+    expect(await storedMilestones()).toEqual([
       expect.objectContaining({ event: { event_id: eventId, title: '新しい題', start_date: '2024-01-30' } }),
     ]);
     expect((await pending()).eventChanged).toEqual([]);
   });
 
-  test('taken off the timeline, is reported and built again as null', async () => {
+  test('published for the first time, is in the milestones JSON at once', async () => {
+    const response = await createEvent(env, eventFields('記念配信'));
+    const eventId = ((await response.json()) as { event: { eventId: number } }).event.eventId;
+
+    await createPublished({ eventId });
+    await publishEvent(env, eventId, eventFields('記念配信'), NOW);
+
+    expect(await storedMilestones()).toEqual([
+      expect.objectContaining({ event: expect.objectContaining({ title: '記念配信' }) }),
+    ]);
+  });
+
+  test('taken off the timeline, leaves the milestone with no event at once', async () => {
     const eventId = await liveEvent('記念配信');
-    const milestoneId = await create({ eventId });
 
-    await publishMilestone(env, milestoneId);
-    await publishSubscriberMilestonesNow(env, NOW);
-    await withdrawEvent(
-      env,
-      eventId,
-      { datePrecision: 'day', startDate: '2024-01-30', kind: 'milestone', title: '記念配信', sourcePending: true },
-      NOW,
-    );
+    await createPublished({ eventId });
+    await withdrawEvent(env, eventId, eventFields('記念配信'), NOW);
 
-    expect((await pending()).eventChanged).toEqual([{ milestoneId, eventId }]);
+    expect(await storedMilestones()).toEqual([expect.objectContaining({ event: null })]);
+  });
 
-    await publishSubscriberMilestonesNow(env, NOW);
+  test('does not write the milestones JSON when no milestone names the event', async () => {
+    const eventId = await liveEvent('関係ない出来事');
 
-    expect((await storedJson()).milestones).toEqual([expect.objectContaining({ event: null })]);
+    await createPublished();
+
+    const before = await storedJson();
+
+    await saveEvent(env, eventId, eventFields('題を直した'), new Date('2026-09-26T00:00:00Z'));
+
+    expect(await storedJson()).toEqual(before);
+  });
+
+  // The event's own change went through, and its answer says so; the
+  // milestone is left for the 公開 screen.
+  test('is reported as eventChanged when the milestones JSON cannot be written', async () => {
+    const eventId = await liveEvent('古い題');
+    const milestoneId = await createPublished({ eventId });
+    let failing = false;
+    const milestonesDown: Env = {
+      ...env,
+      PUBLIC_DATA: new Proxy(env.PUBLIC_DATA, {
+        get(target, property) {
+          if (property === 'put') {
+            return (key: string, value: string, options?: R2PutOptions) =>
+              failing && key === OBJECT_KEY ? Promise.reject(new Error('R2 is down')) : target.put(key, value, options);
+          }
+
+          const value = Reflect.get(target, property) as unknown;
+
+          return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+        },
+      }),
+    };
+
+    failing = true;
+
+    expect((await saveEvent(milestonesDown, eventId, eventFields('新しい題'), NOW)).status).toEqual(200);
+    expect(await pending()).toMatchObject({ eventChanged: [{ milestoneId, eventId }], behind: true });
+
+    expect((await publishSubscriberMilestonesNow(env, NOW)).status).toEqual(200);
+    expect(await storedMilestones()).toEqual([
+      expect.objectContaining({ event: expect.objectContaining({ title: '新しい題' }) }),
+    ]);
+    expect(await pending()).toMatchObject({ eventChanged: [], behind: false });
+  });
+
+  test("written through あしあと's 「いま公開する」, is in the milestones JSON too", async () => {
+    const eventId = await liveEvent('古い題');
+
+    await createPublished({ eventId });
+    // A revision left waiting, as one from before #281 is.
+    await env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body, created_via)
+       SELECT 'footprints_event', entity_key, 'publish', json_set(body, '$.title', '待っていた題'), 'admin'
+         FROM revision WHERE entity = 'footprints_event' AND entity_key = ?1`,
+    )
+      .bind(String(eventId))
+      .run();
+
+    await publishFootprintsNow(env, NOW);
+
+    expect(await storedMilestones()).toEqual([
+      expect.objectContaining({ event: expect.objectContaining({ title: '待っていた題' }) }),
+    ]);
+  });
+});
+
+describe('publishSubscriberMilestonesNow', () => {
+  test('writes nothing when there has never been a revision', async () => {
+    expect(await (await publishSubscriberMilestonesNow(env, NOW)).json()).toEqual({ published: false });
+    expect(await storedJson()).toBeNull();
+  });
+
+  test('answers published: false once every publish has written the JSON', async () => {
+    await createPublished();
+
+    expect(await (await publishSubscriberMilestonesNow(env, NOW)).json()).toEqual({ published: false });
+  });
+
+  test('writes a revision left waiting, and adds a publication row', async () => {
+    const milestoneId = await create();
+
+    // As 「公開待ちにする」 left one before #283: a publish revision the JSON was never written from.
+    await env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body, created_via)
+       VALUES ('subscriber_milestone', ?1, 'publish', ?2, 'admin')`,
+    )
+      .bind(
+        String(milestoneId),
+        JSON.stringify({
+          milestone_id: milestoneId,
+          channel_id: 'UCaaa',
+          date_precision: 'day',
+          reached_date: '2024-01-29',
+          subscriber_count: 20000,
+          announced_by: 'member',
+          event_id: null,
+          sources: [],
+        }),
+      )
+      .run();
+
+    expect((await pending()).pending).toEqual([{ milestoneId, latestAction: 'publish' }]);
+
+    const response = await publishSubscriberMilestonesNow(env, NOW);
+
+    expect(await response.json()).toMatchObject({ published: true, milestoneCount: 1 });
+    expect(await publicationCount()).toEqual(1);
+    expect((await pending()).pending).toEqual([]);
+  });
+
+  test('builds again when the stored JSON is in an older shape', async () => {
+    await createPublished();
+    await env.PUBLIC_DATA.put(OBJECT_KEY, JSON.stringify({ milestones: [] }));
+
+    expect((await pending()).shapeOutdated).toEqual(true);
+    expect(
+      ((await (await publishSubscriberMilestonesNow(env, NOW)).json()) as { published: boolean }).published,
+    ).toEqual(true);
+    expect((await storedJson())!.shape_version).toEqual(SUBSCRIBER_MILESTONES_SHAPE_VERSION);
   });
 });
 
 describe('pendingSubscriberMilestones', () => {
-  test('lists a milestone whose latest revision is newer than the last run', async () => {
-    const milestoneId = await create();
+  test('reports a published milestone whose working row was changed before #283 as changed', async () => {
+    const milestoneId = await createPublished();
 
-    await publishMilestone(env, milestoneId);
+    // A save that went past publishing: what a published row's PUT did before #283.
+    await updateMilestone(env, milestoneId, body({ subscriberCount: 30000 }));
 
-    expect((await pending()).pending).toEqual([{ milestoneId, latestAction: 'publish' }]);
+    expect((await pending()).changed).toEqual([{ milestoneId }]);
+  });
+});
 
-    await publishSubscriberMilestonesNow(env, NOW);
-    await withdrawMilestone(env, milestoneId);
+describe('checkSources', () => {
+  async function check(overrides: Record<string, unknown>) {
+    const response = await checkSources(env, { channelId: 'UCaaa', announcedBy: 'member', urls: [], ...overrides });
 
-    expect((await pending()).pending).toEqual([{ milestoneId, latestAction: 'withdraw' }]);
+    return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+  }
+
+  test('marks each source, and a second one on the same site as such', async () => {
+    const { body: judged } = await check({
+      urls: [
+        `${WHITELISTED_PREFIX}/status/1`,
+        'https://www.youtube.com/watch?v=zzzzzzzzzzz',
+        'https://youtu.be/yyyyyyyyyyy',
+        'not a url',
+      ],
+    });
+
+    expect(judged).toEqual({
+      marks: [
+        { kind: 'whitelist' },
+        { kind: 'host', host: 'youtube.com', sameSite: false },
+        { kind: 'host', host: 'youtube.com', sameSite: true },
+        { kind: 'host', host: null, sameSite: false },
+      ],
+      enough: true,
+    });
+  });
+
+  test("marks the milestone's own video, which is enough by itself", async () => {
+    await insertVideo('abcdefghijk', 'UCaaa');
+
+    expect((await check({ urls: ['https://youtu.be/abcdefghijk'] })).body).toEqual({
+      marks: [{ kind: 'own_video' }],
+      enough: true,
+    });
+  });
+
+  test('is not enough with one site off the whitelist, nor with none at all', async () => {
+    expect((await check({ urls: ['https://youtu.be/a', 'https://www.youtube.com/watch?v=b'] })).body.enough).toBe(
+      false,
+    );
+    expect((await check({ urls: [] })).body.enough).toBe(false);
+  });
+
+  test("is enough with one source of any site for a listener's announcement", async () => {
+    expect((await check({ announcedBy: 'listener', urls: ['https://x.com/listener/status/1'] })).body.enough).toBe(
+      true,
+    );
+    expect((await check({ announcedBy: 'listener', urls: [] })).body.enough).toBe(false);
+  });
+
+  test('answers 400 for a body that is not the right shape', async () => {
+    expect((await check({ urls: 'https://x.com' })).status).toEqual(400);
+    expect((await check({ urls: [1] })).status).toEqual(400);
+    expect((await check({ channelId: 1 })).status).toEqual(400);
+    expect((await check({ urls: Array.from({ length: 51 }, () => 'https://x.com') })).status).toEqual(400);
   });
 });
