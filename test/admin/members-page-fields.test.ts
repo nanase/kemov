@@ -56,4 +56,11 @@ describe('MembersPage.vue fields', () => {
   test('a new member cannot be started while a row or the list is being saved or deleted', () => {
     expect(page).toContain(':disabled="listSaving || saving" @click="addMember"');
   });
+
+  // 「メンバーを足す」 is open with no row chosen (`selectedId` null): neither a read of the
+  // list nor 元に戻す may choose the first row behind the form.
+  test('a row is not chosen behind the open new-member form', () => {
+    expect(page).toContain('if (selectedId.value === null && newForm.value === null && rows.value.length > 0) {');
+    expect(page).toContain('if (newForm.value === null && selectedAdded.value === null && selected.value === null) {');
+  });
 });

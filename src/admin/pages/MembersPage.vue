@@ -232,7 +232,8 @@ async function load(): Promise<void> {
       draft.order = reconcileOrder(draft.order, [...savedIds.value, ...draft.added.map((a) => a.channelId)]);
     }
 
-    if (selectedId.value === null && rows.value.length > 0) {
+    // Not while 「メンバーを足す」 is open: that form is what the panel shows, and no row is chosen.
+    if (selectedId.value === null && newForm.value === null && rows.value.length > 0) {
       selectedId.value = rows.value[0]!.channelId;
     }
   } catch (error) {
@@ -339,7 +340,9 @@ function discard(): void {
   errorMessage.value = null;
   errorField.value = null;
 
-  if (selectedAdded.value === null && selected.value === null) selectedId.value = rows.value[0]?.channelId ?? null;
+  if (newForm.value === null && selectedAdded.value === null && selected.value === null) {
+    selectedId.value = rows.value[0]?.channelId ?? null;
+  }
 }
 
 /**
