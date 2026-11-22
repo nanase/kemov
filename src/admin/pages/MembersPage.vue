@@ -243,8 +243,9 @@ async function load(): Promise<void> {
 }
 
 function selectRow(channelId: string): void {
-  // The edit panel is inert while 保存 is in flight; so is the choice of what it shows.
-  if (listSaving.value) return;
+  // The edit panel is inert while 保存 or 削除 is in flight; so is the choice of what it shows,
+  // or the answer (an error, the panel closing) would land on the member chosen meanwhile.
+  if (listSaving.value || saving.value) return;
 
   // A click on the row the banner is about shows the error there, as the
   // banner's own button does: the banner has said all it had to. Only a click
@@ -541,7 +542,12 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
         <span class="grow"></span>
         <span class="sub num">{{ rows.length }} 人</span>
         <!-- Always there, unsaved changes or not: a 409 from 保存 says to reload, and the draft is kept across it. -->
-        <button class="btn quiet" type="button" :disabled="loading || listSaving" @click="confirmDiscard() && load()">
+        <button
+          class="btn quiet"
+          type="button"
+          :disabled="loading || listSaving || saving"
+          @click="confirmDiscard() && load()"
+        >
           再読み込み
         </button>
         <template v-if="dirty">
@@ -550,7 +556,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
           </button>
           <button class="btn primary" type="button" :disabled="listSaving" @click="saveList">保存</button>
         </template>
-        <button class="btn" type="button" :disabled="listSaving" @click="addMember">＋ メンバーを足す</button>
+        <button class="btn" type="button" :disabled="listSaving || saving" @click="addMember">＋ メンバーを足す</button>
       </div>
       <div class="scroller">
         <div v-if="loadError" class="empty-note">
@@ -634,8 +640,8 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
       </div>
     </div>
 
-    <!-- inert while 保存 is in flight: the request already carries the draft as it was, and what is typed meanwhile would be cleared with it. -->
-    <div v-if="activeFields" class="inspector" :inert="listSaving || undefined">
+    <!-- inert while a request is in flight: the list's 保存 already carries the draft as it was, and what is typed meanwhile would be cleared with it; a row's 保存, a 削除 or a read of the list is answered with saved values, which would meet a field typed in just then. -->
+    <div v-if="activeFields" class="inspector" :inert="loading || listSaving || saving || undefined">
       <SplitHandle />
       <div class="inspector-head">
         <div>
