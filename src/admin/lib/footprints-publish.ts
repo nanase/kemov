@@ -67,6 +67,8 @@ export const PUBLISH_TEXT = {
   notWithdrawn: '非公開に戻せません',
   notWithdrawnNote:
     '本番を書き直せませんでした。行は公開中のまま、本番も前の内容のままです。もう一度「非公開に戻す」を押してください。',
+  withdrawnBehind: '非公開に戻しましたが、本番から外せませんでした',
+  withdrawnBehindNote: '公開中のほかの行を「保存」すると、本番からも外れます。',
   failed: '保存できません',
   changedTitle: '本番は前の内容のままです',
   changedBody: '「保存」を押すと、いまの内容が本番に出ます。',
@@ -111,6 +113,17 @@ function savedAnyway(body: unknown): boolean {
   return typeof body === 'object' && body !== null && 'saved' in body && body.saved === true;
 }
 
+/** The status the row has now, as a 502 that saved anyway gives it, or null when the answer carries no row. */
+function statusNow(body: unknown): string | null {
+  if (typeof body !== 'object' || body === null || !('event' in body)) return null;
+
+  const event = body.event;
+
+  if (typeof event !== 'object' || event === null || !('status' in event)) return null;
+
+  return typeof event.status === 'string' ? event.status : null;
+}
+
 /**
  * What the edit panel says after `action`, on a row that was `status` when
  * it was pressed (null for a row not saved yet). `error` is what the request
@@ -120,8 +133,12 @@ function savedAnyway(body: unknown): boolean {
  *   anyway is the worker's answer too: a draft's are, a published row's are
  *   not
  * - A 502 that says it saved is a save that went through while the public
- *   JSON could not be written. The button to press again is the one the row
- *   shows now: a draft stays a draft, so 「公開」 is still there
+ *   JSON could not be written, or could not be brought up to date after the
+ *   change was recorded. The button to press again is the one the row shows
+ *   now, read from the answer: a draft whose JSON could not be written stays
+ *   a draft, so 「公開」 is still there, but one recorded as published shows
+ *   「保存」. A withdraw that says it saved made the row a draft while the
+ *   JSON may still have it, and the next publish of any row takes it out
  * - Anything else is a request that failed, said as before #281. A 404, a
  *   409 or a 5xx may mean the row is not what the screen shows - deleted or
  *   withdrawn elsewhere, or written before a later step failed - so the table
@@ -152,6 +169,15 @@ export function footprintsAnswerFor(action: FootAction, status: string | null, e
   }
 
   if (error instanceof AdminApiError && error.status === 502) {
+    if (action === 'withdraw' && savedAnyway(error.body)) {
+      return {
+        kind: 'band',
+        band: { title: PUBLISH_TEXT.withdrawnBehind, lines: [], note: PUBLISH_TEXT.withdrawnBehindNote },
+        fields: [],
+        changed: true,
+      };
+    }
+
     if (action === 'withdraw') {
       return {
         kind: 'band',
@@ -165,7 +191,10 @@ export function footprintsAnswerFor(action: FootAction, status: string | null, e
       return {
         kind: 'band',
         band: {
-          title: status === 'published' ? PUBLISH_TEXT.notWrittenSave : PUBLISH_TEXT.notWrittenPublish,
+          title:
+            (statusNow(error.body) ?? status) === 'published'
+              ? PUBLISH_TEXT.notWrittenSave
+              : PUBLISH_TEXT.notWrittenPublish,
           lines: [],
           note: null,
         },

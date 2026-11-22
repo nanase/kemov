@@ -1,6 +1,13 @@
 import { env } from 'cloudflare:test';
 
-import { liveBodies, publishChange, type LatestRevisionRow, type PublishTarget } from '../src/admin/publishing';
+import {
+  liveBodies,
+  publishChange,
+  REBUILD_LIMIT,
+  type LatestRevisionRow,
+  type PublishTarget,
+  type RevisionChange,
+} from '../src/admin/publishing';
 import type { Env } from '../src/lib/env';
 import { clearEverything } from './reset-db';
 
@@ -14,19 +21,71 @@ import { clearEverything } from './reset-db';
 const NOW = new Date('2026-11-22T00:00:00Z');
 const OBJECT_KEY = 'test/published.json';
 
+/** A JSON that says which events it has, and when it was built. */
 const TARGET: PublishTarget = {
   entity: 'footprints_event',
   target: 'footprints',
   objectKey: OBJECT_KEY,
   table: 'footprints_event',
   keyColumn: 'event_id',
-  buildJson: async (_env, now, change) => JSON.stringify({ at: now.toISOString(), change }),
+  buildJson: (now, latest, change) =>
+    JSON.stringify({
+      at: now.toISOString(),
+      events: liveBodies(latest, change)
+        .map((body) => body.event_id as number)
+        .sort((a, b) => a - b),
+    }),
 };
 
 const R2_DOWN: Env = {
   ...env,
   PUBLIC_DATA: { put: () => Promise.reject(new Error('R2 is down')) } as unknown as R2Bucket,
 };
+
+/** `env` with `PUBLIC_DATA`'s methods replaced by `overrides`, the rest left to the real bucket. */
+interface BucketOverrides {
+  put?: (key: string, value: string, options?: R2PutOptions) => Promise<R2Object>;
+  head?: (key: string) => Promise<{ version: string } | null>;
+}
+
+function withBucket(overrides: BucketOverrides): Env {
+  const bucket = new Proxy(env.PUBLIC_DATA, {
+    get(target, property) {
+      if (property in overrides) return overrides[property as keyof typeof overrides];
+
+      const value = Reflect.get(target, property) as unknown;
+
+      return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+    },
+  });
+
+  return { ...env, PUBLIC_DATA: bucket };
+}
+
+/** `env` with `DB.batch` replaced, the rest left to the real database. */
+function withBatch(batch: D1Database['batch']): Env {
+  const db = new Proxy(env.DB, {
+    get(target, property) {
+      if (property === 'batch') return batch;
+
+      const value = Reflect.get(target, property) as unknown;
+
+      return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+    },
+  });
+
+  return { ...env, DB: db };
+}
+
+/** A point one request stops at until the test lets it go on. */
+function stop() {
+  let reach!: () => void;
+  let release!: () => void;
+  const reached = new Promise<void>((resolve) => (reach = resolve));
+  const released = new Promise<void>((resolve) => (release = resolve));
+
+  return { reach, reached, release, released };
+}
 
 beforeEach(async () => {
   await clearEverything();
@@ -45,6 +104,10 @@ async function insertEvent(title: string): Promise<number> {
 
 function renameStatement(eventId: number, title: string): D1PreparedStatement {
   return env.DB.prepare('UPDATE footprints_event SET title = ?1 WHERE event_id = ?2').bind(title, eventId);
+}
+
+function publishOf(eventId: number): RevisionChange {
+  return { key: String(eventId), action: 'publish', body: { event_id: eventId } };
 }
 
 async function titleOf(eventId: number): Promise<string | undefined> {
@@ -73,17 +136,20 @@ async function publications(): Promise<{ publication_id: number; last_revision_i
   return results;
 }
 
+async function publishedEvents(): Promise<number[]> {
+  return (JSON.parse(await (await env.PUBLIC_DATA.get(OBJECT_KEY))!.text()) as { events: number[] }).events;
+}
+
 describe('publishChange', () => {
   test('writes the JSON, then records the row, the revision and a publication naming it', async () => {
     const eventId = await insertEvent('前');
-    const change = { key: String(eventId), action: 'publish' as const, body: { event_id: eventId } };
 
-    const outcome = await publishChange(env, TARGET, change, [renameStatement(eventId, '後')], NOW);
+    const outcome = await publishChange(env, TARGET, publishOf(eventId), [renameStatement(eventId, '後')], NOW);
 
     expect(outcome).toMatchObject({ written: true, revisionId: expect.any(Number) });
     expect(JSON.parse(await (await env.PUBLIC_DATA.get(OBJECT_KEY))!.text())).toEqual({
       at: '2026-11-22T00:00:00.000Z',
-      change,
+      events: [eventId],
     });
     expect(await titleOf(eventId)).toEqual('後');
 
@@ -111,42 +177,175 @@ describe('publishChange', () => {
       NOW,
     );
 
-    expect(outcome).toEqual({ written: false, error: expect.stringContaining('R2 is down') });
+    expect(outcome).toEqual({ written: false, recorded: false, error: expect.stringContaining('R2 is down') });
     expect(await titleOf(eventId)).toEqual('前');
     expect(await revisions()).toEqual([]);
     expect(await publications()).toEqual([]);
   });
 
-  // A failure to read what the JSON is built from is D1's, not "could not be
-  // written": the caller would otherwise save the fields as if R2 were down.
+  // A failure to build the JSON is not "could not be written": the caller
+  // would otherwise save the fields as if R2 were down.
   test('throws when the JSON cannot be built', async () => {
     const eventId = await insertEvent('前');
-    const failing: PublishTarget = { ...TARGET, buildJson: () => Promise.reject(new Error('D1 is down')) };
+    const failing: PublishTarget = {
+      ...TARGET,
+      buildJson: () => {
+        throw new Error('cannot build');
+      },
+    };
 
     await expect(
       publishChange(env, failing, { key: String(eventId), action: 'withdraw', body: null }, [], NOW),
-    ).rejects.toThrow('D1 is down');
+    ).rejects.toThrow('cannot build');
     expect(await env.PUBLIC_DATA.get(OBJECT_KEY)).toBeNull();
   });
 
   // A delete between the caller's read and the batch: no revision is left to
-  // keep a row that no longer exists in every later JSON.
-  test('logs no revision for a row that is gone by the time the batch runs', async () => {
+  // keep a row that no longer exists in every later JSON, and the JSON
+  // already written with its body is built again without it.
+  test('logs no revision for a row that is gone by the time the batch runs, and takes it back out of the JSON', async () => {
     const eventId = await insertEvent('消える');
 
     await env.DB.prepare('DELETE FROM footprints_event WHERE event_id = ?1').bind(eventId).run();
 
-    const outcome = await publishChange(
-      env,
-      TARGET,
-      { key: String(eventId), action: 'publish', body: { event_id: eventId } },
-      [renameStatement(eventId, '後')],
-      NOW,
-    );
+    const outcome = await publishChange(env, TARGET, publishOf(eventId), [renameStatement(eventId, '後')], NOW);
 
     // With no revision anywhere, there is none for a publication to name either.
     expect(outcome).toMatchObject({ written: true, revisionId: null, publicationId: null });
     expect(await revisions()).toEqual([]);
+    expect(await publications()).toEqual([]);
+    expect(await publishedEvents()).toEqual([]);
+  });
+
+  // The first request's write lands after the second request finished, built
+  // from revisions that did not have the second's yet.
+  test('keeps both events when a write built without the other lands last', async () => {
+    const first = await insertEvent('一');
+    const second = await insertEvent('二');
+    const held = stop();
+    let puts = 0;
+    const holding = withBucket({
+      put: async (key: string, value: string, options?: R2PutOptions) => {
+        puts += 1;
+
+        if (puts === 1) {
+          held.reach();
+          await held.released;
+        }
+
+        return await env.PUBLIC_DATA.put(key, value, options);
+      },
+    });
+
+    const firstOutcome = publishChange(holding, TARGET, publishOf(first), [], NOW);
+
+    await held.reached;
+
+    const secondOutcome = await publishChange(env, TARGET, publishOf(second), [], NOW);
+
+    expect(secondOutcome.written).toBe(true);
+    expect(await publishedEvents()).toEqual([second]);
+
+    held.release();
+
+    expect((await firstOutcome).written).toBe(true);
+    expect(await publishedEvents()).toEqual([first, second]);
+    expect((await publications()).at(-1)!.last_revision_id).toEqual(
+      Math.max(...(await revisions()).map((r) => r.revision_id)),
+    );
+  });
+
+  // The first request has written and stops before its batch. The second
+  // writes over it, records and checks before the first's revision exists,
+  // so only the first's own check can put both back.
+  test("keeps both events when another request writes between this one's write and its batch", async () => {
+    const first = await insertEvent('一');
+    const second = await insertEvent('二');
+    const held = stop();
+    const holding = withBatch((async (statements: D1PreparedStatement[]) => {
+      held.reach();
+      await held.released;
+
+      return await env.DB.batch(statements);
+    }) as D1Database['batch']);
+
+    const firstOutcome = publishChange(holding, TARGET, publishOf(first), [], NOW);
+
+    await held.reached;
+    expect(await publishedEvents()).toEqual([first]);
+
+    expect((await publishChange(env, TARGET, publishOf(second), [], NOW)).written).toBe(true);
+    expect(await publishedEvents()).toEqual([second]);
+
+    held.release();
+
+    expect((await firstOutcome).written).toBe(true);
+    expect(await publishedEvents()).toEqual([first, second]);
+  });
+
+  // No revision is newer than what the first request built from, so only
+  // R2's version of the object shows that its JSON was written over.
+  test('builds the JSON again when it was written over with no new revision', async () => {
+    const eventId = await insertEvent('一');
+    const held = stop();
+    const holding = withBatch((async (statements: D1PreparedStatement[]) => {
+      held.reach();
+      await held.released;
+
+      return await env.DB.batch(statements);
+    }) as D1Database['batch']);
+
+    const outcome = publishChange(holding, TARGET, publishOf(eventId), [], NOW);
+
+    await held.reached;
+    await env.PUBLIC_DATA.put(OBJECT_KEY, JSON.stringify({ at: 'elsewhere', events: [] }));
+
+    held.release();
+
+    expect((await outcome).written).toBe(true);
+    expect(await publishedEvents()).toEqual([eventId]);
+  });
+
+  test('says the change was recorded but may not be out when the JSON never settles', async () => {
+    const eventId = await insertEvent('前');
+    const unsettled = withBucket({ head: () => Promise.resolve({ version: 'someone else' }) });
+
+    const outcome = await publishChange(unsettled, TARGET, publishOf(eventId), [renameStatement(eventId, '後')], NOW);
+
+    expect(outcome).toEqual({
+      written: false,
+      recorded: true,
+      revisionId: expect.any(Number),
+      error: `${OBJECT_KEY} was still behind after ${REBUILD_LIMIT} rebuilds`,
+    });
+    expect(await titleOf(eventId)).toEqual('後');
+    expect(await revisions()).toHaveLength(1);
+    // Left unclaimed, so the change still counts as waiting.
+    expect(await publications()).toEqual([]);
+  });
+
+  test('says the change was recorded but may not be out when the JSON cannot be written again', async () => {
+    const eventId = await insertEvent('前');
+    let puts = 0;
+    const failingLater = withBucket({
+      head: () => Promise.resolve({ version: 'someone else' }),
+      put: async (key: string, value: string, options?: R2PutOptions) => {
+        puts += 1;
+
+        if (puts > 1) throw new Error('R2 is down');
+
+        return await env.PUBLIC_DATA.put(key, value, options);
+      },
+    });
+
+    const outcome = await publishChange(failingLater, TARGET, publishOf(eventId), [], NOW);
+
+    expect(outcome).toEqual({
+      written: false,
+      recorded: true,
+      revisionId: expect.any(Number),
+      error: expect.stringContaining('R2 is down'),
+    });
     expect(await publications()).toEqual([]);
   });
 });
@@ -171,5 +370,9 @@ describe('liveBodies', () => {
 
   test('adds a key that had no revision yet', () => {
     expect(liveBodies(latest, { key: '4', action: 'publish', body: { id: 4 } })).toHaveLength(3);
+  });
+
+  test('is every live body as recorded when there is no change', () => {
+    expect(liveBodies(latest, null)).toEqual([{ id: 1, v: 'old' }, { id: 3 }]);
   });
 });

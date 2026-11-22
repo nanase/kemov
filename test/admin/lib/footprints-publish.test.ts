@@ -114,6 +114,46 @@ describe('footprintsAnswerFor', () => {
     });
   });
 
+  // Recorded as published before the JSON could be brought up to date: the
+  // row shows 「保存」 now, whatever it was when 「公開」 was pressed.
+  test('a publish that saved the row as published asks for 「保存」 again', () => {
+    const error = new AdminApiError(502, { error: 'saved, but …', saved: true, event: { status: 'published' } });
+
+    expect(footprintsAnswerFor('publish', 'draft', error)).toEqual({
+      kind: 'band',
+      band: {
+        title: '保存しましたが、本番に出せませんでした。もう一度「保存」を押してください。',
+        lines: [],
+        note: null,
+      },
+      fields: [],
+      changed: true,
+    });
+  });
+
+  test('a publish whose row stayed a draft asks for 「公開」 again', () => {
+    const error = new AdminApiError(502, { error: 'saved, but …', saved: true, event: { status: 'draft' } });
+
+    expect(footprintsAnswerFor('publish', 'draft', error)).toMatchObject({
+      band: { title: '保存しましたが、本番に出せませんでした。もう一度「公開」を押してください。' },
+    });
+  });
+
+  test('a withdraw that made the row a draft but may not have reached the public site says how it gets out', () => {
+    const error = new AdminApiError(502, { error: 'saved, but …', saved: true, event: { status: 'draft' } });
+
+    expect(footprintsAnswerFor('withdraw', 'published', error)).toEqual({
+      kind: 'band',
+      band: {
+        title: '非公開に戻しましたが、本番から外せませんでした',
+        lines: [],
+        note: '公開中のほかの行を「保存」すると、本番からも外れます。',
+      },
+      fields: [],
+      changed: true,
+    });
+  });
+
   test('a withdraw that could not reach the public site says nothing changed', () => {
     const error = new AdminApiError(502, { error: 'footprints/events.json could not be written' });
 

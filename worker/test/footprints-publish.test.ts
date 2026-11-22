@@ -44,6 +44,21 @@ const R2_DOWN: Env = {
   } as unknown as R2Bucket,
 };
 
+/**
+ * `env` with an R2 whose object always looks written by someone else - what
+ * a publish meets when the JSON cannot be brought up to date after its
+ * revision is recorded (publishing.ts).
+ */
+const UNSETTLED: Env = {
+  ...env,
+  PUBLIC_DATA: {
+    get: (key: string) => env.PUBLIC_DATA.get(key),
+    list: () => env.PUBLIC_DATA.list(),
+    put: (key: string, value: string, options?: R2PutOptions) => env.PUBLIC_DATA.put(key, value, options),
+    head: () => Promise.resolve({ version: 'someone else' }),
+  } as unknown as R2Bucket,
+};
+
 function source(url: string) {
   return { url, title: null };
 }
@@ -239,6 +254,24 @@ describe('publishEvent', () => {
     expect(await revisionRows()).toEqual([]);
     expect(await publicationRows()).toEqual([]);
     expect(await readPublished()).toBeNull();
+  });
+
+  // The row is published by then: the screen picks what to press next by
+  // the status the answer carries, not by the one the row had.
+  test('publishes the row, and says the JSON may be behind, when it cannot be brought up to date', async () => {
+    const eventId = await createValidEvent({ title: '下書きの題' });
+
+    const response = await publishEvent(UNSETTLED, eventId, validBody({ title: '公開の題' }), NOW);
+
+    expect(response.status).toEqual(502);
+
+    const body = (await response.json()) as { saved: boolean; event: { status: string; title: string } };
+
+    expect(body.saved).toEqual(true);
+    expect(body.event).toMatchObject({ status: 'published', title: '公開の題' });
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '公開の題' });
+    expect(await revisionRows()).toHaveLength(1);
+    expect(await publicationRows()).toEqual([]);
   });
 
   test('refuses sourcePending=false with no sources', async () => {
@@ -530,6 +563,22 @@ describe('withdrawEvent', () => {
     expect(await readRow(eventId)).toMatchObject({ status: 'published', title: 'デビュー' });
     expect(await revisionRows()).toHaveLength(1);
     expect(await readPublished()).toEqual(before);
+  });
+
+  test('makes the event a draft, and says the JSON may be behind, when it cannot be brought up to date', async () => {
+    const eventId = await createPublishedEvent();
+
+    const response = await withdrawEvent(UNSETTLED, eventId, validBody({ title: '新しい題' }), LATER);
+
+    expect(response.status).toEqual(502);
+
+    const body = (await response.json()) as { saved: boolean; event: { status: string } };
+
+    expect(body.saved).toEqual(true);
+    expect(body.event.status).toEqual('draft');
+    expect(await readRow(eventId)).toMatchObject({ status: 'draft', title: '新しい題' });
+    expect((await revisionRows()).at(-1)).toMatchObject({ action: 'withdraw' });
+    expect(await publicationRows()).toHaveLength(1);
   });
 });
 

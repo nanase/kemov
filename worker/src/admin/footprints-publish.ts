@@ -157,8 +157,8 @@ export const FOOTPRINTS_TARGET: PublishTarget = {
   objectKey: OBJECT_KEY,
   table: 'footprints_event',
   keyColumn: 'event_id',
-  async buildJson(env: Env, now: Date, change: RevisionChange): Promise<string> {
-    return footprintsJson(now, liveBodies(await latestRevisions(env, 'footprints_event'), change)).json;
+  buildJson(now: Date, latest: readonly LatestRevisionRow[], change: RevisionChange | null): string {
+    return footprintsJson(now, liveBodies(latest, change)).json;
   },
 };
 
@@ -173,9 +173,11 @@ function refusalResponse(problems: readonly PublishProblem[], saved: boolean): R
 
 /**
  * The answer when the fields were saved but the public JSON could not be
- * written: 502, since what failed is R2 behind this worker, with
+ * written, or could not be brought up to date after the change was recorded
+ * (publishing.ts): 502, since what failed is R2 behind this worker, with
  * `saved: true` and the row as it now stands, so the screen can tell it
- * apart from a request that changed nothing.
+ * apart from a request that changed nothing, and say what to press next by
+ * the status the row has now.
  */
 async function notWrittenResponse(env: Env, eventId: number, outcome: Extract<PublishOutcome, { written: false }>) {
   const saved = await readEvent(env, eventId);
@@ -219,7 +221,9 @@ async function writtenResponse(env: Env, eventId: number, outcome: Extract<Publi
  *
  * When the JSON cannot be written, the fields are saved and nothing else
  * changes - a draft stays a draft, a published row keeps its last revision -
- * and 502 says so.
+ * and 502 says so. When it was written but could not be brought up to date
+ * after the revision was recorded, the row is published all the same, and
+ * 502 says that too.
  */
 async function saveAndPublish(env: Env, existing: FootprintsEvent, fields: EventFields, now: Date): Promise<Response> {
   const eventId = existing.event.event_id;
@@ -242,7 +246,7 @@ async function saveAndPublish(env: Env, existing: FootprintsEvent, fields: Event
   );
 
   if (!outcome.written) {
-    await env.DB.batch(saveStatements(env, eventId, fields));
+    if (!outcome.recorded) await env.DB.batch(saveStatements(env, eventId, fields));
 
     return await notWrittenResponse(env, eventId, outcome);
   }
@@ -305,8 +309,10 @@ export async function saveEvent(
  * `footprints/events.json`, then saves the fields as a draft and logs a
  * `withdraw` revision (a `null` body - the schema requires it, and there is
  * nothing left to publish). Nothing at all changes when the JSON cannot be
- * written, and 502 says so. 409 for an event that is not published: there is
- * nothing on the timeline to take off.
+ * written, and 502 says so. When it was written but could not be brought up
+ * to date after the revision was recorded, the event is a draft all the
+ * same, and 502 says so with `saved: true`, as a publish's does. 409 for an
+ * event that is not published: there is nothing on the timeline to take off.
  */
 export async function withdrawEvent(
   env: Env,
@@ -332,7 +338,11 @@ export async function withdrawEvent(
     now,
   );
 
-  if (!outcome.written) return errorResponse(502, `${OBJECT_KEY} could not be written: ${outcome.error}`);
+  if (!outcome.written) {
+    if (outcome.recorded) return await notWrittenResponse(env, eventId, outcome);
+
+    return errorResponse(502, `${OBJECT_KEY} could not be written: ${outcome.error}`);
+  }
 
   return await writtenResponse(env, eventId, outcome);
 }
