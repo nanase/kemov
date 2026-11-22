@@ -17,6 +17,7 @@ import {
 import {
   latestRevisions,
   liveBodies,
+  isBehind,
   publishChange,
   republish,
   type LatestRevisionRow,
@@ -370,6 +371,10 @@ async function lastPublishedRevisionId(env: Env, target: string): Promise<number
  * Since #281 every publish writes the JSON, so nothing waits once the rows
  * from before it have been published again; and a published row changes
  * only together with its revision, unless the JSON could not be written.
+ *
+ * `behind`: a write of the JSON was sent that no check found up to date
+ * since (publishing.ts's `isBehind`), so the JSON may say something
+ * `revision` does not, with nothing waiting to show it.
  */
 export async function pendingFootprints(env: Env): Promise<Response> {
   const { pending, latest } = await readWaiting(env);
@@ -404,7 +409,7 @@ export async function pendingFootprints(env: Env): Promise<Response> {
     if (current !== publishedBody) changed.push({ eventId, title: saved.event.title });
   }
 
-  return jsonResponse({ pending, changed });
+  return jsonResponse({ pending, changed, behind: await isBehind(env, FOOTPRINTS_TARGET.target) });
 }
 
 export interface WaitingFootprintsEntry {
@@ -442,7 +447,9 @@ async function readWaiting(env: Env): Promise<{ pending: WaitingFootprintsEntry[
  * `footprints_event` entity whose latest action is not `withdraw`, writes it
  * to `PUBLIC_DATA`, and appends one `publication` row. Nothing is written,
  * and 200 answers `{ published: false }`, when there is nothing newer than
- * the last time the JSON was written.
+ * the last time the JSON was written and the JSON is not counted as behind
+ * (`isBehind`): one that is may say what no revision says, which only a
+ * build from `revision` takes back out.
  *
  * Kept for the 公開 screen until it goes (#285): a row left waiting from
  * before #281 is published by it, or by the next publish of any event, which
@@ -461,7 +468,7 @@ export async function publishFootprintsNow(env: Env, now: Date): Promise<Respons
 
   const newestRevisionId = latest.reduce((max, row) => Math.max(max, row.revision_id), 0);
 
-  if (newestRevisionId <= lastRevisionId) {
+  if (newestRevisionId <= lastRevisionId && !(await isBehind(env, FOOTPRINTS_TARGET.target))) {
     return jsonResponse({ published: false });
   }
 

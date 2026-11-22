@@ -8,9 +8,9 @@ import {
   type FootprintsPending,
 } from '@/admin/lib/footprints-publish';
 
-const NOTHING: FootprintsPending = { pending: [], changed: [] };
-const WAITING: FootprintsPending = { pending: [{ eventId: 3, latestAction: 'publish' }], changed: [] };
-const CHANGED: FootprintsPending = { pending: [], changed: [{ eventId: 5, title: '変わった行' }] };
+const NOTHING: FootprintsPending = { pending: [], changed: [], behind: false };
+const WAITING: FootprintsPending = { pending: [{ eventId: 3, latestAction: 'publish' }], changed: [], behind: false };
+const CHANGED: FootprintsPending = { pending: [], changed: [{ eventId: 5, title: '変わった行' }], behind: false };
 
 describe('isChangedSincePublish', () => {
   test('is true only for a listed event', () => {
@@ -35,6 +35,12 @@ describe('canPublishFootprints', () => {
   // run, so 「いま公開する」 would answer "待っているものがありません" (#201).
   test('is false when a row has only changed since it was published', () => {
     expect(canPublishFootprints(CHANGED)).toBe(false);
+  });
+
+  // Nothing waits, but the JSON may say what no revision says: 「いま公開する」
+  // is what builds it again from the revisions.
+  test('is true when the public JSON may be behind, with nothing waiting', () => {
+    expect(canPublishFootprints({ ...NOTHING, behind: true })).toBe(true);
   });
 });
 

@@ -25,6 +25,8 @@ export interface ChangedFootprintsEntry {
 export interface FootprintsPending {
   pending: PendingFootprintsEntry[];
   changed: ChangedFootprintsEntry[];
+  /** Whether the public JSON may say what no revision says: a write of it was sent that no check found up to date since. */
+  behind: boolean;
 }
 
 /**
@@ -39,12 +41,12 @@ export function isChangedSincePublish(state: FootprintsPending | null, eventId: 
 /**
  * Whether the 公開 screen's 「いま公開する」 does anything for あしあと. The
  * worker builds the JSON only when a revision is newer than the last time it
- * was written, and a row changed after it was published has no new revision
- * - so `changed` alone must not enable it, or the button answers
- * "待っているものがありません".
+ * was written, or when the JSON may be behind, and a row changed after it was
+ * published has no new revision - so `changed` alone must not enable it, or
+ * the button answers "待っているものがありません".
  */
 export function canPublishFootprints(state: FootprintsPending): boolean {
-  return state.pending.length > 0;
+  return state.pending.length > 0 || state.behind;
 }
 
 /**
@@ -69,6 +71,8 @@ export const PUBLISH_TEXT = {
     '本番を書き直せませんでした。行は公開中のまま、本番も前の内容のままです。もう一度「非公開に戻す」を押してください。',
   withdrawnBehind: '非公開に戻しましたが、本番から外せませんでした',
   withdrawnBehindNote: '公開中のほかの行を「保存」すると、本番からも外れます。',
+  /** The 公開 screen's, while the worker says the JSON may be behind. */
+  behind: '本番のあしあとが記録と食い違っているかもしれません。',
   failed: '保存できません',
   changedTitle: '本番は前の内容のままです',
   changedBody: '「保存」を押すと、いまの内容が本番に出ます。',

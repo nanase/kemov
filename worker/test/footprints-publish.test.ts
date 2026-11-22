@@ -625,7 +625,7 @@ describe('pendingFootprints', () => {
 
     const body = (await pendingFootprints(env).then((r) => r.json())) as { pending: unknown[]; changed: unknown[] };
 
-    expect(body).toEqual({ pending: [], changed: [] });
+    expect(body).toEqual({ pending: [], changed: [], behind: false });
   });
 
   test('lists an event whose latest revision the JSON was not written from', async () => {
@@ -729,5 +729,27 @@ describe('publishFootprintsNow', () => {
     expect(body).toMatchObject({ published: true, eventCount: 1 });
     expect((await readPublished())!.events.map((e) => e.title)).toEqual(['待っていた題']);
     expect(await publicationRows()).toHaveLength(2);
+  });
+
+  // A withdraw recorded with its publication, and then a stale write that
+  // nobody could check (a 「いま公開する」 whose rebuild failed): nothing waits,
+  // but the JSON has the withdrawn event again.
+  test('builds the JSON again while it may be behind, with nothing waiting, and then says it is not', async () => {
+    const kept = await createPublishedEvent({ title: '残る' });
+    const eventId = await createPublishedEvent({ title: '外す' });
+
+    expect((await withdrawEvent(env, eventId, validBody(), LATER)).status).toEqual(200);
+    await env.DB.prepare("UPDATE publication_write SET started = started + 1 WHERE target = 'footprints'").run();
+    await env.PUBLIC_DATA.put(OBJECT_KEY, JSON.stringify({ published_at: 'stale', events: [{ event_id: eventId }] }));
+
+    const pendingBefore = (await (await pendingFootprints(env)).json()) as { pending: unknown[]; behind: boolean };
+
+    expect(pendingBefore).toMatchObject({ pending: [], behind: true });
+
+    const response = await publishFootprintsNow(env, LATER);
+
+    expect(await response.json()).toMatchObject({ published: true, eventCount: 1 });
+    expect((await readPublished())!.events.map((e) => e.event_id)).toEqual([kept]);
+    expect(((await (await pendingFootprints(env)).json()) as { behind: boolean }).behind).toBe(false);
   });
 });

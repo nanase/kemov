@@ -3,6 +3,7 @@ import { env } from 'cloudflare:test';
 import {
   liveBodies,
   publishChange,
+  isBehind,
   REBUILD_LIMIT,
   republish,
   type LatestRevisionRow,
@@ -86,7 +87,7 @@ function withHeldPublication(held: ReturnType<typeof stop>): Env {
         return (sql: string) => {
           const statement = target.prepare(sql);
 
-          if (!sql.includes('INSERT INTO publication')) return statement;
+          if (!sql.includes('INSERT INTO publication (')) return statement;
 
           return {
             bind: (...values: unknown[]) => {
@@ -450,6 +451,96 @@ describe('publishChange', () => {
     expect((await publications()).map((p) => p.last_revision_id)).toEqual([
       Math.max(...(await revisions()).map((r) => r.revision_id)),
     ]);
+  });
+});
+
+describe('publishChange when its batch fails', () => {
+  const failingBatch = withBatch((() => Promise.reject(new Error('D1 is down'))) as D1Database['batch']);
+
+  // Written with a change the batch never recorded: withdrawing the only
+  // live event would otherwise leave it off the public timeline for good.
+  test('builds the JSON again from what was recorded, and still throws', async () => {
+    const eventId = await insertEvent('一');
+
+    await publishChange(env, TARGET, publishOf(eventId), [], NOW);
+
+    await expect(
+      publishChange(failingBatch, TARGET, { key: String(eventId), action: 'withdraw', body: null }, [], NOW),
+    ).rejects.toThrow('D1 is down');
+    expect(await publishedEvents()).toEqual([eventId]);
+    expect(await isBehind(env, TARGET.target)).toBe(false);
+  });
+
+  test('says the JSON may be behind when it cannot be built again either', async () => {
+    const eventId = await insertEvent('一');
+
+    await publishChange(env, TARGET, publishOf(eventId), [], NOW);
+
+    let puts = 0;
+    const failingLater: Env = {
+      ...failingBatch,
+      PUBLIC_DATA: withBucket({
+        put: async (key: string, value: string, options?: R2PutOptions) => {
+          puts += 1;
+
+          if (puts > 1) throw new Error('R2 is down');
+
+          return await env.PUBLIC_DATA.put(key, value, options);
+        },
+      }).PUBLIC_DATA,
+    };
+
+    await expect(
+      publishChange(failingLater, TARGET, { key: String(eventId), action: 'withdraw', body: null }, [], NOW),
+    ).rejects.toThrow('D1 is down');
+    expect(await publishedEvents()).toEqual([]);
+    expect(await isBehind(env, TARGET.target)).toBe(true);
+  });
+});
+
+describe('isBehind', () => {
+  test('is false before anything was written, and after a write checked up to date', async () => {
+    expect(await isBehind(env, TARGET.target)).toBe(false);
+
+    await publishChange(env, TARGET, publishOf(await insertEvent('一')), [], NOW);
+
+    expect(await isBehind(env, TARGET.target)).toBe(false);
+  });
+
+  test('is true after a write that could not be checked up to date', async () => {
+    const unsettled = withBucket({ head: () => Promise.resolve({ version: 'someone else' }) });
+
+    await publishChange(unsettled, TARGET, publishOf(await insertEvent('一')), [], NOW);
+
+    expect(await isBehind(env, TARGET.target)).toBe(true);
+  });
+
+  // The first request's own check passes, but a write was counted after its
+  // own and R2 failed to answer it: R2 may have taken it all the same, and
+  // only a check of that write could say otherwise.
+  test('stays true when a write counted after this one was never checked', async () => {
+    const first = await insertEvent('一');
+    const second = await insertEvent('二');
+    const held = stop();
+    const holding = withBatch((async (statements: D1PreparedStatement[]) => {
+      held.reach();
+      await held.released;
+
+      return await env.DB.batch(statements);
+    }) as D1Database['batch']);
+
+    const firstOutcome = publishChange(holding, TARGET, publishOf(first), [], NOW);
+
+    await held.reached;
+    expect(await publishChange(R2_DOWN, TARGET, publishOf(second), [], NOW)).toMatchObject({
+      written: false,
+      recorded: false,
+    });
+
+    held.release();
+
+    expect((await firstOutcome).written).toBe(true);
+    expect(await isBehind(env, TARGET.target)).toBe(true);
   });
 });
 

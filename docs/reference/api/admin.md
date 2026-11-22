@@ -71,6 +71,14 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 - 確かめが通ったら、`publication` の行を 1 つ足す。`last_revision_id` は、JSON が持つ最新の版
   - もっと新しい版を指す行がほかの要求で先に入っていたら、足さない。最新の行が古い版に戻ると、公開済みの版が公開待ちに見えるため
 
+確かめで直せなかったずれは、`publication_write` の表（migration 0014）に残ります。対象ごとに、JSON を書き始めた回数（`started`）と、確かめが通った回数（`confirmed`）を持ちます。
+
+- R2 に書く前に `started` を 1 増やす。D1 に数えられなければ書かない
+- 確かめが通ったら、`confirmed` をその書き込みの回数にする。後から別の書き込みが数えられていたら変えない
+- `started` が `confirmed` より大きい間は、公開の JSON が記録と食い違っているかもしれない。`GET .../pending` はこれを `behind: true` として返す
+
+記録の `db.batch` が失敗したときは、記録済みの版だけから JSON を作り直してから、元の失敗を返します。作り直せなかったときは、`behind` が `true` のまま残ります。
+
 公開の条件を満たさないときは、満たしていない条件をまとめて 400 で返します。本文は次のとおりです。
 
 - `problems`: 欄の名前（`field`）と、編集の欄に出す文（`message`）の組の並び
@@ -104,7 +112,7 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 
 `leadChannelIds` は、`channelIds` のうち出来事の主役のメンバーです。`channelIds` に無い ID を含めると、保存の時点で 400 を返します。主役が無いデビューも、下書きとしては保存できます。
 
-`GET .../pending` と `POST /admin/api/footprints/publish` は、公開の画面のために #285 まで残します。#281 より前の流れで公開待ちにした版は、`POST /admin/api/footprints/publish` か、次の公開・公開中の保存・非公開に戻すのどれかで公開の JSON に入ります。どれも、各できごとの最新の版から JSON を作るためです。`POST /admin/api/footprints/publish` も、書いた後に公開と同じ確かめを通ります。最新にできなかったときは、502 を返し、`publication` の行を足しません。
+`GET .../pending` と `POST /admin/api/footprints/publish` は、公開の画面のために #285 まで残します。#281 より前の流れで公開待ちにした版は、`POST /admin/api/footprints/publish` か、次の公開・公開中の保存・非公開に戻すのどれかで公開の JSON に入ります。どれも、各できごとの最新の版から JSON を作るためです。`POST /admin/api/footprints/publish` も、書いた後に公開と同じ確かめを通ります。最新にできなかったときは、502 を返し、`publication` の行を足しません。公開待ちの版が無くても、`behind` が `true` なら記録から作り直します。
 
 主役（`lead_channel_ids`）は、migration 0011 で足しました。それより前の `publish` の版は、このキーを持ちません。JSON を作るときと `GET .../pending` が比べるときは、この版を主役なし（`[]`）として読みます。
 
