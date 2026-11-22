@@ -3,6 +3,7 @@ import {
   editWouldBeLost,
   fieldForSaveError,
   fieldsAfterReload,
+  fieldsOnReload,
   isHexColor,
   keepEdit,
   memberOfListSaveError,
@@ -306,5 +307,56 @@ describe('fieldsAfterReload', () => {
     const other = { ...MEMBER, channelId: 'UCother', name: '別のメンバー' };
 
     expect(fieldsAfterReload(kept, other)).toEqual(toFormFields(other));
+  });
+});
+
+// The rule for every read of the list - a save, the list's 保存, 再読み込み, a
+// delete: what is typed for the open member is never written over by the saved
+// values, whichever field it is and whatever the read brought.
+describe('fieldsOnReload', () => {
+  const KEYS = Object.keys(toFormFields(MEMBER)) as (keyof ReturnType<typeof toFormFields>)[];
+
+  // A value for each field that is not the one MEMBER has, and not blank.
+  const typed = (key: (typeof KEYS)[number]) => `${key}-typed`;
+  const elsewhere = (key: (typeof KEYS)[number]) => `${key}-elsewhere`;
+
+  test.each(KEYS)('keeps %s typed in, and shows what a read brought for every other field', (key) => {
+    const current = { ...toFormFields(MEMBER), [key]: typed(key) };
+    // Somebody else changed every other field while the read was under way.
+    const after = { ...MEMBER };
+
+    for (const other of KEYS) if (other !== key) Object.assign(after, { [other]: elsewhere(other) });
+
+    const shown = fieldsOnReload(current, MEMBER, after)!;
+
+    expect(shown[key]).toEqual(typed(key));
+
+    for (const other of KEYS) if (other !== key) expect(shown[other]).toEqual(elsewhere(other));
+  });
+
+  test('shows the saved values when nothing is typed', () => {
+    const after = { ...MEMBER, name: '別の人が付けた名前' };
+
+    expect(fieldsOnReload(toFormFields(MEMBER), MEMBER, after)).toEqual(toFormFields(after));
+  });
+
+  test('keeps every field typed in at once', () => {
+    const current = Object.fromEntries(KEYS.map((key) => [key, typed(key)])) as unknown as ReturnType<
+      typeof toFormFields
+    >;
+
+    expect(fieldsOnReload(current, MEMBER, { ...MEMBER, displayOrder: 0 })).toEqual(current);
+  });
+
+  test('opens another member as it is saved, whatever was typed for the one before', () => {
+    const other = { ...MEMBER, channelId: 'UCother', name: '別のメンバー' };
+    const current = { ...toFormFields(MEMBER), name: 'ケープ編集中' };
+
+    expect(fieldsOnReload(current, MEMBER, other)).toEqual(toFormFields(other));
+    expect(fieldsOnReload(current, null, MEMBER)).toEqual(toFormFields(MEMBER));
+  });
+
+  test('closes the panel when the member is gone', () => {
+    expect(fieldsOnReload({ ...toFormFields(MEMBER), name: 'x' }, MEMBER, null)).toBeNull();
   });
 });

@@ -23,8 +23,7 @@ import {
   blankNewMember,
   editWouldBeLost,
   fieldForSaveError,
-  fieldsAfterReload,
-  keepEdit,
+  fieldsOnReload,
   isHexColor,
   memberOfListSaveError,
   moveId,
@@ -190,8 +189,12 @@ function discardEdit(): void {
 
 useUnsavedGuard(() => editDirty.value, discardEdit);
 
-watch(selected, (member) => {
-  fields.value = member === null ? null : toFormFields(member);
+// The one place a response writes `fields`: every read of the list (a save, the
+// list's 保存, 再読み込み, a delete) replaces `saved`, and so `selected`. What is
+// typed stays over the new values (`fieldsOnReload`); the only other writers
+// are the user's own typing and `discardEdit`, which they confirmed.
+watch(selected, (member, previous) => {
+  fields.value = fieldsOnReload(fields.value, previous, member);
   errorMessage.value = null;
   errorField.value = null;
   confirmingRemove.value = false;
@@ -241,7 +244,7 @@ async function load(): Promise<void> {
 
 function selectRow(channelId: string): void {
   // The edit panel is inert while 保存 is in flight; so is the choice of what it shows.
-  if (listSaving.value || saving.value) return;
+  if (listSaving.value) return;
 
   // A click on the row the banner is about shows the error there, as the
   // banner's own button does: the banner has said all it had to. Only a click
@@ -387,22 +390,11 @@ async function saveList(): Promise<void> {
 
   for (const member of draft.added) normalizeColors(member);
 
-  // Reading the list again after the save replaces the saved member's fields
-  // with the saved values; what is typed there was not part of this save.
-  const kept = keepEdit(fields.value, selected.value);
-
   try {
     await putJson('/members', { add: draft.added, order: orderedIds.value });
     forgetPublicData();
     clearDraft();
     await load();
-
-    // `watch(selected)` resets the fields once the list is read, and runs
-    // after this line: put what was typed back once it has.
-    if (kept !== null) {
-      await nextTick();
-      fields.value = fieldsAfterReload(kept, selected.value);
-    }
 
     showToast('保存しました');
   } catch (error) {
@@ -642,8 +634,8 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
       </div>
     </div>
 
-    <!-- inert while 保存 is in flight: the request already carries the draft as it was, and what is typed meanwhile would be cleared with it. Also while a member's own 保存 or the list is read: the answer resets the fields to the saved values, over what is typed after the request began. -->
-    <div v-if="activeFields" class="inspector" :inert="loading || listSaving || saving || undefined">
+    <!-- inert while 保存 is in flight: the request already carries the draft as it was, and what is typed meanwhile would be cleared with it. -->
+    <div v-if="activeFields" class="inspector" :inert="listSaving || undefined">
       <SplitHandle />
       <div class="inspector-head">
         <div>

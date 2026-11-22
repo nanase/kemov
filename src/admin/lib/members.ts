@@ -242,6 +242,26 @@ export function fieldsAfterReload(kept: KeptEdit | null, member: Member | null):
 }
 
 /**
+ * What the edit panel shows when the saved list was read again and replaced
+ * `before` with `after`, whatever asked for the read (a save, the list's 保存,
+ * 再読み込み, a delete): `after` as it is saved now, with the fields typed in
+ * over it - so a read never writes saved values over what is typed (#286).
+ *
+ * A different member (`before` and `after` have another `channelId`, or there
+ * was none) is opened as it is saved, since nothing is typed for it yet.
+ */
+export function fieldsOnReload(
+  current: MemberFormFields | null,
+  before: Member | null,
+  after: Member | null,
+): MemberFormFields | null {
+  if (after === null) return null;
+  if (before === null || before.channelId !== after.channelId) return toFormFields(after);
+
+  return fieldsAfterReload(keepEdit(current, before), after);
+}
+
+/**
  * Which not-yet-saved member a list save's 400 is about: the `channelId` the
  * worker puts in the body (`namingMember` in `worker/src/admin/members.ts`),
  * when it is one of `addedIds`. Null for a 400 that is about no member in
