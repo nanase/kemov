@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test';
 
 import { createEvent } from '../src/admin/footprints';
 import { publishEvent, publishFootprintsNow, saveEvent, withdrawEvent } from '../src/admin/footprints-publish';
-import { createMilestone, getMilestone } from '../src/admin/subscriber-milestones';
+import { createMilestone, deleteMilestone, getMilestone } from '../src/admin/subscriber-milestones';
 import {
   checkSources,
   pendingSubscriberMilestones,
@@ -161,8 +161,14 @@ async function publicationCount(): Promise<number> {
   return row!.n;
 }
 
-async function readRow(milestoneId: number): Promise<{ status: string; subscriberCount: number }> {
-  return (await (await getMilestone(env, milestoneId)).json()) as { status: string; subscriberCount: number };
+async function readRow(
+  milestoneId: number,
+): Promise<{ status: string; subscriberCount: number; eventId: number | null }> {
+  return (await (await getMilestone(env, milestoneId)).json()) as {
+    status: string;
+    subscriberCount: number;
+    eventId: number | null;
+  };
 }
 
 interface Refusal {
@@ -502,8 +508,9 @@ describe("an event's change", () => {
 
     const before = await storedJson();
 
-    await saveEvent(env, eventId, eventFields('題を直した'), new Date('2026-09-26T00:00:00Z'));
+    const saved = await saveEvent(env, eventId, eventFields('題を直した'), new Date('2026-09-26T00:00:00Z'));
 
+    expect(saved.status).toEqual(200);
     expect(await storedJson()).toEqual(before);
   });
 
@@ -682,6 +689,15 @@ describe('checkSources', () => {
     expect((await check({ announcedBy: 'listener', urls: [] })).body.enough).toBe(false);
   });
 
+  test('counts only URLs a save would accept', async () => {
+    const withPassword = 'https://user:secret@x.com/listener/status/1';
+
+    expect((await check({ announcedBy: 'listener', urls: [withPassword] })).body.enough).toBe(false);
+    expect((await check({ urls: ['http://a.example/post', 'http://b.example/post'] })).body.enough).toBe(false);
+    expect((await check({ urls: ['http://a.example/post', 'https://b.example/post'] })).body.enough).toBe(false);
+    expect((await check({ urls: ['https://a.example/post', 'https://b.example/post'] })).body.enough).toBe(true);
+  });
+
   test('answers 400 for a body that is not the right shape', async () => {
     expect((await check({ urls: 'https://x.com' })).status).toEqual(400);
     expect((await check({ urls: [1] })).status).toEqual(400);
@@ -692,35 +708,44 @@ describe('checkSources', () => {
 
 // What /code-review found on the first pass: a save racing a publish, a
 // withdraw blocked by あしあと, and the timeline the JSON names.
+/**
+ * `base` whose next `DB.batch` first runs `before` - another tab's request
+ * landing between this request's read and its write.
+ */
+function beforeNextBatch(base: Env, before: () => Promise<unknown>): Env {
+  let done = false;
+
+  return {
+    ...base,
+    DB: new Proxy(base.DB, {
+      get(target, property) {
+        if (property === 'batch') {
+          return async (statements: D1PreparedStatement[]) => {
+            if (!done) {
+              done = true;
+              await before();
+            }
+
+            return await target.batch(statements);
+          };
+        }
+
+        const value = Reflect.get(target, property) as unknown;
+
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    }),
+  };
+}
+
 describe('a draft save that finds the row published meanwhile', () => {
   /** `env` whose next `batch` first publishes `milestoneId` elsewhere, as another tab would. */
   function publishedFirst(milestoneId: number): Env {
-    let done = false;
-
-    return {
-      ...env,
-      DB: new Proxy(env.DB, {
-        get(target, property) {
-          if (property === 'batch') {
-            return async (statements: D1PreparedStatement[]) => {
-              if (!done) {
-                done = true;
-                await target
-                  .prepare("UPDATE subscriber_milestone SET status = 'published' WHERE milestone_id = ?1")
-                  .bind(milestoneId)
-                  .run();
-              }
-
-              return await target.batch(statements);
-            };
-          }
-
-          const value = Reflect.get(target, property) as unknown;
-
-          return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
-        },
-      }),
-    };
+    return beforeNextBatch(env, () =>
+      env.DB.prepare("UPDATE subscriber_milestone SET status = 'published' WHERE milestone_id = ?1")
+        .bind(milestoneId)
+        .run(),
+    );
   }
 
   test('of a refused publish answers 409 and writes nothing over it', async () => {
@@ -756,6 +781,64 @@ describe('a draft save that finds the row published meanwhile', () => {
   });
 });
 
+// What CodeRabbit found on #293's first pass: requests that land between
+// another's read and its write.
+describe('a published save that finds the row withdrawn meanwhile', () => {
+  test('answers 409, and neither saves the row nor puts it back on the public site', async () => {
+    const milestoneId = await createPublished();
+    const withdrawnFirst = beforeNextBatch(env, () => withdrawMilestone(env, milestoneId, body(), NOW));
+
+    const response = await saveMilestone(withdrawnFirst, milestoneId, body({ subscriberCount: 21000 }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 20000 });
+    expect(await storedMilestones()).toEqual([]);
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish', 'withdraw']);
+  });
+});
+
+describe('a save whose JSON could not be written', () => {
+  test('writes nothing over a publish recorded since it read the row, and answers 409', async () => {
+    const milestoneId = await createPublished();
+    const savedFirst = beforeNextBatch(R2_DOWN, () =>
+      saveMilestone(env, milestoneId, body({ subscriberCount: 22000 }), NOW),
+    );
+
+    const response = await saveMilestone(savedFirst, milestoneId, body({ subscriberCount: 21000 }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published', subscriberCount: 22000 });
+  });
+
+  test('still saves the fields when nothing was recorded since', async () => {
+    const milestoneId = await createPublished();
+
+    const response = await saveMilestone(R2_DOWN, milestoneId, body({ subscriberCount: 21000 }), NOW);
+
+    expect(response.status).toEqual(502);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published', subscriberCount: 21000 });
+  });
+});
+
+describe('a delete that finds the row published meanwhile', () => {
+  test('answers 409 and leaves the row and its sources', async () => {
+    const milestoneId = await create();
+    const publishedFirst = beforeNextBatch(env, () => publishMilestone(env, milestoneId, body(), NOW));
+
+    expect((await deleteMilestone(publishedFirst, milestoneId)).status).toEqual(409);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published' });
+    expect(await storedMilestones()).toEqual([expect.objectContaining({ milestone_id: milestoneId })]);
+
+    const sources = await env.DB.prepare(
+      'SELECT count(*) AS n FROM subscriber_milestone_source WHERE milestone_id = ?1',
+    )
+      .bind(milestoneId)
+      .first<{ n: number }>();
+
+    expect(sources!.n).toEqual(1);
+  });
+});
+
 describe('withdrawMilestone with an event no longer a milestone', () => {
   test('still takes the milestone off the public site, keeping the link', async () => {
     const eventId = await liveEvent('記念配信');
@@ -765,6 +848,7 @@ describe('withdrawMilestone with an event no longer a milestone', () => {
 
     expect((await withdrawMilestone(env, milestoneId, body({ eventId }), NOW)).status).toEqual(200);
     expect(await storedMilestones()).toEqual([]);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', eventId });
   });
 
   test('refuses linking it anew', async () => {
@@ -794,6 +878,34 @@ describe('the event the JSON names', () => {
 
     expect(await storedMilestones()).toEqual([
       expect.objectContaining({ event: expect.objectContaining({ title: '年表の題' }) }),
+    ]);
+  });
+
+  // あしあと's 「いま公開する」 puts that revision on the timeline with no
+  // revision of its own, while the milestone's JSON is being written.
+  test('is built again when the timeline moves on while the milestone is published', async () => {
+    const eventId = await liveEvent('年表の題');
+    const waiting = await env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body, created_via)
+       SELECT 'footprints_event', entity_key, 'publish', json_set(body, '$.title', '新しい題'), 'admin'
+         FROM revision WHERE entity = 'footprints_event' AND entity_key = ?1
+       RETURNING revision_id`,
+    )
+      .bind(String(eventId))
+      .first<{ revision_id: number }>();
+    const milestoneId = await create({ eventId });
+    const timelineMovedOn = beforeNextBatch(env, () =>
+      env.DB.prepare(
+        `INSERT INTO publication (target, last_revision_id, object_key, byte_length)
+         VALUES ('footprints', ?1, 'footprints/events.json', 0)`,
+      )
+        .bind(waiting!.revision_id)
+        .run(),
+    );
+
+    expect((await publishMilestone(timelineMovedOn, milestoneId, body({ eventId }), NOW)).status).toEqual(200);
+    expect(await storedMilestones()).toEqual([
+      expect.objectContaining({ event: expect.objectContaining({ title: '新しい題' }) }),
     ]);
   });
 });

@@ -295,16 +295,29 @@ function milestoneFieldsProblem(fields: MilestoneFields): string | null {
   }
 
   for (const source of fields.sources) {
-    if (!source.url.startsWith('https://')) return 'every source url must start with https://';
-    // The schema's CHECK looks at the prefix alone, so `https://` by itself
-    // would save, and count towards nothing but still reach the public JSON.
-    const parsed = parseUrl(source.url);
+    const problem = sourceUrlProblem(source.url);
 
-    if (parsed === null || parsed.hostname === '') return 'every source url must be a valid https URL';
-    // A source's URL reaches the public JSON as written.
-    if (parsed.username !== '' || parsed.password !== '') {
-      return 'every source url must not carry a user name or password';
-    }
+    if (problem !== null) return problem;
+  }
+
+  return null;
+}
+
+/**
+ * Why a save refuses `url` as a source's URL, or null when it accepts it.
+ * Publishing's source check counts only URLs this accepts
+ * (subscriber-milestones-publish.ts's `judgeSources`).
+ */
+export function sourceUrlProblem(url: string): string | null {
+  if (!url.startsWith('https://')) return 'every source url must start with https://';
+  // The schema's CHECK looks at the prefix alone, so `https://` by itself
+  // would save, and count towards nothing but still reach the public JSON.
+  const parsed = parseUrl(url);
+
+  if (parsed === null || parsed.hostname === '') return 'every source url must be a valid https URL';
+  // A source's URL reaches the public JSON as written.
+  if (parsed.username !== '' || parsed.password !== '') {
+    return 'every source url must not carry a user name or password';
   }
 
   return null;
@@ -373,23 +386,25 @@ export async function validatedFields(
 
 /**
  * Source rows for a milestone that already has its row. Inserted only while
- * that row is still there - and, when `whileStatus` is given, still in that
- * status - for the reason footprints.ts's `memberStatements` gives: a
- * milestone deleted between the caller's read and its batch would otherwise
- * fail the whole batch on the foreign key, a publish with it.
+ * that row is still there - and still as `SaveOptions`' `whileStatus` and
+ * `whileRevision` ask, when given - for the reason footprints.ts's
+ * `memberStatements` gives: a milestone deleted between the caller's read
+ * and its batch would otherwise fail the whole batch on the foreign key, a
+ * publish with it.
  */
 function sourceStatements(
   env: Env,
   milestoneId: number,
   sources: readonly SourceRow[],
   whileStatus: string | null,
+  whileRevision: number | null,
 ): D1PreparedStatement[] {
   return sources.map((source, index) =>
     env.DB.prepare(
       `INSERT INTO subscriber_milestone_source (milestone_id, position, url, title)
        SELECT ?1, ?2, ?3, ?4
-        WHERE EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1 AND (?5 IS NULL OR status = ?5))`,
-    ).bind(milestoneId, index + 1, source.url, source.title, whileStatus),
+        WHERE EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1 AND ${stillAsRead('?5', '?6')})`,
+    ).bind(milestoneId, index + 1, source.url, source.title, whileStatus, whileRevision),
   );
 }
 
@@ -436,15 +451,49 @@ export async function createMilestone(env: Env, body: Record<string, unknown>): 
 }
 
 /**
- * What `saveStatements` sets and expects: the `status` to give the row, and
- * the one it must still have for anything to be written. A save that read
- * the row as a draft passes `whileStatus: 'draft'`, so a publish that landed
- * in between is not written over with no revision: the first statement then
- * changes nothing, which the caller reads as the row having moved on.
+ * What `saveStatements` sets or expects: either the `status` to give the
+ * row, or what it must still be for anything to be written - never both, as
+ * the source statements look at the row after the first one set its status.
+ *
+ * - `whileStatus`: a save that read the row as a draft passes `'draft'`, so a
+ *   publish that landed in between is not written over with no revision: the
+ *   first statement then changes nothing, which the caller reads as the row
+ *   having moved on
+ * - `whileRevision`: the newest revision of the milestone, 0 for none, as the
+ *   caller saw it before reading the row. A save that lands late - after its
+ *   public JSON could not be written - then writes nothing over a publish or
+ *   withdrawal recorded in between, even one that left the status as it was
  */
-export interface SaveOptions {
-  status?: 'draft' | 'published';
-  whileStatus?: 'draft' | 'published';
+export type SaveOptions =
+  | { status?: undefined; whileStatus?: MilestoneStatus; whileRevision?: number }
+  | { status: MilestoneStatus; whileStatus?: undefined; whileRevision?: undefined };
+
+type MilestoneStatus = 'draft' | 'published';
+
+/**
+ * The condition, in `saveStatements`' statements over a `subscriber_milestone`
+ * row, that the row is still as `SaveOptions` asks: `?status` and `?revision`
+ * are null for no condition. The key is cast from the row's own column: a
+ * number bound from JavaScript reaches D1 as a real, which casts to `'1.0'`.
+ */
+function stillAsRead(status: string, revision: string): string {
+  return `(${status} IS NULL OR subscriber_milestone.status = ${status})
+          AND (${revision} IS NULL
+               OR (SELECT COALESCE(MAX(revision_id), 0) FROM revision
+                    WHERE entity = 'subscriber_milestone'
+                      AND entity_key = CAST(subscriber_milestone.milestone_id AS TEXT)) = ${revision})`;
+}
+
+/** The newest revision of milestone `milestoneId`, or 0 when it has none: `SaveOptions.whileRevision`. */
+export async function newestRevisionOf(env: Env, milestoneId: number): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT COALESCE(MAX(revision_id), 0) AS revision_id FROM revision
+      WHERE entity = 'subscriber_milestone' AND entity_key = ?1`,
+  )
+    .bind(String(milestoneId))
+    .first<{ revision_id: number }>();
+
+  return row!.revision_id;
 }
 
 /**
@@ -460,6 +509,7 @@ export function saveStatements(
   options: SaveOptions = {},
 ): D1PreparedStatement[] {
   const whileStatus = options.whileStatus ?? null;
+  const whileRevision = options.whileRevision ?? null;
 
   return [
     env.DB.prepare(
@@ -467,7 +517,7 @@ export function saveStatements(
           SET channel_id = ?1, date_precision = ?2, reached_date = ?3, subscriber_count = ?4, announced_by = ?5,
               event_id = ?6, memo = ?7, status = COALESCE(?8, status),
               updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE milestone_id = ?9 AND (?10 IS NULL OR status = ?10)`,
+        WHERE milestone_id = ?9 AND ${stillAsRead('?10', '?11')}`,
     ).bind(
       fields.channelId,
       fields.datePrecision,
@@ -479,17 +529,18 @@ export function saveStatements(
       options.status ?? null,
       milestoneId,
       whileStatus,
+      whileRevision,
     ),
     env.DB.prepare(
       `DELETE FROM subscriber_milestone_source
         WHERE milestone_id = ?1
-          AND EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1 AND (?2 IS NULL OR status = ?2))`,
-    ).bind(milestoneId, whileStatus),
-    ...sourceStatements(env, milestoneId, fields.sources, whileStatus),
+          AND EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1 AND ${stillAsRead('?2', '?3')})`,
+    ).bind(milestoneId, whileStatus, whileRevision),
+    ...sourceStatements(env, milestoneId, fields.sources, whileStatus, whileRevision),
   ];
 }
 
-/** Whether `saveStatements`' batch wrote the row: false when it was gone, or no longer in `whileStatus`. */
+/** Whether `saveStatements`' batch wrote the row: false when it was gone, or no longer as `SaveOptions` asked. */
 export function savedRow(results: readonly D1Result[]): boolean {
   return results[0]!.meta.changes > 0;
 }
@@ -558,6 +609,10 @@ export async function updateMilestone(env: Env, milestoneId: number, body: Recor
  * such milestone, 409 when it is `published`: it is on the public site,
  * and 「非公開に戻す」 is what takes it off, the same reasoning
  * footprints.ts's deleteEvent gives.
+ *
+ * Deleted only while it is still a draft when the batch runs: a 「公開」 that
+ * lands between the read and the delete would otherwise leave its revision
+ * and its public entry with no row to withdraw them from.
  */
 export async function deleteMilestone(env: Env, milestoneId: number): Promise<Response> {
   const existing = await readMilestone(env, milestoneId);
@@ -568,10 +623,21 @@ export async function deleteMilestone(env: Env, milestoneId: number): Promise<Re
     return errorResponse(409, 'withdraw this milestone before deleting it');
   }
 
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM subscriber_milestone_source WHERE milestone_id = ?1').bind(milestoneId),
-    env.DB.prepare('DELETE FROM subscriber_milestone WHERE milestone_id = ?1').bind(milestoneId),
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `DELETE FROM subscriber_milestone_source
+        WHERE milestone_id = ?1
+          AND EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1 AND status = 'draft')`,
+    ).bind(milestoneId),
+    env.DB.prepare(`DELETE FROM subscriber_milestone WHERE milestone_id = ?1 AND status = 'draft'`).bind(milestoneId),
   ]);
+
+  if (results[1]!.meta.changes === 0) {
+    if ((await readMilestone(env, milestoneId)) === null)
+      return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+
+    return errorResponse(409, 'withdraw this milestone before deleting it');
+  }
 
   return jsonResponse({});
 }

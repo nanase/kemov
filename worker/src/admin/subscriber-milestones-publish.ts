@@ -26,9 +26,11 @@ import {
   publishedBodyOf,
   readMilestone,
   readMilestones,
+  newestRevisionOf,
   noLongerDraftResponse,
   savedRow,
   saveStatements,
+  sourceUrlProblem,
   updateMilestone,
   validatedFields,
   withFields,
@@ -99,8 +101,8 @@ export interface SourcesJudgement {
  * admin site and never published (see `publicEntryOf`).
  *
  * The screen asks this through `POST /admin/api/subscribers/source-check` as
- * the sources are typed, and publishing asks it again, so the two cannot
- * disagree.
+ * the sources are typed, and publishing asks it again rather than trusting
+ * the screen: the whitelist and `video` may change between the two.
  */
 export async function judgeSources(
   env: Env,
@@ -125,13 +127,15 @@ export async function judgeSources(
     return { kind: 'host', host, sameSite };
   });
 
-  // A listener's one post counts only once it is a URL a save accepts: an
-  // empty row, or text no host can be read from, would say "enough" for a
-  // publish the save then refuses.
+  // Only a URL a save accepts counts: an empty row, plain http, or one
+  // carrying a password would otherwise say "enough" for a publish the save
+  // then refuses.
+  const accepted = input.urls.map((url) => sourceUrlProblem(url) === null);
   const enough =
     input.announcedBy === 'listener'
-      ? input.urls.some((url) => url.startsWith('https://') && countedHost(url) !== null)
-      : marks.some((mark) => mark.kind !== 'host') || hasTwoHosts(input.urls);
+      ? accepted.some(Boolean)
+      : marks.some((mark, index) => accepted[index] && mark.kind !== 'host') ||
+        hasTwoHosts(input.urls.filter((_, index) => accepted[index]));
 
   return { marks, enough };
 }
@@ -320,11 +324,14 @@ export const SUBSCRIBER_MILESTONES_SHAPE_VERSION = 1;
  * What publishing.ts needs to know about 登録者数の節目. `footprints_event` is
  * read too: the check after a publish then builds the JSON again when an
  * event's revision was recorded meanwhile, by which time the event's own
- * request may have moved the timeline on.
+ * request may have moved the timeline on. So is あしあと's last
+ * `publication`, which `liveEvents` reads events up to (`cutoff`): its
+ * 「いま公開する」 moves the timeline on with no revision of its own.
  */
 export const MILESTONES_TARGET: PublishTarget = {
   entity: 'subscriber_milestone',
   alsoBuiltFrom: ['footprints_event'],
+  cutoff: (env) => lastPublishedRevisionId(env, 'footprints'),
   target: 'subscriber_milestones',
   objectKey: OBJECT_KEY,
   table: 'subscriber_milestone',
@@ -369,13 +376,17 @@ async function notWrittenResponse(
   );
 }
 
-/** The 200 once a change reached the public JSON. 404 when the row was deleted before the change could be recorded. */
+/**
+ * The 200 once a change reached the public JSON. When no revision was
+ * logged for it, `notLoggedResponse`'s 404 or 409: the JSON was built again
+ * without the change.
+ */
 async function writtenResponse(
   env: Env,
   milestoneId: number,
   outcome: Extract<PublishOutcome, { written: true }>,
 ): Promise<Response> {
-  if (outcome.revisionId === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+  if (outcome.revisionId === null) return await notLoggedResponse(env, milestoneId);
 
   const saved = await readMilestone(env, milestoneId);
 
@@ -386,15 +397,41 @@ async function writtenResponse(
   });
 }
 
+/** The answer when the row changed under a request that read it: published, withdrawn or saved elsewhere. */
+function changedMeanwhileResponse(milestoneId: number): Response {
+  return errorResponse(409, `subscriber milestone ${milestoneId} changed while this request was saving it`);
+}
+
+/**
+ * The answer when the batch logged no revision for the row: 404 when it was
+ * deleted, 409 when it was still there but no longer published - a
+ * withdrawal that landed between a published row's read and its save.
+ */
+async function notLoggedResponse(env: Env, milestoneId: number): Promise<Response> {
+  if ((await readMilestone(env, milestoneId)) === null) {
+    return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+  }
+
+  return changedMeanwhileResponse(milestoneId);
+}
+
 /**
  * Saves `fields` over `existing` and puts the result on the public site, or
  * refuses - footprints-publish.ts's `saveAndPublish`, with the same split on
  * what a refusal leaves: a draft's fields are saved and it stays a draft, a
  * published row is left exactly as it was.
+ *
+ * A published row is saved only while it is still published: one withdrawn
+ * after it was read is neither saved nor put back on the public site, and
+ * 409 says so. `revisionBefore` is the milestone's newest revision, read
+ * before `existing` was: the save that follows a JSON that could not be
+ * written writes only while no revision was recorded since, so that it does
+ * not land over another request's publish.
  */
 async function saveAndPublish(
   env: Env,
   existing: SubscriberMilestone,
+  revisionBefore: number,
   fields: MilestoneFields,
   now: Date,
 ): Promise<Response> {
@@ -418,16 +455,25 @@ async function saveAndPublish(
   const outcome = await publishChange(
     env,
     MILESTONES_TARGET,
-    { key: String(milestoneId), action: 'publish', body: publishedBodyOf(next) },
-    saveStatements(env, milestoneId, fields, { status: 'published' }),
+    wasPublished
+      ? { key: String(milestoneId), action: 'publish', body: publishedBodyOf(next), whileRow: "status = 'published'" }
+      : { key: String(milestoneId), action: 'publish', body: publishedBodyOf(next) },
+    saveStatements(env, milestoneId, fields, wasPublished ? { whileStatus: 'published' } : { status: 'published' }),
     now,
   );
 
   if (!outcome.written) {
-    if (!outcome.recorded) {
-      await env.DB.batch(
-        saveStatements(env, milestoneId, fields, { whileStatus: wasPublished ? 'published' : 'draft' }),
+    if (outcome.recorded) {
+      if (outcome.revisionId === null) return await notLoggedResponse(env, milestoneId);
+    } else {
+      const fallback = await env.DB.batch(
+        saveStatements(env, milestoneId, fields, {
+          whileStatus: wasPublished ? 'published' : 'draft',
+          whileRevision: revisionBefore,
+        }),
       );
+
+      if (!savedRow(fallback)) return await notLoggedResponse(env, milestoneId);
     }
 
     return await notWrittenResponse(env, milestoneId, outcome);
@@ -447,6 +493,7 @@ export async function publishMilestone(
   body: Record<string, unknown>,
   now: Date,
 ): Promise<Response> {
+  const revisionBefore = await newestRevisionOf(env, milestoneId);
   const existing = await readMilestone(env, milestoneId);
 
   if (existing === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
@@ -455,7 +502,7 @@ export async function publishMilestone(
 
   if ('error' in fields) return fields.error;
 
-  return await saveAndPublish(env, existing, fields, now);
+  return await saveAndPublish(env, existing, revisionBefore, fields, now);
 }
 
 /**
@@ -471,6 +518,7 @@ export async function saveMilestone(
   body: Record<string, unknown>,
   now: Date,
 ): Promise<Response> {
+  const revisionBefore = await newestRevisionOf(env, milestoneId);
   const existing = await readMilestone(env, milestoneId);
 
   if (existing === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
@@ -481,7 +529,7 @@ export async function saveMilestone(
 
   if ('error' in fields) return fields.error;
 
-  return await saveAndPublish(env, existing, fields, now);
+  return await saveAndPublish(env, existing, revisionBefore, fields, now);
 }
 
 /**
