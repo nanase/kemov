@@ -112,11 +112,17 @@ export async function judgeSources(
   const own = await ownVideoIdsOf(env, input.urls, input.channelId);
   const hostsSeen = new Set<string>();
 
-  const marks = input.urls.map((url): SourceMark => {
+  // Only a URL a save accepts counts: an empty row, plain http, or one
+  // carrying a password would otherwise say "enough" for a publish the save
+  // then refuses - or make the first source that counts on its host look
+  // like a second one.
+  const accepted = input.urls.map((url) => sourceUrlProblem(url) === null);
+
+  const marks = input.urls.map((url, index): SourceMark => {
     const host = countedHost(url);
     const sameSite = host !== null && hostsSeen.has(host);
 
-    if (host !== null) hostsSeen.add(host);
+    if (host !== null && accepted[index]) hostsSeen.add(host);
 
     if (isWhitelistedSource(url, whitelist)) return { kind: 'whitelist' };
 
@@ -127,10 +133,6 @@ export async function judgeSources(
     return { kind: 'host', host, sameSite };
   });
 
-  // Only a URL a save accepts counts: an empty row, plain http, or one
-  // carrying a password would otherwise say "enough" for a publish the save
-  // then refuses.
-  const accepted = input.urls.map((url) => sourceUrlProblem(url) === null);
   const enough =
     input.announcedBy === 'listener'
       ? accepted.some(Boolean)

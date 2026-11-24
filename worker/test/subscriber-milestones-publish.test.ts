@@ -689,6 +689,13 @@ describe('checkSources', () => {
     expect((await check({ announcedBy: 'listener', urls: [] })).body.enough).toBe(false);
   });
 
+  test('does not let a URL a save would refuse make the next one on its host look like a second', async () => {
+    expect((await check({ urls: ['http://a.example/old', 'https://a.example/new'] })).body.marks).toEqual([
+      { kind: 'host', host: 'a.example', sameSite: false },
+      { kind: 'host', host: 'a.example', sameSite: false },
+    ]);
+  });
+
   test('counts only URLs a save would accept', async () => {
     const withPassword = 'https://user:secret@x.com/listener/status/1';
 
