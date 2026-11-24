@@ -2,7 +2,10 @@ import {
   blankNewMember,
   editWouldBeLost,
   fieldForSaveError,
+  fieldsAfterReload,
+  fieldsOnReload,
   isHexColor,
+  keepEdit,
   memberOfListSaveError,
   moveId,
   normalizeColor,
@@ -223,7 +226,137 @@ describe('editWouldBeLost', () => {
     expect(editWouldBeLost(null, { ...toFormFields(MEMBER), ...changed }, MEMBER)).toBe(true);
   });
 
+  // The same test the other edit panels use (editing.ts's sameFields): a box
+  // typed in and erased again holds '' where the saved value is null.
+  test.each(['twitch', 'twitter', 'globalname'] as const)(
+    'is false for a saved member whose %s was typed in and erased again',
+    (key) => {
+      expect(editWouldBeLost(null, { ...toFormFields(MEMBER), [key]: '' }, { ...MEMBER, [key]: null })).toBe(false);
+    },
+  );
+
+  test('is false for a new-member form whose nullable box was typed in and erased again', () => {
+    expect(editWouldBeLost({ ...blankNewMember(), twitter: '', globalname: '' }, null, null)).toBe(false);
+  });
+
+  test('is true for a saved member whose required box was erased, which is not the same as null', () => {
+    expect(editWouldBeLost(null, { ...toFormFields(MEMBER), name: '' }, MEMBER)).toBe(true);
+  });
+
   test('looks at the new-member form first when both are there', () => {
     expect(editWouldBeLost(blankNewMember(), { ...toFormFields(MEMBER), name: 'x' }, MEMBER)).toBe(false);
+  });
+});
+
+describe('keepEdit', () => {
+  test('is null when nothing is open', () => {
+    expect(keepEdit(null, null)).toBeNull();
+    expect(keepEdit(toFormFields(MEMBER), null)).toBeNull();
+  });
+
+  test('is null for a saved member shown as it was saved, or typed in and erased again', () => {
+    expect(keepEdit(toFormFields(MEMBER), MEMBER)).toBeNull();
+    expect(keepEdit({ ...toFormFields(MEMBER), twitch: '' }, MEMBER)).toBeNull();
+  });
+
+  test('keeps only the fields that were typed in, for the member they were typed for', () => {
+    expect(keepEdit({ ...toFormFields(MEMBER), name: 'ケープ編集中', twitch: 'kemov_tw' }, MEMBER)).toEqual({
+      channelId: MEMBER.channelId,
+      changes: { name: 'ケープ編集中', twitch: 'kemov_tw' },
+    });
+  });
+
+  test('keeps a field cleared to null, which is a change', () => {
+    expect(keepEdit({ ...toFormFields(MEMBER), twitter: null }, MEMBER)?.changes).toEqual({ twitter: null });
+  });
+});
+
+describe('fieldsAfterReload', () => {
+  const kept = { channelId: MEMBER.channelId, changes: { name: 'ケープ編集中' } };
+
+  test('is null when no member is open', () => {
+    expect(fieldsAfterReload(kept, null)).toBeNull();
+    expect(fieldsAfterReload(null, null)).toBeNull();
+  });
+
+  test('shows the saved values when nothing was kept', () => {
+    expect(fieldsAfterReload(null, MEMBER)).toEqual(toFormFields(MEMBER));
+  });
+
+  test('puts what was kept over the saved values when the same member is open', () => {
+    expect(fieldsAfterReload(kept, { ...MEMBER, displayOrder: 0 })).toEqual({
+      ...toFormFields(MEMBER),
+      name: 'ケープ編集中',
+    });
+  });
+
+  test('shows what somebody else changed meanwhile in a field that was not typed in', () => {
+    // The list was saved while another person gave the member a twitter id.
+    const reloaded = { ...MEMBER, twitter: 'kemov_new' };
+
+    expect(fieldsAfterReload(kept, reloaded)).toEqual({ ...toFormFields(reloaded), name: 'ケープ編集中' });
+  });
+
+  test('shows what was typed in a field somebody else also changed meanwhile', () => {
+    const reloaded = { ...MEMBER, name: '別の人が付けた名前' };
+
+    expect(fieldsAfterReload(kept, reloaded)?.name).toEqual('ケープ編集中');
+  });
+
+  test('shows the saved values of another member, not what was kept for this one', () => {
+    const other = { ...MEMBER, channelId: 'UCother', name: '別のメンバー' };
+
+    expect(fieldsAfterReload(kept, other)).toEqual(toFormFields(other));
+  });
+});
+
+// The rule for every read of the list - a save, the list's 保存, 再読み込み, a
+// delete: what is typed for the open member is never written over by the saved
+// values, whichever field it is and whatever the read brought.
+describe('fieldsOnReload', () => {
+  const KEYS = Object.keys(toFormFields(MEMBER)) as (keyof ReturnType<typeof toFormFields>)[];
+
+  // A value for each field that is not the one MEMBER has, and not blank.
+  const typed = (key: (typeof KEYS)[number]) => `${key}-typed`;
+  const elsewhere = (key: (typeof KEYS)[number]) => `${key}-elsewhere`;
+
+  test.each(KEYS)('keeps %s typed in, and shows what a read brought for every other field', (key) => {
+    const current = { ...toFormFields(MEMBER), [key]: typed(key) };
+    // Somebody else changed every other field while the read was under way.
+    const after = { ...MEMBER };
+
+    for (const other of KEYS) if (other !== key) Object.assign(after, { [other]: elsewhere(other) });
+
+    const shown = fieldsOnReload(current, MEMBER, after)!;
+
+    expect(shown[key]).toEqual(typed(key));
+
+    for (const other of KEYS) if (other !== key) expect(shown[other]).toEqual(elsewhere(other));
+  });
+
+  test('shows the saved values when nothing is typed', () => {
+    const after = { ...MEMBER, name: '別の人が付けた名前' };
+
+    expect(fieldsOnReload(toFormFields(MEMBER), MEMBER, after)).toEqual(toFormFields(after));
+  });
+
+  test('keeps every field typed in at once', () => {
+    const current = Object.fromEntries(KEYS.map((key) => [key, typed(key)])) as unknown as ReturnType<
+      typeof toFormFields
+    >;
+
+    expect(fieldsOnReload(current, MEMBER, { ...MEMBER, displayOrder: 0 })).toEqual(current);
+  });
+
+  test('opens another member as it is saved, whatever was typed for the one before', () => {
+    const other = { ...MEMBER, channelId: 'UCother', name: '別のメンバー' };
+    const current = { ...toFormFields(MEMBER), name: 'ケープ編集中' };
+
+    expect(fieldsOnReload(current, MEMBER, other)).toEqual(toFormFields(other));
+    expect(fieldsOnReload(current, null, MEMBER)).toEqual(toFormFields(MEMBER));
+  });
+
+  test('closes the panel when the member is gone', () => {
+    expect(fieldsOnReload({ ...toFormFields(MEMBER), name: 'x' }, MEMBER, null)).toBeNull();
   });
 });

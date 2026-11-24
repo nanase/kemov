@@ -104,12 +104,11 @@ export function createRequestGate(): {
 }
 
 export const LOOKUP_TEXT = {
-  waiting: 'UC から始まる 24 文字を入れると、チャンネルを確かめます。',
   loading: 'チャンネルを確かめています…',
   found: 'このチャンネルで合っているか確かめてください。',
   notFoundHeading: 'チャンネルが見つかりません',
-  notFoundBody: 'channel_id を確かめてください。見つかるまで「一覧に足す」は押せません。',
+  notFoundBody: 'channel_id を確かめてください。',
   failedHeading: 'チャンネルを確かめられません',
-  failedBody: 'YouTube に問い合わせできませんでした。確かめずに足すこともできます。',
+  failedBody: 'YouTube に問い合わせできませんでした。',
   retry: 'もう一度確かめる',
 } as const;
