@@ -416,6 +416,22 @@ async function notLoggedResponse(env: Env, milestoneId: number): Promise<Respons
 }
 
 /**
+ * The 502 when the row changed under the request - deleted or withdrawn - so
+ * nothing was saved, but the JSON it had already written could not be built
+ * again from `revision`. `publication_write` keeps it behind, so the 公開
+ * screen offers 「いま公開する」.
+ */
+function notMendedResponse(milestoneId: number, error: string): Response {
+  return jsonResponse(
+    {
+      error: `subscriber milestone ${milestoneId} changed while this request was saving it, and ${OBJECT_KEY} could not be built again without the change: ${error}`,
+      saved: false,
+    },
+    { status: 502 },
+  );
+}
+
+/**
  * Saves `fields` over `existing` and puts the result on the public site, or
  * refuses - footprints-publish.ts's `saveAndPublish`, with the same split on
  * what a refusal leaves: a draft's fields are saved and it stays a draft, a
@@ -423,7 +439,8 @@ async function notLoggedResponse(env: Env, milestoneId: number): Promise<Respons
  *
  * A published row is saved only while it is still published: one withdrawn
  * after it was read is neither saved nor put back on the public site, and
- * 409 says so. `revisionBefore` is the milestone's newest revision, read
+ * 409 says so - or `notMendedResponse`'s 502, when the JSON written before
+ * the batch could not be built again without it. `revisionBefore` is the milestone's newest revision, read
  * before `existing` was: the save that follows a JSON that could not be
  * written writes only while no revision was recorded since, so that it does
  * not land over another request's publish.
@@ -464,7 +481,9 @@ async function saveAndPublish(
 
   if (!outcome.written) {
     if (outcome.recorded) {
-      if (outcome.revisionId === null) return await notLoggedResponse(env, milestoneId);
+      // Nothing was saved, but the JSON written with the change could not
+      // be built again without it: the public site may still show it.
+      if (outcome.revisionId === null) return notMendedResponse(milestoneId, outcome.error);
     } else {
       const fallback = await env.DB.batch(
         saveStatements(env, milestoneId, fields, {

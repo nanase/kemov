@@ -795,6 +795,31 @@ describe('a published save that finds the row withdrawn meanwhile', () => {
     expect(await storedMilestones()).toEqual([]);
     expect((await revisionRows()).map((row) => row.action)).toEqual(['publish', 'withdraw']);
   });
+
+  // The JSON this save wrote before its batch still has the row, and the
+  // rebuild that would take it out fails: 409 would hide that.
+  test('answers 502 and leaves the JSON behind when it cannot build the JSON again', async () => {
+    const milestoneId = await createPublished();
+    let puts = 0;
+    const firstPutOnly: Env = {
+      ...env,
+      PUBLIC_DATA: {
+        get: (key: string) => env.PUBLIC_DATA.get(key),
+        head: (key: string) => env.PUBLIC_DATA.head(key),
+        list: () => env.PUBLIC_DATA.list(),
+        put: (key: string, value: string, options?: R2PutOptions) =>
+          (puts += 1) === 1 ? env.PUBLIC_DATA.put(key, value, options) : Promise.reject(new Error('R2 is down')),
+      } as unknown as R2Bucket,
+    };
+    const withdrawnFirst = beforeNextBatch(firstPutOnly, () => withdrawMilestone(env, milestoneId, body(), NOW));
+
+    const response = await saveMilestone(withdrawnFirst, milestoneId, body({ subscriberCount: 21000 }), NOW);
+
+    expect(response.status).toEqual(502);
+    expect(((await response.json()) as { saved: boolean }).saved).toBe(false);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 20000 });
+    expect((await pending()).behind).toBe(true);
+  });
 });
 
 describe('a save whose JSON could not be written', () => {
