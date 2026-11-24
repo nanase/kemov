@@ -9,29 +9,9 @@ import { clearEverything } from './reset-db';
  * rows that the other tables point at, the way production has them.
  */
 
+beforeEach(clearEverything);
+
 const MIGRATION = env.TEST_MIGRATIONS.find(({ name }) => name === '0012_add_footprints_event_memorial_day.sql')!;
-
-/**
- * 0012 copies `source_pending`, which 0015 drops. Put back as 0015's rollback
- * puts it back, so 0012 runs on the table as it found it. A run of 0012
- * leaves the column in place, so it is only added when missing.
- */
-async function asBefore0015(): Promise<void> {
-  const column = await env.DB.prepare(
-    "SELECT 1 FROM pragma_table_info('footprints_event') WHERE name = 'source_pending'",
-  ).first();
-
-  if (column === null) {
-    await env.DB.prepare(
-      'ALTER TABLE footprints_event ADD COLUMN source_pending INTEGER NOT NULL DEFAULT 1 CHECK (source_pending IN (0, 1))',
-    ).run();
-  }
-}
-
-beforeEach(async () => {
-  await clearEverything();
-  await asBefore0015();
-});
 
 async function seed(): Promise<void> {
   await env.DB.batch([

@@ -102,8 +102,9 @@ export function present(saved: FootprintsEvent) {
  * comment; `memo`, `status`, `created_via` and the timestamp columns are
  * left out, because they are not part of the public shape either.
  *
- * `source_pending` is not a column (#282): it says the sources are not
- * enough by `whitelist`, judged the way the admin screen judges them.
+ * `source_pending` is not read from the column of that name, which is no
+ * longer used (#282): it says the sources are not enough by `whitelist`,
+ * judged the way the admin screen judges them.
  */
 export function publicShapeOf(saved: FootprintsEvent, whitelist: readonly string[]) {
   const { event } = saved;
