@@ -24,9 +24,11 @@ function assignments(source: string): string[] {
 
 /**
  * Whether a handler's source refuses to run while `busy`. The refusal is its first statement - only
- * `const` reads may come before it - and is `if (...) return;` over a chain of `||`, one term of which
- * is `busy.value` itself: a comparison (`busy.value === false`), a negation or an `&&` makes that term
- * something else. No term before it calls anything, so nothing (a confirm dialog, say) runs first.
+ * `const` copies of a value (`const error = rowError.value;`) may come before it - and is
+ * `if (...) return;` over a plain chain of `||`, one term of which is `busy.value` itself. A comparison
+ * (`busy.value === false`) or a negation makes that term something else, and an `&&` or a `?` could
+ * put the chain under another condition. No term before it has a bracket, so nothing (a confirm
+ * dialog, say) runs first and no group (`!(...)`) can wrap `busy.value`.
  */
 function refusesWhileBusy(handler: string): boolean {
   const statements = handler
@@ -34,10 +36,10 @@ function refusesWhileBusy(handler: string): boolean {
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line !== '' && !line.startsWith('//'));
-  const first = statements.findIndex((line) => !/^const \w+ = [^;]*;$/.test(line));
+  const first = statements.findIndex((line) => !/^const \w+ = \w+(?:\.\w+)*;$/.test(line));
   const guard = statements[first]?.match(/^if \((.*)\) return;$/);
 
-  if (!guard) return false;
+  if (!guard || /&&|\?/.test(guard[1]!)) return false;
 
   const terms = guard[1]!.split(' || ');
   const at = terms.indexOf('busy.value');
@@ -92,6 +94,15 @@ describe('MembersPage.vue fields', () => {
     ['a guard after a change', 'function f(): void {\n  selectedId.value = id;\n  if (busy.value) return;\n}'],
     ['a guard after a dialog', 'function f(): void {\n  if (!confirmDiscard() || busy.value) return;\n}'],
     ['a guard that does not return', 'function f(): void {\n  if (busy.value) {\n    log();\n  }\n}'],
+    [
+      'a guard after a change made in a const',
+      'function f(): void {\n  const id = (selectedId.value = channelId);\n  if (busy.value) return;\n}',
+    ],
+    ['a guard under a ?', 'function f(): void {\n  if (allow ? false || busy.value || false : false) return;\n}'],
+    [
+      'a guard under a negated group',
+      'function f(): void {\n  if (!(open.value || busy.value || ready.value)) return;\n}',
+    ],
   ])('%s does not count as refusing while busy', (_, handler) => {
     expect(refusesWhileBusy(handler)).toBe(false);
   });
