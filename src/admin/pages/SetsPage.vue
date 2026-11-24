@@ -29,6 +29,7 @@ import {
 import {
   attrNameOptions,
   emptyFormFields as emptyTuneFields,
+  latestPerKey,
   learnName,
   toFormFields as toTuneFormFields,
   type Attribute,
@@ -635,6 +636,21 @@ const tuneInvalid = ref<readonly TuneFieldError[]>([]);
  * performances do.
  */
 const tuneLive = ref<Map<number, boolean>>(new Map());
+// Several requests can ask about one tune at once; only the latest one's answer is kept.
+const tuneLiveRequests = latestPerKey<number>();
+
+/**
+ * Starts a request that answers whether a published stream performs
+ * `tuneId`: the returned function records its answer, unless a request
+ * started later has asked about the same tune since.
+ */
+function askTuneLive(tuneId: number): (live: boolean) => void {
+  const isLatest = tuneLiveRequests.start(tuneId);
+
+  return (live) => {
+    if (isLatest()) tuneLive.value = new Map(tuneLive.value).set(tuneId, live);
+  };
+}
 const tuneQuery = ref('');
 const tuneSearchResults = ref<{ tuneId: number; title: string }[]>([]);
 const tuneSearchError = ref<string | null>(null);
@@ -698,9 +714,10 @@ async function refreshTuneLive(): Promise<void> {
 
   await Promise.all(
     [...tuneIds].map(async (tuneId) => {
+      const record = askTuneLive(tuneId);
       const body = await getJson<TuneAnswer>(`/genet/tunes/${tuneId}`).catch(() => null);
 
-      if (body !== null) tuneLive.value = new Map(tuneLive.value).set(tuneId, body.live === true);
+      if (body !== null) record(body.live === true);
     }),
   );
 }
@@ -715,6 +732,8 @@ async function readTune(index: number): Promise<void> {
 
   latestTuneRead.set(index, read);
 
+  const recordLive = askTuneLive(performance.tuneId);
+
   try {
     const body = await getJson<TuneAnswer>(`/genet/tunes/${performance.tuneId}`);
 
@@ -726,7 +745,7 @@ async function readTune(index: number): Promise<void> {
 
     if (stillAt(index, videoId, performance.tuneId)) {
       rememberSavedTune(index, body.tune);
-      tuneLive.value = new Map(tuneLive.value).set(performance.tuneId, body.live === true);
+      recordLive(body.live === true);
     } else {
       readOpenTuneAgain();
     }
@@ -775,6 +794,7 @@ async function saveTune(index: number): Promise<void> {
 
   const videoId = currentVideoId.value;
   const sent = structuredClone(toRaw(fields));
+  const recordLive = askTuneLive(performance.tuneId);
   let answered: TuneAnswer | null = null;
   let error: unknown = null;
 
@@ -802,7 +822,7 @@ async function saveTune(index: number): Promise<void> {
 
     if (answered !== null && stillAt(index, videoId, performance.tuneId)) {
       rememberSavedTune(index, answered.tune);
-      tuneLive.value = new Map(tuneLive.value).set(performance.tuneId, live);
+      recordLive(live);
     }
 
     return;
