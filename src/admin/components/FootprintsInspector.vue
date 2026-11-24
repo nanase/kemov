@@ -439,15 +439,13 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
           <div v-for="(source, i) in fields.sources" :key="i" class="source-row">
             <input v-model="source.url" type="text" placeholder="https://..." aria-label="出典の URL" />
             <input v-model="source.title" type="text" placeholder="題（省略可）" aria-label="出典の題" />
-            <span>
-              <span
-                v-if="judgement && markLabel(judgement.marks[i]!)"
-                class="chip"
-                :class="judgement.marks[i]!.kind === 'whitelist' ? 'published' : 'kind'"
-                >{{ markLabel(judgement.marks[i]!) }}</span
-              >
-            </span>
             <button class="row-del" type="button" aria-label="この出典を外す" @click="removeSource(i)">&times;</button>
+            <span
+              v-if="judgement && markLabel(judgement.marks[i]!)"
+              class="chip source-mark"
+              :class="judgement.marks[i]!.kind === 'whitelist' ? 'published' : 'kind'"
+              >{{ markLabel(judgement.marks[i]!) }}</span
+            >
           </div>
           <template v-if="judgement">
             <div v-if="judgement.enough" id="f-sources-judgement" class="src-ok">{{ SOURCE_TEXT.enough }}</div>
@@ -558,9 +556,14 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
   color: var(--a-flag);
 }
 
-/* A source's URL, its title, the chip saying how it counts, and the button that drops it. */
+/* The chip saying how a source counts goes under its URL and title, so a long one does not narrow the URL. */
 .source-row {
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto auto;
+  row-gap: 4px;
+}
+
+.source-mark {
+  grid-column: 1 / 3;
+  justify-self: start;
 }
 
 .src-ok {
