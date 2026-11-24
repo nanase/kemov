@@ -6,6 +6,8 @@
  * split lib/footprints.ts uses.
  */
 
+import { sameFields } from './editing';
+
 /** `present()`'s own shape in `worker/src/admin/members.ts`. */
 export interface Member {
   channelId: string;
@@ -89,7 +91,6 @@ export function blankNewMember(): NewMemberFields {
 export const MEMBER_TEXT = {
   moveUp: (name: string) => `${name}を上へ`,
   moveDown: (name: string) => `${name}を下へ`,
-  unsaved: '未保存',
   discard: '元に戻す',
   addHeading: 'メンバーを足す',
   addToList: '一覧に足す',
@@ -105,7 +106,6 @@ export const MEMBER_TEXT = {
   pickColor: (label: string) => `${label} の色を選ぶ`,
   rowErrorLead: (name: string, channelId: string) =>
     `足した行「${name || '名前なし'}」（${channelId}）に誤りがあります。`,
-  rowErrorKept: '編集の欄に入力中の内容があったので、その行へは移りませんでした。',
   openErrorRow: '該当の行を表示',
 } as const;
 
@@ -185,16 +185,13 @@ export function fieldForSaveError(message: string): MemberFieldKey | null {
   return null;
 }
 
-function sameFields<T extends object>(a: T, b: T): boolean {
-  const keys = Object.keys(a) as (keyof T)[];
-
-  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
-}
-
 /**
  * Whether showing a different member in the edit panel would throw away what
  * is typed in it: a 「メンバーを足す」 form that is not blank, or a saved
  * member's fields that differ from the saved ones.
+ *
+ * Fields are compared with `sameFields`, so a nullable box typed in and erased
+ * again, which holds '' where null was, is not a change.
  */
 export function editWouldBeLost(
   newForm: NewMemberFields | null,
@@ -204,6 +201,64 @@ export function editWouldBeLost(
   if (newForm !== null) return !sameFields(newForm, blankNewMember());
 
   return fields !== null && saved !== null && !sameFields(fields, toFormFields(saved));
+}
+
+/** The fields typed in a saved member's edit panel, set aside while the list is read again. */
+export interface KeptEdit {
+  channelId: string;
+  changes: Partial<MemberFormFields>;
+}
+
+/**
+ * The fields of `fields` that differ from `saved`, or null when none do. Taken
+ * before the list's 保存, which reads the list again and would otherwise show
+ * the saved values over what is typed (#286).
+ *
+ * Only the fields typed in are kept: the others are read again with the list,
+ * so a change made to them meanwhile is not turned back by an older copy.
+ */
+export function keepEdit(fields: MemberFormFields | null, saved: Member | null): KeptEdit | null {
+  if (fields === null || saved === null) return null;
+
+  const base = toFormFields(saved);
+  const changes: Record<string, unknown> = {};
+
+  for (const key of Object.keys(base) as (keyof MemberFormFields)[]) {
+    if (!sameFields(fields[key], base[key])) changes[key] = fields[key];
+  }
+
+  return Object.keys(changes).length === 0 ? null : { channelId: saved.channelId, changes };
+}
+
+/**
+ * What the edit panel shows once the list was read again: the saved values of
+ * `member`, with the fields set aside for that member put over them. Null when
+ * no member is open.
+ */
+export function fieldsAfterReload(kept: KeptEdit | null, member: Member | null): MemberFormFields | null {
+  if (member === null) return null;
+
+  return kept?.channelId === member.channelId ? { ...toFormFields(member), ...kept.changes } : toFormFields(member);
+}
+
+/**
+ * What the edit panel shows when the saved list was read again and replaced
+ * `before` with `after`, whatever asked for the read (a save, the list's 保存,
+ * 再読み込み, a delete): `after` as it is saved now, with the fields typed in
+ * over it - so a read never writes saved values over what is typed (#286).
+ *
+ * A different member (`before` and `after` have another `channelId`, or there
+ * was none) is opened as it is saved, since nothing is typed for it yet.
+ */
+export function fieldsOnReload(
+  current: MemberFormFields | null,
+  before: Member | null,
+  after: Member | null,
+): MemberFormFields | null {
+  if (after === null) return null;
+  if (before === null || before.channelId !== after.channelId) return toFormFields(after);
+
+  return fieldsAfterReload(keepEdit(current, before), after);
 }
 
 /**
