@@ -5,8 +5,8 @@ import FootprintsInspector from '../components/FootprintsInspector.vue';
 import GenetStreamReview from '../components/GenetStreamReview.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import { toFormFields, type FootprintsMember } from '../lib/footprints';
-import { footprintsMarkFor } from '../lib/footprints-publish';
 import { isShortOfSources, useWhitelist, SOURCE_TEXT } from '../lib/footprints-sources';
+import { liveMarkFor } from '../lib/publishing';
 import {
   moveSelection,
   reviewRows,
@@ -288,8 +288,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
                 <span v-if="row.kind === 'event' && isShortOfSources(row.event, whitelist)" class="chip alarm">{{
                   SOURCE_TEXT.shortChip
                 }}</span>
-                <span v-else-if="row.kind === 'event'" class="chip" :class="footprintsMarkFor(row.status).tone">{{
-                  footprintsMarkFor(row.status).label
+                <span v-else-if="row.kind === 'event'" class="chip" :class="liveMarkFor(row.status).tone">{{
+                  liveMarkFor(row.status).label
                 }}</span>
                 <span v-else class="chip" :class="publishMarkFor(row.status, false).tone">{{
                   publishMarkFor(row.status, false).label

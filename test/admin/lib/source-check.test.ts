@@ -70,6 +70,13 @@ describe('judgeSources', () => {
     expect(sourcesEnough(['https://www.youtube.com/watch?v=a', 'mailto:a@example.com'], WHITELIST)).toEqual(false);
   });
 
+  // The same rule a save refuses such a URL by (sourceUrlProblem), so a milestone's judgement and this agree.
+  test('counts nothing for a URL carrying a user name', () => {
+    expect(
+      sourcesEnough(['https://www.youtube.com/watch?v=a', 'https://someone@ameblo.jp/entry-1'], WHITELIST),
+    ).toEqual(false);
+  });
+
   test('has no host to name for no source at all', () => {
     expect(judgeSources([], WHITELIST)).toEqual({ enough: false, marks: [], onlyHost: null });
   });

@@ -931,12 +931,29 @@ describe('handleAdminRequest routing to subscriber milestones', () => {
   test('routes POST .../publish and .../withdraw', async () => {
     const milestoneId = await createMilestone();
 
-    // No sources, so publish refuses with 400 - still proves the route was
-    // reached rather than falling through to a 404.
-    expect((await post(`/admin/api/subscribers/milestones/${milestoneId}/publish`, {})).status).toEqual(400);
-    expect((await post(`/admin/api/subscribers/milestones/${milestoneId}/withdraw`, {})).status).toEqual(200);
+    // No sources, so publish refuses with 400, and a draft cannot be
+    // withdrawn - each still proves the route was reached rather than
+    // falling through to a 404. Both send the fields, as a PUT does (#283).
+    expect(
+      (await post(`/admin/api/subscribers/milestones/${milestoneId}/publish`, minimalMilestoneBody)).status,
+    ).toEqual(400);
+    expect(
+      (await post(`/admin/api/subscribers/milestones/${milestoneId}/withdraw`, minimalMilestoneBody)).status,
+    ).toEqual(409);
     expect((await post(`/admin/api/subscribers/milestones/${milestoneId}/nope`, {})).status).toEqual(404);
     expect((await call(`/admin/api/subscribers/milestones/${milestoneId}/publish`)).status).toEqual(405);
+  });
+
+  test('routes POST /admin/api/subscribers/source-check', async () => {
+    const checked = await post('/admin/api/subscribers/source-check', {
+      channelId: 'UCaaa',
+      announcedBy: 'member',
+      urls: [],
+    });
+
+    expect(checked.status).toEqual(200);
+    expect(await checked.json()).toEqual({ marks: [], enough: false });
+    expect((await call('/admin/api/subscribers/source-check')).status).toEqual(405);
   });
 
   test('routes GET /admin/api/subscribers/pending and POST /admin/api/subscribers/publish', async () => {

@@ -120,15 +120,36 @@ export function countedHost(url: string): string | null {
 }
 
 /**
- * The host `url` counts for as a source, or null when it counts for none:
- * only an `https` URL with a host does, as only such a URL can be saved.
+ * Why a save refuses `url` as a source's URL, or null when it accepts it.
+ * Only a URL a save accepts counts towards a judgement, so the screen never
+ * calls enough what a save then refuses.
  */
+export function sourceUrlProblem(url: string): string | null {
+  if (!url.startsWith('https://')) return 'every source url must start with https://';
+  // The schema's CHECK looks at the prefix alone, so `https://` by itself
+  // would save, and count towards nothing but still reach the public JSON.
+  const parsed = parseUrl(url);
+
+  if (parsed === null || parsed.hostname === '') return 'every source url must be a valid https URL';
+  // A source's URL reaches the public JSON as written.
+  if (parsed.username !== '' || parsed.password !== '') {
+    return 'every source url must not carry a user name or password';
+  }
+
+  return null;
+}
+
+function parseUrl(url: string): URL | null {
+  try {
+    return new URL(url);
+  } catch {
+    return null;
+  }
+}
+
+/** The host `url` counts for as a source, or null when it counts for none: only a URL a save accepts does. */
 function sourceHost(url: string): string | null {
-  if (!url.startsWith('https://')) return null;
-
-  const host = countedHost(url);
-
-  return host === '' ? null : host;
+  return sourceUrlProblem(url) === null ? countedHost(url) : null;
 }
 
 /**
@@ -139,8 +160,7 @@ function sourceHost(url: string): string | null {
  * same one written another way - only repeats it, so it is the number of
  * hosts and not of URLs that says the claim was checked somewhere else. A
  * host is counted as `countedHost` reads it, so `x.com`, `www.x.com` and
- * `twitter.com` are one. A URL that is not `https`, or that `new URL` cannot
- * parse, adds none.
+ * `twitter.com` are one. A URL a save refuses (`sourceUrlProblem`) adds none.
  */
 export function hasTwoHosts(urls: readonly string[]): boolean {
   const hosts = new Set<string>();

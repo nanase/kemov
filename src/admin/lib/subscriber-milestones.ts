@@ -7,16 +7,11 @@
 
 import type { FootprintsEvent, FootprintsSource } from './footprints';
 
-/**
- * What the table can filter by: the `status` column. 確認中 and 公開 are the
- * two-step publishing's, which 節目 keeps until #283 brings it to 下書き and
- * 公開中 as あしあと has.
- */
+/** What the table can filter by: the `status` column, in the three steps #277's decision 3 gives each data (#283). */
 export const STATUS_OPTIONS: readonly { value: string; label: string }[] = [
   { value: 'all', label: 'すべて' },
   { value: 'draft', label: '下書き' },
-  { value: 'review', label: '確認中' },
-  { value: 'published', label: '公開' },
+  { value: 'published', label: '公開中' },
 ];
 
 /** `worker/src/admin/subscriber-milestones.ts`'s own `ANNOUNCERS`, in the same order. */
@@ -147,9 +142,9 @@ export function linkableEvents(events: readonly FootprintsEvent[]): FootprintsEv
 export type MilestoneFieldKey =
   'channelId' | 'datePrecision' | 'reachedDate' | 'subscriberCount' | 'announcedBy' | 'eventId' | 'sources';
 
-// The publish check's own messages name no field: "there are no sources",
-// "no source is in the whitelist ...", "footprints event 3 is not a
-// milestone". Each pattern below also reads those.
+// "footprints event 3 is not a milestone" names no field, and the pattern
+// for eventId reads it too. A refused publish names its field itself
+// (lib/publishing.ts), so nothing here reads the publish check's words.
 const FIELD_MARKERS: readonly [RegExp, MilestoneFieldKey][] = [
   [/\bchannelId\b/, 'channelId'],
   [/\bdatePrecision\b/, 'datePrecision'],
@@ -161,46 +156,13 @@ const FIELD_MARKERS: readonly [RegExp, MilestoneFieldKey][] = [
 ];
 
 /**
- * The edit panel's status buttons and whether 削除 is disabled, for the
- * two-step publishing 節目 keeps until #283 (あしあと's is `footprintsFootFor`
- * in lib/footprints.ts). A published milestone can be withdrawn, and can be
- * sent to 公開待ち again - that second
- * one is how a row changed since it was published gets a version matching its
- * current content, since saving never adds one. Deleting one is refused (409)
- * until it is withdrawn.
- */
-export interface MilestoneButtons {
-  publishLabel: '公開待ちにする' | null;
-  withdrawLabel: '下書きに戻す' | null;
-  deleteDisabled: boolean;
-}
-
-/**
- * `changed` is whether the row differs from what it was published as
- * (`isChangedSincePublish`), or null when that is unknown - a published row is
- * then offered 公開待ちにする rather than left with no way forward.
- */
-export function milestoneButtonsFor(status: string, changed: boolean | null): MilestoneButtons {
-  if (status !== 'published') {
-    return { publishLabel: '公開待ちにする', withdrawLabel: null, deleteDisabled: false };
-  }
-
-  return {
-    publishLabel: changed === false ? null : '公開待ちにする',
-    withdrawLabel: '下書きに戻す',
-    deleteDisabled: true,
-  };
-}
-
-/**
- * Which field a save's or a publish's 400 message is about, or null when it
- * names none this form has. Reads the worker's own text rather than repeating
- * its checks here, as lib/footprints.ts's `fieldForSaveError` does.
+ * Which field a save's 400 message is about, or null when it names none this
+ * form has. Reads the worker's own text rather than repeating its checks
+ * here, as lib/footprints.ts's `fieldForSaveError` does.
  *
  * Unlike that one, the field marked is the one named first in the message,
- * not the first in `FIELD_MARKERS`: a publish refused for several reasons
- * joins them with " / " (`AdminApiError`), and the first reason is the
- * worker's own order.
+ * not the first in `FIELD_MARKERS`: a message naming two fields is about the
+ * one it names first.
  */
 export function fieldForSaveError(message: string): MilestoneFieldKey | null {
   let first: { at: number; field: MilestoneFieldKey } | null = null;

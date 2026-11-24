@@ -112,7 +112,9 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 - `publication` の行は足さない。そのため、次に `publication` の行が足されるまで、`GET .../pending` はその版を公開待ちとして返す
 - 次にどれかの行を公開・公開中の保存・非公開に戻すと、JSON は記録済みの版から作り直される
 
-公開の処理のうち、書く順と失敗したときに残すものは `worker/src/admin/publishing.ts` の `publishChange` にあります。あしあとに固有の部分（欄、条件、版の中身、JSON の形）は `worker/src/admin/footprints-publish.ts` にあります。登録者数の節目とジェネット楽曲一覧も、同じ形に移す予定です（#283、#284）。
+公開の処理のうち、書く順と失敗したときに残すものは `worker/src/admin/publishing.ts` の `publishChange` にあります。あしあとに固有の部分（欄、条件、版の中身、JSON の形）は `worker/src/admin/footprints-publish.ts` にあります。[登録者数の節目](#登録者数の節目)も同じ形です（#283）。ジェネット楽曲一覧も、同じ形に移す予定です（#284）。
+
+出来事の公開・公開中の保存・非公開に戻すの後には、節目の JSON も書き直します。節目の JSON が、つないだ出来事の題と日付を写すためです（[登録者数の節目](#登録者数の節目)）。
 
 `leadChannelIds` は、`channelIds` のうち出来事の主役のメンバーです。`channelIds` に無い ID を含めると、保存の時点で 400 を返します。主役が無いデビューも、下書きとしては保存できます。
 
@@ -225,65 +227,108 @@ JSON は `shape_version` と `channel_id` も持ちます。
 
 ## 登録者数の節目
 
-| メソッド | パス                                                   | 返すもの                                                           |
-| -------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
-| GET      | `/admin/api/subscribers/milestones`                    | `subscriber_milestone` の全行と、それぞれの出典。達成の日の古い順  |
-| GET      | `/admin/api/subscribers/milestones/<節目 ID>`          | 1 行と、その出典                                                   |
-| POST     | `/admin/api/subscribers/milestones`                    | `draft` で作成した後の行                                           |
-| PUT      | `/admin/api/subscribers/milestones/<節目 ID>`          | 行と出典を置き換えた後の行。`status` は変えない                    |
-| DELETE   | `/admin/api/subscribers/milestones/<節目 ID>`          | `{}`。`published` の節目なら 409                                   |
-| POST     | `/admin/api/subscribers/milestones/<節目 ID>/publish`  | 検証し、`status` を `published` にした後の行                       |
-| POST     | `/admin/api/subscribers/milestones/<節目 ID>/withdraw` | `status` を `draft` に戻した後の行                                 |
-| GET      | `/admin/api/subscribers/pending`                       | 「いま公開する」で JSON に入るものと、公開した後に行が変わった節目 |
-| POST     | `/admin/api/subscribers/publish`                       | 何かを公開したかどうかと、公開したなら節目の数                     |
+| メソッド | パス                                                   | 返すもの                                                                                  |
+| -------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| GET      | `/admin/api/subscribers/milestones`                    | `subscriber_milestone` の全行と、それぞれの出典。達成の日の古い順                         |
+| GET      | `/admin/api/subscribers/milestones/<節目 ID>`          | 1 行と、その出典                                                                          |
+| POST     | `/admin/api/subscribers/milestones`                    | `draft` で作成した後の行                                                                  |
+| PUT      | `/admin/api/subscribers/milestones/<節目 ID>`          | 「保存」。下書きなら保存した後の行。公開中なら、保存して JSON を書き直した後の行          |
+| DELETE   | `/admin/api/subscribers/milestones/<節目 ID>`          | `{}`。消す時点で `published` の節目なら 409                                               |
+| POST     | `/admin/api/subscribers/milestones/<節目 ID>/publish`  | 「公開」。保存し、検証し、JSON を書き直した後の行                                         |
+| POST     | `/admin/api/subscribers/milestones/<節目 ID>/withdraw` | 「非公開に戻す」。JSON から外し、`draft` として保存した後の行。`published` でなければ 409 |
+| POST     | `/admin/api/subscribers/source-check`                  | 送った出典それぞれの扱いと、出典が足りているか。何も保存しない                            |
+| GET      | `/admin/api/subscribers/pending`                       | 公開の JSON がまだ写していない版と、公開中なのに公開の JSON と違う節目                    |
+| POST     | `/admin/api/subscribers/publish`                       | 公開の JSON がまだ写していない版から JSON を作り直したかどうかと、作り直したなら節目の数  |
 
-`GET /admin/api/subscribers/milestones` は、クエリパラメーターの `channelId` と `status` で一覧を絞ります。
+`GET /admin/api/subscribers/milestones` は、クエリパラメーターの `channelId` と `status`（`draft` か `published`）で一覧を絞ります。
 
-節目は、あしあとと同じく公開の門を通ります（#225）。作成・更新・削除は `revision` を記録せず、`publish` と `withdraw` だけが記録します。
+節目の状態は、あしあとと同じく下書き（`draft`）と公開中（`published`）の 2 つです（#277、#283）。「確認中」（`status = 'review'`）はなくしました。`review` だった節目は、migration 0015 で移しました。最新の版が `publish` の節目は、公開の JSON に載っているかもしれないので `published` に、それ以外は `draft` にしました。表の CHECK は `review` を許したままですが、コードはもう書きません。
 
-保存するときは、次を確かめます。
+下書きの保存・公開・公開中の保存・非公開に戻すの 4 つの操作は、[あしあと](#あしあと)と同じ形です。どれもすべての欄を本文に送ります。公開・公開中の保存・非公開に戻すは、1 回の要求で公開の JSON（`subscribers/milestones.json`）まで書き直します。書く順、記録した後の確かめ、`publication_write` の扱い、断ったときと書けなかったときの答えも、あしあとと同じです。公開の処理は `worker/src/admin/publishing.ts` の `publishChange` を通り、節目に固有の部分は `worker/src/admin/subscriber-milestones-publish.ts` にあります。
+
+保存するときは、次を確かめます。満たさなければ 400 を返し、何も保存しません。
 
 - `channelId` の行が `channel` にある
 - `reachedDate` が `datePrecision` の形（`YYYY-MM-DD` か `YYYY-MM`）に合っている
 - `subscriberCount` が 1 以上の整数
 - `announcedBy` が `member`・`official`・`listener` のどれか
-- `eventId` をつなぐなら、その出来事の `kind` が `milestone`
+- `eventId` をつなぐなら、その出来事があり、その `kind` が `milestone`
 - 出典の `url` が、ホストを持つ `https://` の URL で、ユーザー名とパスワードを含まない
 
-`POST .../publish` は、満たしていない条件をまとめて 400 で返します。条件は次のとおりです。
+下書きの保存は、読んだときに下書きだった行にだけ書きます。読んでから書くまでの間にほかのタブなどで公開されていたら、409 を返し、何も書きません。版を記録しない書き込みで公開中の行を上書きしないためです。公開で断られた下書きの欄を保存するときも同じです。
+
+ほかの操作とぶつかったときも、読んだときの状態のままの行にだけ書きます。合わなければ 409 を返し、行も版も書きません。
+
+- 公開中の保存は、まだ公開中の行にだけ書きます。間に非公開に戻されていたら、先に書いた JSON を版から作り直し、節目を本番に戻しません
+- 下書きの公開は、まだ下書きで、読んでから節目の版が増えていない行にだけ書きます。間にほかの要求が公開していたら、その公開を残します
+- 非公開に戻すは、まだ公開中で、読んでから節目の版が増えていない行にだけ書きます。間にほかの要求が非公開に戻した、または保存したときは、その内容を残し、2 つ目の `withdraw` の版も記録しません
+- この 3 つで JSON を作り直せなかったときは、409 ではなく 502 を返します。`saved` は `false` です。`behind` が残るので、公開の画面の「いま公開する」で直ります
+- JSON を書けずに欄だけを保存するときは、読んでから節目の版が増えていない行にだけ書きます。間にほかの要求が記録した公開を、遅れて着いた保存で上書きしないためです
+- 削除は、消す時点でまだ下書きの行だけを消します。間に公開されていたら、行も出典も残します
+
+「非公開に戻す」では、行がもうつないでいる出来事は、その `kind` が `milestone` でなくなっていても、そのまま残せます。あしあとの側で出来事の種類を変えても、節目を本番から外せなくならないようにするためです。新しくつなぐ出来事は、ほかの操作と同じく確かめます。
+
+公開の条件は、出典が足りていることだけです。あしあとと違い、足りなければ公開しません（#277 の 6-7）。断るときの 400 の本文は、あしあとと同じく `problems`・`errors`・`saved` を持ちます。`problems` の `field` は `sources` です。
+
+出典が足りる条件は次のとおりです。
 
 - 出典が 1 つ以上ある
-- `announcedBy` が `member` か `official` なら、出典が足りている
-  - 足りる条件は、あしあとと同じ（[出典のホワイトリスト](#出典のホワイトリスト)）に、次を足したものです
+- 数えるのは、保存で通る URL だけ（上の出典の `url` の条件）
+- `announcedBy` が `listener` なら、そのリスナーの投稿 1 つで足りる
+- `announcedBy` が `member` か `official` なら、あしあとと同じ条件（[出典のホワイトリスト](#出典のホワイトリスト)）に次を足したもので足りる
   - 節目のメンバー本人のチャンネルの動画の URL 1 つは、ホワイトリストの出典と同じに数えます。メンバーが配信の画面に登録者数を映したときの、その配信です
     - 動画の URL として読むのは、`https://www.youtube.com/watch?v=<ID>`（`youtube.com`・`m.youtube.com` も同じ。`t=` などのクエリが付いていても構いません）、`https://youtu.be/<ID>`、`https://www.youtube.com/live/<ID>` です。`worker/src/lib/source-whitelist.ts` の `youtubeVideoIdOf` が ID を取り出します
     - チャンネルのページ、再生リスト、`youtube.com` 以外のホストは、動画の URL ではありません
     - `<ID>` が `video` の表にあり、その `channel_id` が節目の `channel_id` と一致することが必要です。他のメンバーの動画や、`video` の表に無い動画では通りません。収集の対象より古い動画は、表に無いので通りません（#230）
-- `announcedBy` が `listener` なら、そのリスナーの投稿 1 つで足りる
-- つないだ出来事の `kind` が、今も `milestone`
+
+`POST /admin/api/subscribers/source-check` は、この判定を保存せずに返します。編集の欄が、出典を打つたびに呼びます（#277 の 2a）。答えは目安です。公開は、画面の答えを使わず、同じ関数（`judgeSources`）でもう一度判定します。問い合わせから公開までの間にホワイトリストや動画の表が変わると、答えが変わることがあります。
+
+- 本文は `{ channelId, announcedBy, urls }`。`urls` は文字列の配列で、50 件まで
+- 答えは `{ marks, enough }`
+  - `enough` は、出典が足りているか
+  - `marks` は、`urls` と同じ順に並べたそれぞれの扱い
+
+| `marks` の `kind` | 意味                                                                                                                                                                                                                                   |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `whitelist`       | ホワイトリストに載っている                                                                                                                                                                                                             |
+| `own_video`       | 節目のメンバー本人のチャンネルの動画                                                                                                                                                                                                   |
+| `host`            | どちらでもない。`host` は数え方をそろえたホスト名で、`www.` を外し、`youtu.be` を `youtube.com` として読む。URL として読めなければ `null`。`sameSite` は、前の出典に同じホストがあれば `true`。保存で通らない URL は前の出典に数えない |
 
 節目につながった出来事は、`DELETE /admin/api/footprints/events/<できごと ID>` で消せません。409 を返します。先に節目の側でつなぎを外します。
 
-`POST /admin/api/subscribers/publish` は、最新の操作が `withdraw` でない節目それぞれの最新の `revision` から `subscribers/milestones.json` を作り、`PUBLIC_DATA` に書きます。そのうえで `publication` の行（`target = 'subscriber_milestones'`）を 1 つ足します。あしあとの JSON とは別のファイルです。統計やメンバーのページが、あしあと全体を読まずに済むようにするためです。
-
-公開の JSON は、`publish` の版の中身と次の 2 点が違います。
+公開の JSON は、あしあとの JSON とは別のファイルです。統計やメンバーのページが、あしあと全体を読まずに済むようにするためです。中身は、`publish` の版の中身と次の 2 点が違います。
 
 - `announced_by` が `listener` の節目は、`sources` を空にする
   - リスナーの投稿の URL は、版と管理サイトにだけ残す
 - `event_id` の代わりに `event` を持つ
-  - `event` は `{ event_id, title, start_date }` で、公開中のあしあとの JSON に載っている出来事の姿を写す
-  - 出来事があしあとの JSON に載っていなければ `null`
+  - `event` は `{ event_id, title, start_date }` で、年表に出ている出来事の姿を写す。あしあとの最新の `publication` が指す版までのうち、出来事ごとに最も新しい版から写す
+  - 記録はされたが年表にまだ出ていない版は、まだ写さない。年表を最新にできなかった公開や、#281 より前に公開待ちにした版が当たる
+    - 節目の JSON が、年表に無い出来事を指さないため
+  - その版が `withdraw` か、版が無ければ `null`
 
-そのため、あしあとの側で出来事を直して公開し直すと、節目の JSON の `event` が古くなります。`GET .../pending` はこれを `eventChanged` として返し、「いま公開する」は節目の版が新しくなくても JSON を作り直します。JSON は `shape_version`（`subscriber-milestones-publish.ts` の `SUBSCRIBER_MILESTONES_SHAPE_VERSION`）も持ち、ジェネット楽曲一覧と同じく、JSON の版がコードより古ければ作り直します。
+公開の JSON は、節目の版のほかに出来事の版からも作ります。そのため `publishing.ts` には `alsoBuiltFrom: ['footprints_event']` として渡し、記録した後の確かめでも出来事の版を見ます。節目を公開している間に出来事の版が記録されたら、JSON を作り直します。
 
-`GET .../pending` が返すものは次のとおりです。`changed` のほかは、どれも「いま公開する」が JSON に書くものです。
+出来事は、あしあとの最新の `publication` が指す版までを写します。あしあとの「いま公開する」は、版を足さずにこの位置を進めます。そのため `publishing.ts` には、この位置を `cutoff` として渡します。記録した後の確かめで、位置が JSON を作ったときと違えば、JSON を作り直します。出来事の公開が続いている間は、作り直しの上限（`REBUILD_LIMIT`）に達して 502 になることがあります。そのときは記録は済んでいて、`behind` が残ります。
 
-| キー            | 中身                                                                        |
-| --------------- | --------------------------------------------------------------------------- |
-| `pending`       | 最新の版が前回の「いま公開する」より新しい節目                              |
-| `changed`       | 公開中で、行が `publish` の版から変わった節目。先に「公開待ちにする」が要る |
-| `eventChanged`  | つないだ出来事の姿が、保存済みの JSON と今のあしあとの JSON で違う節目      |
-| `shapeOutdated` | 保存済みの JSON の形が、コードの版より古い                                  |
+あしあとで出来事を公開・公開中の保存・非公開に戻すと、その後に節目の JSON も書き直します（#277 の 6-6、`republishMilestonesForEvents`）。
+
+- 書き直すのは、保存済みの JSON の `event` が、今の出来事の版から作るものと違うときだけ
+- 書き直せなくても、出来事の操作は通ったまま答える。節目は `GET .../pending` の `eventChanged` に残り、公開の画面の「いま公開する」で直る
+- あしあとの `POST /admin/api/footprints/publish` の後も同じ
+
+JSON は `shape_version`（`subscriber-milestones-publish.ts` の `SUBSCRIBER_MILESTONES_SHAPE_VERSION`）も持ちます。ジェネット楽曲一覧と同じく、JSON の版がコードより古ければ作り直します。
+
+`GET .../pending` と `POST /admin/api/subscribers/publish` は、公開の画面のために #285 まで残します。`GET .../pending` が返すものは次のとおりです。`changed` のほかは、どれも「いま公開する」が JSON に書くものです。
+
+| キー            | 中身                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------ |
+| `pending`       | 最新の版が、前回 JSON を書いたときより新しい節目。#283 より前に「公開待ちにする」を押した節目など      |
+| `changed`       | 公開中で、行が `publish` の版から変わった節目。JSON を書けなかった公開中の保存の後に出る               |
+| `eventChanged`  | つないだ出来事の姿が、保存済みの JSON と今の出来事の版で違う節目。出来事の操作の後の書き直しが失敗した |
+| `shapeOutdated` | 保存済みの JSON の形が、コードの版より古い                                                             |
+| `behind`        | 公開の JSON が記録と食い違っているかもしれない。あしあとの `behind` と同じ                             |
+
+`POST /admin/api/subscribers/publish` は、上のどれか（`changed` を除く）があるときだけ、各節目の最新の版から JSON を作り直します。書いた後に公開と同じ確かめを通ります。最新にできなかったときは、502 を返し、`publication` の行を足しません。
 
 ## やること
 

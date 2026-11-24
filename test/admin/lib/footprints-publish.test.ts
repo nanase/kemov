@@ -1,9 +1,7 @@
 import { AdminApiError } from '@/admin/lib/api';
 import {
-  bandReasonIds,
   canPublishFootprints,
   footprintsAnswerFor,
-  footprintsMarkFor,
   isChangedSincePublish,
   type FootprintsPending,
 } from '@/admin/lib/footprints-publish';
@@ -57,19 +55,6 @@ describe('canPublishFootprints', () => {
   // sources again (#282).
   test('is true when the public JSON is outdated, with nothing waiting', () => {
     expect(canPublishFootprints({ ...NOTHING, outdated: true })).toBe(true);
-  });
-});
-
-// #277's decision 1a: the chip is the row's status, and nothing else - every
-// publish reaches the public site in the same request since #281.
-describe('footprintsMarkFor', () => {
-  test('a published row is 公開中', () => {
-    expect(footprintsMarkFor('published')).toEqual({ label: '公開中', tone: 'published' });
-  });
-
-  test('anything else is 下書き', () => {
-    expect(footprintsMarkFor('draft')).toEqual({ label: '下書き', tone: 'draft' });
-    expect(footprintsMarkFor('review')).toEqual({ label: '下書き', tone: 'draft' });
   });
 });
 
@@ -170,7 +155,7 @@ describe('footprintsAnswerFor', () => {
       band: {
         title: '非公開に戻しましたが、本番から外せませんでした',
         lines: [],
-        note: '公開中のほかの行を「保存」すると、本番からも外れます。',
+        note: '公開の画面で「いま公開する」を押すと本番からも外れます',
       },
       fields: [],
       changed: true,
@@ -231,27 +216,20 @@ describe('footprintsAnswerFor', () => {
   });
 });
 
-describe('bandReasonIds', () => {
-  const refusal = {
-    title: '公開できません',
-    lines: ['題を書いてください。', '出典が足りません。', '別の理由'],
-    note: null,
-  };
-
-  test('points a field at every reason the refusal lists for it', () => {
-    expect(bandReasonIds(refusal, ['title', 'sources', 'title'], 'title')).toEqual('foot-reason-0 foot-reason-2');
-    expect(bandReasonIds(refusal, ['title', 'sources', 'title'], 'sources')).toEqual('foot-reason-1');
+// 削除 is answered as 削除, not as a save: a 409 for a row published elsewhere
+// says so under its own heading.
+describe('footprintsAnswerFor on 削除', () => {
+  test('says it was deleted', () => {
+    expect(footprintsAnswerFor('delete', 'draft', null)).toEqual({ kind: 'done', toast: '削除しました' });
   });
 
-  test('points a field the band does not mark at nothing', () => {
-    expect(bandReasonIds(refusal, ['title', 'sources', 'title'], 'videoId')).toBeUndefined();
-    expect(bandReasonIds(null, [], 'title')).toBeUndefined();
-  });
+  test('a refused delete is headed 削除できません, and the table is read again', () => {
+    const error = new AdminApiError(409, { error: 'a published event cannot be deleted' });
 
-  test('points a field marked by a band with no list at its note', () => {
-    const failed = { title: '保存できません', lines: [], note: 'startDate must be YYYY-MM-DD' };
-
-    expect(bandReasonIds(failed, ['startDate'], 'startDate')).toEqual('foot-band-note');
-    expect(bandReasonIds({ ...failed, note: null }, ['startDate'], 'startDate')).toBeUndefined();
+    expect(footprintsAnswerFor('delete', 'draft', error)).toMatchObject({
+      kind: 'band',
+      band: { title: '削除できません', note: 'a published event cannot be deleted' },
+      changed: true,
+    });
   });
 });

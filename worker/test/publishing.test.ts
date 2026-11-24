@@ -2,11 +2,14 @@ import { env } from 'cloudflare:test';
 
 import {
   liveBodies,
+  liveBodiesOf,
+  loggedRevisions,
   publishChange,
   isBehind,
   REBUILD_LIMIT,
   republish,
   type LatestRevisionRow,
+  type LoggedRevision,
   type PublishTarget,
   type RevisionChange,
 } from '../src/admin/publishing';
@@ -30,7 +33,7 @@ const TARGET: PublishTarget = {
   objectKey: OBJECT_KEY,
   table: 'footprints_event',
   keyColumn: 'event_id',
-  buildJson: (now, latest, change) =>
+  buildJson: (_env, now, latest, change) =>
     JSON.stringify({
       at: now.toISOString(),
       events: liveBodies(latest, change)
@@ -688,9 +691,15 @@ describe('republish', () => {
 
 describe('liveBodies', () => {
   const latest: LatestRevisionRow[] = [
-    { entity_key: '1', revision_id: 1, action: 'publish', body: JSON.stringify({ id: 1, v: 'old' }) },
-    { entity_key: '2', revision_id: 2, action: 'withdraw', body: null },
-    { entity_key: '3', revision_id: 3, action: 'publish', body: JSON.stringify({ id: 3 }) },
+    {
+      entity: 'footprints_event',
+      entity_key: '1',
+      revision_id: 1,
+      action: 'publish',
+      body: JSON.stringify({ id: 1, v: 'old' }),
+    },
+    { entity: 'footprints_event', entity_key: '2', revision_id: 2, action: 'withdraw', body: null },
+    { entity: 'footprints_event', entity_key: '3', revision_id: 3, action: 'publish', body: JSON.stringify({ id: 3 }) },
   ];
 
   test('puts a publish body in place of what its key had', () => {
@@ -710,5 +719,246 @@ describe('liveBodies', () => {
 
   test('is every live body as recorded when there is no change', () => {
     expect(liveBodies(latest, null)).toEqual([{ id: 1, v: 'old' }, { id: 3 }]);
+  });
+});
+
+describe('liveBodiesOf', () => {
+  const latest: LatestRevisionRow[] = [
+    { entity: 'genet_tune', entity_key: '1', revision_id: 1, action: 'publish', body: JSON.stringify({ tune: 1 }) },
+    { entity: 'genet_person', entity_key: '1', revision_id: 2, action: 'publish', body: JSON.stringify({ person: 1 }) },
+    { entity: 'genet_tune', entity_key: '2', revision_id: 3, action: 'publish', body: JSON.stringify({ tune: 2 }) },
+  ];
+
+  test("reads one entity's rows, though another entity has the same key", () => {
+    expect(liveBodiesOf(latest, 'genet_person', [])).toEqual([{ person: 1 }]);
+  });
+
+  test('applies the logged revisions of that entity alone', () => {
+    const logged: LoggedRevision[] = [
+      { entity: 'genet_tune', key: '1', action: 'withdraw', body: null },
+      { entity: 'genet_person', key: '1', action: 'publish', body: { person: 1, v: 'new' } },
+      { entity: 'genet_tune', key: '3', action: 'publish', body: { tune: 3 } },
+    ];
+
+    expect(liveBodiesOf(latest, 'genet_tune', logged)).toEqual([{ tune: 2 }, { tune: 3 }]);
+    expect(liveBodiesOf(latest, 'genet_person', logged)).toEqual([{ person: 1, v: 'new' }]);
+  });
+
+  test('applies only the last of several logged revisions for one key, as a rebuild would', () => {
+    const twice: LoggedRevision[] = [
+      { entity: 'genet_tune', key: '3', action: 'publish', body: { tune: 3, v: 'first' } },
+      { entity: 'genet_tune', key: '4', action: 'publish', body: { tune: 4 } },
+      { entity: 'genet_tune', key: '3', action: 'publish', body: { tune: 3, v: 'last' } },
+    ];
+    const withdrawnLast: LoggedRevision[] = [
+      { entity: 'genet_tune', key: '2', action: 'publish', body: { tune: 2, v: 'new' } },
+      { entity: 'genet_tune', key: '2', action: 'withdraw', body: null },
+    ];
+
+    expect(liveBodiesOf(latest, 'genet_tune', twice)).toEqual([
+      { tune: 1 },
+      { tune: 2 },
+      { tune: 3, v: 'last' },
+      { tune: 4 },
+    ]);
+    expect(liveBodiesOf(latest, 'genet_tune', withdrawnLast)).toEqual([{ tune: 1 }]);
+  });
+});
+
+describe('loggedRevisions', () => {
+  test("is the row's own revision first, then those alongside", () => {
+    const change: RevisionChange = {
+      key: '7',
+      action: 'publish',
+      body: { event_id: 7 },
+      alongside: [{ entity: 'subscriber_milestone', key: '7', action: 'withdraw', body: null }],
+    };
+
+    expect(loggedRevisions(TARGET, change)).toEqual([
+      { entity: 'footprints_event', key: '7', action: 'publish', body: { event_id: 7 } },
+      { entity: 'subscriber_milestone', key: '7', action: 'withdraw', body: null },
+    ]);
+  });
+});
+
+/**
+ * A JSON built from あしあと's events and, through `alsoBuiltFrom`, from
+ * 登録者数の節目's revisions too: what a target reading another entity looks
+ * like to publishing.ts.
+ */
+const MIXED: PublishTarget = {
+  ...TARGET,
+  alsoBuiltFrom: ['subscriber_milestone'],
+  buildJson: (_env, now, latest, change) => {
+    const logged = change === null ? [] : loggedRevisions(MIXED, change);
+    const ids = (entity: 'footprints_event' | 'subscriber_milestone', key: string) =>
+      liveBodiesOf(latest, entity, logged)
+        .map((body) => body[key] as number)
+        .sort((a, b) => a - b);
+
+    return JSON.stringify({
+      at: now.toISOString(),
+      events: ids('footprints_event', 'event_id'),
+      milestones: ids('subscriber_milestone', 'milestone_id'),
+    });
+  },
+};
+
+async function logMilestoneRevision(milestoneId: number): Promise<number> {
+  const inserted = await env.DB.prepare(
+    `INSERT INTO revision (entity, entity_key, action, body, created_via)
+     VALUES ('subscriber_milestone', ?1, 'publish', ?2, 'admin')`,
+  )
+    .bind(String(milestoneId), JSON.stringify({ milestone_id: milestoneId }))
+    .run();
+
+  return inserted.meta.last_row_id;
+}
+
+async function publishedJson(): Promise<{ events: number[]; milestones: number[] }> {
+  const parsed = JSON.parse(await (await env.PUBLIC_DATA.get(OBJECT_KEY))!.text()) as {
+    events: number[];
+    milestones: number[];
+  };
+
+  return { events: parsed.events, milestones: parsed.milestones };
+}
+
+describe('a target built from other entities too', () => {
+  test("hands their latest revisions to buildJson, keyed apart from the target's own", async () => {
+    const eventId = await insertEvent('一');
+
+    await logMilestoneRevision(eventId);
+
+    expect((await publishChange(env, MIXED, publishOf(eventId), [], NOW)).written).toBe(true);
+    expect(await publishedJson()).toEqual({ events: [eventId], milestones: [eventId] });
+  });
+
+  // The other entity's revision is recorded after the JSON was built and
+  // before the check: only a check that reads that entity too builds again.
+  test('builds the JSON again when one of theirs is recorded meanwhile', async () => {
+    const eventId = await insertEvent('一');
+    const held = stop();
+    const holding = withBatch((async (statements: D1PreparedStatement[]) => {
+      held.reach();
+      await held.released;
+
+      return await env.DB.batch(statements);
+    }) as D1Database['batch']);
+
+    const outcome = publishChange(holding, MIXED, publishOf(eventId), [], NOW);
+
+    await held.reached;
+    expect(await publishedJson()).toEqual({ events: [eventId], milestones: [] });
+
+    await logMilestoneRevision(5);
+
+    held.release();
+
+    expect((await outcome).written).toBe(true);
+    expect(await publishedJson()).toEqual({ events: [eventId], milestones: [5] });
+    expect((await publications()).at(-1)!.last_revision_id).toEqual(
+      Math.max(...(await revisions()).map((r) => r.revision_id)),
+    );
+  });
+
+  test('builds from them on republish as well', async () => {
+    await logMilestoneRevision(3);
+
+    expect((await republish(env, MIXED, NOW)).current).toBe(true);
+    expect(await publishedJson()).toEqual({ events: [], milestones: [3] });
+  });
+});
+
+describe('revisions logged alongside', () => {
+  test("are recorded in the same batch, and count as the request's own", async () => {
+    const eventId = await insertEvent('一');
+    let puts = 0;
+    const counting = withBucket({
+      put: async (key: string, value: string, options?: R2PutOptions) => {
+        puts += 1;
+
+        return await env.PUBLIC_DATA.put(key, value, options);
+      },
+    });
+
+    const outcome = await publishChange(
+      counting,
+      MIXED,
+      {
+        ...publishOf(eventId),
+        alongside: [{ entity: 'subscriber_milestone', key: '9', action: 'publish', body: { milestone_id: 9 } }],
+      },
+      [],
+      NOW,
+    );
+
+    expect(outcome.written).toBe(true);
+    // Written once: the check found nothing the JSON lacked.
+    expect(puts).toEqual(1);
+    expect(await publishedJson()).toEqual({ events: [eventId], milestones: [9] });
+    expect((await revisions()).map((r) => r.action)).toEqual(['publish', 'publish']);
+  });
+
+  test('are recorded though the row is gone, and the JSON is built again without the row', async () => {
+    const outcome = await publishChange(
+      env,
+      MIXED,
+      {
+        ...publishOf(404),
+        alongside: [{ entity: 'subscriber_milestone', key: '9', action: 'publish', body: { milestone_id: 9 } }],
+      },
+      [],
+      NOW,
+    );
+
+    expect(outcome).toMatchObject({ written: true, revisionId: null });
+    expect((await revisions()).map((r) => r.entity_key)).toEqual(['9']);
+    expect(await publishedJson()).toEqual({ events: [], milestones: [9] });
+  });
+});
+
+describe('buildJson', () => {
+  test('may read D1 and answer a promise', async () => {
+    const eventId = await insertEvent('読む');
+    const reading: PublishTarget = {
+      ...TARGET,
+      buildJson: async (db, now) => {
+        const row = await db.DB.prepare('SELECT title FROM footprints_event WHERE event_id = ?1')
+          .bind(eventId)
+          .first<{ title: string }>();
+
+        return JSON.stringify({ at: now.toISOString(), events: [], title: row!.title });
+      },
+    };
+
+    expect((await publishChange(env, reading, publishOf(eventId), [], NOW)).written).toBe(true);
+    expect(JSON.parse(await (await env.PUBLIC_DATA.get(OBJECT_KEY))!.text())).toMatchObject({ title: '読む' });
+  });
+
+  test('failing after the change was recorded, says the change may not be out', async () => {
+    const eventId = await insertEvent('一');
+    let builds = 0;
+    const failingLater: PublishTarget = {
+      ...TARGET,
+      buildJson: (...args) => {
+        builds += 1;
+
+        if (builds > 1) throw new Error('cannot build again');
+
+        return TARGET.buildJson(...args);
+      },
+    };
+    // Looks written over, so the check builds again.
+    const overwritten = withBucket({ head: () => Promise.resolve({ version: 'someone else' }) });
+
+    const outcome = await publishChange(overwritten, failingLater, publishOf(eventId), [], NOW);
+
+    expect(outcome).toEqual({
+      written: false,
+      recorded: true,
+      revisionId: expect.any(Number),
+      error: expect.stringContaining('cannot build again'),
+    });
   });
 });

@@ -4,8 +4,9 @@ import { computed, onMounted, ref } from 'vue';
 import FootprintsInspector from '../components/FootprintsInspector.vue';
 import { AdminApiError, getJson } from '../lib/api';
 import { kindLabel, type FootprintsEvent, type FootprintsMember } from '../lib/footprints';
-import { footprintsMarkFor, type FootprintsPending } from '../lib/footprints-publish';
+import type { FootprintsPending } from '../lib/footprints-publish';
 import { useWhitelist } from '../lib/footprints-sources';
+import { liveMarkFor } from '../lib/publishing';
 import { selectionAfterReload } from '../lib/inbox';
 import { confirmDiscard } from '../lib/unsaved-guard';
 
@@ -132,9 +133,7 @@ onMounted(() => {
               @keydown.enter="selectRow(e.eventId)"
             >
               <td>
-                <span class="chip" :class="footprintsMarkFor(e.status).tone">{{
-                  footprintsMarkFor(e.status).label
-                }}</span>
+                <span class="chip" :class="liveMarkFor(e.status).tone">{{ liveMarkFor(e.status).label }}</span>
               </td>
               <td class="num">{{ e.startDate }}</td>
               <td>

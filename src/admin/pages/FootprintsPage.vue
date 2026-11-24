@@ -13,8 +13,9 @@ import {
   type FootprintsEvent,
   type FootprintsMember,
 } from '../lib/footprints';
-import { footprintsMarkFor, type FootprintsPending } from '../lib/footprints-publish';
+import type { FootprintsPending } from '../lib/footprints-publish';
 import { isShortOfSources, useWhitelist, SOURCE_TEXT } from '../lib/footprints-sources';
+import { liveMarkFor } from '../lib/publishing';
 import { countText } from '../lib/list-count';
 import { useListTotal } from '../lib/list-total';
 import { showToast } from '../lib/toast';
@@ -404,9 +405,7 @@ onMounted(() => {
               @keydown.space.prevent="selectRow(e.eventId)"
             >
               <td>
-                <span class="chip" :class="footprintsMarkFor(e.status).tone">{{
-                  footprintsMarkFor(e.status).label
-                }}</span>
+                <span class="chip" :class="liveMarkFor(e.status).tone">{{ liveMarkFor(e.status).label }}</span>
               </td>
               <td class="num">{{ e.startDate }}<span v-if="e.datePrecision === 'month'" class="sub"> 月のみ</span></td>
               <td>

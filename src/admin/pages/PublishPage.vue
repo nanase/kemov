@@ -6,8 +6,7 @@ import { AdminApiError, getJson, postJson } from '../lib/api';
 import type { FootprintsMember } from '../lib/footprints';
 import {
   canPublishFootprints,
-  footprintsMarkFor,
-  PUBLISH_TEXT,
+  FOOTPRINTS_BEHIND_TEXT,
   type ChangedFootprintsEntry,
   type FootprintsPending,
   type PendingFootprintsEntry,
@@ -25,10 +24,11 @@ import {
 import { refreshPublishBadge } from '../lib/publish-badge';
 import { forgetPublicData } from '../lib/preview';
 import { CHANGED_ROWS_HINT, publishMarkFor } from '../lib/publish-mark';
+import { liveMarkFor, PUBLISH_TEXT } from '../lib/publishing';
 import { milestoneTitle, type SubscriberMilestone } from '../lib/subscriber-milestones';
 import {
   canPublishMilestones,
-  milestoneMarkFor,
+  MILESTONES_BEHIND_TEXT,
   publishesOnlyForShape as milestonesPublishOnlyForShape,
   type MilestonesPending,
   type MilestonesPublishResult,
@@ -267,9 +267,7 @@ onMounted(async () => {
               <ul class="change-list">
                 <li v-for="c in changed" :key="c.eventId">
                   <span class="change-title">{{ c.title }}</span>
-                  <span class="chip" :class="footprintsMarkFor('published').tone">{{
-                    footprintsMarkFor('published').label
-                  }}</span>
+                  <span class="chip" :class="liveMarkFor('published').tone">{{ liveMarkFor('published').label }}</span>
                   <RouterLink class="btn" :to="{ path: '/footprints', query: { event: c.eventId } }">
                     できごとの画面へ
                   </RouterLink>
@@ -286,7 +284,7 @@ onMounted(async () => {
                 いま公開する
               </button>
             </div>
-            <div v-if="!loading && (behind || outdated)" class="hint">{{ PUBLISH_TEXT.behind }}</div>
+            <div v-if="!loading && (behind || outdated)" class="hint">{{ FOOTPRINTS_BEHIND_TEXT }}</div>
             <div v-if="!loading && !canPublishFootprints(footprintsState) && changed.length > 0" class="hint">
               公開を待っているものがありません
             </div>
@@ -357,13 +355,11 @@ onMounted(async () => {
             </div>
             <div v-if="milestonesState.changed.length > 0" class="panel flag">
               <h4>公開後に変更があった行</h4>
-              <div class="hint">{{ CHANGED_ROWS_HINT }}</div>
+              <div class="hint">{{ PUBLISH_TEXT.changedBody }}</div>
               <ul class="change-list">
                 <li v-for="c in milestonesState.changed" :key="c.milestoneId">
                   <span class="change-title">{{ milestoneLabel(c.milestoneId) }}</span>
-                  <span class="chip" :class="milestoneMarkFor('published', c.milestoneId, milestonesState).tone">{{
-                    milestoneMarkFor('published', c.milestoneId, milestonesState).label
-                  }}</span>
+                  <span class="chip" :class="liveMarkFor('published').tone">{{ liveMarkFor('published').label }}</span>
                   <RouterLink class="btn" :to="{ path: '/subscribers', query: { milestone: c.milestoneId } }">
                     節目の画面へ
                   </RouterLink>
@@ -385,6 +381,7 @@ onMounted(async () => {
                 </li>
               </ul>
             </div>
+            <div v-if="!milestonesLoading && milestonesState.behind" class="hint">{{ MILESTONES_BEHIND_TEXT }}</div>
             <div v-if="milestonesPublishOnlyForShape(milestonesState)" class="hint">
               公開中のデータは古い形のままです。押すと新しい形で作り直します（中身は変わりません）。
             </div>

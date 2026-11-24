@@ -95,57 +95,6 @@ export function fieldForSaveError(message: string): EventFieldKey | null {
   return null;
 }
 
-/** What the buttons at the bottom of the edit panel do. */
-export type FootAction = 'publish' | 'save' | 'withdraw';
-
-/**
- * The edit panel's buttons, left to right, the first being the primary one,
- * and what is said beside them (#277's decision 1a, 6-9). The worker refuses
- * to delete a published event (409), so 削除 is shown but cannot be pressed,
- * with the reason beside it.
- */
-export interface FootprintsFoot {
-  actions: readonly { action: FootAction; label: string }[];
-  /** Beside the buttons, or null. */
-  note: string | null;
-  deleteDisabled: boolean;
-  /** Why 削除 cannot be pressed, or null when it can. */
-  deleteReason: string | null;
-}
-
-export const FOOT_TEXT = {
-  publish: '公開',
-  save: '保存',
-  withdraw: '非公開に戻す',
-  liveNote: '保存すると、すぐ本番に出ます',
-  deleteReason: '公開中は削除できません。先に「非公開に戻す」を押してください。',
-} as const;
-
-/** The buttons for a saved row whose `status` is `status`. A row not yet saved has its own (保存 and やめる). */
-export function footprintsFootFor(status: string): FootprintsFoot {
-  if (status === 'published') {
-    return {
-      actions: [
-        { action: 'save', label: FOOT_TEXT.save },
-        { action: 'withdraw', label: FOOT_TEXT.withdraw },
-      ],
-      note: FOOT_TEXT.liveNote,
-      deleteDisabled: true,
-      deleteReason: FOOT_TEXT.deleteReason,
-    };
-  }
-
-  return {
-    actions: [
-      { action: 'publish', label: FOOT_TEXT.publish },
-      { action: 'save', label: FOOT_TEXT.save },
-    ],
-    note: null,
-    deleteDisabled: false,
-    deleteReason: null,
-  };
-}
-
 export interface FootprintsSource {
   url: string;
   title: string | null;
