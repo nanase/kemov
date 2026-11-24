@@ -116,14 +116,19 @@ async function load(): Promise<void> {
 
     answeredIds.value = new Set(rows.map((e) => e.eventId));
 
-    if (keptId.value !== null && !rows.some((e) => e.eventId === keptId.value)) {
-      const kept = await readKept(keptId.value);
+    const requestedKept = keptId.value;
+
+    if (requestedKept !== null && !rows.some((e) => e.eventId === requestedKept)) {
+      const kept = await readKept(requestedKept);
 
       if (generation !== loadGeneration) return;
 
-      // Gone when it was deleted.
-      if (kept === null) keptId.value = null;
-      else rows = withKeptRow(rows, kept, keptIndex);
+      // Let go while it was being read: another row was selected meanwhile.
+      if (keptId.value === requestedKept) {
+        // Gone when it was deleted.
+        if (kept === null) keptId.value = null;
+        else rows = withKeptRow(rows, kept, keptIndex);
+      }
     }
 
     events.value = rows;
@@ -264,10 +269,13 @@ function setStatus(value: string): void {
 function toggleShortOnly(): void {
   if (inspectorBusy.value) return;
 
-  // Turning the filter on hides the open row when it is not short of
-  // sources; turning it off hides nothing.
-  const hidesOpenRow =
-    !shortOnly.value && !adding.value && selected.value !== null && !isShortOfSources(selected.value, whitelist.value);
+  // Either way the kept row is let go, which hides the open row when the
+  // worker's answer does not hold it; turning the filter on also hides it
+  // when it is not short of sources.
+  const open = adding.value ? null : selected.value;
+  const releasesOpenRow = open !== null && open.eventId === keptId.value && !answeredIds.value.has(open.eventId);
+  const filtersOpenRow = open !== null && !shortOnly.value && !isShortOfSources(open, whitelist.value);
+  const hidesOpenRow = releasesOpenRow || filtersOpenRow;
 
   if (hidesOpenRow && !confirmDiscard()) return;
 
