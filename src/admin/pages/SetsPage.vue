@@ -329,7 +329,8 @@ function selectStream(videoId: string): void {
 /** ＋ 足す: the editor holds a blank stream, created only when it is saved. */
 function startAdding(): void {
   if (busy.value) return;
-  if (!adding.value && !confirmDiscard()) return;
+  // A new stream being typed is unsaved too, and starting again would clear it.
+  if (!confirmDiscard()) return;
 
   adding.value = true;
   newVideoId.value = '';
@@ -425,6 +426,7 @@ async function act(action: PublishAction): Promise<void> {
       void refreshPublishBadge();
       showToast(answer.toast);
       await reloadSaved(videoId);
+      void refreshTuneLive();
 
       return;
     }
@@ -435,6 +437,7 @@ async function act(action: PublishAction): Promise<void> {
     if (answer.changed) {
       void refreshPublishBadge();
       await reloadSaved(videoId);
+      void refreshTuneLive();
     }
   } finally {
     sending.value = false;
@@ -674,6 +677,34 @@ function openTune(index: number): void {
 }
 
 /** Reads the tune performance `index` names, for the panel open on it. */
+/** Whether a failed request says it saved what it sent all the same. */
+function savedAnyway(error: unknown): boolean {
+  if (!(error instanceof AdminApiError)) return false;
+
+  const body = error.body;
+
+  return typeof body === 'object' && body !== null && 'saved' in body && body.saved === true;
+}
+
+/**
+ * Reads again whether a published stream performs each open tune, keeping
+ * what is typed into them: a stream's 「公開」, 「保存」 or 「非公開に戻す」 can
+ * change it. A read that fails keeps the last answer.
+ */
+async function refreshTuneLive(): Promise<void> {
+  const tuneIds = new Set(
+    [...tuneFieldsByIndex.value.keys()].flatMap((i) => streamFields.value.performances[i]?.tuneId ?? []),
+  );
+
+  await Promise.all(
+    [...tuneIds].map(async (tuneId) => {
+      const body = await getJson<TuneAnswer>(`/genet/tunes/${tuneId}`).catch(() => null);
+
+      if (body !== null) tuneLive.value = new Map(tuneLive.value).set(tuneId, body.live === true);
+    }),
+  );
+}
+
 async function readTune(index: number): Promise<void> {
   const performance = streamFields.value.performances[index];
 
@@ -780,12 +811,13 @@ async function saveTune(index: number): Promise<void> {
   tuneBand.value = answer.band;
   tuneInvalid.value = answer.fields;
 
-  // Saved, though the public JSON could not be written: what was sent is what is saved.
   if (answer.changed) {
     void refreshPublishBadge();
     void loadPending();
 
-    if (stillAt(index, videoId, performance.tuneId)) {
+    // Saved, though the public JSON could not be written: what was sent is
+    // what is saved. A 404 changed nothing here - the tune is gone.
+    if (savedAnyway(error) && stillAt(index, videoId, performance.tuneId)) {
       tuneSavedByIndex.value = new Map(tuneSavedByIndex.value).set(index, structuredClone(sent));
     }
   }
