@@ -65,18 +65,13 @@ export function publishesOnlyForShape(state: GenetPendingResponse): boolean {
   return state.pending.length === 0 && state.shapeOutdated === true && state.behind !== true;
 }
 
-/**
- * Whether `entity`/`key` is waiting for "いま公開する" - its latest revision is
- * newer than the last run. null when the pending list could not be read.
- */
-export function isWaiting(state: GenetPendingResponse | null, entity: GenetEntity, key: string): boolean | null {
-  return state === null ? null : state.pending.some((entry) => entry.entity === entity && entry.key === key);
-}
-
 /** Whether `entity`/`key` differs from what it was published as. */
 export function isChangedSincePublish(state: GenetPendingResponse | null, entity: GenetEntity, key: string): boolean {
   return state?.changed.some((entry) => entry.entity === entity && entry.key === key) ?? false;
 }
+
+/** The 公開 screen's, while the worker says the JSON may be behind. */
+export const GENET_BEHIND_TEXT = '本番の楽曲一覧が記録と食い違っているかもしれません。';
 
 export interface GenetPublishResult {
   published: boolean;

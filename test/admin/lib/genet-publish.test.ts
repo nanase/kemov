@@ -3,8 +3,8 @@ import { SAVE_TOAST } from '@/admin/lib/editing';
 import {
   canPublishGenet,
   entityLabel,
+  GENET_BEHIND_TEXT,
   isChangedSincePublish,
-  isWaiting,
   publishesOnlyForShape,
   STREAM_NOTE_ID,
   streamAnswerFor,
@@ -93,17 +93,9 @@ describe('publishesOnlyForShape', () => {
   });
 });
 
-describe('isWaiting', () => {
-  const state = { pending: [WAITING], changed: [] };
-
-  test('matches on the entity and the key together', () => {
-    expect(isWaiting(state, 'genet_stream', 'abcdefghijk')).toBe(true);
-    expect(isWaiting(state, 'genet_tune', 'abcdefghijk')).toBe(false);
-    expect(isWaiting(state, 'genet_stream', 'other')).toBe(false);
-  });
-
-  test('is null, not false, when the list could not be read', () => {
-    expect(isWaiting(null, 'genet_stream', 'abcdefghijk')).toBeNull();
+describe('GENET_BEHIND_TEXT', () => {
+  test('is the sentence the 公開 screen shows while the JSON may be behind', () => {
+    expect(GENET_BEHIND_TEXT).toEqual('本番の楽曲一覧が記録と食い違っているかもしれません。');
   });
 });
 

@@ -14,7 +14,7 @@ import {
 import {
   canPublishGenet,
   entityLabel,
-  isWaiting,
+  GENET_BEHIND_TEXT,
   publishesOnlyForShape,
   type ChangedGenetEntry,
   type GenetPendingResponse,
@@ -23,7 +23,6 @@ import {
 } from '../lib/genet-publish';
 import { refreshPublishBadge } from '../lib/publish-badge';
 import { forgetPublicData } from '../lib/preview';
-import { CHANGED_ROWS_HINT, publishMarkFor } from '../lib/publish-mark';
 import { liveMarkFor, PUBLISH_TEXT } from '../lib/publishing';
 import { milestoneTitle, type SubscriberMilestone } from '../lib/subscriber-milestones';
 import {
@@ -63,6 +62,7 @@ const footprintsState = computed<FootprintsPending>(() => ({
 const genetPending = ref<PendingGenetEntry[]>([]);
 const genetChanged = ref<ChangedGenetEntry[]>([]);
 const genetShapeOutdated = ref(false);
+const genetBehind = ref(false);
 const genetLoading = ref(false);
 const genetLoadError = ref<string | null>(null);
 const genetPublishing = ref(false);
@@ -71,6 +71,7 @@ const genetState = computed<GenetPendingResponse>(() => ({
   pending: genetPending.value,
   changed: genetChanged.value,
   shapeOutdated: genetShapeOutdated.value,
+  behind: genetBehind.value,
 }));
 
 /** Where a changed genet row is edited: a stream has its own screen, a tune or a person is edited from inside the streams that perform it. */
@@ -153,6 +154,7 @@ async function loadGenet(): Promise<void> {
     genetPending.value = body.pending;
     genetChanged.value = body.changed;
     genetShapeOutdated.value = body.shapeOutdated === true;
+    genetBehind.value = body.behind === true;
   } catch (error) {
     genetLoadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
@@ -303,19 +305,16 @@ onMounted(async () => {
             </div>
             <div v-if="genetChanged.length > 0" class="panel flag">
               <h4>公開後に変更があった行</h4>
-              <div class="hint">{{ CHANGED_ROWS_HINT }}曲や人の行は、それを使っている配信の画面で押します。</div>
+              <div class="hint">{{ PUBLISH_TEXT.changedBody }}曲や人の行は、それを使っている配信の画面で押します。</div>
               <ul class="change-list">
                 <li v-for="c in genetChanged" :key="`${c.entity}:${c.key}`">
                   <span class="change-title">{{ entityLabel(c.entity) }}: {{ c.title }}</span>
-                  <span
-                    class="chip"
-                    :class="publishMarkFor('published', isWaiting(genetState, c.entity, c.key)).tone"
-                    >{{ publishMarkFor('published', isWaiting(genetState, c.entity, c.key)).label }}</span
-                  >
+                  <span class="chip" :class="liveMarkFor('published').tone">{{ liveMarkFor('published').label }}</span>
                   <RouterLink class="btn" :to="genetRowLink(c)">{{ genetRowLinkLabel(c) }}</RouterLink>
                 </li>
               </ul>
             </div>
+            <div v-if="!genetLoading && genetBehind" class="hint">{{ GENET_BEHIND_TEXT }}</div>
             <div v-if="publishesOnlyForShape(genetState)" class="hint">
               公開中のデータは古い形のままです。押すと新しい形で作り直します（中身は変わりません）。
             </div>
