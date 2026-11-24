@@ -71,6 +71,9 @@ export function publishesOnlyForShape(state: MilestonesPending): boolean {
 /** The 公開 screen's, while the worker says the JSON may be behind. */
 export const MILESTONES_BEHIND_TEXT = '本番の登録者数の節目が記録と食い違っているかもしれません。';
 
+/** The edit panel's note for a 502 that saved nothing (lib/publishing.ts's `notMendedNote`). */
+export const MILESTONES_NOT_MENDED_TEXT = '本番の登録者数の節目への反映に失敗しました。';
+
 export interface MilestonesPublishResult {
   published: boolean;
   publicationId?: number;
@@ -82,7 +85,12 @@ export type MilestonesAnswer = PublishAnswer<MilestoneFieldKey>;
 
 /** lib/publishing.ts's `publishAnswerFor` for a milestone: the row comes back as `milestone`. */
 export function milestonesAnswerFor(action: AnsweredAction, status: string | null, error: unknown): MilestonesAnswer {
-  return publishAnswerFor({ rowKey: 'milestone', fieldForSaveError }, action, status, error);
+  return publishAnswerFor(
+    { rowKey: 'milestone', fieldForSaveError, notMendedNote: MILESTONES_NOT_MENDED_TEXT },
+    action,
+    status,
+    error,
+  );
 }
 
 /** One source as `POST /subscribers/source-check` marks it - worker/src/admin/subscriber-milestones-publish.ts's `SourceMark`. */

@@ -91,6 +91,19 @@ describe('milestonesAnswerFor', () => {
     });
   });
 
+  // The worker's 502 when a published row was withdrawn under the save, and
+  // the JSON the save wrote could not be built again without it.
+  test('says the public site was not mended, in place of the worker message, for a 502 that saved nothing', () => {
+    const error = new AdminApiError(502, { error: 'subscriber milestone 3 changed while …', saved: false });
+
+    expect(milestonesAnswerFor('save', 'published', error)).toEqual({
+      kind: 'band',
+      band: { title: '保存できません', lines: [], note: '本番の登録者数の節目への反映に失敗しました。' },
+      fields: [],
+      changed: true,
+    });
+  });
+
   test("marks the field a save's own message names", () => {
     const error = new AdminApiError(400, { error: 'reachedDate must be YYYY-MM-DD' });
 

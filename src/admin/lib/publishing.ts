@@ -145,6 +145,13 @@ export interface AnswerShape<F extends string> {
   rowKey: string;
   /** Which field a failed save's message is about, or null when it names none. */
   fieldForSaveError(message: string): F | null;
+  /**
+   * The note in place of the worker's message for a 502 that saved nothing:
+   * the row changed under the request, and the public JSON it had written
+   * could not be built again without the change. Without it the worker's
+   * message is shown, as for any failure.
+   */
+  notMendedNote?: string;
 }
 
 interface ProblemsBody<F extends string> {
@@ -167,6 +174,10 @@ function savedAnyway(body: unknown): boolean {
   return typeof body === 'object' && body !== null && 'saved' in body && body.saved === true;
 }
 
+function savedNothing(body: unknown): boolean {
+  return typeof body === 'object' && body !== null && 'saved' in body && body.saved === false;
+}
+
 /** The status the row has now, as a 502 that saved anyway gives it under `rowKey`, or null when the answer carries no row. */
 function statusNow(body: unknown, rowKey: string): string | null {
   if (typeof body !== 'object' || body === null || !(rowKey in body)) return null;
@@ -186,6 +197,9 @@ function statusNow(body: unknown, rowKey: string): string | null {
  * - A refusal lists the worker's reasons. Whether the fields were saved
  *   anyway is the worker's answer too: a draft's are, a published row's are
  *   not
+ * - A 502 that says it saved nothing is a row that changed under the
+ *   request while the public JSON it wrote could not be mended: the
+ *   target's `notMendedNote` says so, when it has one
  * - A 502 that says it saved is a save that went through while the public
  *   JSON could not be written, or could not be brought up to date after the
  *   change was recorded. The button to press again is the one the row shows
@@ -258,6 +272,15 @@ export function publishAnswerFor<F extends string>(
           lines: [],
           note: null,
         },
+        fields: [],
+        changed: true,
+      };
+    }
+
+    if (shape.notMendedNote !== undefined && savedNothing(error.body)) {
+      return {
+        kind: 'band',
+        band: { title: PUBLISH_TEXT.failed, lines: [], note: shape.notMendedNote },
         fields: [],
         changed: true,
       };
