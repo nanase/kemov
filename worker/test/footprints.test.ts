@@ -33,7 +33,6 @@ function validBody(overrides: Record<string, unknown> = {}) {
     place: 'YouTube',
     supplement: null,
     videoId: null,
-    sourcePending: true,
     memo: null,
     channelIds: [],
     sources: [],
@@ -124,12 +123,6 @@ describe('createEvent', () => {
     expect(response.status).toEqual(400);
   });
 
-  test.each(['false', null, 1, 0])('refuses sourcePending: %p', async (value) => {
-    const response = await createEvent(env, validBody({ sourcePending: value }));
-
-    expect(response.status).toEqual(400);
-  });
-
   test.each([
     ['title', 123],
     ['place', true],
@@ -154,17 +147,22 @@ describe('createEvent', () => {
     expect(body.event.place).toBeNull();
   });
 
-  test('emphasized defaults to false and sourcePending defaults to true when left out', async () => {
+  test('emphasized defaults to false when left out', async () => {
     const body = validBody();
 
     delete (body as Record<string, unknown>).emphasized;
-    delete (body as Record<string, unknown>).sourcePending;
 
     const response = await createEvent(env, body);
-    const created = (await response.json()) as { event: { emphasized: boolean; sourcePending: boolean } };
+    const created = (await response.json()) as { event: { emphasized: boolean } };
 
     expect(created.event.emphasized).toEqual(false);
-    expect(created.event.sourcePending).toEqual(true);
+  });
+
+  // The mark is judged from the sources (#282), and is not part of a row.
+  test('has no sourcePending in what it answers', async () => {
+    const created = (await (await createEvent(env, validBody())).json()) as { event: Record<string, unknown> };
+
+    expect(created.event).not.toHaveProperty('sourcePending');
   });
 
   test('refuses an unknown channelId without creating anything', async () => {

@@ -1,6 +1,7 @@
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
+import { sourceUrlProblem } from '../lib/source-whitelist';
 import { isSchemaDate, isSchemaMonth } from '../lib/time';
 
 /**
@@ -301,34 +302,6 @@ function milestoneFieldsProblem(fields: MilestoneFields): string | null {
   }
 
   return null;
-}
-
-/**
- * Why a save refuses `url` as a source's URL, or null when it accepts it.
- * Publishing's source check counts only URLs this accepts
- * (subscriber-milestones-publish.ts's `judgeSources`).
- */
-export function sourceUrlProblem(url: string): string | null {
-  if (!url.startsWith('https://')) return 'every source url must start with https://';
-  // The schema's CHECK looks at the prefix alone, so `https://` by itself
-  // would save, and count towards nothing but still reach the public JSON.
-  const parsed = parseUrl(url);
-
-  if (parsed === null || parsed.hostname === '') return 'every source url must be a valid https URL';
-  // A source's URL reaches the public JSON as written.
-  if (parsed.username !== '' || parsed.password !== '') {
-    return 'every source url must not carry a user name or password';
-  }
-
-  return null;
-}
-
-function parseUrl(url: string): URL | null {
-  try {
-    return new URL(url);
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -647,3 +620,7 @@ export async function deleteMilestone(env: Env, milestoneId: number): Promise<Re
 
   return jsonResponse({});
 }
+
+// Kept where it was first exported: the rule itself lives in
+// src/admin/lib/source-check.ts, which あしあと's judgement uses too.
+export { sourceUrlProblem };

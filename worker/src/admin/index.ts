@@ -10,14 +10,7 @@ import { createPerson, deletePerson, getPerson, listPeople, updatePerson } from 
 import { pendingGenetMusic, publishGenetMusicNow, publishStream, withdrawStream } from './genet-publish';
 import { createStream, deleteStream, getStream, listStreams, updateStream } from './genet-streams';
 import { createTune, deleteTune, getTune, listTunes, updateTune } from './genet-tunes';
-import {
-  confirmEventSources,
-  deferStream,
-  inboxCounts,
-  listPublishInbox,
-  listReviewInbox,
-  listSourceInbox,
-} from './inbox';
+import { deferStream, inboxCounts, listPublishInbox, listReviewInbox, listSourceInbox } from './inbox';
 import { addMember, deleteMember, listMembers, saveMembers, updateMember } from './members';
 import { listPublications } from './publications';
 import { getRevision, listRevisions, readRevisionId } from './revisions';
@@ -173,7 +166,6 @@ export async function handleAdminRequest(
 
       return 'error' in body ? body.error : await withdrawEvent(env, eventId, body.value, instant);
     }
-    if (action === 'confirm-source') return await confirmEventSources(env, eventId);
 
     return errorResponse(404, `no endpoint at ${pathname}`);
   }
@@ -474,7 +466,7 @@ export async function handleAdminRequest(
     if (request.method === 'POST') {
       const body = await readJsonObject(request);
 
-      return 'error' in body ? body.error : await addSourceWhitelist(env, body.value);
+      return 'error' in body ? body.error : await addSourceWhitelist(env, body.value, instant);
     }
 
     if (request.method !== 'GET') return methodNotAllowed(request, 'GET, POST');
@@ -486,7 +478,7 @@ export async function handleAdminRequest(
   // `id` is it decoded - the same reading snapshot-exclusions gives a
   // fetched_at.
   if (segments.length === 4 && name === 'source-whitelist' && id !== undefined) {
-    if (request.method === 'DELETE') return await deleteSourceWhitelist(env, id);
+    if (request.method === 'DELETE') return await deleteSourceWhitelist(env, id, instant);
 
     if (request.method !== 'PUT') return methodNotAllowed(request, 'PUT, DELETE');
 

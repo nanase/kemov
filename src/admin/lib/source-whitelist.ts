@@ -52,3 +52,12 @@ export function addErrorMessage(error: unknown): string {
 
   return error instanceof AdminApiError ? error.message : String(error);
 }
+
+/**
+ * The toast after an entry is added or removed. The entry is saved either
+ * way; `timelineCurrent` is the worker's answer to whether あしあと's public
+ * JSON was written again to judge its sources by the list as it now is (#282).
+ */
+export function savedToast(done: string, timelineCurrent: boolean): string {
+  return timelineCurrent ? done : '本番の年表への反映に失敗しました。';
+}

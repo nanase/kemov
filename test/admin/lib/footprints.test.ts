@@ -6,6 +6,7 @@ import {
   KINDS,
   STATUS_OPTIONS,
   toFormFields,
+  withKeptRow,
   type FootprintsEvent,
 } from '@/admin/lib/footprints';
 
@@ -70,7 +71,6 @@ describe('fieldForSaveError', () => {
     ['title must not be empty', 'title'],
     ['videoId must be 11 characters', 'videoId'],
     ['every source url must start with https://', 'sources'],
-    ['sourcePending is false but there are no sources', 'sources'],
     ['unknown channelIds: UCnope', 'channelIds'],
     ['every leadChannelIds entry must also be in channelIds', 'leadChannelIds'],
     ['a debut needs at least one leadChannelIds entry', 'leadChannelIds'],
@@ -103,7 +103,6 @@ describe('toFormFields', () => {
     place: 'YouTube',
     supplement: null,
     videoId: null,
-    sourcePending: false,
     status: 'published',
     memo: null,
     createdAt: '2025-01-01T00:00:00Z',
@@ -125,7 +124,6 @@ describe('toFormFields', () => {
       place: 'YouTube',
       supplement: null,
       videoId: null,
-      sourcePending: false,
       memo: null,
       channelIds: ['UCaaa'],
       leadChannelIds: ['UCaaa'],
@@ -159,11 +157,50 @@ describe('emptyFormFields', () => {
       place: null,
       supplement: null,
       videoId: null,
-      sourcePending: true,
       memo: null,
       channelIds: [],
       leadChannelIds: [],
       sources: [],
     });
+  });
+});
+
+describe('withKeptRow', () => {
+  function row(eventId: number, title = `行 ${eventId}`): FootprintsEvent {
+    return {
+      eventId,
+      datePrecision: 'day',
+      startDate: '2025-01-01',
+      startsAt: null,
+      endDate: null,
+      kind: 'other',
+      emphasized: false,
+      title,
+      place: null,
+      supplement: null,
+      videoId: null,
+      status: 'draft',
+      memo: null,
+      createdAt: '2025-01-01T00:00:00Z',
+      updatedAt: '2025-01-01T00:00:00Z',
+      channelIds: [],
+      leadChannelIds: [],
+      sources: [],
+    };
+  }
+
+  test('puts a row the filter no longer takes back where it was', () => {
+    expect(withKeptRow([row(1), row(3)], row(2), 1).map((e) => e.eventId)).toEqual([1, 2, 3]);
+  });
+
+  test('puts it last when the list has become shorter than where it was', () => {
+    expect(withKeptRow([row(1)], row(5), 4).map((e) => e.eventId)).toEqual([1, 5]);
+  });
+
+  // The list's own copy is the newer one: it was read after the save.
+  test('leaves the rows as they are when they still hold it', () => {
+    const rows = [row(1), row(2, '新しい題')];
+
+    expect(withKeptRow(rows, row(2, '古い題'), 0)).toBe(rows);
   });
 });

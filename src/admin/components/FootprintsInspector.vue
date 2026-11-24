@@ -27,6 +27,13 @@ import {
   type PublishAction,
   type PublishBand,
 } from '../lib/publishing';
+import {
+  judgeEventSources,
+  markLabel,
+  shortfallMessage,
+  shortWhateverTheWhitelist,
+  SOURCE_TEXT,
+} from '../lib/footprints-sources';
 import { refreshPublishBadge } from '../lib/publish-badge';
 import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
 import { todayJst } from '../lib/snapshots';
@@ -48,8 +55,12 @@ import SplitHandle from './SplitHandle.vue';
  * own row only changes once the parent refetches.
  *
  * `mode` is where the panel was opened from, and decides only the buttons at
- * the bottom: あしあと's own (#277's decision 1a), 確認待ち's (承認 / 却下)
- * or 出典の確認待ち's (出典を確かめた / 保存).
+ * the bottom: あしあと's own (#277's decision 1a) or 確認待ち's (承認 / 却下).
+ *
+ * Whether the sources are enough is judged as they are typed (#277's
+ * decision 2a), by the same rule publishing uses for the public timeline's
+ * 「出典の確認待ち」. Nothing is judged while `whitelist` is unknown, and the
+ * panel says so when it could not be read (`whitelistFailed`).
  */
 const props = withDefaults(
   defineProps<{
@@ -57,9 +68,13 @@ const props = withDefaults(
     members: FootprintsMember[];
     /** `GET /footprints/pending`, or null when it could not be read. */
     pending: FootprintsPending | null;
-    mode?: 'data' | 'review' | 'source';
+    /** The 出典ホワイトリスト's prefixes, or null when they could not be read. */
+    whitelist: readonly string[] | null;
+    /** True when `whitelist` is null because it could not be read, not because it is on its way. */
+    whitelistFailed?: boolean;
+    mode?: 'data' | 'review';
   }>(),
-  { mode: 'data' },
+  { mode: 'data', whitelistFailed: false },
 );
 const emit = defineEmits<{ changed: []; created: [eventId: number]; back: []; busy: [busy: boolean] }>();
 
@@ -140,6 +155,21 @@ function toggleLead(channelId: string): void {
 
   if (at === -1) fields.value.leadChannelIds.push(channelId);
   else fields.value.leadChannelIds.splice(at, 1);
+}
+
+/** How the sources stand, or null while the whitelist is unknown. */
+const judgement = computed(() => (props.whitelist === null ? null : judgeEventSources(fields.value, props.whitelist)));
+const sourcesShort = computed(() => judgement.value !== null && !judgement.value.enough);
+// The preview's 「出典の確認待ち」: while the whitelist is unknown, only when it is short whatever the list says.
+const previewSourcePending = computed(() =>
+  judgement.value === null ? shortWhateverTheWhitelist(fields.value) : !judgement.value.enough,
+);
+
+function sourcesDescribedBy(): string | undefined {
+  const judged = judgement.value !== null || props.whitelistFailed;
+  const ids = [reasonIds('sources'), judged ? 'f-sources-judgement' : undefined];
+
+  return ids.filter((id) => id !== undefined).join(' ') || undefined;
 }
 
 /** A debut with no lead cannot be published (footprints-publish.ts), so the panel says so before 公開 does. */
@@ -253,33 +283,6 @@ function reject(): Promise<void> {
   return run('delete', () => deleteJson(`/footprints/events/${eventId.value}`), REJECTED_TOAST);
 }
 
-/**
- * 出典の確認待ち's 「出典を確かめた」: the fields as typed - which for a
- * published row is its 「保存」, on the public timeline at once - then the
- * mark cleared, refused when the sources would not pass publishing. Clearing
- * the mark logs no revision, so a published row's public copy still says
- * 確認待ち until its next 保存.
- */
-function confirmSource(): Promise<void> {
-  const toast =
-    props.event?.status === 'published'
-      ? '出典を確かめました。本番の年表を直すには、あしあとでこの行の「保存」を押します'
-      : '出典を確かめました';
-
-  let saved = false;
-
-  return run(
-    'save',
-    async () => {
-      await send('save');
-      saved = true;
-      await postJson(`/footprints/events/${eventId.value}/confirm-source`, {});
-    },
-    toast,
-    () => saved,
-  );
-}
-
 /** ← 一覧 and a new row's やめる: on a narrow screen the panel stays behind the list, so what is let go here is thrown away, not kept for later. */
 function back(): void {
   if (confirmDiscard()) emit('back');
@@ -322,11 +325,6 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
         <div v-if="changedSincePublish" class="panel flag">
           <h4>{{ PUBLISH_TEXT.changedTitle }}</h4>
           <div class="hint">{{ PUBLISH_TEXT.changedBody }}</div>
-        </div>
-
-        <div v-if="fields.sourcePending" class="panel flag">
-          <h4>出典の確認待ち</h4>
-          <div class="hint">このまま公開すると、年表に「出典の確認待ち」と表示されます</div>
         </div>
 
         <div class="row2">
@@ -441,29 +439,32 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
 
         <div
           class="panel"
-          :class="{ flag: invalid('sources') }"
+          :class="{ flag: invalid('sources'), 'flag-src': sourcesShort && !invalid('sources') }"
           role="group"
           aria-labelledby="f-sources-title"
-          :aria-describedby="reasonIds('sources')"
+          :aria-describedby="sourcesDescribedBy()"
         >
-          <h4 id="f-sources-title">出典</h4>
+          <h4 id="f-sources-title">{{ sourcesShort ? SOURCE_TEXT.shortTitle : '出典' }}</h4>
           <div v-for="(source, i) in fields.sources" :key="i" class="source-row">
             <input v-model="source.url" type="text" placeholder="https://..." aria-label="出典の URL" />
             <input v-model="source.title" type="text" placeholder="題（省略可）" aria-label="出典の題" />
             <button class="row-del" type="button" aria-label="この出典を外す" @click="removeSource(i)">&times;</button>
+            <span
+              v-if="judgement && markLabel(judgement.marks[i]!)"
+              class="chip source-mark"
+              :class="judgement.marks[i]!.kind === 'whitelist' ? 'published' : 'kind'"
+              >{{ markLabel(judgement.marks[i]!) }}</span
+            >
+          </div>
+          <template v-if="judgement">
+            <div v-if="judgement.enough" id="f-sources-judgement" class="src-ok">{{ SOURCE_TEXT.enough }}</div>
+            <div v-else id="f-sources-judgement" class="hint">{{ shortfallMessage(judgement.onlyHost) }}</div>
+          </template>
+          <div v-else-if="whitelistFailed" id="f-sources-judgement" class="src-err">
+            {{ SOURCE_TEXT.whitelistUnreadable }}
           </div>
           <div>
             <button class="btn quiet" type="button" @click="addSource">＋ 出典を足す</button>
-          </div>
-          <div class="switch-row">
-            <button
-              class="toggle"
-              type="button"
-              :aria-pressed="fields.sourcePending"
-              aria-label="出典の確認待ち"
-              @click="fields.sourcePending = !fields.sourcePending"
-            ></button>
-            <span class="sub">{{ fields.sourcePending ? '出典の確認待ち' : '確認済み' }}</span>
           </div>
         </div>
 
@@ -493,7 +494,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
         </div>
       </div>
       <PreviewPane v-if="previewOpen" :note="PREVIEW_NOTES.published">
-        <FootprintsPreview :fields="fields" :event-id="eventId ?? 0" />
+        <FootprintsPreview :fields="fields" :event-id="eventId ?? 0" :source-pending="previewSourcePending" />
       </PreviewPane>
     </div>
 
@@ -503,11 +504,6 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
       <span class="grow"></span>
       <span class="foot-sep" aria-hidden="true"></span>
       <button class="btn danger" type="button" :disabled="saving" @click="reject">却下</button>
-    </div>
-    <div v-else-if="mode === 'source'" class="inspector-foot">
-      <button class="btn primary" type="button" :disabled="saving" @click="confirmSource">出典を確かめた</button>
-      <button class="btn" type="button" :disabled="saving" @click="act('save')">保存</button>
-      <button class="btn back quiet" type="button" @click="back">← 一覧</button>
     </div>
     <div v-else-if="event === null" class="inspector-foot">
       <button class="btn primary" type="button" :disabled="saving" @click="create">保存</button>
@@ -559,6 +555,37 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
 </template>
 
 <style scoped>
+/* Short of sources: the flag colours, kept to the panel's own column (.flag takes a whole row). */
+.panel.flag-src {
+  border-color: var(--a-flag);
+  background: var(--a-flag-soft);
+}
+
+.panel.flag-src > h4 {
+  color: var(--a-flag);
+}
+
+/* The chip saying how a source counts goes under its URL and title, so a long one does not narrow the URL. */
+.source-row {
+  row-gap: 4px;
+}
+
+.source-mark {
+  grid-column: 1 / 3;
+  justify-self: start;
+}
+
+.src-ok {
+  color: var(--k-ok);
+  font-size: var(--a-small);
+  font-weight: 700;
+}
+
+.src-err {
+  color: var(--a-danger);
+  font-size: var(--a-small);
+}
+
 /* The reasons a publish was refused, one each, as the worker gave them. */
 .reasons {
   margin: 0;

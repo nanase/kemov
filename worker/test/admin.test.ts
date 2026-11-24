@@ -385,7 +385,6 @@ describe('handleAdminRequest routing to footprints', () => {
     place: null,
     supplement: null,
     videoId: null,
-    sourcePending: true,
     memo: null,
     channelIds: [],
     sources: [],
@@ -431,7 +430,7 @@ describe('handleAdminRequest routing to footprints', () => {
   });
 
   test('routes POST .../publish and .../withdraw', async () => {
-    const fields = { ...minimalEventBody, sourcePending: true, sources: [] };
+    const fields = { ...minimalEventBody, sources: [] };
     const created = await post('/admin/api/footprints/events', fields);
     const { event } = (await created.json()) as { event: { eventId: number } };
 

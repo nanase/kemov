@@ -1,9 +1,9 @@
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
-import { readSourceWhitelist } from '../lib/source-whitelist';
-import { present as presentEvent, readEvent, readEvents } from './footprints';
-import { sourcesProblem, waitingFootprints } from './footprints-publish';
+import { readSourceWhitelist, sourcesEnough } from '../lib/source-whitelist';
+import { present as presentEvent, readEvents } from './footprints';
+import { footprintsNeedsWrite, waitingFootprints } from './footprints-publish';
 import { waitingGenetMusic } from './genet-publish';
 import { present as presentStream, readStreams } from './genet-streams';
 import { waitingSubscriberMilestones } from './subscriber-milestones-publish';
@@ -31,12 +31,43 @@ const NEVER_PUBLISHED_STREAM = `video_id NOT IN (
 const REVIEW_EVENTS = `status = 'draft' AND ${NEVER_PUBLISHED_EVENT}`;
 const REVIEW_STREAMS = `status = 'review' OR (status = 'draft' AND ${NEVER_PUBLISHED_STREAM})`;
 
+/**
+ * Every event whose sources are not enough (#282), by date and then by id:
+ * what 出典の確認待ち lists. Judged here rather than in SQL, by the same rule
+ * the public JSON's `source_pending` and the admin screen use. One query for
+ * every event's sources: there are a few hundred events, not more.
+ */
+async function eventIdsShortOfSources(env: Env): Promise<number[]> {
+  const [{ results }, whitelist] = await Promise.all([
+    env.DB.prepare(
+      `SELECT e.event_id, s.url
+         FROM footprints_event e
+         LEFT JOIN footprints_event_source s ON s.event_id = e.event_id
+        ORDER BY e.start_date, e.event_id, s.position`,
+    ).all<{ event_id: number; url: string | null }>(),
+    readSourceWhitelist(env),
+  ]);
+
+  const urlsById = new Map<number, string[]>();
+
+  for (const row of results) {
+    const urls = urlsById.get(row.event_id) ?? [];
+
+    if (row.url !== null) urls.push(row.url);
+    urlsById.set(row.event_id, urls);
+  }
+
+  return [...urlsById].flatMap(([eventId, urls]) => (sourcesEnough(urls, whitelist) ? [] : [eventId]));
+}
+
 /** GET /admin/api/inbox - how many rows each やること screen holds, for the sidebar. */
 export async function inboxCounts(env: Env): Promise<Response> {
   const [events, streams, source, footprints, genet, milestones] = await Promise.all([
     env.DB.prepare(`SELECT count(*) AS n FROM footprints_event WHERE ${REVIEW_EVENTS}`).first<{ n: number }>(),
     env.DB.prepare(`SELECT count(*) AS n FROM genet_stream WHERE ${REVIEW_STREAMS}`).first<{ n: number }>(),
-    env.DB.prepare('SELECT count(*) AS n FROM footprints_event WHERE source_pending = 1').first<{ n: number }>(),
+    // Judging reads the whitelist and every source; a failure there leaves
+    // this one count unknown rather than the sidebar without any.
+    eventIdsShortOfSources(env).catch(() => null),
     waitingFootprints(env),
     waitingGenetMusic(env),
     waitingSubscriberMilestones(env),
@@ -44,7 +75,7 @@ export async function inboxCounts(env: Env): Promise<Response> {
 
   return jsonResponse({
     review: (events?.n ?? 0) + (streams?.n ?? 0),
-    source: source?.n ?? 0,
+    source: source === null ? null : source.length,
     publish: footprints.length + genet.pending.length + milestones.pending.length + milestones.eventChanged.length,
   });
 }
@@ -105,20 +136,14 @@ export async function listReviewInbox(env: Env): Promise<Response> {
   });
 }
 
-/** GET /admin/api/inbox/source - 出典の確認待ち: every event still marked so, whatever its status. */
+/** GET /admin/api/inbox/source - 出典の確認待ち: every event short of sources, whatever its status. */
 export async function listSourceInbox(env: Env): Promise<Response> {
-  const { results } = await env.DB.prepare(
-    'SELECT event_id FROM footprints_event WHERE source_pending = 1 ORDER BY start_date, event_id',
-  ).all<{ event_id: number }>();
-
-  const byId = await readEvents(
-    env,
-    results.map((row) => row.event_id),
-  );
+  const eventIds = await eventIdsShortOfSources(env);
+  const byId = await readEvents(env, eventIds);
 
   return jsonResponse({
-    events: results.flatMap((row) => {
-      const saved = byId.get(row.event_id);
+    events: eventIds.flatMap((eventId) => {
+      const saved = byId.get(eventId);
 
       return saved === undefined ? [] : [presentEvent(saved)];
     }),
@@ -147,8 +172,9 @@ interface PublishItem {
  * something.
  */
 export async function listPublishInbox(env: Env): Promise<Response> {
-  const [footprints, genet, milestones] = await Promise.all([
+  const [footprints, footprintsWrite, genet, milestones] = await Promise.all([
     waitingFootprints(env),
+    footprintsNeedsWrite(env),
     waitingGenetMusic(env),
     waitingSubscriberMilestones(env),
   ]);
@@ -215,7 +241,7 @@ export async function listPublishInbox(env: Env): Promise<Response> {
       ),
     ],
     canPublish: {
-      footprints: footprints.length > 0,
+      footprints: footprints.length > 0 || footprintsWrite,
       genet: genet.pending.length > 0 || genet.shapeOutdated,
       milestones: milestones.needsBuild,
     },
@@ -264,34 +290,4 @@ export async function deferStream(env: Env, videoId: string): Promise<Response> 
     .run();
 
   return jsonResponse({ status: 'review' });
-}
-
-/**
- * POST /admin/api/footprints/events/:eventId/confirm-source - 「出典を確かめた」.
- * Clears `source_pending` once the saved sources back the event the way
- * publishing asks (`sourcesProblem`); 400 with the reason otherwise, so a row
- * cannot leave 出典の確認待ち on sources that would then fail to publish.
- *
- * A published row's public copy still says 確認待ち afterwards: like any
- * other save of the mark alone, this logs no revision, and the row needs
- * 「保存」 on あしあと to reach the public timeline.
- */
-export async function confirmEventSources(env: Env, eventId: number): Promise<Response> {
-  const saved = await readEvent(env, eventId);
-
-  if (saved === null) return errorResponse(404, `no footprints event ${eventId}`);
-
-  const problem = sourcesProblem(saved.sources, await readSourceWhitelist(env));
-
-  if (problem !== null) return jsonResponse({ errors: [problem] }, { status: 400 });
-
-  await env.DB.prepare(
-    `UPDATE footprints_event
-        SET source_pending = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-      WHERE event_id = ?1`,
-  )
-    .bind(eventId)
-    .run();
-
-  return jsonResponse({ event: presentEvent({ ...saved, event: { ...saved.event, source_pending: 0 } }) });
 }

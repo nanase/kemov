@@ -93,9 +93,10 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 条件は次のとおりです。
 
 - `title` が空でない
-- `sourcePending: false` なら、数に入る出典がある（[出典のホワイトリスト](#出典のホワイトリスト)）
 - `videoId` が 11 文字
 - `kind` が `debut` なら、`leadChannelIds` が 1 つ以上ある
+
+出典が足りなくても、公開は断りません。公開の JSON の `source_pending` が `true` になり、年表に「出典の確認待ち」と出ます（[出典のホワイトリスト](#出典のホワイトリスト)）。
 
 公開の JSON を書けなかったときは、502 を返します。
 
@@ -117,44 +118,58 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 
 `leadChannelIds` は、`channelIds` のうち出来事の主役のメンバーです。`channelIds` に無い ID を含めると、保存の時点で 400 を返します。主役が無いデビューも、下書きとしては保存できます。
 
-`GET .../pending` と `POST /admin/api/footprints/publish` は、公開の画面のために #285 まで残します。#281 より前の流れで公開待ちにした版は、`POST /admin/api/footprints/publish` か、次の公開・公開中の保存・非公開に戻すのどれかで公開の JSON に入ります。どれも、各できごとの最新の版から JSON を作るためです。`POST /admin/api/footprints/publish` も、書いた後に公開と同じ確かめを通ります。最新にできなかったときは、502 を返し、`publication` の行を足しません。公開待ちの版が無くても、`behind` が `true` なら記録から作り直します。
+`GET .../pending` と `POST /admin/api/footprints/publish` は、公開の画面のために #285 まで残します。#281 より前の流れで公開待ちにした版は、`POST /admin/api/footprints/publish` か、次の公開・公開中の保存・非公開に戻すのどれかで公開の JSON に入ります。どれも、各できごとの最新の版から JSON を作るためです。`POST /admin/api/footprints/publish` も、書いた後に公開と同じ確かめを通ります。最新にできなかったときは、502 を返し、`publication` の行を足しません。公開待ちの版が無くても、`behind` か `outdated` が `true` なら記録から作り直します。
 
 主役（`lead_channel_ids`）は、migration 0011 で足しました。それより前の `publish` の版は、このキーを持ちません。JSON を作るときと `GET .../pending` が比べるときは、この版を主役なし（`[]`）として読みます。
 
 ## 出典のホワイトリスト
 
-`sourcePending: false` には、ホワイトリストに載った出典が 1 つあるか、別々のホストの出典が 2 つあることが必要です。
+あしあとの出典が足りるのは、ホワイトリストに載った出典が 1 つあるか、別々のホストの出典が 2 つあるときです。足りない出来事は、公開の JSON で `source_pending` が `true` になります（#282）。
+
+判定は `src/admin/lib/source-check.ts` の `sourcesEnough` が行います。worker と管理サイトの画面が同じ関数を使うので、編集の欄の判定と公開の JSON は食い違いません。出来事の行は判定の結果を持ちません。
+
+公開の JSON を書くたびに、JSON に載る出来事をすべて、そのときのホワイトリストで判定し直します。
+
+- 版の `body` には、公開した時点の判定が残る
+- #282 より前に手で付けた印も、次に JSON を書くときに判定に置き換わる
+- `GET .../pending` の `changed` は、両側を今のホワイトリストで判定してから比べる。ホワイトリストを直しただけでは `changed` にならない
+
+ホワイトリストに項目を追加・削除すると、本番の JSON の出来事が、今の版とホワイトリストから作る出来事と違うときだけ、公開の JSON を書き直します（`footprints-publish.ts` の `isOutdated`）。
+
+- 公開待ちの版が残っていれば、ほかの公開と同じく、それも JSON に入る
+- 書き直しだけが失敗しても、項目の追加・削除は取り消さない。応答の `timelineCurrent` が `false` になる
+- 本番の JSON が古いときは、`GET /admin/api/footprints/pending` の `outdated` が `true` になり、「いま公開する」で書き直せる
 
 ホワイトリストは、単独で出典として十分な URL の前方一致の一覧です。載っているのは、プロジェクト自身のドメインとアカウント、提携先の告知、イベントの主催者、ファンの wiki 2 つなどです。
 
 - 一覧の実体は `source_whitelist` の表で、`migrations/0008_add_source_whitelist.sql` が作る（#175）
   - 初期値は、コードが以前定数として持っていた 13 件
-- `worker/src/lib/source-whitelist.ts` が、公開のたびに一覧を読む
-- 判定は `isWhitelistedSource` が行う
+- `worker/src/lib/source-whitelist.ts` の `readSourceWhitelist` が、公開の JSON を書くたびに一覧を読む
+- 一覧との照合は `src/admin/lib/source-check.ts` の `isWhitelistedSource` が行う
   - 前方一致で、一致した後に続く文字も確かめる。`https://x.com/KEMOVP_staff_fake` は `https://x.com/KEMOVP_staff` に数えない
   - 一覧を引数で受け取り、何が数に入るかはその一覧だけで決まる
 
 別々のホストの出典が 2 つあれば、どちらも載っていなくて構いません。同じホストの URL が 2 つ、たとえば YouTube の動画 2 本では、互いを繰り返しているだけなので足りません。
 
-ホストは `new URL(url).hostname` から先頭の `www.` を除いたものです。`worker/src/lib/source-whitelist.ts` の `HOST_ALIASES` が、次を同じホストとみなします。同じ場所を別の書き方で指すと分かっているホストだけを載せています。
+ホストは `new URL(url).hostname` から先頭の `www.` を除いたものです。`src/admin/lib/source-check.ts` の `HOST_ALIASES` が、次を同じホストとみなします。同じ場所を別の書き方で指すと分かっているホストだけを載せています。
 
 - `twitter.com` は `x.com`
 - `youtu.be` と `m.youtube.com` は `youtube.com`
 
 1 つの投稿や 1 つのアカウントを指す 2 つの URL は、1 つの出典として数えます。この読み替えはホストを数えるときだけに使い、ホワイトリストとの照合は URL の文字列そのもので行います。
 
-| メソッド | パス                                   | 返すもの                                         |
-| -------- | -------------------------------------- | ------------------------------------------------ |
-| GET      | `/admin/api/source-whitelist`          | すべての項目。足した順                           |
-| POST     | `/admin/api/source-whitelist`          | 足した後の項目。前方一致の文字列が既にあれば 409 |
-| PUT      | `/admin/api/source-whitelist/<prefix>` | `note` を変えた後の項目。直せる列は `note` だけ  |
-| DELETE   | `/admin/api/source-whitelist/<prefix>` | `{}`                                             |
+| メソッド | パス                                   | 返すもの                                                             |
+| -------- | -------------------------------------- | -------------------------------------------------------------------- |
+| GET      | `/admin/api/source-whitelist`          | すべての項目。足した順                                               |
+| POST     | `/admin/api/source-whitelist`          | 足した後の項目と `timelineCurrent`。前方一致の文字列が既にあれば 409 |
+| PUT      | `/admin/api/source-whitelist/<prefix>` | `note` を変えた後の項目。直せる列は `note` だけ                      |
+| DELETE   | `/admin/api/source-whitelist/<prefix>` | `timelineCurrent`                                                    |
 
 `<prefix>` は、URL をパーセントエンコードして 1 つのパスの区切りに収めたものです。
 
-保存した時点で効き、`revision` は記録しません。一覧は公開の門の設定で、公開するものではないためです。
+保存した時点で効き、`revision` は記録しません。一覧は出典の判定の設定で、公開するものではないためです。
 
-項目を取り除くと、次に公開するときの判定が変わります。既に公開したものは変わりません。公開中のできごとは公開されたままで、その項目だけが出典を支えていたできごとは、次に誰かが公開するときに拒まれます。できごとがその項目を使っていても、取り除く操作は拒みません。
+項目を足したり取り除いたりすると、その場で公開の JSON を判定し直し、出来事の `source_pending` が変わるときは書き直します（[出典のホワイトリスト](#出典のホワイトリスト)）。出来事がその項目を使っていても、取り除く操作は拒みません。
 
 ## ジェネット楽曲一覧
 
@@ -319,14 +334,13 @@ JSON は `shape_version`（`subscriber-milestones-publish.ts` の `SUBSCRIBER_MI
 
 確認待ち・出典の確認待ち・公開待ちの 3 つの画面は、上のデータの絞り込みです。自分の表は持ちません（#141）。`worker/src/admin/inbox.ts` が行を選び、1 段だけ動かします。行の中身と公開の仕方は、上の各エンドポイントが受け持ちます。
 
-| メソッド | パス                                                        | 返すもの                                                                                           |
-| -------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| GET      | `/admin/api/inbox`                                          | 確認待ち・出典の確認待ち・公開待ちそれぞれの行の数。サイドバーに出す                               |
-| GET      | `/admin/api/inbox/review`                                   | 確認待ちの出来事と配信。配信が演奏する曲の題も返す                                                 |
-| GET      | `/admin/api/inbox/source`                                   | `sourcePending` が true の出来事のすべて。`status` を問わない                                      |
-| GET      | `/admin/api/inbox/publish`                                  | 次の「いま公開する」が扱うものを、公開の JSON ごとに題と日付を付けて返す。押して何か起きるかも返す |
-| POST     | `/admin/api/footprints/events/<できごと ID>/confirm-source` | `sourcePending` を false にした後の行。出典が公開の条件を満たさなければ 400                        |
-| POST     | `/admin/api/genet/streams/<動画 ID>/defer`                  | `{ "status": "review" }`。`published` の配信なら 409                                               |
+| メソッド | パス                                       | 返すもの                                                                                                                      |
+| -------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| GET      | `/admin/api/inbox`                         | 確認待ち・出典の確認待ち・公開待ちそれぞれの行の数。サイドバーに出す。出典を判定できないときは、出典の確認待ちの数だけ `null` |
+| GET      | `/admin/api/inbox/review`                  | 確認待ちの出来事と配信。配信が演奏する曲の題も返す                                                                            |
+| GET      | `/admin/api/inbox/source`                  | 出典が足りない出来事のすべて。`status` を問わない                                                                             |
+| GET      | `/admin/api/inbox/publish`                 | 次の「いま公開する」が扱うものを、公開の JSON ごとに題と日付を付けて返す。押して何か起きるかも返す                            |
+| POST     | `/admin/api/genet/streams/<動画 ID>/defer` | `{ "status": "review" }`。`published` の配信なら 409                                                                          |
 
 確認待ちに並ぶのは、次の行です。
 
@@ -337,7 +351,7 @@ JSON は `shape_version`（`subscriber-milestones-publish.ts` の `SUBSCRIBER_MI
 
 承認は各行の `POST .../publish`、却下は各行の `DELETE` を使います。ここに専用のエンドポイントはありません。あしあとの承認は、行の欄を本文に送ります。
 
-`defer` と `confirm-source` は、保存と同じく `revision` を記録しません。そのため、公開中の出来事の出典を確かめても、公開の JSON はそのままです。あしあとで「保存」を押すと反映されます。
+`defer` は、保存と同じく `revision` を記録しません。
 
 公開待ちの登録者数の節目には、`eventChanged` の節目も入ります。`latestAction` は `event_changed` です。
 

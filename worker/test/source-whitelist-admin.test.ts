@@ -21,6 +21,8 @@ async function listed(): Promise<Entry[]> {
   return ((await (await listSourceWhitelist(env)).json()) as { sourceWhitelist: Entry[] }).sourceWhitelist;
 }
 
+const NOW = new Date('2026-11-24T09:00:00Z');
+
 const HOST_PROBLEM = 'prefix must start with a lowercase host name, without a port or a user name';
 
 describe('listSourceWhitelist', () => {
@@ -29,8 +31,8 @@ describe('listSourceWhitelist', () => {
   });
 
   test('lists entries in the order they were added', async () => {
-    await addSourceWhitelist(env, { prefix: 'https://b.example/' });
-    await addSourceWhitelist(env, { prefix: 'https://a.example/' });
+    await addSourceWhitelist(env, { prefix: 'https://b.example/' }, NOW);
+    await addSourceWhitelist(env, { prefix: 'https://a.example/' }, NOW);
 
     expect((await listed()).map((entry) => entry.prefix)).toEqual(['https://b.example/', 'https://a.example/']);
   });
@@ -38,7 +40,7 @@ describe('listSourceWhitelist', () => {
 
 describe('addSourceWhitelist', () => {
   test('adds an entry with its note and answers 201', async () => {
-    const response = await addSourceWhitelist(env, { prefix: 'https://partner.example/news/', note: '提携先' });
+    const response = await addSourceWhitelist(env, { prefix: 'https://partner.example/news/', note: '提携先' }, NOW);
 
     expect(response.status).toEqual(201);
 
@@ -54,15 +56,15 @@ describe('addSourceWhitelist', () => {
   });
 
   test('takes a missing note as none', async () => {
-    await addSourceWhitelist(env, { prefix: 'https://partner.example/' });
+    await addSourceWhitelist(env, { prefix: 'https://partner.example/' }, NOW);
 
     expect((await listed())[0]!.note).toBeNull();
   });
 
   test('answers 409 for a prefix already on the list, and adds nothing', async () => {
-    await addSourceWhitelist(env, { prefix: 'https://partner.example/' });
+    await addSourceWhitelist(env, { prefix: 'https://partner.example/' }, NOW);
 
-    const response = await addSourceWhitelist(env, { prefix: 'https://partner.example/', note: 'again' });
+    const response = await addSourceWhitelist(env, { prefix: 'https://partner.example/', note: 'again' }, NOW);
 
     expect(response.status).toEqual(409);
     expect(await listed()).toHaveLength(1);
@@ -83,7 +85,7 @@ describe('addSourceWhitelist', () => {
     [{ prefix: 'https://partner.example/', note: 3 }, 'note must be a non-empty string or null'],
     [{ prefix: 'https://partner.example/', other: 1 }, 'other cannot be saved'],
   ])('refuses %j with 400, and adds nothing', async (body, message) => {
-    const response = await addSourceWhitelist(env, body);
+    const response = await addSourceWhitelist(env, body, NOW);
 
     expect(response.status).toEqual(400);
     expect(await response.json()).toEqual({ error: message });
@@ -96,14 +98,14 @@ describe('addSourceWhitelist', () => {
       'https://x.com/Someone_KEMOV',
       'https://dic.nicovideo.jp/a/%E3%81%91',
     ]) {
-      expect((await addSourceWhitelist(env, { prefix })).status).toEqual(201);
+      expect((await addSourceWhitelist(env, { prefix }, NOW)).status).toEqual(201);
     }
   });
 });
 
 describe('updateSourceWhitelist', () => {
   test('changes the note and moves updated_at, not created_at', async () => {
-    await addSourceWhitelist(env, { prefix: 'https://partner.example/', note: 'before' });
+    await addSourceWhitelist(env, { prefix: 'https://partner.example/', note: 'before' }, NOW);
     await env.DB.prepare(
       `UPDATE source_whitelist SET created_at = '2026-01-01T00:00:00Z', updated_at = '2026-01-01T00:00:00Z'`,
     ).run();
@@ -123,14 +125,14 @@ describe('updateSourceWhitelist', () => {
   });
 
   test('clears the note with null', async () => {
-    await addSourceWhitelist(env, { prefix: 'https://partner.example/', note: 'before' });
+    await addSourceWhitelist(env, { prefix: 'https://partner.example/', note: 'before' }, NOW);
     await updateSourceWhitelist(env, 'https://partner.example/', { note: null });
 
     expect((await listed())[0]!.note).toBeNull();
   });
 
   test('refuses a key other than note, since a different prefix is a different entry', async () => {
-    await addSourceWhitelist(env, { prefix: 'https://partner.example/' });
+    await addSourceWhitelist(env, { prefix: 'https://partner.example/' }, NOW);
 
     const response = await updateSourceWhitelist(env, 'https://partner.example/', { prefix: 'https://other.example/' });
 
@@ -145,30 +147,30 @@ describe('updateSourceWhitelist', () => {
 
 describe('deleteSourceWhitelist', () => {
   test('removes the entry', async () => {
-    await addSourceWhitelist(env, { prefix: 'https://a.example/' });
-    await addSourceWhitelist(env, { prefix: 'https://b.example/' });
+    await addSourceWhitelist(env, { prefix: 'https://a.example/' }, NOW);
+    await addSourceWhitelist(env, { prefix: 'https://b.example/' }, NOW);
 
-    expect((await deleteSourceWhitelist(env, 'https://a.example/')).status).toEqual(200);
+    expect((await deleteSourceWhitelist(env, 'https://a.example/', NOW)).status).toEqual(200);
     expect((await listed()).map((entry) => entry.prefix)).toEqual(['https://b.example/']);
   });
 
   test('answers 404 for a prefix that is not on the list', async () => {
-    expect((await deleteSourceWhitelist(env, 'https://nowhere.example/')).status).toEqual(404);
+    expect((await deleteSourceWhitelist(env, 'https://nowhere.example/', NOW)).status).toEqual(404);
   });
 
   // Refusing would make the list impossible to prune once anything used it,
   // and an event already published stays published either way.
   test('does not refuse a prefix an event source still matches, or touch the event', async () => {
     await env.DB.prepare(
-      `INSERT INTO footprints_event (date_precision, start_date, kind, title, source_pending, status)
-       VALUES ('day', '2026-01-01', 'other', 'イベント', 0, 'published')`,
+      `INSERT INTO footprints_event (date_precision, start_date, kind, title, status)
+       VALUES ('day', '2026-01-01', 'other', 'イベント', 'published')`,
     ).run();
     await env.DB.prepare(
       `INSERT INTO footprints_event_source (event_id, position, url) VALUES (1, 1, 'https://partner.example/a')`,
     ).run();
-    await addSourceWhitelist(env, { prefix: 'https://partner.example/' });
+    await addSourceWhitelist(env, { prefix: 'https://partner.example/' }, NOW);
 
-    expect((await deleteSourceWhitelist(env, 'https://partner.example/')).status).toEqual(200);
+    expect((await deleteSourceWhitelist(env, 'https://partner.example/', NOW)).status).toEqual(200);
     expect(await env.DB.prepare('SELECT status FROM footprints_event').first()).toEqual({ status: 'published' });
   });
 });

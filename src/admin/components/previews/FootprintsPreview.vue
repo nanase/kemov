@@ -22,12 +22,14 @@ import { publicChannels } from '../../lib/public-data';
 const props = defineProps<{
   fields: EventFormFields;
   eventId: number;
+  /** Whether the card says 出典の確認待ち: the judgement of the sources, as publishing makes it. */
+  sourcePending: boolean;
 }>();
 
 const channels = ref<Channel[]>([]);
 const channelsFailed = ref(false);
 
-const readout = computed(() => publicEventOf(props.fields, props.eventId));
+const readout = computed(() => publicEventOf(props.fields, props.eventId, props.sourcePending));
 const item = computed(() => (readout.value.ok ? eventItems([readout.value.value], new Map(), Date.now())[0]! : null));
 const members = computed(() =>
   readout.value.ok
