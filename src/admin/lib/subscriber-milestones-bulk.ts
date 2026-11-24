@@ -17,7 +17,14 @@ export interface BulkPublishSkip {
 
 export interface BulkPublishOutcome {
   total: number;
+  /** Rows this run published. */
   published: number;
+  /**
+   * Rows already published by the time the run reached them, which it sent
+   * nothing for. Not counted as published: another request may have
+   * recorded the publish and then failed to write the public JSON.
+   */
+  alreadyPublished: number;
   skipped: BulkPublishSkip[];
   /** The row whose failure stopped the run, or null when every row was tried. Rows after it were not. */
   stopped: BulkPublishSkip | null;
@@ -46,6 +53,9 @@ function isRefusal(error: unknown): error is AdminApiError {
   );
 }
 
+/** What `publishInTurn`'s `publish` answers for a row it found published already, and sent nothing for. */
+export const ALREADY_PUBLISHED = 'already_published';
+
 /**
  * Publishes `targets` one at a time, each request waiting for the one before.
  * A 400 that lists the publish's own problems is the check refusing that
@@ -53,20 +63,27 @@ function isRefusal(error: unknown): error is AdminApiError {
  * field a save refuses, the network, a 5xx (the public JSON could not be
  * written among them), a 404 for a row deleted since the list was read, a
  * 409 for one published since - stops the run there: the rows after it are
- * not tried.
+ * not tried. `publish` answers `ALREADY_PUBLISHED` for a row it found
+ * published already and sent nothing for.
  * `onProgress` is told how many rows have been answered, stopped row aside.
  */
 export async function publishInTurn(
   targets: readonly SubscriberMilestone[],
-  publish: (milestone: SubscriberMilestone) => Promise<unknown>,
+  publish: (milestone: SubscriberMilestone) => Promise<typeof ALREADY_PUBLISHED | void>,
   onProgress?: (done: number) => void,
 ): Promise<BulkPublishOutcome> {
-  const outcome: BulkPublishOutcome = { total: targets.length, published: 0, skipped: [], stopped: null };
+  const outcome: BulkPublishOutcome = {
+    total: targets.length,
+    published: 0,
+    alreadyPublished: 0,
+    skipped: [],
+    stopped: null,
+  };
 
   for (const milestone of targets) {
     try {
-      await publish(milestone);
-      outcome.published++;
+      if ((await publish(milestone)) === ALREADY_PUBLISHED) outcome.alreadyPublished++;
+      else outcome.published++;
     } catch (error) {
       if (!isRefusal(error)) {
         outcome.stopped = { milestone, reason: error instanceof Error ? error.message : String(error) };
@@ -76,7 +93,7 @@ export async function publishInTurn(
       outcome.skipped.push({ milestone, reason: error.message });
     }
 
-    onProgress?.(outcome.published + outcome.skipped.length);
+    onProgress?.(outcome.published + outcome.alreadyPublished + outcome.skipped.length);
   }
 
   return outcome;

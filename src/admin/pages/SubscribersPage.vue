@@ -20,7 +20,12 @@ import {
 import { SAVE_TOAST } from '../lib/editing';
 import { countText } from '../lib/list-count';
 import { useListTotal } from '../lib/list-total';
-import { bulkPublishTargets, publishInTurn, type BulkPublishOutcome } from '../lib/subscriber-milestones-bulk';
+import {
+  ALREADY_PUBLISHED,
+  bulkPublishTargets,
+  publishInTurn,
+  type BulkPublishOutcome,
+} from '../lib/subscriber-milestones-bulk';
 import type { MilestonesPending } from '../lib/subscriber-milestones-publish';
 import { showToast } from '../lib/toast';
 import { confirmDiscard } from '../lib/unsaved-guard';
@@ -278,8 +283,9 @@ async function publishShownDrafts(): Promise<void> {
         // save whose answer came after another row was opened is not in it.
         const saved = await getJson<SubscriberMilestone>(`/subscribers/milestones/${milestoneId}`);
 
-        // Published elsewhere since the table was read: on the public site already.
-        if (saved.status !== 'draft') return;
+        // Published elsewhere since the table was read. Not counted as
+        // published by this run: that publish may not have reached the public JSON.
+        if (saved.status !== 'draft') return ALREADY_PUBLISHED;
 
         await postJson(`/subscribers/milestones/${milestoneId}/publish`, toRequestBody(toFormFields(saved)));
       },
@@ -365,13 +371,24 @@ onMounted(() => {
               <dd class="num">{{ bulkOutcome.published }} / {{ bulkOutcome.total }} 件</dd>
               <dt>出典が足りなかった</dt>
               <dd class="num">{{ bulkOutcome.skipped.length }} 件</dd>
+              <dt>公開済みだった</dt>
+              <dd class="num">{{ bulkOutcome.alreadyPublished }} 件</dd>
               <template v-if="bulkOutcome.stopped">
                 <dt>止まった行</dt>
                 <dd>{{ milestoneLine(bulkOutcome.stopped.milestone) }}</dd>
                 <dt>理由</dt>
                 <dd>{{ bulkOutcome.stopped.reason }}</dd>
                 <dt>まだ試していない</dt>
-                <dd class="num">{{ bulkOutcome.total - bulkOutcome.published - bulkOutcome.skipped.length - 1 }} 件</dd>
+                <dd class="num">
+                  {{
+                    bulkOutcome.total -
+                    bulkOutcome.published -
+                    bulkOutcome.alreadyPublished -
+                    bulkOutcome.skipped.length -
+                    1
+                  }}
+                  件
+                </dd>
               </template>
             </div>
             <template v-if="bulkOutcome.skipped.length > 0">

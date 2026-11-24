@@ -1,6 +1,6 @@
 import { AdminApiError } from '@/admin/lib/api';
 import type { SubscriberMilestone } from '@/admin/lib/subscriber-milestones';
-import { bulkPublishTargets, publishInTurn } from '@/admin/lib/subscriber-milestones-bulk';
+import { ALREADY_PUBLISHED, bulkPublishTargets, publishInTurn } from '@/admin/lib/subscriber-milestones-bulk';
 
 function milestone(milestoneId: number, status: string): SubscriberMilestone {
   return {
@@ -54,7 +54,7 @@ describe('publishInTurn', () => {
 
     expect(calls).toEqual([3, 2]);
     expect(progress).toEqual([1, 2]);
-    expect(outcome).toEqual({ total: 2, published: 2, skipped: [], stopped: null });
+    expect(outcome).toEqual({ total: 2, published: 2, alreadyPublished: 0, skipped: [], stopped: null });
   });
 
   // One at a time: the next request starts only once the previous one has answered.
@@ -91,9 +91,26 @@ describe('publishInTurn', () => {
     expect(outcome).toEqual({
       total: 3,
       published: 2,
+      alreadyPublished: 0,
       skipped: [{ milestone: refused, reason: SOURCES_PROBLEM }],
       stopped: null,
     });
+  });
+
+  // Published by another request since the table was read: that request may
+  // have recorded the publish and failed to write the public JSON, so this
+  // run does not say it published the row.
+  test('counts a row found published already apart from those it published', async () => {
+    const progress: number[] = [];
+
+    const outcome = await publishInTurn(
+      [milestone(1, 'draft'), milestone(2, 'draft'), milestone(3, 'draft')],
+      async ({ milestoneId: id }) => (id === 2 ? ALREADY_PUBLISHED : undefined),
+      (done) => progress.push(done),
+    );
+
+    expect(progress).toEqual([1, 2, 3]);
+    expect(outcome).toEqual({ total: 3, published: 2, alreadyPublished: 1, skipped: [], stopped: null });
   });
 
   test.each([
