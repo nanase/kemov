@@ -5,6 +5,7 @@ import FootprintsInspector from '../components/FootprintsInspector.vue';
 import GenetStreamReview from '../components/GenetStreamReview.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import { toFormFields, type FootprintsMember } from '../lib/footprints';
+import { isShortOfSources, useWhitelist, SOURCE_TEXT } from '../lib/footprints-sources';
 import { toFormFields as toStreamFormFields } from '../lib/genet-streams';
 import { liveMarkFor } from '../lib/publishing';
 import {
@@ -32,6 +33,8 @@ import { confirmDiscard } from '../lib/unsaved-guard';
 
 const inbox = ref<ReviewInbox | null>(null);
 const members = ref<FootprintsMember[]>([]);
+// The 出典ホワイトリスト's prefixes, or null while they are unknown.
+const { whitelist, failed: whitelistFailed, load: loadWhitelist } = useWhitelist();
 const loading = ref(false);
 const loadError = ref<string | null>(null);
 const selectedKey = ref<string | null>(null);
@@ -186,6 +189,7 @@ async function onKeydown(event: KeyboardEvent): Promise<void> {
 onMounted(() => {
   load();
   loadMembers();
+  loadWhitelist();
   document.addEventListener('keydown', onKeydown);
 });
 
@@ -280,7 +284,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
                 </span>
               </td>
               <td>
-                <span v-if="row.kind === 'event' && row.event.sourcePending" class="chip alarm">出典の確認待ち</span>
+                <span v-if="row.kind === 'event' && isShortOfSources(row.event, whitelist)" class="chip alarm">{{
+                  SOURCE_TEXT.shortChip
+                }}</span>
                 <span v-else class="chip" :class="liveMarkFor(row.status).tone">{{
                   liveMarkFor(row.status).label
                 }}</span>
@@ -308,6 +314,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
         :event="selected.event"
         :members="members"
         :pending="null"
+        :whitelist="whitelist"
+        :whitelist-failed="whitelistFailed"
         mode="review"
         :inert="loading || undefined"
         @changed="load"

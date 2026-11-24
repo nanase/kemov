@@ -2,6 +2,7 @@ import { env } from 'cloudflare:test';
 
 import { createEvent } from '../src/admin/footprints';
 import { publishEvent, publishFootprintsNow, saveEvent, withdrawEvent } from '../src/admin/footprints-publish';
+import { addSourceWhitelist } from '../src/admin/source-whitelist';
 import { createMilestone, deleteMilestone, getMilestone } from '../src/admin/subscriber-milestones';
 import {
   checkSources,
@@ -515,6 +516,34 @@ describe("an event's change", () => {
     expect((await withdrawEvent(env, eventId, eventFields('記念配信'), NOW)).status).toEqual(200);
 
     expect(await storedMilestones()).toEqual([expect.objectContaining({ event: null })]);
+  });
+
+  // A whitelist change writes the timeline from every latest revision, a
+  // waiting one too, so the milestones JSON follows it as after a publish (#282).
+  test('taken in by a whitelist change, is in the milestones JSON at once', async () => {
+    const eventId = await liveEvent('古い題');
+
+    await createPublished({ eventId });
+
+    const latest = await env.DB.prepare(
+      "SELECT body FROM revision WHERE entity = 'footprints_event' AND entity_key = ?1 ORDER BY revision_id DESC LIMIT 1",
+    )
+      .bind(String(eventId))
+      .first<{ body: string }>();
+
+    await env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body, created_via)
+       VALUES ('footprints_event', ?1, 'publish', ?2, 'admin')`,
+    )
+      .bind(String(eventId), JSON.stringify({ ...JSON.parse(latest!.body), title: '待っていた題' }))
+      .run();
+
+    const added = await addSourceWhitelist(env, { prefix: 'https://partner.example/' }, NOW);
+
+    expect(await added.json()).toMatchObject({ timelineCurrent: true });
+    expect(await storedMilestones()).toEqual([
+      expect.objectContaining({ event: expect.objectContaining({ event_id: eventId, title: '待っていた題' }) }),
+    ]);
   });
 
   test('does not write the milestones JSON when no milestone names the event', async () => {

@@ -8,6 +8,7 @@ import {
   entryPath,
   noteChanged,
   noteFromInput,
+  savedToast,
   type SourceWhitelistEntry,
 } from '../lib/source-whitelist';
 import { showToast } from '../lib/toast';
@@ -66,16 +67,19 @@ async function add(): Promise<void> {
   addError.value = null;
 
   try {
-    const body = await postJson<{ sourceWhitelist: SourceWhitelistEntry }>('/source-whitelist', {
-      prefix: newPrefix.value.trim(),
-      note: noteFromInput(newNote.value),
-    });
+    const body = await postJson<{ sourceWhitelist: SourceWhitelistEntry; timelineCurrent: boolean }>(
+      '/source-whitelist',
+      {
+        prefix: newPrefix.value.trim(),
+        note: noteFromInput(newNote.value),
+      },
+    );
 
     entries.value.push(body.sourceWhitelist);
     drafts[body.sourceWhitelist.prefix] = body.sourceWhitelist.note ?? '';
     newPrefix.value = '';
     newNote.value = '';
-    showToast('足しました');
+    showToast(savedToast('足しました', body.timelineCurrent));
   } catch (error) {
     addError.value = addErrorMessage(error);
   } finally {
@@ -107,11 +111,12 @@ async function remove(entry: SourceWhitelistEntry): Promise<void> {
   busyPrefixes.value.add(entry.prefix);
 
   try {
-    await deleteJson(entryPath(entry.prefix));
+    const body = await deleteJson<{ timelineCurrent: boolean }>(entryPath(entry.prefix));
+
     entries.value = entries.value.filter((e) => e.prefix !== entry.prefix);
     delete drafts[entry.prefix];
     confirming.value = null;
-    showToast('削除しました');
+    showToast(savedToast('削除しました', body.timelineCurrent));
   } catch (error) {
     showToast(error instanceof AdminApiError ? error.message : String(error));
   } finally {
@@ -136,9 +141,6 @@ onMounted(load);
             <p>
               この一覧にある URL で始まる出典は 1 つだけでも認められます。ほかの出典は別のサイトのものが 2
               つ以上あれば認められます。
-            </p>
-            <p>
-              削除してもすでに公開したできごとは公開されたままになります。ホワイトリストはこれから公開するときの判定だけに使われます。
             </p>
           </div>
 

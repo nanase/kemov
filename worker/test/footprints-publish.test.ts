@@ -8,6 +8,7 @@ import {
   saveEvent,
   withdrawEvent,
 } from '../src/admin/footprints-publish';
+import { addSourceWhitelist, deleteSourceWhitelist } from '../src/admin/source-whitelist';
 import type { Env } from '../src/lib/env';
 import { clearEverything } from './reset-db';
 
@@ -30,8 +31,6 @@ const LATER = new Date('2026-09-19T00:00:00Z');
 const OBJECT_KEY = 'footprints/events.json';
 const WHITELISTED_PREFIX = 'https://kemono-friends.jp/';
 const WHITELISTED_SOURCE = `${WHITELISTED_PREFIX}some-article`;
-const SOURCES_NOT_ENOUGH =
-  '出典が足りません。「出典の確認待ち」を外すには、ホワイトリストに載った出典を 1 つ足すか、別のサイトの出典を足してください。';
 const NO_TITLE = '題を書いてください。';
 
 /** `env` with an R2 that refuses every write - what a publish meets when the public JSON cannot be written. */
@@ -75,7 +74,6 @@ function validBody(overrides: Record<string, unknown> = {}) {
     place: null,
     supplement: null,
     videoId: null,
-    sourcePending: false,
     memo: 'draft note',
     channelIds: [],
     sources: [{ url: WHITELISTED_SOURCE, title: null }],
@@ -311,115 +309,98 @@ describe('publishEvent', () => {
     expect((await readPublished())!.events).toEqual([]);
   });
 
-  test('refuses sourcePending=false with no sources', async () => {
-    const eventId = await createValidEvent();
+  // #277's decision 2: short of sources is published, and the timeline says so.
+  test('publishes an event with no sources, marked source_pending', async () => {
+    await createPublishedEvent({ sources: [] });
 
-    const response = await publishEvent(env, eventId, validBody({ sources: [] }), NOW);
-
-    expect(response.status).toEqual(400);
-    expect(((await response.json()) as { problems: unknown[] }).problems).toEqual([
-      { field: 'sources', message: SOURCES_NOT_ENOUGH },
-    ]);
+    expect((await readPublished())!.events[0]).toMatchObject({ source_pending: true });
   });
 
-  test('refuses sourcePending=false when no source is in the whitelist', async () => {
-    const eventId = await createValidEvent();
-    const response = await publishEvent(
-      env,
-      eventId,
-      validBody({ sources: [source('https://ameblo.jp/someone/entry-1')] }),
-      NOW,
-    );
+  test('marks source_pending false for a source on the whitelist', async () => {
+    await createPublishedEvent();
 
-    expect(response.status).toEqual(400);
-    expect(((await response.json()) as { errors: string[] }).errors).toEqual([SOURCES_NOT_ENOUGH]);
+    expect((await readPublished())!.events[0]).toMatchObject({ source_pending: false });
+  });
+
+  test('marks source_pending true for one source outside the whitelist', async () => {
+    await createPublishedEvent({ sources: [source('https://ameblo.jp/someone/entry-1')] });
+
+    expect((await readPublished())!.events[0]).toMatchObject({ source_pending: true });
   });
 
   // #175: a source the whitelist does not name is enough when another one, on
   // a different host, backs it.
-  test('allows sourcePending=false when the sources are on two different hosts, though none is in the whitelist', async () => {
-    const eventId = await createValidEvent();
-    const sources = [
-      source('https://www.youtube.com/watch?v=aaaaaaaaaaa'),
-      source('https://x.com/Partner_KEMOV/status/1'),
-    ];
+  test('marks source_pending false for two sources on different hosts, though none is in the whitelist', async () => {
+    await createPublishedEvent({
+      sources: [source('https://www.youtube.com/watch?v=aaaaaaaaaaa'), source('https://x.com/Partner_KEMOV/status/1')],
+    });
 
-    expect((await publishEvent(env, eventId, validBody({ sources }), NOW)).status).toEqual(200);
-  });
-
-  test('refuses two sources on the same host, though none is in the whitelist', async () => {
-    const eventId = await createValidEvent();
-    const sources = [
-      source('https://www.youtube.com/watch?v=aaaaaaaaaaa'),
-      source('https://www.youtube.com/watch?v=bbbbbbbbbbb'),
-    ];
-
-    const response = await publishEvent(env, eventId, validBody({ sources }), NOW);
-
-    expect(response.status).toEqual(400);
-    expect(((await response.json()) as { errors: string[] }).errors).toEqual([SOURCES_NOT_ENOUGH]);
+    expect((await readPublished())!.events[0]).toMatchObject({ source_pending: false });
   });
 
   test.each([
-    ['x.com and twitter.com', 'https://x.com/Partner_KEMOV/status/1', 'https://twitter.com/Partner_KEMOV/status/1'],
-    ['x.com and www.x.com', 'https://x.com/Partner_KEMOV/status/1', 'https://www.x.com/Partner_KEMOV/status/1'],
-    ['youtu.be and www.youtube.com', 'https://youtu.be/aaaaaaaaaaa', 'https://www.youtube.com/watch?v=aaaaaaaaaaa'],
     [
-      'm.youtube.com and youtube.com',
-      'https://m.youtube.com/watch?v=aaaaaaaaaaa',
-      'https://youtube.com/watch?v=aaaaaaaaaaa',
+      'two videos on youtube.com',
+      'https://www.youtube.com/watch?v=aaaaaaaaaaa',
+      'https://www.youtube.com/watch?v=bbbbbbbbbbb',
     ],
-  ])('refuses %s, which are one host', async (_name, first, second) => {
-    const eventId = await createValidEvent();
+    ['x.com and twitter.com', 'https://x.com/Partner_KEMOV/status/1', 'https://twitter.com/Partner_KEMOV/status/1'],
+    ['youtu.be and www.youtube.com', 'https://youtu.be/aaaaaaaaaaa', 'https://www.youtube.com/watch?v=aaaaaaaaaaa'],
+  ])('marks source_pending true for %s, which are one host', async (_name, first, second) => {
+    await createPublishedEvent({ sources: [source(first), source(second)] });
 
-    const response = await publishEvent(env, eventId, validBody({ sources: [source(first), source(second)] }), NOW);
-
-    expect(response.status).toEqual(400);
-    expect(((await response.json()) as { errors: string[] }).errors).toEqual([SOURCES_NOT_ENOUGH]);
+    expect((await readPublished())!.events[0]).toMatchObject({ source_pending: true });
   });
 
-  test.each(['https://youtube.com/watch?v=aaaaaaaaaaa', 'https://youtu.be/aaaaaaaaaaa'])(
-    'allows x.com with %s, which are two hosts',
-    async (video) => {
-      const eventId = await createValidEvent();
-      const sources = [source('https://x.com/Partner_KEMOV/status/1'), source(video)];
+  // A `sourcePending` sent by an older screen is not a field any more, and
+  // says nothing about what the JSON shows.
+  test('ignores a sourcePending sent in the body', async () => {
+    await createPublishedEvent({ sourcePending: false, sources: [] });
 
-      expect((await publishEvent(env, eventId, validBody({ sources }), NOW)).status).toEqual(200);
-    },
-  );
-
-  test('refuses one source outside the whitelist, however many hosts it might have', async () => {
-    const eventId = await createValidEvent();
-    const sources = [source('https://www.youtube.com/watch?v=aaaaaaaaaaa')];
-
-    expect((await publishEvent(env, eventId, validBody({ sources }), NOW)).status).toEqual(400);
+    expect((await readPublished())!.events[0]).toMatchObject({ source_pending: true });
   });
 
-  // The whitelist is read from D1 at the moment of publishing, so an edit
-  // made from the admin site is in effect for the next publish and no other.
-  test('follows the whitelist table: an entry removed refuses, an entry added allows', async () => {
-    const eventId = await createValidEvent();
+  // The whitelist is read at each write of the JSON, and every event in it is
+  // judged again: one published before an entry was added says
+  // source_pending until the next write, and not after.
+  test('judges every event in the JSON again by the whitelist as it is at the write', async () => {
+    const earlier = await createPublishedEvent({ sources: [source('https://ameblo.jp/someone/entry-1')] });
 
-    await env.DB.prepare('DELETE FROM source_whitelist').run();
-    expect((await publishEvent(env, eventId, validBody(), NOW)).status).toEqual(400);
+    await env.DB.prepare('INSERT INTO source_whitelist (prefix) VALUES (?1)').bind('https://ameblo.jp/someone').run();
+    await createPublishedEvent({ startDate: '2025-02-01' });
 
-    await env.DB.prepare('INSERT INTO source_whitelist (prefix) VALUES (?1)').bind(WHITELISTED_PREFIX).run();
-    expect((await publishEvent(env, eventId, validBody(), NOW)).status).toEqual(200);
+    const published = (await readPublished())!.events;
+
+    expect(published.find((e) => e.event_id === earlier)).toMatchObject({ source_pending: false });
   });
 
-  test('does not look at the sources of an event whose sourcePending is true', async () => {
-    const eventId = await createValidEvent();
-    const body = validBody({ sourcePending: true, sources: [source('https://ameblo.jp/someone/entry-1')] });
+  // A body recorded before #282 carries the mark set by hand. The JSON says
+  // what the sources are judged now instead.
+  test('replaces a mark set by hand in an earlier body with the judgement', async () => {
+    const eventId = await createPublishedEvent();
+    const body = JSON.parse((await revisionRows()).at(-1)!.body!) as Record<string, unknown>;
 
-    expect((await publishEvent(env, eventId, body, NOW)).status).toEqual(200);
+    await env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body, created_via) VALUES ('footprints_event', ?1, 'publish', ?2, 'admin')`,
+    )
+      .bind(String(eventId), JSON.stringify({ ...body, source_pending: true }))
+      .run();
+
+    expect((await publishFootprintsNow(env, LATER)).status).toEqual(200);
+    expect((await readPublished())!.events[0]).toMatchObject({ source_pending: false });
   });
 
-  test('allows sourcePending=true with no sources', async () => {
-    const eventId = await createValidEvent();
+  test('records the judgement at the publish in the revision body', async () => {
+    await createPublishedEvent({ sources: [] });
 
-    expect((await publishEvent(env, eventId, validBody({ sourcePending: true, sources: [] }), NOW)).status).toEqual(
-      200,
-    );
+    expect(JSON.parse((await revisionRows()).at(-1)!.body!)).toMatchObject({ source_pending: true });
+  });
+
+  test('saves a published event short of sources, and the timeline says so', async () => {
+    const eventId = await createPublishedEvent();
+
+    expect((await saveEvent(env, eventId, validBody({ sources: [] }), LATER)).status).toEqual(200);
+    expect((await readPublished())!.events[0]).toMatchObject({ source_pending: true });
   });
 
   test('refuses a videoId that is not 11 characters', async () => {
@@ -465,11 +446,11 @@ describe('publishEvent', () => {
     const response = await publishEvent(env, eventId, validBody({ title: '', videoId: 'short', sources: [] }), NOW);
     const body = (await response.json()) as { errors: string[] };
 
-    expect(body.errors).toEqual([NO_TITLE, SOURCES_NOT_ENOUGH, '動画 ID は 11 文字です。いまは 5 文字です。']);
+    expect(body.errors).toEqual([NO_TITLE, '動画 ID は 11 文字です。いまは 5 文字です。']);
   });
 
-  test('emphasized and sourcePending are booleans in the published JSON', async () => {
-    await createPublishedEvent({ emphasized: true, sourcePending: false });
+  test('emphasized and source_pending are booleans in the published JSON', async () => {
+    await createPublishedEvent({ emphasized: true });
 
     expect((await readPublished())!.events[0]).toMatchObject({ emphasized: true, source_pending: false });
   });
@@ -625,7 +606,7 @@ describe('pendingFootprints', () => {
 
     const body = (await pendingFootprints(env).then((r) => r.json())) as { pending: unknown[]; changed: unknown[] };
 
-    expect(body).toEqual({ pending: [], changed: [], behind: false });
+    expect(body).toEqual({ pending: [], changed: [], behind: false, outdated: false });
   });
 
   test('lists an event whose latest revision the JSON was not written from', async () => {
@@ -681,6 +662,16 @@ describe('pendingFootprints', () => {
     const pending = (await pendingFootprints(env).then((r) => r.json())) as { changed: { eventId: number }[] };
 
     expect(pending.changed).toEqual([{ eventId, title: 'デビュー' }]);
+  });
+
+  test('does not report a change to the whitelist alone as changed', async () => {
+    await createPublishedEvent({ sources: [source('https://ameblo.jp/someone/entry-1')] });
+
+    await env.DB.prepare('INSERT INTO source_whitelist (prefix) VALUES (?1)').bind('https://ameblo.jp/someone').run();
+
+    const body = (await pendingFootprints(env).then((r) => r.json())) as { changed: unknown[] };
+
+    expect(body.changed).toEqual([]);
   });
 
   // The one way a published row can differ from what it was published as
@@ -751,5 +742,85 @@ describe('publishFootprintsNow', () => {
     expect(await response.json()).toMatchObject({ published: true, eventCount: 1 });
     expect((await readPublished())!.events.map((e) => e.event_id)).toEqual([kept]);
     expect(((await (await pendingFootprints(env)).json()) as { behind: boolean }).behind).toBe(false);
+  });
+});
+
+// The JSON judges sources by the whitelist it was written with, so a change
+// to the whitelist writes it again (#282).
+describe('a whitelist change', () => {
+  const OTHER_PREFIX = 'https://partner.example/';
+  const OTHER_SOURCE = `${OTHER_PREFIX}news/1`;
+
+  async function pendingMarks(): Promise<unknown[]> {
+    return (await readPublished())!.events.map((e) => e.source_pending);
+  }
+
+  test('writes the JSON again when it changes which events are short of sources', async () => {
+    await createPublishedEvent({ sources: [source(OTHER_SOURCE)] });
+
+    expect(await pendingMarks()).toEqual([true]);
+
+    const added = await addSourceWhitelist(env, { prefix: OTHER_PREFIX }, LATER);
+
+    expect(await added.json()).toMatchObject({ timelineCurrent: true });
+    expect(await pendingMarks()).toEqual([false]);
+
+    const removed = await deleteSourceWhitelist(env, OTHER_PREFIX, LATER);
+
+    expect(await removed.json()).toEqual({ timelineCurrent: true });
+    expect(await pendingMarks()).toEqual([true]);
+    expect(await publicationRows()).toHaveLength(3);
+  });
+
+  test('writes nothing when no event is judged differently', async () => {
+    await createPublishedEvent();
+
+    await addSourceWhitelist(env, { prefix: OTHER_PREFIX }, LATER);
+
+    expect(await publicationRows()).toHaveLength(1);
+  });
+
+  test('keeps the entry, and says so, when the JSON cannot be written', async () => {
+    await createPublishedEvent({ sources: [source(OTHER_SOURCE)] });
+
+    const added = await addSourceWhitelist(R2_DOWN, { prefix: OTHER_PREFIX }, LATER);
+
+    expect(added.status).toEqual(201);
+    expect(await added.json()).toMatchObject({ timelineCurrent: false });
+    expect(
+      await env.DB.prepare('SELECT prefix FROM source_whitelist WHERE prefix = ?1').bind(OTHER_PREFIX).first(),
+    ).toEqual({ prefix: OTHER_PREFIX });
+    expect(await pendingMarks()).toEqual([true]);
+  });
+
+  test('answers the rest of the pending list when R2 cannot be read', async () => {
+    await createPublishedEvent();
+
+    const unreadable: Env = {
+      ...env,
+      PUBLIC_DATA: { get: () => Promise.reject(new Error('R2 is down')) } as unknown as R2Bucket,
+    };
+    const response = await pendingFootprints(unreadable);
+
+    expect(response.status).toEqual(200);
+    expect(await response.json()).toEqual({ pending: [], changed: [], behind: false, outdated: false });
+  });
+
+  // What a deploy of #282 meets: a JSON written while the mark was set by
+  // hand, with nothing waiting. 「いま公開する」 has something to do, and does it.
+  test('leaves an outdated JSON for 「いま公開する」 to write again', async () => {
+    await createPublishedEvent();
+
+    const stored = (await readPublished())!;
+
+    await env.PUBLIC_DATA.put(
+      OBJECT_KEY,
+      JSON.stringify({ ...stored, events: stored.events.map((e) => ({ ...e, source_pending: true })) }),
+    );
+
+    expect(await (await pendingFootprints(env)).json()).toMatchObject({ pending: [], behind: false, outdated: true });
+    expect(await (await publishFootprintsNow(env, LATER)).json()).toMatchObject({ published: true, eventCount: 1 });
+    expect(await pendingMarks()).toEqual([false]);
+    expect(await (await pendingFootprints(env)).json()).toMatchObject({ outdated: false });
   });
 });

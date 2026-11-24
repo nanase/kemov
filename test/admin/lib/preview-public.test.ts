@@ -25,7 +25,6 @@ function eventFields(overrides: Partial<EventFormFields> = {}): EventFormFields 
     place: 'YouTube（ウサギコウモリチャンネル）',
     supplement: null,
     videoId: 'kRcm24dPi44',
-    sourcePending: false,
     memo: '公開されないメモ',
     channelIds: ['UCxm7yNjJsSvyvcG96-Cvmpw', 'UCnyE-wD1pE2GZOxA6OHjW9g'],
     leadChannelIds: [],
@@ -36,7 +35,7 @@ function eventFields(overrides: Partial<EventFormFields> = {}): EventFormFields 
 
 describe('publicEventOf', () => {
   test('the event as the public timeline reads it', () => {
-    const readout = publicEventOf(eventFields(), 184);
+    const readout = publicEventOf(eventFields(), 184, false);
 
     expect(readout.ok).toBe(true);
     if (!readout.ok) return;
@@ -46,19 +45,27 @@ describe('publicEventOf', () => {
 
   // The published JSON sorts them, and the card draws the faces in that order.
   test('the members come in channel id order, not the order they were picked', () => {
-    const readout = publicEventOf(eventFields(), 184);
+    const readout = publicEventOf(eventFields(), 184, false);
 
     expect(readout.ok && readout.value.channelIds).toEqual(['UCnyE-wD1pE2GZOxA6OHjW9g', 'UCxm7yNjJsSvyvcG96-Cvmpw']);
   });
 
+  test('the card says 出典の確認待ち as the judgement given says', () => {
+    const pending = publicEventOf(eventFields(), 184, true);
+    const backed = publicEventOf(eventFields(), 184, false);
+
+    expect(pending.ok && pending.value.sourcePending).toBe(true);
+    expect(backed.ok && backed.value.sourcePending).toBe(false);
+  });
+
   test('a date the page cannot read says which field', () => {
-    const readout = publicEventOf(eventFields({ startDate: '2026-9-17' }), 184);
+    const readout = publicEventOf(eventFields({ startDate: '2026-9-17' }), 184, false);
 
     expect(readout).toEqual({ ok: false, field: 'start_date' });
   });
 
   test('a kind the page does not know says which field', () => {
-    expect(publicEventOf(eventFields({ kind: 'nonsense' }), 184)).toEqual({ ok: false, field: 'kind' });
+    expect(publicEventOf(eventFields({ kind: 'nonsense' }), 184, false)).toEqual({ ok: false, field: 'kind' });
   });
 });
 

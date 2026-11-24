@@ -49,6 +49,7 @@ import { showToast } from '../lib/toast';
 const pending = ref<PendingFootprintsEntry[]>([]);
 const changed = ref<ChangedFootprintsEntry[]>([]);
 const behind = ref(false);
+const outdated = ref(false);
 const loading = ref(false);
 const loadError = ref<string | null>(null);
 const publishing = ref(false);
@@ -57,6 +58,7 @@ const footprintsState = computed<FootprintsPending>(() => ({
   pending: pending.value,
   changed: changed.value,
   behind: behind.value,
+  outdated: outdated.value,
 }));
 
 const genetPending = ref<PendingGenetEntry[]>([]);
@@ -115,6 +117,7 @@ async function load(): Promise<void> {
     pending.value = body.pending;
     changed.value = body.changed;
     behind.value = body.behind;
+    outdated.value = body.outdated;
   } catch (error) {
     loadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
@@ -283,7 +286,7 @@ onMounted(async () => {
                 いま公開する
               </button>
             </div>
-            <div v-if="!loading && behind" class="hint">{{ FOOTPRINTS_BEHIND_TEXT }}</div>
+            <div v-if="!loading && (behind || outdated)" class="hint">{{ FOOTPRINTS_BEHIND_TEXT }}</div>
             <div v-if="!loading && !canPublishFootprints(footprintsState) && changed.length > 0" class="hint">
               公開を待っているものがありません
             </div>

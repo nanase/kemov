@@ -5,6 +5,7 @@ import { RouterLink } from 'vue-router';
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import {
   canPublishAny,
+  rebuildsOnlyShape,
   plainTitle,
   publishItemLink,
   publishItemMark,
@@ -153,7 +154,7 @@ onMounted(load);
         >
           いま公開する
         </button>
-        <span v-if="inbox !== null && items.length === 0 && canPublishAny(inbox)" class="sub">
+        <span v-if="inbox !== null && rebuildsOnlyShape(inbox)" class="sub">
           公開中のデータは古い形のままです。押すと新しい形で作り直します（中身は変わりません）。
         </span>
       </div>
