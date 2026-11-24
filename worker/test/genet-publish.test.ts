@@ -595,6 +595,27 @@ describe('saveTune', () => {
 
     expect(await (await getTune(env, tuneId)).json()).toMatchObject({ live: true });
   });
+
+  // The JSON is built from every stream whose latest revision is not a
+  // withdraw (publishing.ts's liveBodiesOf), an import among them.
+  test('counts a stream whose latest revision is an import, and not one withdrawn', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+    const body = JSON.stringify({ video_id: videoId, performances: [{ tune_id: tuneId }] });
+    const record = (action: string, text: string | null) =>
+      env.DB.prepare(
+        `INSERT INTO revision (entity, entity_key, action, body, created_via) VALUES ('genet_stream', ?1, ?2, ?3, 'claude_code')`,
+      )
+        .bind(videoId, action, text)
+        .run();
+
+    await record('import', body);
+
+    expect(await (await getTune(env, tuneId)).json()).toMatchObject({ live: true });
+
+    await record('withdraw', null);
+
+    expect(await (await getTune(env, tuneId)).json()).toMatchObject({ live: false });
+  });
 });
 
 /** A `publish` revision recorded with no JSON written after it, as a publish from before #284 left one. */

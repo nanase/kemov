@@ -233,11 +233,18 @@ export function streamsQuery(status: string, q: string): string {
 }
 
 /**
- * Whether a stream that becomes `status` drops out of the list under the
- * status filter `filter`, which closes its editor and the tunes open in it.
+ * Whether a stream that becomes `status`, titled `title`, drops out of the
+ * list under the status filter `filter` and the title filter `q`, which
+ * closes its editor and the tunes open in it. `q` is matched as the worker's
+ * `LIKE` matches it: a substring, ignoring the case of ASCII letters alone.
  */
-export function leavesFilter(filter: string, status: string): boolean {
-  return filter !== 'all' && filter !== status;
+export function leavesFilter(filter: string, status: string, q = '', title = ''): boolean {
+  if (filter !== 'all' && filter !== status) return true;
+
+  const needle = q.trim();
+  const asciiLower = (text: string) => text.replace(/[A-Z]/g, (c) => c.toLowerCase());
+
+  return needle !== '' && !asciiLower(title).includes(asciiLower(needle));
 }
 
 /**

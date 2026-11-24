@@ -313,6 +313,8 @@ async function loadPeople(): Promise<void> {
 
 /** Whether anything about the stream, or a tune, is on its way: the list and the filters wait for it. */
 const busy = computed(() => sending.value || tuneSaving.value);
+/** The bottom buttons wait for the list too: a reload may close the stream or put its saved fields back. */
+const footBusy = computed(() => busy.value || loading.value);
 
 /** A stream clicked in the list: asks first when the open one has changes that would be lost. */
 function selectStream(videoId: string): void {
@@ -390,12 +392,16 @@ async function reloadSaved(videoId: string): Promise<void> {
  * tunes in it, so that is asked first when a tune has unsaved changes.
  */
 async function act(action: PublishAction): Promise<void> {
-  if (selected.value === null || busy.value) return;
+  if (selected.value === null || footBusy.value) return;
 
   const { videoId, status } = selected.value;
   const next = action === 'publish' ? 'published' : action === 'withdraw' ? 'draft' : status;
 
-  if (leavesFilter(statusFilter.value, next) && tunesDirty.value && !window.confirm(EDITING_TEXT.confirmDiscard)) {
+  if (
+    leavesFilter(statusFilter.value, next, q.value, streamFields.value.title) &&
+    tunesDirty.value &&
+    !window.confirm(EDITING_TEXT.confirmDiscard)
+  ) {
     return;
   }
 
@@ -437,15 +443,32 @@ async function act(action: PublishAction): Promise<void> {
 
 /** A new stream's 保存: creates it as a draft, and opens it once the list has it. */
 async function create(): Promise<void> {
-  if (busy.value) return;
+  if (footBusy.value) return;
 
   const videoId = newVideoId.value.trim();
+
+  if (
+    leavesFilter(statusFilter.value, 'draft', q.value, streamFields.value.title) &&
+    tunesDirty.value &&
+    !window.confirm(EDITING_TEXT.confirmDiscard)
+  ) {
+    return;
+  }
+
+  // A scene added before the video ID was typed carries what the field held then.
+  const fields = {
+    ...streamFields.value,
+    performances: streamFields.value.performances.map((p) => ({
+      ...p,
+      scenes: p.scenes.map((s) => ({ ...s, videoId })),
+    })),
+  };
 
   sending.value = true;
   clearBand();
 
   try {
-    await postJson('/genet/streams', { videoId, ...streamFields.value });
+    await postJson('/genet/streams', { videoId, ...fields });
   } catch (error) {
     const answer = streamAnswerFor('save', 'draft', error);
 
@@ -491,7 +514,7 @@ async function create(): Promise<void> {
 
 /** 削除: a published stream cannot be, and its button cannot be pressed. */
 async function remove(): Promise<void> {
-  if (selected.value === null || busy.value) return;
+  if (selected.value === null || footBusy.value) return;
 
   const { videoId, status } = selected.value;
 
@@ -1599,7 +1622,7 @@ useCrumbDetail(() =>
       </div>
 
       <div v-if="adding" class="inspector-foot">
-        <button class="btn primary" type="button" :disabled="busy" @click="create">{{ FOOT_TEXT.save }}</button>
+        <button class="btn primary" type="button" :disabled="footBusy" @click="create">{{ FOOT_TEXT.save }}</button>
         <span class="grow"></span>
         <button class="btn quiet" type="button" :disabled="busy" @click="stopAdding">やめる</button>
       </div>
@@ -1610,7 +1633,7 @@ useCrumbDetail(() =>
           class="btn"
           :class="{ primary: i === 0 }"
           type="button"
-          :disabled="busy"
+          :disabled="footBusy"
           @click="act(button.action)"
         >
           {{ button.label }}
@@ -1619,7 +1642,7 @@ useCrumbDetail(() =>
         <button class="btn back quiet" type="button" @click="back">← 一覧</button>
         <span class="grow"></span>
         <span class="foot-sep" aria-hidden="true"></span>
-        <DeleteButton :disabled="busy || foot.deleteDisabled" @remove="remove" />
+        <DeleteButton :disabled="footBusy || foot.deleteDisabled" @remove="remove" />
         <span v-if="foot.deleteReason" class="hint">{{ foot.deleteReason }}</span>
       </div>
     </div>

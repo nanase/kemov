@@ -299,9 +299,10 @@ export async function listTunes(env: Env, q: string | null): Promise<Response> {
 
 /**
  * Whether a published stream performs tune `tuneId`: some stream's latest
- * revision is a `publish` whose body performs it. That is what puts a tune
- * in the public JSON (genet-publish.ts), so its save has to reach the JSON
- * too (#284's 6-5).
+ * revision is not a `withdraw`, and its body performs it - the streams
+ * publishing.ts's `liveBodiesOf` builds the public JSON from. That is what
+ * puts a tune in the JSON (genet-publish.ts), so its save has to reach the
+ * JSON too (#284's 6-5).
  */
 export async function isPerformedLive(env: Env, tuneId: number): Promise<boolean> {
   const row = await env.DB.prepare(
@@ -312,7 +313,8 @@ export async function isPerformedLive(env: Env, tuneId: number): Promise<boolean
               WHERE entity = 'genet_stream'
               GROUP BY entity_key) latest
          ON latest.revision_id = r.revision_id
-      WHERE r.action = 'publish'
+      WHERE r.action <> 'withdraw'
+        AND r.body IS NOT NULL
         AND EXISTS (SELECT 1 FROM json_each(r.body, '$.performances') p
                      WHERE json_extract(p.value, '$.tune_id') = ?1)
       LIMIT 1`,

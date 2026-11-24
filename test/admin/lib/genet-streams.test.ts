@@ -213,6 +213,17 @@ describe('leavesFilter', () => {
     expect(leavesFilter('draft', 'published')).toBe(true);
     expect(leavesFilter('published', 'draft')).toBe(true);
   });
+
+  test('a stream whose title no longer has the title filter in it leaves the list', () => {
+    expect(leavesFilter('all', 'draft', 'ライブ', 'ピアノ演奏会')).toBe(true);
+    expect(leavesFilter('all', 'draft', 'ライブ', '夜のライブ配信')).toBe(false);
+    expect(leavesFilter('all', 'draft', '  ', '')).toBe(false);
+  });
+
+  test('matches the title filter as the worker does, ignoring the case of ASCII letters alone', () => {
+    expect(leavesFilter('all', 'draft', 'live', 'LIVE 配信')).toBe(false);
+    expect(leavesFilter('all', 'draft', 'ａ', 'Ａ')).toBe(true);
+  });
 });
 
 describe('withoutIndex', () => {
