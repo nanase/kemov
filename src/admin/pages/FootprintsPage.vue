@@ -52,13 +52,14 @@ const route = useRoute();
 let requestedId = typeof route.query.event === 'string' ? Number(route.query.event) : Number.NaN;
 
 const selected = computed(() => events.value.find((e) => e.eventId === selectedId.value) ?? null);
-const shownShortOnly = computed(() => shortOnly.value && whitelist.value !== null);
-const filtered = computed(() => status.value !== 'all' || q.value.trim() !== '' || shownShortOnly.value);
+// 出典不足だけ is pressed and has a whitelist to judge by.
+const shortOnlyApplied = computed(() => shortOnly.value && whitelist.value !== null);
+const filtered = computed(() => status.value !== 'all' || q.value.trim() !== '' || shortOnlyApplied.value);
 const shortCount = computed(() =>
   whitelist.value === null ? null : events.value.filter((e) => isShortOfSources(e, whitelist.value)).length,
 );
 const shown = computed(() =>
-  shownShortOnly.value ? events.value.filter((e) => isShortOfSources(e, whitelist.value)) : events.value,
+  shortOnlyApplied.value ? events.value.filter((e) => isShortOfSources(e, whitelist.value)) : events.value,
 );
 const listTotal = useListTotal(
   async () => (await getJson<{ events: FootprintsEvent[] }>('/footprints/events')).events.length,
@@ -272,7 +273,12 @@ onMounted(() => {
           </button>
         </div>
         <div class="seg">
-          <button type="button" :aria-pressed="shownShortOnly" :disabled="whitelist === null" @click="toggleShortOnly">
+          <button
+            type="button"
+            :aria-pressed="shortOnlyApplied"
+            :disabled="whitelist === null"
+            @click="toggleShortOnly"
+          >
             {{ SOURCE_TEXT.shortOnly }} <span class="num">{{ shortCount ?? '' }}</span>
           </button>
         </div>

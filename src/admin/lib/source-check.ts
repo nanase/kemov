@@ -2,12 +2,10 @@
  * Whether a footprints event's sources are enough (#141, #175, #282): one
  * source on the whitelist, or sources on two different hosts. The admin
  * screen judges as it is typed, and the worker judges what the public JSON's
- * 「出典の確認待ち」 says (worker/src/admin/footprints-publish.ts), both from
- * this file, so the two cannot come to different answers.
+ * 「出典の確認待ち」 says, both from this file, so the two cannot come to
+ * different answers.
  *
- * Nothing here reads D1: the whitelist is passed in, read by the worker from
- * `source_whitelist` and by the screen from `GET /admin/api/source-whitelist`.
- * worker/src/lib/source-whitelist.ts re-exports the two checks it always had.
+ * Nothing here reads D1: the whitelist is passed in.
  */
 
 /** A path segment that is `.` or `..`, written plainly or with its dots percent-encoded: a browser resolves it away. */

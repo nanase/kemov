@@ -1,8 +1,7 @@
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
-import { readSourceWhitelist } from '../lib/source-whitelist';
-import { sourcesEnough } from '../../../src/admin/lib/source-check';
+import { readSourceWhitelist, sourcesEnough } from '../lib/source-whitelist';
 import { present as presentEvent, readEvents } from './footprints';
 import { waitingFootprints } from './footprints-publish';
 import { waitingGenetMusic } from './genet-publish';

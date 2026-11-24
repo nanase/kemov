@@ -1,8 +1,5 @@
 import { judgeSources, sourcesEnough } from '@/admin/lib/source-check';
 
-// The whitelist match and the two-hosts rule themselves are tested in
-// worker/test/source-whitelist.test.ts, against the seeded whitelist.
-
 const WHITELIST = ['https://x.com/KEMOVP_staff', 'https://kemov-project.com/'];
 
 describe('sourcesEnough', () => {

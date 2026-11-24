@@ -56,7 +56,7 @@ export function isShortOfSources(
 }
 
 /** The whitelist's prefixes, as `GET /admin/api/source-whitelist` lists them. */
-export async function readWhitelistPrefixes(): Promise<string[]> {
+async function readWhitelistPrefixes(): Promise<string[]> {
   const body = await getJson<{ sourceWhitelist: SourceWhitelistEntry[] }>('/source-whitelist');
 
   return body.sourceWhitelist.map((entry) => entry.prefix);

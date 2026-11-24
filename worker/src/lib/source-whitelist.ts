@@ -20,12 +20,11 @@ export async function readSourceWhitelist(env: Env): Promise<string[]> {
   return results.map((row) => row.prefix);
 }
 
-/**
- * The whitelist match and the two-hosts rule live in src/admin/lib/source-check.ts,
- * which the admin screen reads too, so the screen and the worker judge a
- * source the same way (#282).
- */
-export { hasTwoHosts, isWhitelistedSource } from '../../../src/admin/lib/source-check';
+// A relative import across the worker/frontend boundary, as theme.ts does:
+// the admin screen judges sources with the same functions as they are typed,
+// so the screen and the public JSON cannot come to different answers (#282).
+// The worker reaches them through here only.
+export { hasTwoHosts, isWhitelistedSource, sourcesEnough } from '../../../src/admin/lib/source-check';
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 

@@ -2,8 +2,8 @@ import { byteLength } from '../lib/backup';
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
+import { sourcesEnough } from '../lib/source-whitelist';
 import { isSchemaDate, isSchemaMonth, isSchemaTimestamp, japanDateOf } from '../lib/time';
-import { sourcesEnough } from '../../../src/admin/lib/source-check';
 
 /**
  * Reading, saving and deleting `footprints_event` (#141, #140): the
