@@ -121,7 +121,7 @@ const HOST_ALIASES: ReadonlyMap<string, string> = new Map([
 ]);
 
 /** The name `url`'s host is counted under, or null when `url` names none. `www.` is dropped: it is the same site written with a prefix. */
-function countedHost(url: string): string | null {
+export function countedHost(url: string): string | null {
   try {
     const host = new URL(url).hostname.replace(/^www\./, '');
 
@@ -193,22 +193,22 @@ export function youtubeVideoIdOf(url: string): string | null {
 }
 
 /**
- * Whether one of `urls` is a video of `channelId`'s own that this site has
- * collected. A stream the member showed their subscriber count in is their
- * own statement, so it counts as a source by itself, as a whitelisted one
- * does. A video missing from `video` (older than what is collected, #230) does
- * not count: nothing says whose it is.
+ * The video IDs among `urls` that are videos of `channelId`'s own that this
+ * site has collected. A stream the member showed their subscriber count in is
+ * their own statement, so it counts as a source by itself, as a whitelisted
+ * one does. A video missing from `video` (older than what is collected, #230)
+ * does not count: nothing says whose it is.
  */
-export async function hasOwnVideoSource(env: Env, urls: readonly string[], channelId: string): Promise<boolean> {
+export async function ownVideoIdsOf(env: Env, urls: readonly string[], channelId: string): Promise<Set<string>> {
   const ids = [...new Set(urls.map(youtubeVideoIdOf).filter((id): id is string => id !== null))];
 
-  for (const id of ids) {
-    const row = await env.DB.prepare('SELECT 1 AS found FROM video WHERE video_id = ?1 AND channel_id = ?2')
-      .bind(id, channelId)
-      .first();
+  if (ids.length === 0) return new Set();
 
-    if (row !== null) return true;
-  }
+  const { results } = await env.DB.prepare(
+    'SELECT video_id FROM video WHERE channel_id = ?1 AND video_id IN (SELECT value FROM json_each(?2))',
+  )
+    .bind(channelId, JSON.stringify(ids))
+    .all<{ video_id: string }>();
 
-  return false;
+  return new Set(results.map((row) => row.video_id));
 }

@@ -1,23 +1,32 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { RouterLink, useRoute } from 'vue-router';
+import { useRoute } from 'vue-router';
 
 import SubscriberMilestoneInspector from '../components/SubscriberMilestoneInspector.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import type { FootprintsEvent, FootprintsMember } from '../lib/footprints';
+import { refreshPublishBadge } from '../lib/publish-badge';
+import { liveMarkFor } from '../lib/publishing';
 import {
   announcerLabel,
   formatCount,
   linkableEvents,
   milestonesQuery,
   STATUS_OPTIONS,
+  toFormFields,
+  toRequestBody,
   type SubscriberMilestone,
 } from '../lib/subscriber-milestones';
 import { SAVE_TOAST } from '../lib/editing';
 import { countText } from '../lib/list-count';
 import { useListTotal } from '../lib/list-total';
-import { bulkPublishTargets, publishInTurn, type BulkPublishOutcome } from '../lib/subscriber-milestones-bulk';
-import { milestoneMarkFor, type MilestonesPending } from '../lib/subscriber-milestones-publish';
+import {
+  ALREADY_PUBLISHED,
+  bulkPublishTargets,
+  publishInTurn,
+  type BulkPublishOutcome,
+} from '../lib/subscriber-milestones-bulk';
+import type { MilestonesPending } from '../lib/subscriber-milestones-publish';
 import { showToast } from '../lib/toast';
 import { confirmDiscard } from '../lib/unsaved-guard';
 
@@ -38,10 +47,10 @@ const status = ref('all');
 const selectedId = ref<number | null>(null);
 const adding = ref(false);
 const detail = ref(false);
-// Null when it could not be read, so a failed request does not draw every
-// published row as already public - see FootprintsPage.vue.
+// Null when it could not be read: the edit panel then says nothing about a
+// row's public copy being behind.
 const pending = ref<MilestonesPending | null>(null);
-// まとめて公開待ちにする (#237): how far a run has got, and what the last one did.
+// まとめて公開する (#237, #283): how far a run has got, and what the last one did.
 const bulkProgress = ref<{ done: number; total: number } | null>(null);
 const bulkOutcome = ref<BulkPublishOutcome | null>(null);
 // How many of the edit panel's writes are on their way; a run waits for them
@@ -250,12 +259,12 @@ async function created(milestoneId: number): Promise<void> {
 }
 
 /**
- * Sends each draft the table shows through 「公開待ちにする」, one at a time
- * (lib/subscriber-milestones-bulk.ts). The filters are locked meanwhile, so
- * the table stays the one the confirmation counted. The list is read again
- * afterwards, stopped or not, and that puts the open panel's saved fields
- * back - so its unsaved changes are asked about too, after the run itself is
- * agreed to, so that declining the run keeps them.
+ * Sends each draft the table shows through 「公開」, one at a time, with the
+ * fields it has saved when its turn comes (lib/subscriber-milestones-bulk.ts). The filters
+ * are locked meanwhile, so the table stays the one the confirmation counted.
+ * The list is read again afterwards, stopped or not, and that puts the open
+ * panel's saved fields back - so its unsaved changes are asked about too,
+ * after the run itself is agreed to, so that declining the run keeps them.
  */
 async function publishShownDrafts(): Promise<void> {
   const targets = bulkTargets.value;
@@ -269,29 +278,36 @@ async function publishShownDrafts(): Promise<void> {
   try {
     bulkOutcome.value = await publishInTurn(
       targets,
-      (milestoneId) => postJson(`/subscribers/milestones/${milestoneId}/publish`, {}),
+      async ({ milestoneId }) => {
+        // Read again just before: the table can be older than the row - a
+        // save whose answer came after another row was opened is not in it.
+        const saved = await getJson<SubscriberMilestone>(`/subscribers/milestones/${milestoneId}`);
+
+        // Published elsewhere since the table was read. Not counted as
+        // published by this run: that publish may not have reached the public JSON.
+        if (saved.status !== 'draft') return ALREADY_PUBLISHED;
+
+        await postJson(`/subscribers/milestones/${milestoneId}/publish`, toRequestBody(toFormFields(saved)));
+      },
       (done) => {
         bulkProgress.value = { done, total: targets.length };
       },
     );
   } finally {
     bulkProgress.value = null;
+    void refreshPublishBadge();
     await reload();
   }
 }
 
 function bulkConfirmText(count: number): string {
-  return [
-    `表に出ている下書き ${count} 件を公開待ちにします。`,
-    '出典の検査に通らなかった行は飛ばして続けます。',
-    '本番に出すには、このあと「公開」画面で「いま公開する」を押します。',
-  ].join('\n');
+  return `表に出ている下書き ${count} 件を公開します。出典が足りない行は飛ばして続けます。`;
 }
 
 function bulkHeading(outcome: BulkPublishOutcome): string {
   if (outcome.stopped) return '途中で止まりました';
 
-  return outcome.published > 0 ? 'まとめて公開待ちにしました' : '公開待ちにできた行はありません';
+  return outcome.published > 0 ? 'まとめて公開しました' : '公開できた行はありません';
 }
 
 function milestoneLine(m: SubscriberMilestone): string {
@@ -337,9 +353,9 @@ onMounted(() => {
           @click="publishShownDrafts"
         >
           <template v-if="bulkProgress">
-            公開待ちにしています… {{ bulkProgress.done }} / {{ bulkProgress.total }} 件
+            公開しています… {{ bulkProgress.done }} / {{ bulkProgress.total }} 件
           </template>
-          <template v-else>下書きをまとめて公開待ちにする（{{ bulkTargets.length }} 件）</template>
+          <template v-else>下書きをまとめて公開する（{{ bulkTargets.length }} 件）</template>
         </button>
         <button class="btn" type="button" :disabled="members.length === 0" @click="startAdding">＋ 足す</button>
       </div>
@@ -348,24 +364,35 @@ onMounted(() => {
           <div class="panel" :class="{ flag: bulkOutcome.stopped || bulkOutcome.skipped.length > 0 }">
             <h4>{{ bulkHeading(bulkOutcome) }}</h4>
             <div v-if="bulkOutcome.stopped" class="hint">
-              失敗した行でいったん止めました。一覧は読み直してあります。もう一度押すと、下書きのまま残っている行をもう一度試します。
+              失敗した行でいったん止めました。もう一度押すと、下書きのまま残っている行をもう一度試します。
             </div>
             <div class="kv">
-              <dt>公開待ちにできた</dt>
+              <dt>公開できた</dt>
               <dd class="num">{{ bulkOutcome.published }} / {{ bulkOutcome.total }} 件</dd>
-              <dt>検査に通らなかった</dt>
+              <dt>出典が足りなかった</dt>
               <dd class="num">{{ bulkOutcome.skipped.length }} 件</dd>
+              <dt>公開済みだった</dt>
+              <dd class="num">{{ bulkOutcome.alreadyPublished }} 件</dd>
               <template v-if="bulkOutcome.stopped">
                 <dt>止まった行</dt>
                 <dd>{{ milestoneLine(bulkOutcome.stopped.milestone) }}</dd>
                 <dt>理由</dt>
                 <dd>{{ bulkOutcome.stopped.reason }}</dd>
                 <dt>まだ試していない</dt>
-                <dd class="num">{{ bulkOutcome.total - bulkOutcome.published - bulkOutcome.skipped.length - 1 }} 件</dd>
+                <dd class="num">
+                  {{
+                    bulkOutcome.total -
+                    bulkOutcome.published -
+                    bulkOutcome.alreadyPublished -
+                    bulkOutcome.skipped.length -
+                    1
+                  }}
+                  件
+                </dd>
               </template>
             </div>
             <template v-if="bulkOutcome.skipped.length > 0">
-              <div class="hint">検査に通らなかった行（下書きのまま）</div>
+              <div class="hint">出典が足りなかった行（下書きのまま）</div>
               <ul class="bulk-skipped">
                 <li v-for="s in bulkOutcome.skipped" :key="s.milestone.milestoneId">
                   <span>{{ milestoneLine(s.milestone) }}</span>
@@ -373,11 +400,7 @@ onMounted(() => {
                 </li>
               </ul>
             </template>
-            <div v-if="bulkOutcome.published > 0" class="hint">
-              本番に出すには、「公開」画面で「いま公開する」を押します
-            </div>
             <div class="stack">
-              <RouterLink v-if="bulkOutcome.published > 0" class="btn" to="/publish">公開画面へ</RouterLink>
               <button class="btn quiet" type="button" @click="bulkOutcome = null">閉じる</button>
             </div>
           </div>
@@ -413,9 +436,7 @@ onMounted(() => {
               @keydown.space.prevent="selectRow(m.milestoneId)"
             >
               <td>
-                <span class="chip" :class="milestoneMarkFor(m.status, m.milestoneId, pending).tone">{{
-                  milestoneMarkFor(m.status, m.milestoneId, pending).label
-                }}</span>
+                <span class="chip" :class="liveMarkFor(m.status).tone">{{ liveMarkFor(m.status).label }}</span>
               </td>
               <td class="num">
                 {{ m.reachedDate }}<span v-if="m.datePrecision === 'month'" class="sub"> 月のみ</span>

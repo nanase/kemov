@@ -14,7 +14,6 @@ import {
   listSourceInbox,
 } from '../src/admin/inbox';
 import { createMilestone } from '../src/admin/subscriber-milestones';
-import { publishMilestone } from '../src/admin/subscriber-milestones-publish';
 import { clearEverything } from './reset-db';
 
 const NOW = new Date('2026-10-01T00:00:00Z');
@@ -335,7 +334,14 @@ describe('listPublishInbox', () => {
     });
     const { milestone } = (await created.json()) as { milestone: { milestoneId: number } };
 
-    expect((await publishMilestone(env, milestone.milestoneId)).status).toEqual(200);
+    // Since #283 a publish writes the JSON at once, so what waits is a
+    // revision left by 「公開待ちにする」 before then.
+    await env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body, created_via)
+       VALUES ('subscriber_milestone', ?1, 'publish', '{}', 'admin')`,
+    )
+      .bind(String(milestone.milestoneId))
+      .run();
 
     const body = await json<PublishBody>(listPublishInbox(env));
 

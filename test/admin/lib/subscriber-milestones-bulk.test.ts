@@ -1,6 +1,6 @@
 import { AdminApiError } from '@/admin/lib/api';
 import type { SubscriberMilestone } from '@/admin/lib/subscriber-milestones';
-import { bulkPublishTargets, publishInTurn } from '@/admin/lib/subscriber-milestones-bulk';
+import { ALREADY_PUBLISHED, bulkPublishTargets, publishInTurn } from '@/admin/lib/subscriber-milestones-bulk';
 
 function milestone(milestoneId: number, status: string): SubscriberMilestone {
   return {
@@ -19,7 +19,12 @@ function milestone(milestoneId: number, status: string): SubscriberMilestone {
   };
 }
 
-const REFUSED = new AdminApiError(400, { errors: ['there are no sources'] });
+const SOURCES_PROBLEM = '出典が足りません。ホワイトリストの出典か、別のサイトの出典を足してください。';
+const REFUSED = new AdminApiError(400, {
+  errors: [SOURCES_PROBLEM],
+  problems: [{ field: 'sources', message: SOURCES_PROBLEM }],
+  saved: true,
+});
 
 describe('bulkPublishTargets', () => {
   test('keeps only the drafts, in the order the table shows them', () => {
@@ -41,7 +46,7 @@ describe('publishInTurn', () => {
 
     const outcome = await publishInTurn(
       [milestone(3, 'draft'), milestone(2, 'draft')],
-      async (id) => {
+      async ({ milestoneId: id }) => {
         calls.push(id);
       },
       (done) => progress.push(done),
@@ -49,7 +54,7 @@ describe('publishInTurn', () => {
 
     expect(calls).toEqual([3, 2]);
     expect(progress).toEqual([1, 2]);
-    expect(outcome).toEqual({ total: 2, published: 2, skipped: [], stopped: null });
+    expect(outcome).toEqual({ total: 2, published: 2, alreadyPublished: 0, skipped: [], stopped: null });
   });
 
   // One at a time: the next request starts only once the previous one has answered.
@@ -57,7 +62,7 @@ describe('publishInTurn', () => {
     const started: number[] = [];
     const answers: (() => void)[] = [];
 
-    const running = publishInTurn([milestone(1, 'draft'), milestone(2, 'draft')], (id) => {
+    const running = publishInTurn([milestone(1, 'draft'), milestone(2, 'draft')], ({ milestoneId: id }) => {
       started.push(id);
 
       return new Promise<void>((resolve) => answers.push(resolve));
@@ -76,20 +81,43 @@ describe('publishInTurn', () => {
   test('skips a row the check refuses (400) and goes on', async () => {
     const refused = milestone(2, 'draft');
 
-    const outcome = await publishInTurn([milestone(1, 'draft'), refused, milestone(3, 'draft')], async (id) => {
-      if (id === 2) throw REFUSED;
-    });
+    const outcome = await publishInTurn(
+      [milestone(1, 'draft'), refused, milestone(3, 'draft')],
+      async ({ milestoneId: id }) => {
+        if (id === 2) throw REFUSED;
+      },
+    );
 
     expect(outcome).toEqual({
       total: 3,
       published: 2,
-      skipped: [{ milestone: refused, reason: 'there are no sources' }],
+      alreadyPublished: 0,
+      skipped: [{ milestone: refused, reason: SOURCES_PROBLEM }],
       stopped: null,
     });
   });
 
+  // Published by another request since the table was read: that request may
+  // have recorded the publish and failed to write the public JSON, so this
+  // run does not say it published the row.
+  test('counts a row found published already apart from those it published', async () => {
+    const progress: number[] = [];
+
+    const outcome = await publishInTurn(
+      [milestone(1, 'draft'), milestone(2, 'draft'), milestone(3, 'draft')],
+      async ({ milestoneId: id }) => (id === 2 ? ALREADY_PUBLISHED : undefined),
+      (done) => progress.push(done),
+    );
+
+    expect(progress).toEqual([1, 2, 3]);
+    expect(outcome).toEqual({ total: 3, published: 2, alreadyPublished: 1, skipped: [], stopped: null });
+  });
+
   test.each([
     ['the network', new AdminApiError(0, '/subscribers/milestones/2/publish could not be reached: TypeError')],
+    // A field a save refuses is not what the run skips for: the row is not
+    // short of sources, and calling it so would send the person to the wrong place.
+    ['a 400 that is not a refused publish', new AdminApiError(400, { error: 'footprints event 3 is not a milestone' })],
     ['a 5xx', new AdminApiError(500, null)],
     ['anything that is not an answer from the worker', new TypeError('boom')],
   ])('stops at a failure of %s and tries nothing after it', async (_, error) => {
@@ -99,7 +127,7 @@ describe('publishInTurn', () => {
 
     const outcome = await publishInTurn(
       [milestone(1, 'draft'), milestone(2, 'draft'), failed, milestone(4, 'draft')],
-      async (id) => {
+      async ({ milestoneId: id }) => {
         calls.push(id);
         if (id === 2) throw REFUSED;
         if (id === 3) throw error;
@@ -117,7 +145,7 @@ describe('publishInTurn', () => {
   // A 404 (the row was deleted since the list was read) is not a refused
   // check: the list the run started from is no longer the database's.
   test('stops at any other 4xx too', async () => {
-    const outcome = await publishInTurn([milestone(1, 'draft'), milestone(2, 'draft')], async (id) => {
+    const outcome = await publishInTurn([milestone(1, 'draft'), milestone(2, 'draft')], async ({ milestoneId: id }) => {
       if (id === 1) throw new AdminApiError(404, { error: 'no subscriber milestone 1' });
     });
 
