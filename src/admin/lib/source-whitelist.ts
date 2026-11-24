@@ -59,5 +59,5 @@ export function addErrorMessage(error: unknown): string {
  * JSON was written again to judge its sources by the list as it now is (#282).
  */
 export function savedToast(done: string, timelineCurrent: boolean): string {
-  return timelineCurrent ? done : '保存しましたが本番の年表に反映できませんでした。';
+  return timelineCurrent ? done : '本番の年表への反映に失敗しました。';
 }

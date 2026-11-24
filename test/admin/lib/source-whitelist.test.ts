@@ -98,6 +98,6 @@ describe('savedToast', () => {
   });
 
   test('says the timeline was not, when it could not be written', () => {
-    expect(savedToast('削除しました', false)).toEqual('保存しましたが本番の年表に反映できませんでした。');
+    expect(savedToast('削除しました', false)).toEqual('本番の年表への反映に失敗しました。');
   });
 });
