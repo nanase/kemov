@@ -771,6 +771,29 @@ describe('publishGenetMusicNow', () => {
     expect(await (await pendingGenetMusic(env)).json()).toMatchObject({ pending: [] });
   });
 
+  test('builds from a revision left waiting without reading the stored JSON first', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+    await recordWaiting(videoId, '前の題');
+
+    // A read of the stored JSON (its shape) that fails must not stop a build already asked for.
+    const bucket = env.PUBLIC_DATA;
+    const unreadable = new Proxy(bucket, {
+      get(target, property) {
+        if (property === 'get') return () => Promise.reject(new Error('R2 is down'));
+
+        const value = Reflect.get(target, property) as unknown;
+
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+
+    const response = await publishGenetMusicNow({ ...env, PUBLIC_DATA: unreadable }, NOW);
+
+    expect(await response.json()).toMatchObject({ published: true, streamCount: 1 });
+  });
+
   test('builds the JSON again while it may be behind', async () => {
     const { videoId } = await createPerformableStream();
 
@@ -932,15 +955,32 @@ describe('the JSON: channel_id and shape_version', () => {
 
     test('adds up the counts of every chunk the lookup is split into', async () => {
       // 60 streams are read in two chunks of at most 50: 40 belong to one channel and 20 to another.
-      const streams = Array.from({ length: 60 }, (_, index) => ({
-        videoId: youtubeId(index),
-        channelId: index < 40 ? GENET : GUEST,
-      }));
+      // Seeded as revisions and built once: publishing them one by one would
+      // write an ever larger JSON 60 times.
+      const insert = env.DB.prepare(
+        `INSERT INTO revision (entity, entity_key, action, body, created_via) VALUES ('genet_stream', ?1, 'publish', ?2, 'admin')`,
+      );
 
-      await publishStreams(streams);
+      for (let index = 0; index < 60; index += 1) {
+        const videoId = youtubeId(index);
 
+        await insertVideo(videoId, index < 40 ? GENET : GUEST);
+        await insert
+          .bind(
+            videoId,
+            JSON.stringify({
+              video_id: videoId,
+              platform: 'youtube',
+              published_at: '2026-01-01T00:00:00Z',
+              performances: [],
+            }),
+          )
+          .run();
+      }
+
+      expect(await (await publishGenetMusicNow(env, NOW)).json()).toMatchObject({ published: true, streamCount: 60 });
       expect((await published()).channel_id).toEqual(GENET);
-    }, 60000);
+    });
 
     test('leaves out TikTok streams and streams with no video row from the count', async () => {
       await publishStreams([
