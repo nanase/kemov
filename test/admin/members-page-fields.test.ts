@@ -22,6 +22,29 @@ function assignments(source: string): string[] {
     .filter((line) => /(^|[^.\w])fields\.value\s*=(?!=)/.test(line));
 }
 
+/**
+ * Whether a handler's source refuses to run while `busy`. The refusal is its first statement - only
+ * `const` reads may come before it - and is `if (...) return;` over a chain of `||`, one term of which
+ * is `busy.value` itself: a comparison (`busy.value === false`), a negation or an `&&` makes that term
+ * something else. No term before it calls anything, so nothing (a confirm dialog, say) runs first.
+ */
+function refusesWhileBusy(handler: string): boolean {
+  const statements = handler
+    .slice(handler.indexOf('{') + 1)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('//'));
+  const first = statements.findIndex((line) => !/^const \w+ = [^;]*;$/.test(line));
+  const guard = statements[first]?.match(/^if \((.*)\) return;$/);
+
+  if (!guard) return false;
+
+  const terms = guard[1]!.split(' || ');
+  const at = terms.indexOf('busy.value');
+
+  return at > -1 && terms.slice(0, at).every((term) => !term.includes('('));
+}
+
 describe('MembersPage.vue fields', () => {
   test('are written only by a read of the list (fieldsOnReload) and by the user confirming 変更を捨てる', () => {
     expect(assignments(page)).toEqual([
@@ -58,11 +81,20 @@ describe('MembersPage.vue fields', () => {
 
       const body = page.slice(start).split(/\n(?:async )?function /)[0]!;
 
-      // An `if` whose condition has `busy.value` (not negated) and that returns at once: reversing the
-      // guard (`!busy.value`) or dropping the `return` fails it.
-      expect(body).toMatch(/if \([^\n]*(?<!!)\bbusy\.value\b[^\n]*\) return;/);
+      expect(refusesWhileBusy(body)).toBe(true);
     },
   );
+
+  test.each([
+    ['a reversed guard', 'function f(): void {\n  if (!busy.value) return;\n}'],
+    ['a guard compared the wrong way', 'function f(): void {\n  if (busy.value === false) return;\n}'],
+    ['a guard that also needs something else', 'function f(): void {\n  if (busy.value && open.value) return;\n}'],
+    ['a guard after a change', 'function f(): void {\n  selectedId.value = id;\n  if (busy.value) return;\n}'],
+    ['a guard after a dialog', 'function f(): void {\n  if (!confirmDiscard() || busy.value) return;\n}'],
+    ['a guard that does not return', 'function f(): void {\n  if (busy.value) {\n    log();\n  }\n}'],
+  ])('%s does not count as refusing while busy', (_, handler) => {
+    expect(refusesWhileBusy(handler)).toBe(false);
+  });
 
   test.each(['discard', 'saveList', 'addMember', 'openErrorRow'])(
     'the button for %s is disabled while a request is under way',
