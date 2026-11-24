@@ -71,7 +71,7 @@ export function moveSelection(keys: readonly string[], current: string | null, s
 
 /**
  * What to select once the list is read again after a row was settled: the
- * same row if it is still there (「あとで」 keeps it), otherwise the row that
+ * same row if it is still there (a refused 承認 keeps it), otherwise the row that
  * now sits where it was, so the next one comes up without a click.
  */
 export function selectionAfterReload(
