@@ -39,7 +39,7 @@ describe('publishFootFor', () => {
         { action: 'save', label: '保存' },
         { action: 'withdraw', label: '非公開に戻す' },
       ],
-      note: '保存すると、すぐ本番に出ます',
+      note: '保存するとすぐ本番に出ます',
       deleteDisabled: true,
       deleteReason: '公開中は削除できません。先に「非公開に戻す」を押してください。',
     });

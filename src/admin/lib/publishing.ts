@@ -48,7 +48,7 @@ export const FOOT_TEXT = {
   publish: '公開',
   save: '保存',
   withdraw: '非公開に戻す',
-  liveNote: '保存すると、すぐ本番に出ます',
+  liveNote: '保存するとすぐ本番に出ます',
   deleteReason: '公開中は削除できません。先に「非公開に戻す」を押してください。',
 } as const;
 
