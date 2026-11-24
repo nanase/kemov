@@ -13,7 +13,7 @@ import {
   type FootprintsMember,
 } from '../lib/footprints';
 import { footprintsMarkFor, type FootprintsPending } from '../lib/footprints-publish';
-import { isShortOfSources, readWhitelistPrefixes, SOURCE_TEXT } from '../lib/footprints-sources';
+import { isShortOfSources, useWhitelist, SOURCE_TEXT } from '../lib/footprints-sources';
 import { countText } from '../lib/list-count';
 import { useListTotal } from '../lib/list-total';
 import { showToast } from '../lib/toast';
@@ -43,7 +43,7 @@ const inspectorBusy = ref(false);
 const pending = ref<FootprintsPending | null>(null);
 // The 出典ホワイトリスト's prefixes, or null while they are unknown: no row
 // is called short of sources then, and 出典不足だけ cannot be pressed.
-const whitelist = ref<string[] | null>(null);
+const { whitelist, failed: whitelistFailed, load: loadWhitelist } = useWhitelist();
 const shortOnly = ref(false);
 
 // `/footprints?event=<id>` is where the 公開 screen's rows lead. Read once,
@@ -236,14 +236,6 @@ async function created(eventId: number): Promise<void> {
   }
 }
 
-async function loadWhitelist(): Promise<void> {
-  try {
-    whitelist.value = await readWhitelistPrefixes();
-  } catch {
-    whitelist.value = null;
-  }
-}
-
 async function loadMembers(): Promise<void> {
   try {
     const body = await getJson<{ members: FootprintsMember[] }>('/members');
@@ -364,6 +356,7 @@ onMounted(() => {
       :members="members"
       :pending="pending"
       :whitelist="whitelist"
+      :whitelist-failed="whitelistFailed"
       :inert="loading || reloading > 0 || undefined"
       @changed="reload"
       @created="created"

@@ -1,3 +1,4 @@
+import { ref, type Ref } from 'vue';
 import { getJson } from './api';
 import { judgeSources, type SourceMark, type SourcesJudgement } from './source-check';
 import type { SourceWhitelistEntry } from './source-whitelist';
@@ -14,6 +15,7 @@ export const SOURCE_TEXT = {
   shortTitle: '出典が足りません',
   shortChip: '出典不足',
   shortOnly: '出典不足だけ',
+  whitelistUnreadable: '出典ホワイトリストを読み込めません。',
 } as const;
 
 /** The chip beside one source, or null for a URL that names no host. */
@@ -58,4 +60,30 @@ export async function readWhitelistPrefixes(): Promise<string[]> {
   const body = await getJson<{ sourceWhitelist: SourceWhitelistEntry[] }>('/source-whitelist');
 
   return body.sourceWhitelist.map((entry) => entry.prefix);
+}
+
+/**
+ * The whitelist for a screen that judges sources. `whitelist` stays null both
+ * while it is on its way and when it could not be read; `failed` tells the
+ * two apart, so the sources panel can say it could not be read.
+ */
+export function useWhitelist(): {
+  whitelist: Ref<string[] | null>;
+  failed: Ref<boolean>;
+  load: () => Promise<void>;
+} {
+  const whitelist = ref<string[] | null>(null);
+  const failed = ref(false);
+
+  async function load(): Promise<void> {
+    try {
+      whitelist.value = await readWhitelistPrefixes();
+      failed.value = false;
+    } catch {
+      whitelist.value = null;
+      failed.value = true;
+    }
+  }
+
+  return { whitelist, failed, load };
 }

@@ -54,7 +54,8 @@ import SplitHandle from './SplitHandle.vue';
  *
  * Whether the sources are enough is judged as they are typed (#277's
  * decision 2a), by the same rule publishing uses for the public timeline's
- * 「出典の確認待ち」. Nothing is judged while `whitelist` is unknown.
+ * 「出典の確認待ち」. Nothing is judged while `whitelist` is unknown, and the
+ * panel says so when it could not be read (`whitelistFailed`).
  */
 const props = withDefaults(
   defineProps<{
@@ -64,9 +65,11 @@ const props = withDefaults(
     pending: FootprintsPending | null;
     /** The 出典ホワイトリスト's prefixes, or null when they could not be read. */
     whitelist: readonly string[] | null;
+    /** True when `whitelist` is null because it could not be read, not because it is on its way. */
+    whitelistFailed?: boolean;
     mode?: 'data' | 'review';
   }>(),
-  { mode: 'data' },
+  { mode: 'data', whitelistFailed: false },
 );
 const emit = defineEmits<{ changed: []; created: [eventId: number]; back: []; busy: [busy: boolean] }>();
 
@@ -154,7 +157,8 @@ const judgement = computed(() => (props.whitelist === null ? null : judgeEventSo
 const sourcesShort = computed(() => judgement.value !== null && !judgement.value.enough);
 
 function sourcesDescribedBy(): string | undefined {
-  const ids = [reasonIds('sources'), judgement.value === null ? undefined : 'f-sources-judgement'];
+  const judged = judgement.value !== null || props.whitelistFailed;
+  const ids = [reasonIds('sources'), judged ? 'f-sources-judgement' : undefined];
 
   return ids.filter((id) => id !== undefined).join(' ') || undefined;
 }
@@ -449,6 +453,9 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
             <div v-if="judgement.enough" id="f-sources-judgement" class="src-ok">{{ SOURCE_TEXT.enough }}</div>
             <div v-else id="f-sources-judgement" class="hint">{{ shortfallMessage(judgement.onlyHost) }}</div>
           </template>
+          <div v-else-if="whitelistFailed" id="f-sources-judgement" class="src-err">
+            {{ SOURCE_TEXT.whitelistUnreadable }}
+          </div>
           <div>
             <button class="btn quiet" type="button" @click="addSource">＋ 出典を足す</button>
           </div>
@@ -560,6 +567,11 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
   color: var(--k-ok);
   font-size: var(--a-small);
   font-weight: 700;
+}
+
+.src-err {
+  color: var(--a-danger);
+  font-size: var(--a-small);
 }
 
 /* The reasons a publish was refused, one each, as the worker gave them. */

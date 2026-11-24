@@ -5,7 +5,7 @@ import FootprintsInspector from '../components/FootprintsInspector.vue';
 import { AdminApiError, getJson } from '../lib/api';
 import { kindLabel, type FootprintsEvent, type FootprintsMember } from '../lib/footprints';
 import { footprintsMarkFor, type FootprintsPending } from '../lib/footprints-publish';
-import { readWhitelistPrefixes } from '../lib/footprints-sources';
+import { useWhitelist } from '../lib/footprints-sources';
 import { selectionAfterReload } from '../lib/inbox';
 import { confirmDiscard } from '../lib/unsaved-guard';
 
@@ -19,7 +19,7 @@ import { confirmDiscard } from '../lib/unsaved-guard';
 const events = ref<FootprintsEvent[]>([]);
 const members = ref<FootprintsMember[]>([]);
 const pending = ref<FootprintsPending | null>(null);
-const whitelist = ref<string[] | null>(null);
+const { whitelist, failed: whitelistFailed, load: loadWhitelist } = useWhitelist();
 const loading = ref(false);
 const loaded = ref(false);
 const loadError = ref<string | null>(null);
@@ -86,14 +86,6 @@ function selectRow(eventId: number): void {
   detail.value = true;
 }
 
-async function loadWhitelist(): Promise<void> {
-  try {
-    whitelist.value = await readWhitelistPrefixes();
-  } catch {
-    whitelist.value = null;
-  }
-}
-
 onMounted(() => {
   load();
   loadMembers();
@@ -128,7 +120,7 @@ onMounted(() => {
           <tbody>
             <tr v-if="loaded && events.length === 0">
               <td colspan="6">
-                <div class="empty-note"><b>出典の確認を待っている行はありません</b></div>
+                <div class="empty-note"><b>出典が足りない行はありません。</b></div>
               </td>
             </tr>
             <tr
@@ -174,6 +166,7 @@ onMounted(() => {
       :members="members"
       :pending="pending"
       :whitelist="whitelist"
+      :whitelist-failed="whitelistFailed"
       :inert="loading || undefined"
       @changed="load"
       @back="detail = false"

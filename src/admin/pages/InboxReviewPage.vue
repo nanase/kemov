@@ -6,7 +6,7 @@ import GenetStreamReview from '../components/GenetStreamReview.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import { toFormFields, type FootprintsMember } from '../lib/footprints';
 import { footprintsMarkFor } from '../lib/footprints-publish';
-import { isShortOfSources, readWhitelistPrefixes, SOURCE_TEXT } from '../lib/footprints-sources';
+import { isShortOfSources, useWhitelist, SOURCE_TEXT } from '../lib/footprints-sources';
 import {
   moveSelection,
   reviewRows,
@@ -35,7 +35,7 @@ import { confirmDiscard } from '../lib/unsaved-guard';
 const inbox = ref<ReviewInbox | null>(null);
 const members = ref<FootprintsMember[]>([]);
 // The 出典ホワイトリスト's prefixes, or null while they are unknown.
-const whitelist = ref<string[] | null>(null);
+const { whitelist, failed: whitelistFailed, load: loadWhitelist } = useWhitelist();
 const loading = ref(false);
 const loadError = ref<string | null>(null);
 const selectedKey = ref<string | null>(null);
@@ -90,14 +90,6 @@ async function load(): Promise<void> {
     loadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
     if (generation === loadGeneration) loading.value = false;
-  }
-}
-
-async function loadWhitelist(): Promise<void> {
-  try {
-    whitelist.value = await readWhitelistPrefixes();
-  } catch {
-    whitelist.value = null;
   }
 }
 
@@ -327,6 +319,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
         :members="members"
         :pending="null"
         :whitelist="whitelist"
+        :whitelist-failed="whitelistFailed"
         mode="review"
         :inert="loading || undefined"
         @changed="load"

@@ -1,4 +1,7 @@
-import { isShortOfSources, markLabel, shortfallMessage } from '@/admin/lib/footprints-sources';
+import { getJson } from '@/admin/lib/api';
+import { isShortOfSources, markLabel, shortfallMessage, useWhitelist } from '@/admin/lib/footprints-sources';
+
+vi.mock('@/admin/lib/api', () => ({ getJson: vi.fn() }));
 
 const WHITELIST = ['https://x.com/KEMOVP_staff'];
 
@@ -49,5 +52,40 @@ describe('isShortOfSources', () => {
   // A list that could not be read says nothing about any row.
   test('is false while the whitelist is unknown', () => {
     expect(isShortOfSources(event(), null)).toEqual(false);
+  });
+});
+
+describe('useWhitelist', () => {
+  test('is neither known nor failed while it is on its way', () => {
+    const { whitelist, failed } = useWhitelist();
+
+    expect(whitelist.value).toBeNull();
+    expect(failed.value).toBe(false);
+  });
+
+  test('holds the prefixes once read', async () => {
+    vi.mocked(getJson).mockResolvedValueOnce({ sourceWhitelist: [{ prefix: WHITELIST[0] }] });
+    const { whitelist, failed, load } = useWhitelist();
+
+    await load();
+
+    expect(whitelist.value).toEqual(WHITELIST);
+    expect(failed.value).toBe(false);
+  });
+
+  test('says it failed when it could not be read, and clears that on a later read', async () => {
+    vi.mocked(getJson).mockRejectedValueOnce(new Error('unreachable'));
+    const { whitelist, failed, load } = useWhitelist();
+
+    await load();
+
+    expect(whitelist.value).toBeNull();
+    expect(failed.value).toBe(true);
+
+    vi.mocked(getJson).mockResolvedValueOnce({ sourceWhitelist: [{ prefix: WHITELIST[0] }] });
+    await load();
+
+    expect(whitelist.value).toEqual(WHITELIST);
+    expect(failed.value).toBe(false);
   });
 });
