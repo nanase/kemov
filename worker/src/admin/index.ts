@@ -17,13 +17,7 @@ import {
 } from './genet-publish';
 import { createStream, deleteStream, getStream, listStreams } from './genet-streams';
 import { createTune, deleteTune, getTune, listTunes } from './genet-tunes';
-import {
-  confirmEventSources,
-  inboxCounts,
-  listPublishInbox,
-  listReviewInbox,
-  listSourceInbox,
-} from './inbox';
+import { confirmEventSources, inboxCounts, listPublishInbox, listReviewInbox, listSourceInbox } from './inbox';
 import { addMember, deleteMember, listMembers, saveMembers, updateMember } from './members';
 import { listPublications } from './publications';
 import { getRevision, listRevisions, readRevisionId } from './revisions';

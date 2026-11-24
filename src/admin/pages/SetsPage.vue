@@ -12,18 +12,18 @@ import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, getJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
 import { EDITING_TEXT, SAVE_TOAST, sameFields } from '../lib/editing';
-import { FOOT_TEXT, footprintsFootFor, STATUS_OPTIONS, type FootAction } from '../lib/footprints';
-import { footprintsMarkFor, PUBLISH_TEXT, type PublishBand } from '../lib/footprints-publish';
+import { STATUS_OPTIONS } from '../lib/footprints';
 import { insertAt, mdSnippet, clock, type MdLinkKind } from '../lib/genet-markdown';
 import { type GenetPerson } from '../lib/genet-people';
 import {
   isChangedSincePublish,
-  reasonIdsFor,
   STREAM_NOTE_ID,
   streamAnswerFor,
+  streamBandReasonIds,
   streamReasonId,
   TUNE_NOTE_ID,
   tuneAnswerFor,
+  tuneBandReasonIds,
   tuneReasonId,
   type GenetPendingResponse,
 } from '../lib/genet-publish';
@@ -60,6 +60,14 @@ import { countText } from '../lib/list-count';
 import { useListTotal } from '../lib/list-total';
 import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
 import { refreshPublishBadge } from '../lib/publish-badge';
+import {
+  FOOT_TEXT,
+  liveMarkFor,
+  PUBLISH_TEXT,
+  publishFootFor,
+  type PublishAction,
+  type PublishBand,
+} from '../lib/publishing';
 import { showToast } from '../lib/toast';
 import { confirmDiscard, useUnsavedGuard } from '../lib/unsaved-guard';
 
@@ -128,7 +136,7 @@ const selectedChanged = computed(
     selected.value?.status === 'published' &&
     isChangedSincePublish(pending.value, 'genet_stream', selected.value.videoId),
 );
-const foot = computed(() => footprintsFootFor(selected.value?.status ?? 'draft'));
+const foot = computed(() => publishFootFor(selected.value?.status ?? 'draft'));
 
 const streamFields = ref<StreamFormFields>(emptyStreamFields());
 /** A request about the stream on its way, through the list read after it. */
@@ -143,12 +151,10 @@ function invalid(section: StreamFieldSection, performanceIndex: number | null = 
 }
 
 function reasonIds(section: StreamFieldSection, performanceIndex: number | null = null): string | undefined {
-  return reasonIdsFor(
+  return streamBandReasonIds(
     band.value,
     invalidFields.value,
     (f) => f.section === section && (performanceIndex === null || f.performanceIndex === performanceIndex),
-    streamReasonId,
-    STREAM_NOTE_ID,
   );
 }
 
@@ -250,7 +256,9 @@ async function load(): Promise<boolean> {
   const generation = ++loadGeneration;
 
   try {
-    const body = await getJson<{ streams: GenetStream[] }>(`/genet/streams${streamsQuery(statusFilter.value, q.value)}`);
+    const body = await getJson<{ streams: GenetStream[] }>(
+      `/genet/streams${streamsQuery(statusFilter.value, q.value)}`,
+    );
 
     if (generation !== loadGeneration) return false;
 
@@ -381,7 +389,7 @@ async function reloadSaved(videoId: string): Promise<void> {
  * them. A stream the status filter then leaves out closes its editor and the
  * tunes in it, so that is asked first when a tune has unsaved changes.
  */
-async function act(action: FootAction): Promise<void> {
+async function act(action: PublishAction): Promise<void> {
   if (selected.value === null || busy.value) return;
 
   const { videoId, status } = selected.value;
@@ -493,7 +501,7 @@ async function remove(): Promise<void> {
   try {
     await deleteJson(`/genet/streams/${encodeURIComponent(videoId)}`);
   } catch (error) {
-    const answer = streamAnswerFor('save', status, error);
+    const answer = streamAnswerFor('delete', status, error);
 
     if (answer.kind === 'band') {
       band.value = answer.band;
@@ -615,12 +623,10 @@ function tuneInvalidAt(section: TuneFieldError['section'], index: number | null 
 }
 
 function tuneReasonIds(section: TuneFieldError['section'], index: number | null = null): string | undefined {
-  return reasonIdsFor(
+  return tuneBandReasonIds(
     tuneBand.value,
     tuneInvalid.value,
     (f) => f.section === section && (index === null || f.index === index),
-    tuneReasonId,
-    TUNE_NOTE_ID,
   );
 }
 
@@ -674,7 +680,11 @@ async function readTune(index: number): Promise<void> {
     if (latestTuneRead.get(index) !== read) return;
 
     latestTuneRead.delete(index);
-    tuneBand.value = { title: TUNE_READ_FAILED, lines: [], note: error instanceof Error ? error.message : String(error) };
+    tuneBand.value = {
+      title: TUNE_READ_FAILED,
+      lines: [],
+      note: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -1082,7 +1092,7 @@ useCrumbDetail(() =>
           <span class="meta">
             <span class="num sub">{{ s.publishedAt.slice(0, 10) }}</span>
             <span class="sub">{{ s.performances.length }} 曲</span>
-            <span class="chip" :class="footprintsMarkFor(s.status).tone">{{ footprintsMarkFor(s.status).label }}</span>
+            <span class="chip" :class="liveMarkFor(s.status).tone">{{ liveMarkFor(s.status).label }}</span>
           </span>
         </button>
       </div>
@@ -1092,10 +1102,12 @@ useCrumbDetail(() =>
       <SplitHandle />
       <div class="toolbar">
         <h2>
-          {{ adding ? streamFields.shortTitle || streamFields.title || UNTITLED : selected!.shortTitle || selected!.title }}
+          {{
+            adding ? streamFields.shortTitle || streamFields.title || UNTITLED : selected!.shortTitle || selected!.title
+          }}
         </h2>
-        <span v-if="selected" class="chip" :class="footprintsMarkFor(selected.status).tone">{{
-          footprintsMarkFor(selected.status).label
+        <span v-if="selected" class="chip" :class="liveMarkFor(selected.status).tone">{{
+          liveMarkFor(selected.status).label
         }}</span>
         <span v-if="dirty" class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
         <span class="grow"></span>
@@ -1196,21 +1208,13 @@ useCrumbDetail(() =>
             <div class="row2">
               <div class="field">
                 <label for="f-vtype">種別</label>
-                <select
-                  id="f-vtype"
-                  v-model="streamFields.videoType"
-                  :aria-invalid="invalid('videoType')"
-                >
+                <select id="f-vtype" v-model="streamFields.videoType" :aria-invalid="invalid('videoType')">
                   <option v-for="t in VIDEO_TYPES" :key="t" :value="t">{{ t }}</option>
                 </select>
               </div>
               <div class="field">
                 <label for="f-platform">プラットフォーム</label>
-                <select
-                  id="f-platform"
-                  v-model="streamFields.platform"
-                  :aria-invalid="invalid('platform')"
-                >
+                <select id="f-platform" v-model="streamFields.platform" :aria-invalid="invalid('platform')">
                   <option v-for="p in PLATFORMS" :key="p" :value="p">{{ p }}</option>
                 </select>
               </div>

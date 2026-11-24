@@ -11,10 +11,15 @@
 
 import { AdminApiError } from './api';
 import { SAVE_TOAST } from './editing';
-import type { FootAction } from './footprints';
-import { PUBLISH_TEXT, type PublishBand } from './footprints-publish';
 import { fieldForSaveError as fieldForStreamSaveError, type StreamFieldError } from './genet-streams';
 import { fieldForSaveError as fieldForTuneSaveError, type TuneFieldError } from './genet-tunes';
+import {
+  bandReasonIdsWhere,
+  publishAnswerFor,
+  type AnsweredAction,
+  type PublishAnswer,
+  type PublishBand,
+} from './publishing';
 
 export type GenetEntity = 'genet_stream' | 'genet_tune' | 'genet_person';
 
@@ -106,139 +111,54 @@ export const tuneReasonId = (index: number): string => `tune-reason-${index}`;
 export const TUNE_NOTE_ID = 'tune-band-note';
 
 /**
- * The ids of what `band` says about the parts of the form `matches` picks
- * out of `fields`, for a control's aria-describedby, or undefined when it
- * says nothing about them. A refusal lists one reason for each field it
- * marks, in the same order; any other band that marks a field says why in
- * its note. The same rule as あしあと's `bandReasonIds`.
+ * lib/publishing.ts's `bandReasonIdsWhere` for one of the two bands: the
+ * stream's, or the open tune's, each naming its lines and its note by its
+ * own ids.
  */
-export function reasonIdsFor<F>(
+export function streamBandReasonIds(
   band: PublishBand | null,
-  fields: readonly F[],
-  matches: (field: F) => boolean,
-  reasonId: (index: number) => string,
-  noteId: string,
+  fields: readonly StreamFieldError[],
+  matches: (field: StreamFieldError) => boolean,
 ): string | undefined {
-  if (band === null || !fields.some(matches)) return undefined;
-
-  if (band.lines.length === fields.length) {
-    return fields.flatMap((f, i) => (matches(f) ? [reasonId(i)] : [])).join(' ');
-  }
-
-  return band.note === null ? undefined : noteId;
+  return bandReasonIdsWhere(band, fields, matches, { reasonId: streamReasonId, noteId: STREAM_NOTE_ID });
 }
 
-export type GenetAnswer<F> =
-  | { kind: 'done'; toast: string }
-  | {
-      kind: 'band';
-      band: PublishBand;
-      /** The parts of the form to mark in red. */
-      fields: readonly F[];
-      /** Whether the request changed the row, so the list must be read again. */
-      changed: boolean;
-    };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+export function tuneBandReasonIds(
+  band: PublishBand | null,
+  fields: readonly TuneFieldError[],
+  matches: (field: TuneFieldError) => boolean,
+): string | undefined {
+  return bandReasonIdsWhere(band, fields, matches, { reasonId: tuneReasonId, noteId: TUNE_NOTE_ID });
 }
 
-function savedAnyway(body: unknown): boolean {
-  return isRecord(body) && body.saved === true;
-}
-
-interface StreamProblem {
-  field: 'title' | 'videoId' | 'performances';
-  performanceIndex: number | null;
-  message: string;
-}
-
-function streamProblemsOf(body: unknown): { problems: StreamProblem[]; saved: boolean } | null {
-  if (!isRecord(body) || !Array.isArray(body.problems) || typeof body.saved !== 'boolean') return null;
-
-  return { problems: body.problems as StreamProblem[], saved: body.saved };
-}
-
-/** The status the stream has now, as a 502 that saved anyway gives it, or null when the answer carries no stream. */
-function statusNow(body: unknown): string | null {
-  if (!isRecord(body) || !isRecord(body.stream)) return null;
-
-  return typeof body.stream.status === 'string' ? body.stream.status : null;
-}
+export type GenetAnswer<F> = PublishAnswer<F>;
 
 /**
  * What the editor says after `action` on a stream that was `status` when it
- * was pressed. `error` is what the request threw, or null when it succeeded.
- * The same reading as あしあと's `footprintsAnswerFor`:
- *
- * - A refusal lists the worker's reasons, and says whether the fields were
- *   saved anyway - a draft's are, a published stream's are not
- * - A 502 that says it saved went through while the public JSON could not be
- *   written, or brought up to date after the change was recorded; the
- *   button to press again is the one the stream shows now
- * - Anything else failed. A 404, a 409 or a 5xx may mean the stream is not
- *   what the screen shows, so the list is read again; a 400 changed nothing
+ * was pressed (null for one not saved yet) - lib/publishing.ts's
+ * `publishAnswerFor`, with the stream coming back as `stream`, and each
+ * reason a refusal lists marking the part of the form it is about: the
+ * title, the video id, or one performance.
  */
-export function streamAnswerFor(action: FootAction, status: string, error: unknown): GenetAnswer<StreamFieldError> {
-  if (error === null) {
-    if (action === 'publish') return { kind: 'done', toast: SAVE_TOAST.publish };
-    if (action === 'withdraw') return { kind: 'done', toast: SAVE_TOAST.withdraw };
-
-    return { kind: 'done', toast: status === 'published' ? SAVE_TOAST.savePublished : SAVE_TOAST.saveDraft };
-  }
-
-  const refusal = error instanceof AdminApiError && error.status === 400 ? streamProblemsOf(error.body) : null;
-
-  if (refusal !== null) {
-    const { problems, saved } = refusal;
-
-    return {
-      kind: 'band',
-      band: {
-        title: saved ? PUBLISH_TEXT.refusedPublish : PUBLISH_TEXT.refusedSave,
-        lines: problems.map((p) => p.message),
-        note: saved ? PUBLISH_TEXT.refusedPublishNote : PUBLISH_TEXT.refusedSaveNote,
-      },
-      fields: problems.map((p) => ({ section: p.field, performanceIndex: p.performanceIndex, sceneIndex: null })),
-      changed: saved,
-    };
-  }
-
-  if (error instanceof AdminApiError && error.status === 502) {
-    if (action === 'withdraw') {
-      return savedAnyway(error.body)
-        ? {
-            kind: 'band',
-            band: { title: PUBLISH_TEXT.withdrawnBehind, lines: [], note: PUBLISH_TEXT.withdrawnBehindNote },
-            fields: [],
-            changed: true,
-          }
-        : {
-            kind: 'band',
-            band: { title: PUBLISH_TEXT.notWithdrawn, lines: [], note: PUBLISH_TEXT.notWithdrawnNote },
-            fields: [],
-            changed: false,
-          };
-    }
-
-    if (savedAnyway(error.body)) {
-      return {
-        kind: 'band',
-        band: {
-          title:
-            (statusNow(error.body) ?? status) === 'published'
-              ? PUBLISH_TEXT.notWrittenSave
-              : PUBLISH_TEXT.notWrittenPublish,
-          lines: [],
-          note: null,
-        },
-        fields: [],
-        changed: true,
-      };
-    }
-  }
-
-  return failedAnswer(error, fieldForStreamSaveError);
+export function streamAnswerFor(
+  action: AnsweredAction,
+  status: string | null,
+  error: unknown,
+): GenetAnswer<StreamFieldError> {
+  return publishAnswerFor<StreamFieldError>(
+    {
+      rowKey: 'stream',
+      fieldForSaveError: fieldForStreamSaveError,
+      fieldOfProblem: (problem) => ({
+        section: problem.field as StreamFieldError['section'],
+        performanceIndex: typeof problem.performanceIndex === 'number' ? problem.performanceIndex : null,
+        sceneIndex: null,
+      }),
+    },
+    action,
+    status,
+    error,
+  );
 }
 
 interface TuneProblem {
@@ -247,9 +167,13 @@ interface TuneProblem {
 }
 
 function tuneProblemsOf(body: unknown): TuneProblem[] | null {
-  if (!isRecord(body) || !Array.isArray(body.problems)) return null;
+  if (typeof body !== 'object' || body === null || !('problems' in body) || !Array.isArray(body.problems)) return null;
 
   return body.problems as TuneProblem[];
+}
+
+function savedAnyway(body: unknown): boolean {
+  return typeof body === 'object' && body !== null && 'saved' in body && body.saved === true;
 }
 
 /**
@@ -259,6 +183,8 @@ function tuneProblemsOf(body: unknown): TuneProblem[] | null {
  *
  * A refusal is only ever for such a tune, and nothing was saved. A 502 that
  * says it saved went through while the public JSON could not be written.
+ * Anything else is read as `publishAnswerFor` reads a failed save, under the
+ * tune's own title.
  */
 export function tuneAnswerFor(published: boolean, error: unknown): GenetAnswer<TuneFieldError> {
   if (error === null) return { kind: 'done', toast: published ? SAVE_TOAST.savePublished : SAVE_TOAST.saved };
@@ -278,21 +204,12 @@ export function tuneAnswerFor(published: boolean, error: unknown): GenetAnswer<T
     return { kind: 'band', band: { title: TUNE_TEXT.notWritten, lines: [], note: null }, fields: [], changed: true };
   }
 
-  const answer = failedAnswer(error, fieldForTuneSaveError);
+  const answer = publishAnswerFor<TuneFieldError>(
+    { rowKey: 'tune', fieldForSaveError: fieldForTuneSaveError },
+    'save',
+    null,
+    error,
+  );
 
   return answer.kind === 'band' ? { ...answer, band: { ...answer.band, title: TUNE_TEXT.failed } } : answer;
-}
-
-/** A request that failed in any other way: its message, and the part of the form it names. */
-function failedAnswer<F>(error: unknown, fieldFor: (message: string) => F | null): GenetAnswer<F> {
-  const message = error instanceof Error ? error.message : String(error);
-  const field = fieldFor(message);
-  const answered = error instanceof AdminApiError ? error.status : 0;
-
-  return {
-    kind: 'band',
-    band: { title: PUBLISH_TEXT.failed, lines: [], note: message },
-    fields: field === null ? [] : [field],
-    changed: answered === 404 || answered === 409 || answered >= 500,
-  };
 }

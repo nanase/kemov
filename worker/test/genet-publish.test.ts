@@ -216,9 +216,9 @@ describe('publishStream', () => {
 
     expect(response.status).toEqual(404);
     expect(await revisionRows('genet_stream')).toEqual([]);
-    expect(
-      await env.DB.prepare('SELECT count(*) AS n FROM genet_performance').first<{ n: number }>(),
-    ).toEqual({ n: 0 });
+    expect(await env.DB.prepare('SELECT count(*) AS n FROM genet_performance').first<{ n: number }>()).toEqual({
+      n: 0,
+    });
     expect((await readPublished())!.streams).toEqual([]);
   });
 
@@ -755,7 +755,9 @@ describe('publishGenetMusicNow', () => {
 
     await publish(videoId);
     await env.PUBLIC_DATA.put('genet/music.json', JSON.stringify({ shape_version: GENET_MUSIC_SHAPE_VERSION }));
-    await env.DB.prepare("INSERT INTO publication_write (target) VALUES ('genet_music')").run();
+    // A write R2 answered, as one left by a request that ended after it: a
+    // write still on its way stays until a check after it (publishing.ts).
+    await env.DB.prepare("INSERT INTO publication_write (target, finished) VALUES ('genet_music', 1)").run();
 
     expect(await (await publishGenetMusicNow(env, NOW)).json()).toMatchObject({ published: true, streamCount: 1 });
     expect((await readPublished())!.streams.map((s) => s.video_id)).toEqual([videoId]);

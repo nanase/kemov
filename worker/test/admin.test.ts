@@ -853,9 +853,10 @@ describe('handleAdminRequest routing to genet', () => {
 
     expect(published.status).toEqual(400);
 
+    // A draft cannot be withdrawn, so 409 - the route was reached all the same.
     const withdrawn = await post('/admin/api/genet/streams/abcdefghijk/withdraw', {});
 
-    expect(withdrawn.status).toEqual(200);
+    expect(withdrawn.status).toEqual(409);
 
     const unknownAction = await post('/admin/api/genet/streams/abcdefghijk/nope', {});
 

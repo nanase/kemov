@@ -1,20 +1,24 @@
 import { AdminApiError } from '@/admin/lib/api';
 import { SAVE_TOAST } from '@/admin/lib/editing';
-import { PUBLISH_TEXT } from '@/admin/lib/footprints-publish';
 import {
   canPublishGenet,
   entityLabel,
   isChangedSincePublish,
   isWaiting,
   publishesOnlyForShape,
-  reasonIdsFor,
+  STREAM_NOTE_ID,
   streamAnswerFor,
+  streamBandReasonIds,
   streamReasonId,
   tuneAnswerFor,
+  tuneBandReasonIds,
+  TUNE_NOTE_ID,
+  tuneReasonId,
   TUNE_TEXT,
   type ChangedGenetEntry,
   type PendingGenetEntry,
 } from '@/admin/lib/genet-publish';
+import { PUBLISH_TEXT } from '@/admin/lib/publishing';
 
 describe('entityLabel', () => {
   test.each([
@@ -115,7 +119,11 @@ describe('isChangedSincePublish', () => {
 
 const PROBLEMS = [
   { field: 'title', performanceIndex: null, message: 'タイトルを書いてください。' },
-  { field: 'performances', performanceIndex: 1, message: '2 曲目の場面 1 の動画 ID は 11 文字です。いまは 3 文字です。' },
+  {
+    field: 'performances',
+    performanceIndex: 1,
+    message: '2 曲目の場面 1 の動画 ID は 11 文字です。いまは 3 文字です。',
+  },
 ];
 
 describe('streamAnswerFor', () => {
@@ -176,10 +184,7 @@ describe('streamAnswerFor', () => {
     const behind = streamAnswerFor('withdraw', 'published', new AdminApiError(502, { error: '…', saved: true }));
     const nothing = streamAnswerFor('withdraw', 'published', new AdminApiError(502, { error: '…' }));
 
-    expect(behind.kind === 'band' && [behind.band.title, behind.changed]).toEqual([
-      PUBLISH_TEXT.withdrawnBehind,
-      true,
-    ]);
+    expect(behind.kind === 'band' && [behind.band.title, behind.changed]).toEqual([PUBLISH_TEXT.withdrawnBehind, true]);
     expect(nothing.kind === 'band' && [nothing.band.title, nothing.changed]).toEqual([
       PUBLISH_TEXT.notWithdrawn,
       false,
@@ -195,6 +200,12 @@ describe('streamAnswerFor', () => {
       fields: [{ section: 'videoId', performanceIndex: null, sceneIndex: null }],
       changed: true,
     });
+  });
+
+  test('a delete that failed says 削除できません, and reads the list again on a 409', () => {
+    const answer = streamAnswerFor('delete', 'draft', new AdminApiError(409, { error: 'withdraw this stream first' }));
+
+    expect(answer.kind === 'band' && [answer.band.title, answer.changed]).toEqual([PUBLISH_TEXT.removeFailed, true]);
   });
 
   test('a 400 save error changes nothing', () => {
@@ -240,22 +251,28 @@ describe('tuneAnswerFor', () => {
   });
 });
 
-describe('reasonIdsFor', () => {
-  const band = { title: '公開できません', lines: ['a', 'b', 'c'], note: 'note' };
-  const fields = ['title', 'performances', 'title'];
+describe('streamBandReasonIds and tuneBandReasonIds', () => {
+  const band = { title: '公開できません', lines: ['a', 'b'], note: 'note' };
 
-  test('names the reasons of the fields it marks, one each', () => {
-    expect(reasonIdsFor(band, fields, (f) => f === 'title', streamReasonId, 'n')).toEqual(
-      `${streamReasonId(0)} ${streamReasonId(2)}`,
-    );
-  });
-
-  test('names the note when the band does not list a reason for each field', () => {
-    expect(reasonIdsFor({ ...band, lines: [] }, ['title'], (f) => f === 'title', streamReasonId, 'n')).toEqual('n');
-  });
-
-  test('is undefined when nothing is marked, or there is no band', () => {
-    expect(reasonIdsFor(band, fields, (f) => f === 'videoId', streamReasonId, 'n')).toBeUndefined();
-    expect(reasonIdsFor(null, fields, (f) => f === 'title', streamReasonId, 'n')).toBeUndefined();
+  test("name the stream's reasons and the open tune's apart", () => {
+    expect(
+      streamBandReasonIds(
+        band,
+        [
+          { section: 'title', performanceIndex: null, sceneIndex: null },
+          { section: 'performances', performanceIndex: 1, sceneIndex: null },
+        ],
+        (f) => f.section === 'performances',
+      ),
+    ).toEqual(streamReasonId(1));
+    expect(
+      tuneBandReasonIds(
+        { ...band, lines: [] },
+        [{ section: 'attributes', index: 0 }],
+        (f) => f.section === 'attributes',
+      ),
+    ).toEqual(TUNE_NOTE_ID);
+    expect(streamReasonId(0)).not.toEqual(tuneReasonId(0));
+    expect(STREAM_NOTE_ID).not.toEqual(TUNE_NOTE_ID);
   });
 });

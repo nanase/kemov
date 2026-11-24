@@ -118,7 +118,8 @@ function publishProblems(saved: GenetStream, tunes: ReadonlyMap<number, GenetTun
   // stream's platform.
   const isYoutube = stream.platform === 'youtube';
 
-  if (stream.title === '') problems.push({ field: 'title', performanceIndex: null, message: 'タイトルを書いてください。' });
+  if (stream.title === '')
+    problems.push({ field: 'title', performanceIndex: null, message: 'タイトルを書いてください。' });
 
   if (isYoutube && stream.video_id.length !== VIDEO_ID_LENGTH) {
     problems.push({
@@ -770,7 +771,6 @@ interface PublicPerson {
  * 2: adds `shape_version` and `channel_id`.
  */
 export const GENET_MUSIC_SHAPE_VERSION = 2;
-
 
 /**
  * The `shape_version` of the JSON stored in `PUBLIC_DATA`. A JSON with no such

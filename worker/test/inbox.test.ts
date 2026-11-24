@@ -3,7 +3,7 @@ import { env } from 'cloudflare:test';
 import { createEvent, getEvent } from '../src/admin/footprints';
 import { publishEvent, withdrawEvent } from '../src/admin/footprints-publish';
 import { publishStream } from '../src/admin/genet-publish';
-import { createStream } from '../src/admin/genet-streams';
+import { createStream, getStream } from '../src/admin/genet-streams';
 import { createTune } from '../src/admin/genet-tunes';
 import {
   confirmEventSources,
@@ -64,6 +64,32 @@ async function leaveWaiting(eventId: number, action: 'publish' | 'withdraw'): Pr
   )
     .bind(String(eventId), action, action === 'publish' ? JSON.stringify({ event_id: eventId }) : null)
     .run();
+}
+
+/** 「公開」 on `videoId` with the fields it has, as the edit screen sends them. */
+async function publishAsIs(videoId: string): Promise<Response> {
+  const { stream } = (await (await getStream(env, videoId)).json()) as { stream: Record<string, unknown> };
+
+  return await publishStream(env, videoId, stream, NOW);
+}
+
+/**
+ * What a stream's 「公開」 left before #284, when it waited for 「いま公開する」:
+ * a `publish` revision for the stream and for the tune it performs, with no
+ * run after them. A publish now writes the JSON itself, so nothing waits.
+ */
+async function leaveStreamWaiting(videoId: string): Promise<void> {
+  const { stream } = (await (await getStream(env, videoId)).json()) as {
+    stream: { performances: { tuneId: number }[] };
+  };
+  const insert = `INSERT INTO revision (entity, entity_key, action, body, created_via) VALUES (?1, ?2, 'publish', ?3, 'admin')`;
+
+  await env.DB.batch([
+    env.DB.prepare(insert).bind('genet_stream', videoId, JSON.stringify({ video_id: videoId })),
+    ...stream.performances.map((p) =>
+      env.DB.prepare(insert).bind('genet_tune', String(p.tuneId), JSON.stringify({ tune_id: p.tuneId })),
+    ),
+  ]);
 }
 
 async function createValidStream(videoId: string, publishedAt = '2026-01-01T00:00:00Z'): Promise<string> {
@@ -133,7 +159,7 @@ describe('listReviewInbox', () => {
     const draft = await createValidStream('aaaaaaaaaaa');
     const published = await createValidStream('bbbbbbbbbbb');
 
-    await publishStream(env, published);
+    await publishAsIs(published);
 
     const body = await json<ReviewBody>(listReviewInbox(env));
 
@@ -231,7 +257,7 @@ describe('listPublishInbox', () => {
 
     const videoId = await createValidStream('eeeeeeeeeee', '2026-01-31T16:00:00Z');
 
-    await publishStream(env, videoId);
+    await leaveStreamWaiting(videoId);
 
     const body = await json<PublishBody>(listPublishInbox(env));
 

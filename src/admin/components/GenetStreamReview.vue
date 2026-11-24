@@ -7,12 +7,12 @@ import { markdownHtml } from '@/lib/genet/musicSong';
 import { deleteJson, postJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
 import { SAVE_TOAST } from '../lib/editing';
-import { footprintsMarkFor, type PublishBand } from '../lib/footprints-publish';
 import { clock } from '../lib/genet-markdown';
 import { streamAnswerFor } from '../lib/genet-publish';
 import { SCENE_STYLE_LABEL, toFormFields, type GenetStream, type SceneStyle } from '../lib/genet-streams';
 import { firstStart, jstDate, REJECTED_TOAST } from '../lib/inbox';
 import { refreshPublishBadge } from '../lib/publish-badge';
+import { liveMarkFor, type PublishBand } from '../lib/publishing';
 import { showToast } from '../lib/toast';
 
 import SplitHandle from './SplitHandle.vue';
@@ -33,7 +33,7 @@ const emit = defineEmits<{ changed: []; back: [] }>();
 const busy = ref(false);
 const band = ref<PublishBand | null>(null);
 
-const mark = computed(() => footprintsMarkFor(props.stream.status));
+const mark = computed(() => liveMarkFor(props.stream.status));
 const withoutStart = computed(() => props.stream.performances.filter((p) => firstStart(p) === null).length);
 
 function styleLabel(style: string): string {
@@ -45,7 +45,7 @@ function styleLabel(style: string): string {
  * (`streamAnswerFor`): a toast when it went through, otherwise the band.
  * The list is read again whenever the stream may have changed.
  */
-async function settle(request: () => Promise<unknown>, toast: string): Promise<void> {
+async function settle(action: 'publish' | 'delete', request: () => Promise<unknown>, toast: string): Promise<void> {
   // `A` reaches approve without the button, which is what otherwise stops a second press.
   if (busy.value) return;
 
@@ -62,7 +62,7 @@ async function settle(request: () => Promise<unknown>, toast: string): Promise<v
     busy.value = false;
   }
 
-  const answer = streamAnswerFor('publish', props.stream.status, error);
+  const answer = streamAnswerFor(action, props.stream.status, error);
 
   if (answer.kind === 'done') {
     emit('changed');
@@ -83,8 +83,9 @@ async function settle(request: () => Promise<unknown>, toast: string): Promise<v
 const path = computed(() => `/genet/streams/${encodeURIComponent(props.stream.videoId)}`);
 
 // The fields as they were read: 承認 publishes the stream as it stands.
-const approve = () => settle(() => postJson(`${path.value}/publish`, toFormFields(props.stream)), SAVE_TOAST.publish);
-const reject = () => settle(() => deleteJson(path.value), REJECTED_TOAST);
+const approve = () =>
+  settle('publish', () => postJson(`${path.value}/publish`, toFormFields(props.stream)), SAVE_TOAST.publish);
+const reject = () => settle('delete', () => deleteJson(path.value), REJECTED_TOAST);
 
 defineExpose({ approve });
 

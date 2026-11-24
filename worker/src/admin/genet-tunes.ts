@@ -571,7 +571,10 @@ async function unknownPersonIds(env: Env, personIds: readonly number[]): Promise
   return ids.filter((id) => !known.has(id));
 }
 
-export async function validatedTuneFields(env: Env, body: Record<string, unknown>): Promise<TuneFields | { error: Response }> {
+export async function validatedTuneFields(
+  env: Env,
+  body: Record<string, unknown>,
+): Promise<TuneFields | { error: Response }> {
   const fields = readTuneFields(body);
 
   if ('error' in fields) return { error: errorResponse(400, fields.error) };
