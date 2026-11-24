@@ -3,7 +3,7 @@ import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 import { readSourceWhitelist, sourcesEnough } from '../lib/source-whitelist';
 import { present as presentEvent, readEvents } from './footprints';
-import { waitingFootprints } from './footprints-publish';
+import { footprintsNeedsWrite, waitingFootprints } from './footprints-publish';
 import { waitingGenetMusic } from './genet-publish';
 import { present as presentStream, readStreams } from './genet-streams';
 import { waitingSubscriberMilestones } from './subscriber-milestones-publish';
@@ -172,8 +172,9 @@ interface PublishItem {
  * something.
  */
 export async function listPublishInbox(env: Env): Promise<Response> {
-  const [footprints, genet, milestones] = await Promise.all([
+  const [footprints, footprintsWrite, genet, milestones] = await Promise.all([
     waitingFootprints(env),
+    footprintsNeedsWrite(env),
     waitingGenetMusic(env),
     waitingSubscriberMilestones(env),
   ]);
@@ -240,7 +241,7 @@ export async function listPublishInbox(env: Env): Promise<Response> {
       ),
     ],
     canPublish: {
-      footprints: footprints.length > 0,
+      footprints: footprints.length > 0 || footprintsWrite,
       genet: genet.pending.length > 0 || genet.shapeOutdated,
       milestones: milestones.needsBuild,
     },

@@ -11,9 +11,10 @@ import { rejudgeFootprints } from './footprints-publish';
  * Effective the moment it is saved, and it logs no `revision` - the list is
  * a setting of how sources are judged, not something that is published, so
  * there is nothing for a version history to reproduce. Adding or removing an
- * entry writes あしあと's public JSON again when that changes which events it
- * calls 「出典の確認待ち」 (#282). `timelineCurrent` says whether the JSON is
- * up to date afterwards: the entry is saved either way.
+ * entry writes あしあと's public JSON again when it is outdated, so its
+ * 「出典の確認待ち」 follows the list (#282). Like any other write of that
+ * JSON, it takes in a revision still waiting. `timelineCurrent` says whether
+ * the JSON is up to date afterwards: the entry is saved either way.
  */
 
 interface WhitelistRow {

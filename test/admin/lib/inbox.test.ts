@@ -2,6 +2,7 @@ import type { FootprintsEvent } from '@/admin/lib/footprints';
 import type { GenetStream } from '@/admin/lib/genet-streams';
 import {
   canPublishAny,
+  rebuildsOnlyShape,
   firstStart,
   jstDate,
   moveSelection,
@@ -187,6 +188,23 @@ describe('publishItemLink', () => {
       path: '/subscribers',
       query: { milestone: '9' },
     });
+  });
+});
+
+describe('rebuildsOnlyShape', () => {
+  const NONE = { footprints: false, genet: false, milestones: false };
+
+  test('is true when only a shape is rebuilt, with nothing listed', () => {
+    expect(rebuildsOnlyShape({ items: [], canPublish: { ...NONE, genet: true } })).toBe(true);
+  });
+
+  // あしあと's JSON written again judges its sources anew, which changes what it says.
+  test('is false when あしあと is written again', () => {
+    expect(rebuildsOnlyShape({ items: [], canPublish: { ...NONE, footprints: true, genet: true } })).toBe(false);
+  });
+
+  test('is false when nothing is done', () => {
+    expect(rebuildsOnlyShape({ items: [], canPublish: NONE })).toBe(false);
   });
 });
 

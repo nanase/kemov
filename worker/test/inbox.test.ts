@@ -14,8 +14,14 @@ const NOW = new Date('2026-10-01T00:00:00Z');
 const WHITELISTED_PREFIX = 'https://kemono-friends.jp/';
 const WHITELISTED_SOURCE = `${WHITELISTED_PREFIX}some-article`;
 
+// The public JSONs stay in R2 between tests unless emptied, and whether one
+// is outdated is read from R2.
 beforeEach(async () => {
   await clearEverything();
+
+  const listed = await env.PUBLIC_DATA.list();
+
+  await Promise.all(listed.objects.map((object) => env.PUBLIC_DATA.delete(object.key)));
   await env.DB.prepare('INSERT INTO source_whitelist (prefix) VALUES (?1)').bind(WHITELISTED_PREFIX).run();
 });
 
@@ -319,6 +325,26 @@ describe('listPublishInbox', () => {
     ]);
     expect(body.canPublish.milestones).toEqual(true);
     expect(((await json(inboxCounts(env))) as { publish: number }).publish).toEqual(1);
+  });
+
+  // A JSON judged by another whitelist: 「いま公開する」 here writes it again, as the 公開 screen's does (#282).
+  test('says あしあと can be published when its JSON is outdated, with nothing waiting', async () => {
+    const eventId = await createValidEvent();
+
+    await publish(eventId);
+
+    const object = await env.PUBLIC_DATA.get('footprints/events.json');
+    const stored = (await object!.json()) as { events: Record<string, unknown>[] };
+
+    await env.PUBLIC_DATA.put(
+      'footprints/events.json',
+      JSON.stringify({ ...stored, events: stored.events.map((e) => ({ ...e, source_pending: true })) }),
+    );
+
+    const body = await json<PublishBody>(listPublishInbox(env));
+
+    expect(body.items).toEqual([]);
+    expect(body.canPublish.footprints).toEqual(true);
   });
 
   test('says nothing can be published when nothing is waiting', async () => {

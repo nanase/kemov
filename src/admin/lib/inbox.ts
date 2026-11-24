@@ -194,6 +194,16 @@ export function canPublishAny(inbox: PublishInbox): boolean {
   return inbox.canPublish.footprints || inbox.canPublish.genet || inbox.canPublish.milestones;
 }
 
+/**
+ * Whether 「いま公開する」 here only builds a JSON again in its newer shape,
+ * with nothing listed, so the screen can say the content does not change.
+ * あしあと's JSON written again with nothing listed does change: its sources
+ * are judged by today's whitelist (#282).
+ */
+export function rebuildsOnlyShape(inbox: PublishInbox): boolean {
+  return inbox.items.length === 0 && !inbox.canPublish.footprints && canPublishAny(inbox);
+}
+
 export const APPROVED_TOAST = '承認しました。「公開待ち」で「いま公開する」を押すと本番に反映されます';
 export const DEFERRED_TOAST = 'あとでに回しました';
 export const REJECTED_TOAST = '却下して削除しました';

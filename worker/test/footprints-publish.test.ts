@@ -793,6 +793,19 @@ describe('a whitelist change', () => {
     expect(await pendingMarks()).toEqual([true]);
   });
 
+  test('answers the rest of the pending list when R2 cannot be read', async () => {
+    await createPublishedEvent();
+
+    const unreadable: Env = {
+      ...env,
+      PUBLIC_DATA: { get: () => Promise.reject(new Error('R2 is down')) } as unknown as R2Bucket,
+    };
+    const response = await pendingFootprints(unreadable);
+
+    expect(response.status).toEqual(200);
+    expect(await response.json()).toEqual({ pending: [], changed: [], behind: false, outdated: false });
+  });
+
   // What a deploy of #282 meets: a JSON written while the mark was set by
   // hand, with nothing waiting. 「いま公開する」 has something to do, and does it.
   test('leaves an outdated JSON for 「いま公開する」 to write again', async () => {

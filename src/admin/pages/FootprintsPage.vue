@@ -50,6 +50,10 @@ const shortOnly = ref(false);
 // it had until another row is selected or a filter changes (`withKeptRow`).
 const keptId = ref<number | null>(null);
 let keptIndex = 0;
+// The kept row as it was when kept: what the table shows when it cannot be read again.
+let keptCopy: FootprintsEvent | null = null;
+// The rows the worker answered for the filter, without a kept one put back.
+const answeredIds = ref<Set<number>>(new Set());
 
 // `/footprints?event=<id>` is where the 公開 screen's rows lead. Read once,
 // for the first list that arrives; later loads keep whatever is selected.
@@ -68,6 +72,14 @@ const shown = computed(() =>
     ? events.value.filter((e) => isShortOfSources(e, whitelist.value) || e.eventId === keptId.value)
     : events.value,
 );
+// Whether `e` is in the table only because it is kept: the count leaves it out.
+function keptOnly(e: FootprintsEvent): boolean {
+  if (e.eventId !== keptId.value) return false;
+
+  return !answeredIds.value.has(e.eventId) || (shortOnlyApplied.value && !isShortOfSources(e, whitelist.value));
+}
+
+const matchedCount = computed(() => shown.value.filter((e) => !keptOnly(e)).length);
 const listTotal = useListTotal(
   async () => (await getJson<{ events: FootprintsEvent[] }>('/footprints/events')).events.length,
 );
@@ -101,6 +113,8 @@ async function load(): Promise<void> {
 
     let rows = body.events;
 
+    answeredIds.value = new Set(rows.map((e) => e.eventId));
+
     if (keptId.value !== null && !rows.some((e) => e.eventId === keptId.value)) {
       const kept = await readKept(keptId.value);
 
@@ -112,7 +126,7 @@ async function load(): Promise<void> {
     }
 
     events.value = rows;
-    listTotal.update(shown.value.length, filtered.value);
+    listTotal.update(matchedCount.value, filtered.value);
 
     if (selectedId.value !== null && !shown.value.some((e) => e.eventId === selectedId.value)) {
       selectedId.value = null;
@@ -159,12 +173,12 @@ async function loadPending(): Promise<void> {
  */
 const reloading = ref(0);
 
-/** The kept row as it is now, or null when it is gone or could not be read. */
+/** The kept row as it is now, null when it is gone, or the copy kept with it when it cannot be read. */
 async function readKept(eventId: number): Promise<FootprintsEvent | null> {
   try {
     return await getJson<FootprintsEvent>(`/footprints/events/${eventId}`);
-  } catch {
-    return null;
+  } catch (error) {
+    return error instanceof AdminApiError && error.status === 404 ? null : keptCopy;
   }
 }
 
@@ -172,6 +186,7 @@ async function readKept(eventId: number): Promise<FootprintsEvent | null> {
 function keepAndReload(): Promise<void> {
   keptId.value = selectedId.value;
   keptIndex = events.value.findIndex((e) => e.eventId === selectedId.value);
+  keptCopy = events.value[keptIndex] ?? null;
 
   return reload();
 }
@@ -197,8 +212,20 @@ function selectRow(eventId: number): void {
   openRow(eventId);
 }
 
+/** Lets the kept row go: it leaves the table at once, whichever filter kept it out. */
+function releaseKept(): void {
+  const released = keptId.value;
+
+  keptId.value = null;
+  keptCopy = null;
+
+  if (released !== null && !answeredIds.value.has(released)) {
+    events.value = events.value.filter((e) => e.eventId !== released);
+  }
+}
+
 function openRow(eventId: number): void {
-  if (eventId !== keptId.value) keptId.value = null;
+  if (eventId !== keptId.value) releaseKept();
   adding.value = false;
   selectedId.value = eventId;
   detail.value = true;
@@ -209,7 +236,7 @@ function startAdding(): void {
   if (!adding.value && !confirmDiscard()) return;
 
   adding.value = true;
-  keptId.value = null;
+  releaseKept();
   selectedId.value = null;
   detail.value = true;
 }
@@ -228,7 +255,7 @@ function back(): void {
 function setStatus(value: string): void {
   if (inspectorBusy.value) return;
   if (value !== status.value && confirmDiscard()) {
-    keptId.value = null;
+    releaseKept();
     status.value = value;
   }
 }
@@ -243,7 +270,7 @@ function toggleShortOnly(): void {
 
   if (hidesOpenRow && !confirmDiscard()) return;
 
-  keptId.value = null;
+  releaseKept();
 
   shortOnly.value = !shortOnly.value;
 
@@ -257,7 +284,7 @@ function setQuery(event: Event): void {
   const input = event.target as HTMLInputElement;
 
   if (!inspectorBusy.value && confirmDiscard()) {
-    keptId.value = null;
+    releaseKept();
     q.value = input.value;
   } else input.value = q.value;
 }
@@ -343,7 +370,7 @@ onMounted(() => {
           @input="setQuery"
         />
         <span class="grow"></span>
-        <span class="sub num">{{ countText(shown.length, listTotal.total.value, filtered) }}</span>
+        <span class="sub num">{{ countText(matchedCount, listTotal.total.value, filtered) }}</span>
         <button class="btn" type="button" @click="startAdding">＋ 足す</button>
       </div>
       <div class="scroller">

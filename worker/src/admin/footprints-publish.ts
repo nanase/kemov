@@ -153,7 +153,8 @@ function footprintsJson(now: Date, bodies: readonly Record<string, unknown>[], w
  * whitelist changes, or when a JSON from before the judgement still carries
  * the marks set by hand; this is what lets 「いま公開する」 and a whitelist
  * change bring it back. A JSON not written yet is outdated once there is an
- * event to put in it.
+ * event to put in it. Throws when R2 cannot be read; each caller decides what
+ * that means for it.
  */
 async function isOutdated(
   env: Env,
@@ -173,8 +174,9 @@ async function isOutdated(
 /**
  * Writes `footprints/events.json` again when it is outdated (`isOutdated`):
  * what a change to the whitelist calls, so the timeline's 「出典の確認待ち」
- * follows it (#282). True when the JSON is up to date afterwards, false when
- * it could not be read, built or written.
+ * follows it (#282). Built from every latest revision as any write is, so a
+ * revision still waiting goes in too. True when the JSON is up to date
+ * afterwards, false when it could not be read, built or written.
  */
 export async function rejudgeFootprints(env: Env, now: Date): Promise<boolean> {
   try {
@@ -463,7 +465,11 @@ export async function pendingFootprints(env: Env): Promise<Response> {
     if (current !== publishedBody) changed.push({ eventId, title: saved.event.title });
   }
 
-  const [behind, outdated] = await Promise.all([isBehind(env, TARGET), isOutdated(env, latest, whitelist)]);
+  // An R2 that cannot be read says nothing about the rest of the answer.
+  const [behind, outdated] = await Promise.all([
+    isBehind(env, TARGET),
+    isOutdated(env, latest, whitelist).catch(() => false),
+  ]);
 
   return jsonResponse({ pending, changed, behind, outdated });
 }
@@ -481,6 +487,20 @@ export interface WaitingFootprintsEntry {
  */
 export async function waitingFootprints(env: Env): Promise<WaitingFootprintsEntry[]> {
   return (await readWaiting(env)).pending;
+}
+
+/**
+ * Whether 「いま公開する」 writes the JSON with nothing waiting: it may be
+ * behind (`isBehind`), or it is outdated (`isOutdated`). False when R2 cannot
+ * be read. The やること screens' 公開待ち (inbox.ts) reads it here, so its
+ * button follows the 公開 screen's.
+ */
+export async function footprintsNeedsWrite(env: Env): Promise<boolean> {
+  if (await isBehind(env, TARGET)) return true;
+
+  const [latest, whitelist] = await Promise.all([latestRevisions(env, 'footprints_event'), readSourceWhitelist(env)]);
+
+  return isOutdated(env, latest, whitelist).catch(() => false);
 }
 
 /** `waitingFootprints`, with the latest revisions it was worked out from left in for `pendingFootprints` to compare against. */
@@ -529,7 +549,8 @@ export async function publishFootprintsNow(env: Env, now: Date): Promise<Respons
   if (
     newestRevisionId <= lastRevisionId &&
     !(await isBehind(env, TARGET)) &&
-    !(await isOutdated(env, latest, whitelist))
+    // An R2 that cannot be read is written to, and the write says why it failed.
+    !(await isOutdated(env, latest, whitelist).catch(() => true))
   ) {
     return jsonResponse({ published: false });
   }
