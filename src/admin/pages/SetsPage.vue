@@ -12,7 +12,6 @@ import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, getJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
 import { EDITING_TEXT, SAVE_TOAST, sameFields } from '../lib/editing';
-import { STATUS_OPTIONS } from '../lib/footprints';
 import { insertAt, mdSnippet, clock, type MdLinkKind } from '../lib/genet-markdown';
 import { type GenetPerson } from '../lib/genet-people';
 import {
@@ -46,6 +45,7 @@ import {
   PLATFORMS,
   SCENE_STYLE_LABEL,
   SCENE_STYLES,
+  STATUS_OPTIONS,
   streamsQuery,
   toFormFields as toStreamFormFields,
   VIDEO_TYPES,

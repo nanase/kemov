@@ -5,6 +5,13 @@
  * admin screen's own lib file uses.
  */
 
+/** The 状態 filter of the stream list (#277's decision 3). */
+export const STATUS_OPTIONS: readonly { value: string; label: string }[] = [
+  { value: 'all', label: 'すべて' },
+  { value: 'draft', label: '下書き' },
+  { value: 'published', label: '公開中' },
+];
+
 export const PLATFORMS = ['youtube', 'tiktok'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 

@@ -40,27 +40,27 @@ const CHANGED: ChangedGenetEntry = { entity: 'genet_tune', key: '1', title: '曲
 
 describe('canPublishGenet', () => {
   test('is false when nothing is waiting or changed and the shape is current', () => {
-    expect(canPublishGenet({ pending: [], changed: [], shapeOutdated: false })).toBe(false);
+    expect(canPublishGenet({ pending: [], changed: [], shapeOutdated: false, behind: false })).toBe(false);
   });
 
   test('is true when something is waiting', () => {
-    expect(canPublishGenet({ pending: [WAITING], changed: [], shapeOutdated: false })).toBe(true);
+    expect(canPublishGenet({ pending: [WAITING], changed: [], shapeOutdated: false, behind: false })).toBe(true);
   });
 
   // A row changed after it was published has no revision newer than the last
   // run, so the worker answers 'nothing to publish' (#201).
   test('is false when something only changed after it was published', () => {
-    expect(canPublishGenet({ pending: [], changed: [CHANGED], shapeOutdated: false })).toBe(false);
+    expect(canPublishGenet({ pending: [], changed: [CHANGED], shapeOutdated: false, behind: false })).toBe(false);
   });
 
   // Nothing waiting and nothing changed, but the stored JSON is in an older
   // shape: the worker would build it again, so the screen must let it be asked for.
   test('is true when only the stored shape is out of date', () => {
-    expect(canPublishGenet({ pending: [], changed: [], shapeOutdated: true })).toBe(true);
+    expect(canPublishGenet({ pending: [], changed: [], shapeOutdated: true, behind: false })).toBe(true);
   });
 
   test('is false when the response does not report the shape at all', () => {
-    expect(canPublishGenet({ pending: [], changed: [] })).toBe(false);
+    expect(canPublishGenet({ pending: [], changed: [], behind: false })).toBe(false);
   });
 
   // A write of the JSON that no check found up to date may have left it
@@ -72,20 +72,20 @@ describe('canPublishGenet', () => {
 
 describe('publishesOnlyForShape', () => {
   test('is true when the shape is the only reason', () => {
-    expect(publishesOnlyForShape({ pending: [], changed: [], shapeOutdated: true })).toBe(true);
+    expect(publishesOnlyForShape({ pending: [], changed: [], shapeOutdated: true, behind: false })).toBe(true);
   });
 
   test('is false when something is waiting, even if the shape is out of date too', () => {
-    expect(publishesOnlyForShape({ pending: [WAITING], changed: [], shapeOutdated: true })).toBe(false);
+    expect(publishesOnlyForShape({ pending: [WAITING], changed: [], shapeOutdated: true, behind: false })).toBe(false);
   });
 
   test('is true when a row changed but nothing is waiting, since the build ignores what changed', () => {
-    expect(publishesOnlyForShape({ pending: [], changed: [CHANGED], shapeOutdated: true })).toBe(true);
+    expect(publishesOnlyForShape({ pending: [], changed: [CHANGED], shapeOutdated: true, behind: false })).toBe(true);
   });
 
   test('is false when the shape is current or not reported', () => {
-    expect(publishesOnlyForShape({ pending: [], changed: [], shapeOutdated: false })).toBe(false);
-    expect(publishesOnlyForShape({ pending: [], changed: [] })).toBe(false);
+    expect(publishesOnlyForShape({ pending: [], changed: [], shapeOutdated: false, behind: false })).toBe(false);
+    expect(publishesOnlyForShape({ pending: [], changed: [], behind: false })).toBe(false);
   });
 
   test('is false when the JSON may be behind too', () => {
@@ -101,7 +101,7 @@ describe('GENET_BEHIND_TEXT', () => {
 
 describe('isChangedSincePublish', () => {
   test('matches on the entity and the key together', () => {
-    const state = { pending: [], changed: [CHANGED] };
+    const state = { pending: [], changed: [CHANGED], behind: false };
 
     expect(isChangedSincePublish(state, 'genet_tune', '1')).toBe(true);
     expect(isChangedSincePublish(state, 'genet_stream', '1')).toBe(false);

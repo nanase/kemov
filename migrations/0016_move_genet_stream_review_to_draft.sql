@@ -3,6 +3,11 @@
 -- `review`. The streams put off with it become drafts, which is what they
 -- were before they were put off.
 --
+-- Unlike 0015, none of them becomes `published`: 「あとで」 was refused for a
+-- published stream, and a withdrawn one was a draft with a `withdraw`
+-- revision, so no stream put off with it has a `publish` revision as its
+-- latest.
+--
 -- The table's CHECK still allows `review`, as footprints_event's does after
 -- 0013: rebuilding genet_stream to drop it would mean taking aside every
 -- performance and scene that points at it, for a value nothing writes any

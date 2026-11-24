@@ -9,7 +9,7 @@ import {
   publicShapeOf as streamPublicShapeOf,
   readStream,
   readStreams,
-  saveStatements,
+  saveStatements as streamSaveStatements,
   updateStream,
   validatedStreamFields,
   withFields as streamWithFields,
@@ -391,7 +391,7 @@ async function saveAndPublish(env: Env, existing: GenetStream, fields: StreamFie
   const problems = publishProblems(next, tunes);
 
   if (problems.length > 0) {
-    if (!wasPublished) await env.DB.batch(saveStatements(env, videoId, fields));
+    if (!wasPublished) await env.DB.batch(streamSaveStatements(env, videoId, fields));
 
     return refusalResponse(problems, !wasPublished);
   }
@@ -403,12 +403,12 @@ async function saveAndPublish(env: Env, existing: GenetStream, fields: StreamFie
     env,
     GENET_STREAM_TARGET,
     { key: videoId, action: 'publish', body: streamPublicShapeOf(next), alongside },
-    saveStatements(env, videoId, fields, 'published'),
+    streamSaveStatements(env, videoId, fields, 'published'),
     now,
   );
 
   if (!outcome.written) {
-    if (!outcome.recorded) await env.DB.batch(saveStatements(env, videoId, fields));
+    if (!outcome.recorded) await env.DB.batch(streamSaveStatements(env, videoId, fields));
 
     return await notWrittenResponse(env, videoId, outcome);
   }
@@ -497,7 +497,7 @@ export async function withdrawStream(
     env,
     GENET_STREAM_TARGET,
     { key: videoId, action: 'withdraw', body: null },
-    saveStatements(env, videoId, fields, 'draft'),
+    streamSaveStatements(env, videoId, fields, 'draft'),
     now,
   );
 

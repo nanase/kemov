@@ -17,8 +17,8 @@ import { waitingSubscriberMilestones } from './subscriber-milestones-publish';
  *
  * 確認待ち is a row nobody has let through yet: a draft that has never been
  * published (no `import` or `publish` revision - one withdrawn after it was
- * live has been through once already). Neither has 「あとで」 any more
- * (#281, #284).
+ * live has been through once already). 「あとで」 is gone from あしあと
+ * and ジェネット楽曲一覧 (#281, #284).
  */
 
 const NEVER_PUBLISHED_EVENT = `CAST(event_id AS TEXT) NOT IN (

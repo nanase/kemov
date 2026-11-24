@@ -43,7 +43,7 @@ export interface GenetPendingResponse {
   /** The stored JSON is in an older shape, so a run builds it again with nothing else waiting. */
   shapeOutdated?: boolean;
   /** Whether the public JSON may say what no revision says: a write of it was sent that no check found up to date since. */
-  behind?: boolean;
+  behind: boolean;
 }
 
 /**
@@ -57,12 +57,12 @@ export interface GenetPendingResponse {
  * "待っているものがありません" (#201).
  */
 export function canPublishGenet(state: GenetPendingResponse): boolean {
-  return state.pending.length > 0 || state.shapeOutdated === true || state.behind === true;
+  return state.pending.length > 0 || state.shapeOutdated === true || state.behind;
 }
 
 /** Whether the only reason to publish is the shape, so the screen can say so. */
 export function publishesOnlyForShape(state: GenetPendingResponse): boolean {
-  return state.pending.length === 0 && state.shapeOutdated === true && state.behind !== true;
+  return state.pending.length === 0 && state.shapeOutdated === true && !state.behind;
 }
 
 /** Whether `entity`/`key` differs from what it was published as. */
