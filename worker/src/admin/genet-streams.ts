@@ -667,7 +667,10 @@ export async function updateStream(env: Env, videoId: string, body: Record<strin
 
   const saved = await readStream(env, videoId);
 
-  return jsonResponse({ stream: present(saved!) });
+  // Deleted between the read and the batch, whose writes then found no row.
+  if (saved === null) return errorResponse(404, `no stream ${videoId}`);
+
+  return jsonResponse({ stream: present(saved) });
 }
 
 /**

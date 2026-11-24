@@ -329,6 +329,18 @@ function refusalResponse(problems: readonly { message: string }[], saved: boolea
  * the status the stream has now.
  */
 async function notWrittenResponse(env: Env, videoId: string, outcome: Extract<PublishOutcome, { written: false }>) {
+  // Deleted before the batch ran, which then logged no revision for it, and
+  // the JSON already written with it could not be built again without it.
+  if (outcome.recorded && outcome.revisionId === null) {
+    return jsonResponse(
+      {
+        error: `stream ${videoId} was deleted while this request was saving it, and ${GENET_MUSIC_OBJECT_KEY} could not be built again without it: ${outcome.error}`,
+        saved: false,
+      },
+      { status: 502 },
+    );
+  }
+
   const saved = await readStream(env, videoId);
 
   return jsonResponse(
@@ -730,7 +742,9 @@ async function readWaiting(env: Env) {
   ].filter((row) => row.revisionId > lastRevisionId);
 
   const newestRevisionId = newestRevisionIdOf(streamRevisions, tuneRevisions, personRevisions);
-  const shapeOutdated = await shapeIsOutdated(env, newestRevisionId);
+  // Read from R2 only when nothing else already asks for a build: a failed
+  // read must not stop one that would go ahead without it.
+  const shapeOutdated = pending.length === 0 && !behind && (await shapeIsOutdated(env, newestRevisionId));
 
   return {
     pending,
