@@ -186,7 +186,12 @@ export async function rejudgeFootprints(env: Env, now: Date): Promise<boolean> {
 
     if (!(await isOutdated(env, latest, whitelist))) return true;
 
-    return (await republish(env, footprintsTarget(whitelist), now)).current;
+    const outcome = await republish(env, footprintsTarget(whitelist), now);
+
+    // A revision still waiting may have renamed or moved an event a milestone names, as any other write here.
+    await republishMilestonesForEvents(env, now);
+
+    return outcome.current;
   } catch {
     return false;
   }
