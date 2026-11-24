@@ -743,6 +743,26 @@ describe('liveBodiesOf', () => {
     expect(liveBodiesOf(latest, 'genet_tune', logged)).toEqual([{ tune: 2 }, { tune: 3 }]);
     expect(liveBodiesOf(latest, 'genet_person', logged)).toEqual([{ person: 1, v: 'new' }]);
   });
+
+  test('applies only the last of several logged revisions for one key, as a rebuild would', () => {
+    const twice: LoggedRevision[] = [
+      { entity: 'genet_tune', key: '3', action: 'publish', body: { tune: 3, v: 'first' } },
+      { entity: 'genet_tune', key: '4', action: 'publish', body: { tune: 4 } },
+      { entity: 'genet_tune', key: '3', action: 'publish', body: { tune: 3, v: 'last' } },
+    ];
+    const withdrawnLast: LoggedRevision[] = [
+      { entity: 'genet_tune', key: '2', action: 'publish', body: { tune: 2, v: 'new' } },
+      { entity: 'genet_tune', key: '2', action: 'withdraw', body: null },
+    ];
+
+    expect(liveBodiesOf(latest, 'genet_tune', twice)).toEqual([
+      { tune: 1 },
+      { tune: 2 },
+      { tune: 3, v: 'last' },
+      { tune: 4 },
+    ]);
+    expect(liveBodiesOf(latest, 'genet_tune', withdrawnLast)).toEqual([{ tune: 1 }]);
+  });
 });
 
 describe('loggedRevisions', () => {

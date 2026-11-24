@@ -29,8 +29,9 @@ import type { RevisionEntity } from '../lib/revision';
  * Two requests publishing at once each build the JSON before the other's
  * revision is recorded, and the later write would leave the other's change
  * out. So after the batch, the JSON is checked against `revision` again:
- * when a revision was recorded that it was not built from, or another
- * request wrote it since, it is built again from `revision` alone, written,
+ * when a revision was recorded that it was not built from, its `cutoff` has
+ * moved on, or another request wrote it since, it is built again from
+ * `revision` alone, written,
  * and checked again. Whichever request writes last has checked after every
  * revision recorded before its check, and a revision recorded after that
  * belongs to a request that checks later still and finds the JSON is not
@@ -69,6 +70,15 @@ export interface PublishTarget {
    * way: a revision of theirs recorded meanwhile builds the JSON again.
    */
   alsoBuiltFrom?: readonly RevisionEntity[];
+  /**
+   * What else the JSON is built from that no revision of `entity` or
+   * `alsoBuiltFrom` shows. 登録者数の節目 names events only up to あしあと's
+   * last `publication`, which あしあと's 「いま公開する」 moves on without
+   * recording a revision. Read before each build, and again by the check
+   * after the batch: a JSON built with another value is built again, as one
+   * lacking a revision is. Compared as is.
+   */
+  cutoff?(env: Env): Promise<number>;
   /** `publication.target`. */
   target: string;
   /** Where in `PUBLIC_DATA` the JSON lives. */
@@ -105,6 +115,16 @@ export interface RevisionChange {
    * each is logged whether or not the row is still there.
    */
   alongside?: readonly LoggedRevision[];
+  /**
+   * A condition on the working row, as SQL over `table`'s columns, that the
+   * row's own revision is logged only under. It is looked at after
+   * `rowStatements` ran, so a caller whose statements write only while the
+   * row is still as it was read passes what they leave the row as: a row
+   * they left alone then gets no revision either, and the JSON already
+   * written with the change is built again without it, as for a deleted row.
+   * Constant SQL in the caller's code, never anything a request sent.
+   */
+  whileRow?: string;
 }
 
 /** One revision a publish logs. */
@@ -125,7 +145,8 @@ export function loggedRevisions(target: PublishTarget, change: RevisionChange): 
 
 /**
  * `revisionId` is null when the row was gone by the time the batch ran - a
- * delete in between - and no revision was logged for it. `publicationId` is
+ * delete in between - or no longer met `change.whileRow`, and no revision
+ * was logged for it. `publicationId` is
  * null when, besides, no revision of `entity` exists at all: a publication
  * names the newest revision it was built from, and there is none. It is null
  * too when another request already recorded a publication naming a newer
@@ -182,6 +203,11 @@ function builtFrom(env: Env, target: PublishTarget): Promise<LatestRevisionRow[]
   return latestRevisionsOf(env, [target.entity, ...(target.alsoBuiltFrom ?? [])]);
 }
 
+/** `target.cutoff` as it is now, or null for a target that has none. */
+async function readCutoff(env: Env, target: PublishTarget): Promise<number | null> {
+  return target.cutoff === undefined ? null : await target.cutoff(env);
+}
+
 /**
  * The bodies the public JSON is built from: every entity's latest revision
  * that is a `publish`, with `change`'s own revision, when there is one,
@@ -203,14 +229,19 @@ export function liveBodies(
 
 /**
  * `liveBodies` for `entity`'s rows among `latest`, with every one of
- * `logged` that is of `entity` applied over them.
+ * `logged` that is of `entity` applied over them. Of several for one key,
+ * the last is the one applied, as a rebuild from `revision` would read it.
  */
 export function liveBodiesOf(
   latest: readonly LatestRevisionRow[],
   entity: RevisionEntity,
   logged: readonly LoggedRevision[],
 ): Record<string, unknown>[] {
-  const own = logged.filter((revision) => revision.entity === entity);
+  const own = [
+    ...new Map(
+      logged.filter((revision) => revision.entity === entity).map((revision) => [revision.key, revision] as const),
+    ).values(),
+  ];
   const keys = new Set(own.map((revision) => revision.key));
   const others = latest
     .filter(
@@ -324,6 +355,8 @@ async function putJson(env: Env, target: PublishTarget, json: string): Promise<{
  */
 interface Written {
   builtFrom: number;
+  /** `target.cutoff`, read before the JSON was built. */
+  cutoff: number | null;
   own: readonly number[];
   version: string;
   /** The `publication_write` rows of every write this request has sent. */
@@ -369,17 +402,19 @@ async function bringUpToDate(
 
   for (let rebuilds = 0; ; rebuilds += 1) {
     let latest: LatestRevisionRow[];
+    let cutoff: number | null;
 
     // Caught, unlike the read before anything was written: the change is
     // recorded by now, and the caller must say so rather than fail as if
     // nothing had been saved.
     try {
       latest = await builtFrom(env, target);
+      cutoff = await readCutoff(env, target);
     } catch (error) {
       return { current: false, error: String(error) };
     }
 
-    if (checkable && !hasNewer(latest, written)) {
+    if (checkable && !hasNewer(latest, written) && cutoff === written.cutoff) {
       let finishedBefore: number[];
       let head: R2Object | null;
 
@@ -405,6 +440,7 @@ async function bringUpToDate(
 
       written = {
         builtFrom: newestRevisionId(latest),
+        cutoff,
         own: [],
         version: put.version,
         writeIds: [...written.writeIds, put.writeId],
@@ -432,11 +468,11 @@ async function bringUpToDate(
  * from `revision` - which the failed batch left as it was - or left in
  * `publication_write` when that could not be done either.
  *
- * The row's own revision is logged only while the row is still there, as
- * `revisionStatement` (lib/revision.ts) cannot say: a row deleted between the
- * caller's read and this batch gets no `publish` revision, and the JSON
- * already written with its body is built again without it. `alongside` is
- * logged either way.
+ * The row's own revision is logged only while the row is still there, and
+ * meets `change.whileRow` when there is one, as `revisionStatement`
+ * (lib/revision.ts) cannot say: a row deleted between the caller's read and
+ * this batch gets no `publish` revision, and the JSON already written with
+ * its body is built again without it. `alongside` is logged either way.
  */
 export async function publishChange(
   env: Env,
@@ -446,6 +482,9 @@ export async function publishChange(
   now: Date,
 ): Promise<PublishOutcome> {
   const before = await builtFrom(env, target);
+  // Read before the build, which may read it too: one that moves on in
+  // between makes the check build again, which costs a write and no more.
+  const cutoff = await readCutoff(env, target);
   const json = await target.buildJson(env, now, before, change);
   const writeId = await startWrite(env, target);
   let version: string;
@@ -456,7 +495,13 @@ export async function publishChange(
     return { written: false, recorded: false, error: String(error) };
   }
 
-  const first = { builtFrom: newestRevisionId(before), version, writeIds: [writeId], byteLength: byteLength(json) };
+  const first = {
+    builtFrom: newestRevisionId(before),
+    cutoff,
+    version,
+    writeIds: [writeId],
+    byteLength: byteLength(json),
+  };
   let results: D1Result[];
 
   try {
@@ -465,7 +510,8 @@ export async function publishChange(
       env.DB.prepare(
         `INSERT INTO revision (entity, entity_key, action, body, created_via)
          SELECT ?1, ?2, ?3, ?4, 'admin'
-         WHERE EXISTS (SELECT 1 FROM ${target.table} WHERE ${target.keyColumn} = ?2)`,
+         WHERE EXISTS (SELECT 1 FROM ${target.table}
+                        WHERE ${target.keyColumn} = ?2${change.whileRow === undefined ? '' : ` AND (${change.whileRow})`})`,
       ).bind(target.entity, change.key, change.action, bodyText(change.body)),
       ...(change.alongside ?? []).map((revision) =>
         env.DB.prepare(
@@ -561,6 +607,7 @@ export async function republish(
   | { current: false; error: string }
 > {
   const before = await builtFrom(env, target);
+  const cutoff = await readCutoff(env, target);
   const json = await target.buildJson(env, now, before, null);
   const put = await putJson(env, target, json);
 
@@ -570,6 +617,7 @@ export async function republish(
     now,
     {
       builtFrom: newestRevisionId(before),
+      cutoff,
       own: [],
       version: put.version,
       writeIds: [put.writeId],
