@@ -139,7 +139,7 @@ describe('footprintsAnswerFor', () => {
       band: {
         title: '非公開に戻しましたが、本番から外せませんでした',
         lines: [],
-        note: '公開中のほかの行を「保存」すると、本番からも外れます。',
+        note: '公開の画面で「いま公開する」を押すと本番からも外れます',
       },
       fields: [],
       changed: true,

@@ -89,7 +89,7 @@ export const PUBLISH_TEXT = {
   notWithdrawnNote:
     '本番を書き直せませんでした。行は公開中のまま、本番も前の内容のままです。もう一度「非公開に戻す」を押してください。',
   withdrawnBehind: '非公開に戻しましたが、本番から外せませんでした',
-  withdrawnBehindNote: '公開中のほかの行を「保存」すると、本番からも外れます。',
+  withdrawnBehindNote: '公開の画面で「いま公開する」を押すと本番からも外れます',
   failed: '保存できません',
   removeFailed: '削除できません',
   changedTitle: '本番は前の内容のままです',
