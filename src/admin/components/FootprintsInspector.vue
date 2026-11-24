@@ -27,7 +27,13 @@ import {
   type PublishAction,
   type PublishBand,
 } from '../lib/publishing';
-import { judgeEventSources, markLabel, shortfallMessage, SOURCE_TEXT } from '../lib/footprints-sources';
+import {
+  judgeEventSources,
+  markLabel,
+  shortfallMessage,
+  shortWhateverTheWhitelist,
+  SOURCE_TEXT,
+} from '../lib/footprints-sources';
 import { refreshPublishBadge } from '../lib/publish-badge';
 import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
 import { todayJst } from '../lib/snapshots';
@@ -154,6 +160,10 @@ function toggleLead(channelId: string): void {
 /** How the sources stand, or null while the whitelist is unknown. */
 const judgement = computed(() => (props.whitelist === null ? null : judgeEventSources(fields.value, props.whitelist)));
 const sourcesShort = computed(() => judgement.value !== null && !judgement.value.enough);
+// The preview's 「出典の確認待ち」: while the whitelist is unknown, only when it is short whatever the list says.
+const previewSourcePending = computed(() =>
+  judgement.value === null ? shortWhateverTheWhitelist(fields.value) : !judgement.value.enough,
+);
 
 function sourcesDescribedBy(): string | undefined {
   const judged = judgement.value !== null || props.whitelistFailed;
@@ -484,7 +494,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
         </div>
       </div>
       <PreviewPane v-if="previewOpen" :note="PREVIEW_NOTES.published">
-        <FootprintsPreview :fields="fields" :event-id="eventId ?? 0" :source-pending="sourcesShort" />
+        <FootprintsPreview :fields="fields" :event-id="eventId ?? 0" :source-pending="previewSourcePending" />
       </PreviewPane>
     </div>
 

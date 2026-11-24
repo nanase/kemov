@@ -1,6 +1,6 @@
 import { ref, type Ref } from 'vue';
 import { getJson } from './api';
-import { judgeSources, type SourceMark, type SourcesJudgement } from './source-check';
+import { judgeSources, sourceUrlProblem, type SourceMark, type SourcesJudgement } from './source-check';
 import type { SourceWhitelistEntry } from './source-whitelist';
 
 /**
@@ -53,6 +53,15 @@ export function isShortOfSources(
   whitelist: readonly string[] | null,
 ): boolean {
   return whitelist !== null && !judgeEventSources(event, whitelist).enough;
+}
+
+/**
+ * Whether `event` is short of sources whatever the whitelist says: none of
+ * its sources is one a save accepts, so none can count. What the preview
+ * still knows while the whitelist cannot be read.
+ */
+export function shortWhateverTheWhitelist(event: { sources: readonly { url: string }[] }): boolean {
+  return !event.sources.some((source) => sourceUrlProblem(source.url) === null);
 }
 
 /** The whitelist's prefixes, as `GET /admin/api/source-whitelist` lists them. */

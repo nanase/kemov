@@ -1,5 +1,11 @@
 import { getJson } from '@/admin/lib/api';
-import { isShortOfSources, markLabel, shortfallMessage, useWhitelist } from '@/admin/lib/footprints-sources';
+import {
+  isShortOfSources,
+  markLabel,
+  shortfallMessage,
+  shortWhateverTheWhitelist,
+  useWhitelist,
+} from '@/admin/lib/footprints-sources';
 
 vi.mock('@/admin/lib/api', () => ({ getJson: vi.fn() }));
 
@@ -87,5 +93,17 @@ describe('useWhitelist', () => {
 
     expect(whitelist.value).toEqual(WHITELIST);
     expect(failed.value).toBe(false);
+  });
+});
+
+describe('shortWhateverTheWhitelist', () => {
+  test('is true with no source, or none a save accepts', () => {
+    expect(shortWhateverTheWhitelist(event())).toBe(true);
+    expect(shortWhateverTheWhitelist(event('', 'http://example.com/a'))).toBe(true);
+  });
+
+  // Whether one source is enough depends on the whitelist, which is not known here.
+  test('is false once a source a save accepts is there', () => {
+    expect(shortWhateverTheWhitelist(event('https://www.youtube.com/watch?v=a'))).toBe(false);
   });
 });
