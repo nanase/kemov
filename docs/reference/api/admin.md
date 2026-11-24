@@ -218,7 +218,7 @@ JSON は `shape_version` と `channel_id` も持ちます。
 | GET      | `/admin/api/subscribers/milestones/<節目 ID>`          | 1 行と、その出典                                                                          |
 | POST     | `/admin/api/subscribers/milestones`                    | `draft` で作成した後の行                                                                  |
 | PUT      | `/admin/api/subscribers/milestones/<節目 ID>`          | 「保存」。下書きなら保存した後の行。公開中なら、保存して JSON を書き直した後の行          |
-| DELETE   | `/admin/api/subscribers/milestones/<節目 ID>`          | `{}`。`published` の節目なら 409                                                          |
+| DELETE   | `/admin/api/subscribers/milestones/<節目 ID>`          | `{}`。消す時点で `published` の節目なら 409                                               |
 | POST     | `/admin/api/subscribers/milestones/<節目 ID>/publish`  | 「公開」。保存し、検証し、JSON を書き直した後の行                                         |
 | POST     | `/admin/api/subscribers/milestones/<節目 ID>/withdraw` | 「非公開に戻す」。JSON から外し、`draft` として保存した後の行。`published` でなければ 409 |
 | POST     | `/admin/api/subscribers/source-check`                  | 送った出典それぞれの扱いと、出典が足りているか。何も保存しない                            |
@@ -227,7 +227,7 @@ JSON は `shape_version` と `channel_id` も持ちます。
 
 `GET /admin/api/subscribers/milestones` は、クエリパラメーターの `channelId` と `status`（`draft` か `published`）で一覧を絞ります。
 
-節目の状態は、あしあとと同じく下書き（`draft`）と公開中（`published`）の 2 つです（#277、#283）。「確認中」（`status = 'review'`）はなくしました。`review` だった節目は、migration 0015 で `draft` に移しました。表の CHECK は `review` を許したままですが、コードはもう書きません。
+節目の状態は、あしあとと同じく下書き（`draft`）と公開中（`published`）の 2 つです（#277、#283）。「確認中」（`status = 'review'`）はなくしました。`review` だった節目は、migration 0015 で移しました。最新の版が `publish` の節目は、公開の JSON に載っているかもしれないので `published` に、それ以外は `draft` にしました。表の CHECK は `review` を許したままですが、コードはもう書きません。
 
 下書きの保存・公開・公開中の保存・非公開に戻すの 4 つの操作は、[あしあと](#あしあと)と同じ形です。どれもすべての欄を本文に送ります。公開・公開中の保存・非公開に戻すは、1 回の要求で公開の JSON（`subscribers/milestones.json`）まで書き直します。書く順、記録した後の確かめ、`publication_write` の扱い、断ったときと書けなかったときの答えも、あしあとと同じです。公開の処理は `worker/src/admin/publishing.ts` の `publishChange` を通り、節目に固有の部分は `worker/src/admin/subscriber-milestones-publish.ts` にあります。
 
@@ -242,6 +242,12 @@ JSON は `shape_version` と `channel_id` も持ちます。
 
 下書きの保存は、読んだときに下書きだった行にだけ書きます。読んでから書くまでの間にほかのタブなどで公開されていたら、409 を返し、何も書きません。版を記録しない書き込みで公開中の行を上書きしないためです。公開で断られた下書きの欄を保存するときも同じです。
 
+ほかの操作とぶつかったときも、読んだときの状態のままの行にだけ書きます。合わなければ 409 を返し、行も版も書きません。
+
+- 公開中の保存は、まだ公開中の行にだけ書きます。間に非公開に戻されていたら、先に書いた JSON を版から作り直し、節目を本番に戻しません
+- JSON を書けずに欄だけを保存するときは、読んでから節目の版が増えていない行にだけ書きます。間にほかの要求が記録した公開を、遅れて着いた保存で上書きしないためです
+- 削除は、消す時点でまだ下書きの行だけを消します。間に公開されていたら、行も出典も残します
+
 「非公開に戻す」では、行がもうつないでいる出来事は、その `kind` が `milestone` でなくなっていても、そのまま残せます。あしあとの側で出来事の種類を変えても、節目を本番から外せなくならないようにするためです。新しくつなぐ出来事は、ほかの操作と同じく確かめます。
 
 公開の条件は、出典が足りていることだけです。あしあとと違い、足りなければ公開しません（#277 の 6-7）。断るときの 400 の本文は、あしあとと同じく `problems`・`errors`・`saved` を持ちます。`problems` の `field` は `sources` です。
@@ -249,14 +255,15 @@ JSON は `shape_version` と `channel_id` も持ちます。
 出典が足りる条件は次のとおりです。
 
 - 出典が 1 つ以上ある
-- `announcedBy` が `listener` なら、そのリスナーの投稿 1 つで足りる。ただし、保存で通る `https://` の URL でなければ数えない
+- 数えるのは、保存で通る URL だけ（上の出典の `url` の条件）
+- `announcedBy` が `listener` なら、そのリスナーの投稿 1 つで足りる
 - `announcedBy` が `member` か `official` なら、あしあとと同じ条件（[出典のホワイトリスト](#出典のホワイトリスト)）に次を足したもので足りる
   - 節目のメンバー本人のチャンネルの動画の URL 1 つは、ホワイトリストの出典と同じに数えます。メンバーが配信の画面に登録者数を映したときの、その配信です
     - 動画の URL として読むのは、`https://www.youtube.com/watch?v=<ID>`（`youtube.com`・`m.youtube.com` も同じ。`t=` などのクエリが付いていても構いません）、`https://youtu.be/<ID>`、`https://www.youtube.com/live/<ID>` です。`worker/src/lib/source-whitelist.ts` の `youtubeVideoIdOf` が ID を取り出します
     - チャンネルのページ、再生リスト、`youtube.com` 以外のホストは、動画の URL ではありません
     - `<ID>` が `video` の表にあり、その `channel_id` が節目の `channel_id` と一致することが必要です。他のメンバーの動画や、`video` の表に無い動画では通りません。収集の対象より古い動画は、表に無いので通りません（#230）
 
-`POST /admin/api/subscribers/source-check` は、この判定を保存せずに返します。編集の欄が、出典を打つたびに呼びます（#277 の 2a）。公開も同じ関数（`judgeSources`）で判定するので、画面と公開の答えは食い違いません。
+`POST /admin/api/subscribers/source-check` は、この判定を保存せずに返します。編集の欄が、出典を打つたびに呼びます（#277 の 2a）。答えは目安です。公開は、画面の答えを使わず、同じ関数（`judgeSources`）でもう一度判定します。問い合わせから公開までの間にホワイトリストや動画の表が変わると、答えが変わることがあります。
 
 - 本文は `{ channelId, announcedBy, urls }`。`urls` は文字列の配列で、50 件まで
 - 答えは `{ marks, enough }`
@@ -281,7 +288,9 @@ JSON は `shape_version` と `channel_id` も持ちます。
     - 節目の JSON が、年表に無い出来事を指さないため
   - その版が `withdraw` か、版が無ければ `null`
 
-公開の JSON は、節目の版のほかに出来事の版からも作ります。そのため `publishing.ts` には `alsoBuiltFrom: ['footprints_event']` として渡し、記録した後の確かめでも出来事の版を見ます。節目を公開している間に出来事の版が記録されたら、JSON を作り直します。出来事の公開が続いている間は、作り直しの上限（`REBUILD_LIMIT`）に達して 502 になることがあります。そのときは記録は済んでいて、`behind` が残ります。
+公開の JSON は、節目の版のほかに出来事の版からも作ります。そのため `publishing.ts` には `alsoBuiltFrom: ['footprints_event']` として渡し、記録した後の確かめでも出来事の版を見ます。節目を公開している間に出来事の版が記録されたら、JSON を作り直します。
+
+出来事は、あしあとの最新の `publication` が指す版までを写します。あしあとの「いま公開する」は、版を足さずにこの位置を進めます。そのため `publishing.ts` には、この位置を `cutoff` として渡します。記録した後の確かめで、位置が JSON を作ったときと違えば、JSON を作り直します。出来事の公開が続いている間は、作り直しの上限（`REBUILD_LIMIT`）に達して 502 になることがあります。そのときは記録は済んでいて、`behind` が残ります。
 
 あしあとで出来事を公開・公開中の保存・非公開に戻すと、その後に節目の JSON も書き直します（#277 の 6-6、`republishMilestonesForEvents`）。
 
