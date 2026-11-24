@@ -9,6 +9,7 @@ import {
   footprintsQuery,
   kindLabel,
   STATUS_OPTIONS,
+  withKeptRow,
   type FootprintsEvent,
   type FootprintsMember,
 } from '../lib/footprints';
@@ -45,6 +46,10 @@ const pending = ref<FootprintsPending | null>(null);
 // is called short of sources then, and 出典不足だけ cannot be pressed.
 const { whitelist, failed: whitelistFailed, load: loadWhitelist } = useWhitelist();
 const shortOnly = ref(false);
+// The row last saved, published or withdrawn, kept in the table at the place
+// it had until another row is selected or a filter changes (`withKeptRow`).
+const keptId = ref<number | null>(null);
+let keptIndex = 0;
 
 // `/footprints?event=<id>` is where the 公開 screen's rows lead. Read once,
 // for the first list that arrives; later loads keep whatever is selected.
@@ -59,7 +64,9 @@ const shortCount = computed(() =>
   whitelist.value === null ? null : events.value.filter((e) => isShortOfSources(e, whitelist.value)).length,
 );
 const shown = computed(() =>
-  shortOnlyApplied.value ? events.value.filter((e) => isShortOfSources(e, whitelist.value)) : events.value,
+  shortOnlyApplied.value
+    ? events.value.filter((e) => isShortOfSources(e, whitelist.value) || e.eventId === keptId.value)
+    : events.value,
 );
 const listTotal = useListTotal(
   async () => (await getJson<{ events: FootprintsEvent[] }>('/footprints/events')).events.length,
@@ -92,7 +99,19 @@ async function load(): Promise<void> {
 
     if (generation !== loadGeneration) return;
 
-    events.value = body.events;
+    let rows = body.events;
+
+    if (keptId.value !== null && !rows.some((e) => e.eventId === keptId.value)) {
+      const kept = await readKept(keptId.value);
+
+      if (generation !== loadGeneration) return;
+
+      // Gone when it was deleted.
+      if (kept === null) keptId.value = null;
+      else rows = withKeptRow(rows, kept, keptIndex);
+    }
+
+    events.value = rows;
     listTotal.update(shown.value.length, filtered.value);
 
     if (selectedId.value !== null && !shown.value.some((e) => e.eventId === selectedId.value)) {
@@ -140,6 +159,23 @@ async function loadPending(): Promise<void> {
  */
 const reloading = ref(0);
 
+/** The kept row as it is now, or null when it is gone or could not be read. */
+async function readKept(eventId: number): Promise<FootprintsEvent | null> {
+  try {
+    return await getJson<FootprintsEvent>(`/footprints/events/${eventId}`);
+  } catch {
+    return null;
+  }
+}
+
+/** The panel's own save, publish, withdraw or delete: the row it shows stays in the table. */
+function keepAndReload(): Promise<void> {
+  keptId.value = selectedId.value;
+  keptIndex = events.value.findIndex((e) => e.eventId === selectedId.value);
+
+  return reload();
+}
+
 /** After a save, a publish, a withdraw or a delete: the rows and which of them the public JSON is behind both changed. */
 async function reload(): Promise<void> {
   // A save can add a row, and a delete takes one away.
@@ -162,6 +198,7 @@ function selectRow(eventId: number): void {
 }
 
 function openRow(eventId: number): void {
+  if (eventId !== keptId.value) keptId.value = null;
   adding.value = false;
   selectedId.value = eventId;
   detail.value = true;
@@ -172,6 +209,7 @@ function startAdding(): void {
   if (!adding.value && !confirmDiscard()) return;
 
   adding.value = true;
+  keptId.value = null;
   selectedId.value = null;
   detail.value = true;
 }
@@ -189,7 +227,10 @@ function back(): void {
 // so changing one asks first, as selecting another row does.
 function setStatus(value: string): void {
   if (inspectorBusy.value) return;
-  if (value !== status.value && confirmDiscard()) status.value = value;
+  if (value !== status.value && confirmDiscard()) {
+    keptId.value = null;
+    status.value = value;
+  }
 }
 
 function toggleShortOnly(): void {
@@ -202,6 +243,8 @@ function toggleShortOnly(): void {
 
   if (hidesOpenRow && !confirmDiscard()) return;
 
+  keptId.value = null;
+
   shortOnly.value = !shortOnly.value;
 
   if (!adding.value && !shown.value.some((e) => e.eventId === selectedId.value)) {
@@ -213,8 +256,10 @@ function toggleShortOnly(): void {
 function setQuery(event: Event): void {
   const input = event.target as HTMLInputElement;
 
-  if (!inspectorBusy.value && confirmDiscard()) q.value = input.value;
-  else input.value = q.value;
+  if (!inspectorBusy.value && confirmDiscard()) {
+    keptId.value = null;
+    q.value = input.value;
+  } else input.value = q.value;
 }
 
 async function created(eventId: number): Promise<void> {
@@ -371,7 +416,7 @@ onMounted(() => {
       :whitelist="whitelist"
       :whitelist-failed="whitelistFailed"
       :inert="loading || reloading > 0 || undefined"
-      @changed="reload"
+      @changed="keepAndReload"
       @created="created"
       @back="back"
       @busy="inspectorBusy = $event"

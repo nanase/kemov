@@ -7,6 +7,7 @@ import {
   KINDS,
   STATUS_OPTIONS,
   toFormFields,
+  withKeptRow,
   type FootprintsEvent,
 } from '@/admin/lib/footprints';
 
@@ -195,5 +196,45 @@ describe('footprintsFootFor', () => {
       deleteDisabled: true,
       deleteReason: '公開中は削除できません。先に「非公開に戻す」を押してください。',
     });
+  });
+});
+
+describe('withKeptRow', () => {
+  function row(eventId: number, title = `行 ${eventId}`): FootprintsEvent {
+    return {
+      eventId,
+      datePrecision: 'day',
+      startDate: '2025-01-01',
+      startsAt: null,
+      endDate: null,
+      kind: 'other',
+      emphasized: false,
+      title,
+      place: null,
+      supplement: null,
+      videoId: null,
+      status: 'draft',
+      memo: null,
+      createdAt: '2025-01-01T00:00:00Z',
+      updatedAt: '2025-01-01T00:00:00Z',
+      channelIds: [],
+      leadChannelIds: [],
+      sources: [],
+    };
+  }
+
+  test('puts a row the filter no longer takes back where it was', () => {
+    expect(withKeptRow([row(1), row(3)], row(2), 1).map((e) => e.eventId)).toEqual([1, 2, 3]);
+  });
+
+  test('puts it last when the list has become shorter than where it was', () => {
+    expect(withKeptRow([row(1)], row(5), 4).map((e) => e.eventId)).toEqual([1, 5]);
+  });
+
+  // The list's own copy is the newer one: it was read after the save.
+  test('leaves the rows as they are when they still hold it', () => {
+    const rows = [row(1), row(2, '新しい題')];
+
+    expect(withKeptRow(rows, row(2, '古い題'), 0)).toBe(rows);
   });
 });

@@ -140,6 +140,7 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
 - あしあと（`src/admin/pages/FootprintsPage.vue`、`src/admin/components/FootprintsInspector.vue`）
   - 行の状態は「下書き」と「公開中」の 2 つです（#277、#281）。「公開待ち」と「いま公開する」は、あしあとにはもうありません
   - 表は状態（すべて・下書き・公開中）と題の部分文字列で絞ります
+  - 保存・公開・非公開に戻した行は、絞り込みに合わなくなっても、ほかの行を選ぶか絞り込みを変えるまで表の同じ位置に残し、編集の欄も開いたままにします（#282）
   - 編集の欄の下の帯は、状態で替わります（`src/admin/lib/footprints.ts` の `footprintsFootFor`）
     - 下書き: 「公開」（主）・「保存」・「削除」
     - 公開中: 「保存」（主）・「非公開に戻す」と「保存すると、すぐ本番に出ます」。「削除」は押せず、横に理由を出します
@@ -162,7 +163,7 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
 - 公開（`src/admin/pages/PublishPage.vue`）
   - あしあととジェネット楽曲一覧は、それぞれ `GET .../pending` の 2 つの一覧と「いま公開する」を持つ
   - あしあとの分は、#281 より前に公開待ちにした行と、本番の JSON と食い違う公開中の行だけが並びます。この画面は #285 でなくします
-  - worker が `behind: true` を返す間は、「いま公開する」の下に「本番のあしあとが記録と食い違っているかもしれません。」と出し、公開待ちが無くてもボタンを押せるようにします
+  - worker が `behind: true` か `outdated: true` を返す間は、「いま公開する」の下に「本番のあしあとが記録と食い違っているかもしれません。」と出し、公開待ちが無くてもボタンを押せるようにします
   - 登録者数の節目も同じ形で並べます。一覧は、公開待ち・公開後の変更・つないだ出来事の変更（`eventChanged`）の 3 つです。「いま公開する」を押せるのは、worker が JSON を作り直す場合と同じく、公開待ち・`eventChanged`・古い形の JSON のどれかがあるときです（`src/admin/lib/subscriber-milestones-publish.ts`）
   - 3 つは互いに独立して読み込み、公開する
 - 登録者数の節目（`src/admin/pages/SubscribersPage.vue`、`src/admin/components/SubscriberMilestoneInspector.vue`、#225）
@@ -242,5 +243,6 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
   - 同じ画面に `publication` の記録も並べる
 - 出典ホワイトリスト（`src/admin/pages/SourceWhitelistPage.vue`）
   - [出典のホワイトリスト](api/admin.md#出典のホワイトリスト) の項目を足し、`note` を直し、取り除く
+  - 追加・削除で本番の年表に反映できなかったときは、トーストで「保存しましたが本番の年表に反映できませんでした。」と出します
 
 ブラウザ無しで確かめたい画面側の処理は、`src/admin/lib/*.ts` へ切り出し、`test/admin/lib/` でテストします。表のクエリ文字列、保存のエラーがどの欄を指すか、ある `status` で編集の欄がどのボタンを出すか、などです。このプロジェクトのフロントエンドが `src/lib/*.ts` で既に採っている分け方と同じです。

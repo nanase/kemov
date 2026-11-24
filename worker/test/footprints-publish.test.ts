@@ -8,6 +8,7 @@ import {
   saveEvent,
   withdrawEvent,
 } from '../src/admin/footprints-publish';
+import { addSourceWhitelist, deleteSourceWhitelist } from '../src/admin/source-whitelist';
 import type { Env } from '../src/lib/env';
 import { clearEverything } from './reset-db';
 
@@ -605,7 +606,7 @@ describe('pendingFootprints', () => {
 
     const body = (await pendingFootprints(env).then((r) => r.json())) as { pending: unknown[]; changed: unknown[] };
 
-    expect(body).toEqual({ pending: [], changed: [], behind: false });
+    expect(body).toEqual({ pending: [], changed: [], behind: false, outdated: false });
   });
 
   test('lists an event whose latest revision the JSON was not written from', async () => {
@@ -741,5 +742,72 @@ describe('publishFootprintsNow', () => {
     expect(await response.json()).toMatchObject({ published: true, eventCount: 1 });
     expect((await readPublished())!.events.map((e) => e.event_id)).toEqual([kept]);
     expect(((await (await pendingFootprints(env)).json()) as { behind: boolean }).behind).toBe(false);
+  });
+});
+
+// The JSON judges sources by the whitelist it was written with, so a change
+// to the whitelist writes it again (#282).
+describe('a whitelist change', () => {
+  const OTHER_PREFIX = 'https://partner.example/';
+  const OTHER_SOURCE = `${OTHER_PREFIX}news/1`;
+
+  async function pendingMarks(): Promise<unknown[]> {
+    return (await readPublished())!.events.map((e) => e.source_pending);
+  }
+
+  test('writes the JSON again when it changes which events are short of sources', async () => {
+    await createPublishedEvent({ sources: [source(OTHER_SOURCE)] });
+
+    expect(await pendingMarks()).toEqual([true]);
+
+    const added = await addSourceWhitelist(env, { prefix: OTHER_PREFIX }, LATER);
+
+    expect(await added.json()).toMatchObject({ timelineCurrent: true });
+    expect(await pendingMarks()).toEqual([false]);
+
+    const removed = await deleteSourceWhitelist(env, OTHER_PREFIX, LATER);
+
+    expect(await removed.json()).toEqual({ timelineCurrent: true });
+    expect(await pendingMarks()).toEqual([true]);
+    expect(await publicationRows()).toHaveLength(3);
+  });
+
+  test('writes nothing when no event is judged differently', async () => {
+    await createPublishedEvent();
+
+    await addSourceWhitelist(env, { prefix: OTHER_PREFIX }, LATER);
+
+    expect(await publicationRows()).toHaveLength(1);
+  });
+
+  test('keeps the entry, and says so, when the JSON cannot be written', async () => {
+    await createPublishedEvent({ sources: [source(OTHER_SOURCE)] });
+
+    const added = await addSourceWhitelist(R2_DOWN, { prefix: OTHER_PREFIX }, LATER);
+
+    expect(added.status).toEqual(201);
+    expect(await added.json()).toMatchObject({ timelineCurrent: false });
+    expect(
+      await env.DB.prepare('SELECT prefix FROM source_whitelist WHERE prefix = ?1').bind(OTHER_PREFIX).first(),
+    ).toEqual({ prefix: OTHER_PREFIX });
+    expect(await pendingMarks()).toEqual([true]);
+  });
+
+  // What a deploy of #282 meets: a JSON written while the mark was set by
+  // hand, with nothing waiting. 「いま公開する」 has something to do, and does it.
+  test('leaves an outdated JSON for 「いま公開する」 to write again', async () => {
+    await createPublishedEvent();
+
+    const stored = (await readPublished())!;
+
+    await env.PUBLIC_DATA.put(
+      OBJECT_KEY,
+      JSON.stringify({ ...stored, events: stored.events.map((e) => ({ ...e, source_pending: true })) }),
+    );
+
+    expect(await (await pendingFootprints(env)).json()).toMatchObject({ pending: [], behind: false, outdated: true });
+    expect(await (await publishFootprintsNow(env, LATER)).json()).toMatchObject({ published: true, eventCount: 1 });
+    expect(await pendingMarks()).toEqual([false]);
+    expect(await (await pendingFootprints(env)).json()).toMatchObject({ outdated: false });
   });
 });

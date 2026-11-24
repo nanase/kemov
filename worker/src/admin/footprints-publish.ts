@@ -129,8 +129,8 @@ function judgedAgain(body: Record<string, unknown>, whitelist: readonly string[]
   };
 }
 
-/** `footprints/events.json`'s text for `bodies`: every event on the timeline, by date and then by id. */
-function footprintsJson(now: Date, bodies: readonly Record<string, unknown>[], whitelist: readonly string[]): string {
+/** `footprints/events.json`'s events for `bodies`: every event on the timeline, by date and then by id. */
+function footprintsEvents(bodies: readonly Record<string, unknown>[], whitelist: readonly string[]) {
   const events = bodies.map(
     (body) => judgedAgain(currentShape(body), whitelist) as { event_id: number; start_date: string },
   );
@@ -139,7 +139,53 @@ function footprintsJson(now: Date, bodies: readonly Record<string, unknown>[], w
     a.start_date === b.start_date ? a.event_id - b.event_id : a.start_date < b.start_date ? -1 : 1,
   );
 
-  return JSON.stringify({ published_at: formatTimestamp(now), events });
+  return events;
+}
+
+/** `footprints/events.json`'s text for `bodies`. */
+function footprintsJson(now: Date, bodies: readonly Record<string, unknown>[], whitelist: readonly string[]): string {
+  return JSON.stringify({ published_at: formatTimestamp(now), events: footprintsEvents(bodies, whitelist) });
+}
+
+/**
+ * Whether `footprints/events.json` holds other events than `latest` and
+ * `whitelist` build now (#282). Nothing else writes the JSON again when the
+ * whitelist changes, or when a JSON from before the judgement still carries
+ * the marks set by hand; this is what lets 「いま公開する」 and a whitelist
+ * change bring it back. A JSON not written yet is outdated once there is an
+ * event to put in it.
+ */
+async function isOutdated(
+  env: Env,
+  latest: readonly LatestRevisionRow[],
+  whitelist: readonly string[],
+): Promise<boolean> {
+  const built = JSON.stringify(footprintsEvents(liveBodies(latest, null), whitelist));
+  const object = await env.PUBLIC_DATA.get(OBJECT_KEY);
+
+  if (object === null) return built !== '[]';
+
+  const stored = (await object.json()) as { events?: unknown };
+
+  return JSON.stringify(stored.events ?? null) !== built;
+}
+
+/**
+ * Writes `footprints/events.json` again when it is outdated (`isOutdated`):
+ * what a change to the whitelist calls, so the timeline's 「出典の確認待ち」
+ * follows it (#282). True when the JSON is up to date afterwards, false when
+ * it could not be read, built or written.
+ */
+export async function rejudgeFootprints(env: Env, now: Date): Promise<boolean> {
+  try {
+    const [latest, whitelist] = await Promise.all([latestRevisions(env, 'footprints_event'), readSourceWhitelist(env)]);
+
+    if (!(await isOutdated(env, latest, whitelist))) return true;
+
+    return (await republish(env, footprintsTarget(whitelist), now)).current;
+  } catch {
+    return false;
+  }
 }
 
 const TARGET = 'footprints';
@@ -376,6 +422,9 @@ async function lastPublishedRevisionId(env: Env, target: string): Promise<number
  * `behind`: a write of the JSON was sent that no check found up to date
  * since (publishing.ts's `isBehind`), so the JSON may say something
  * `revision` does not, with nothing waiting to show it.
+ *
+ * `outdated`: the JSON holds other events than the revisions and today's
+ * whitelist build (`isOutdated`), so 「いま公開する」 has something to write.
  */
 export async function pendingFootprints(env: Env): Promise<Response> {
   const [{ pending, latest }, whitelist] = await Promise.all([readWaiting(env), readSourceWhitelist(env)]);
@@ -414,7 +463,9 @@ export async function pendingFootprints(env: Env): Promise<Response> {
     if (current !== publishedBody) changed.push({ eventId, title: saved.event.title });
   }
 
-  return jsonResponse({ pending, changed, behind: await isBehind(env, TARGET) });
+  const [behind, outdated] = await Promise.all([isBehind(env, TARGET), isOutdated(env, latest, whitelist)]);
+
+  return jsonResponse({ pending, changed, behind, outdated });
 }
 
 export interface WaitingFootprintsEntry {
@@ -452,9 +503,10 @@ async function readWaiting(env: Env): Promise<{ pending: WaitingFootprintsEntry[
  * `footprints_event` entity whose latest action is not `withdraw`, writes it
  * to `PUBLIC_DATA`, and appends one `publication` row. Nothing is written,
  * and 200 answers `{ published: false }`, when there is nothing newer than
- * the last time the JSON was written and the JSON is not counted as behind
- * (`isBehind`): one that is may say what no revision says, which only a
- * build from `revision` takes back out.
+ * the last time the JSON was written, the JSON is not counted as behind
+ * (`isBehind`) and it is not outdated (`isOutdated`): one that is behind may
+ * say what no revision says, which only a build from `revision` takes back
+ * out, and one that is outdated was judged by another whitelist.
  *
  * Kept for the 公開 screen until it goes (#285): a row left waiting from
  * before #281 is published by it, or by the next publish of any event, which
@@ -466,18 +518,23 @@ async function readWaiting(env: Env): Promise<{ pending: WaitingFootprintsEntry[
  * brought up to date, with no `publication` row recorded for it.
  */
 export async function publishFootprintsNow(env: Env, now: Date): Promise<Response> {
-  const [lastRevisionId, latest] = await Promise.all([
+  const [lastRevisionId, latest, whitelist] = await Promise.all([
     lastPublishedRevisionId(env, 'footprints'),
     latestRevisions(env, 'footprints_event'),
+    readSourceWhitelist(env),
   ]);
 
   const newestRevisionId = latest.reduce((max, row) => Math.max(max, row.revision_id), 0);
 
-  if (newestRevisionId <= lastRevisionId && !(await isBehind(env, TARGET))) {
+  if (
+    newestRevisionId <= lastRevisionId &&
+    !(await isBehind(env, TARGET)) &&
+    !(await isOutdated(env, latest, whitelist))
+  ) {
     return jsonResponse({ published: false });
   }
 
-  const outcome = await republish(env, footprintsTarget(await readSourceWhitelist(env)), now);
+  const outcome = await republish(env, footprintsTarget(whitelist), now);
 
   if (!outcome.current) return errorResponse(502, `${OBJECT_KEY} could not be brought up to date: ${outcome.error}`);
 

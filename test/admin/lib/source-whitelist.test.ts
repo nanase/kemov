@@ -1,6 +1,13 @@
 import { AdminApiError } from '@/admin/lib/api';
 import { SIDEBAR_GROUPS, pageTitle } from '@/admin/lib/sidebar';
-import { addedOn, addErrorMessage, entryPath, noteChanged, noteFromInput } from '@/admin/lib/source-whitelist';
+import {
+  addedOn,
+  addErrorMessage,
+  entryPath,
+  noteChanged,
+  noteFromInput,
+  savedToast,
+} from '@/admin/lib/source-whitelist';
 
 const ENTRY = {
   prefix: 'https://prtimes.jp/',
@@ -82,5 +89,15 @@ describe('the sidebar', () => {
 
     expect(group?.items.map((item) => item.page)).toEqual(['publish', 'history', 'source-whitelist']);
     expect(pageTitle('source-whitelist')).toEqual('出典ホワイトリスト');
+  });
+});
+
+describe('savedToast', () => {
+  test('says what was done when the timeline was brought up to date', () => {
+    expect(savedToast('足しました', true)).toEqual('足しました');
+  });
+
+  test('says the timeline was not, when it could not be written', () => {
+    expect(savedToast('削除しました', false)).toEqual('保存しましたが本番の年表に反映できませんでした。');
   });
 });

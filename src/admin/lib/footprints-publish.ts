@@ -27,6 +27,8 @@ export interface FootprintsPending {
   changed: ChangedFootprintsEntry[];
   /** Whether the public JSON may say what no revision says: a write of it was sent that no check found up to date since. */
   behind: boolean;
+  /** Whether the public JSON holds other events than the records and today's whitelist build: a whitelist changed since it was written (#282). */
+  outdated: boolean;
 }
 
 /**
@@ -41,12 +43,12 @@ export function isChangedSincePublish(state: FootprintsPending | null, eventId: 
 /**
  * Whether the 公開 screen's 「いま公開する」 does anything for あしあと. The
  * worker builds the JSON only when a revision is newer than the last time it
- * was written, or when the JSON may be behind, and a row changed after it was
+ * was written, when the JSON may be behind, or when it is outdated, and a row changed after it was
  * published has no new revision - so `changed` alone must not enable it, or
  * the button answers "待っているものがありません".
  */
 export function canPublishFootprints(state: FootprintsPending): boolean {
-  return state.pending.length > 0 || state.behind;
+  return state.pending.length > 0 || state.behind || state.outdated;
 }
 
 /**

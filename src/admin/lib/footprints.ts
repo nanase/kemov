@@ -239,3 +239,16 @@ export function emptyFormFields(today: string): EventFormFields {
     sources: [],
   };
 }
+
+/**
+ * `rows` with `kept` put back at `index` when they no longer hold it. A row
+ * just saved, published or withdrawn stays in the table, with its panel open,
+ * until another row is selected - even when the filter no longer takes it.
+ */
+export function withKeptRow(rows: FootprintsEvent[], kept: FootprintsEvent, index: number): FootprintsEvent[] {
+  if (rows.some((e) => e.eventId === kept.eventId)) return rows;
+
+  const at = Math.min(Math.max(index, 0), rows.length);
+
+  return [...rows.slice(0, at), kept, ...rows.slice(at)];
+}

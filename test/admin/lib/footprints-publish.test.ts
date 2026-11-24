@@ -8,9 +8,19 @@ import {
   type FootprintsPending,
 } from '@/admin/lib/footprints-publish';
 
-const NOTHING: FootprintsPending = { pending: [], changed: [], behind: false };
-const WAITING: FootprintsPending = { pending: [{ eventId: 3, latestAction: 'publish' }], changed: [], behind: false };
-const CHANGED: FootprintsPending = { pending: [], changed: [{ eventId: 5, title: '変わった行' }], behind: false };
+const NOTHING: FootprintsPending = { pending: [], changed: [], behind: false, outdated: false };
+const WAITING: FootprintsPending = {
+  pending: [{ eventId: 3, latestAction: 'publish' }],
+  changed: [],
+  behind: false,
+  outdated: false,
+};
+const CHANGED: FootprintsPending = {
+  pending: [],
+  changed: [{ eventId: 5, title: '変わった行' }],
+  behind: false,
+  outdated: false,
+};
 
 describe('isChangedSincePublish', () => {
   test('is true only for a listed event', () => {
@@ -41,6 +51,12 @@ describe('canPublishFootprints', () => {
   // is what builds it again from the revisions.
   test('is true when the public JSON may be behind, with nothing waiting', () => {
     expect(canPublishFootprints({ ...NOTHING, behind: true })).toBe(true);
+  });
+
+  // A whitelist changed since the JSON was written: 「いま公開する」 judges its
+  // sources again (#282).
+  test('is true when the public JSON is outdated, with nothing waiting', () => {
+    expect(canPublishFootprints({ ...NOTHING, outdated: true })).toBe(true);
   });
 });
 

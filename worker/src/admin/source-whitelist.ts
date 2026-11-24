@@ -1,6 +1,7 @@
 import { readEditableBody } from '../lib/editable-body';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
+import { rejudgeFootprints } from './footprints-publish';
 
 /**
  * Reading, adding, annotating and removing `source_whitelist` (#175): the URL
@@ -8,11 +9,11 @@ import { errorResponse, jsonResponse } from '../lib/json';
  * enough by itself.
  *
  * Effective the moment it is saved, and it logs no `revision` - the list is
- * a setting of the publish gate, not something that is published, so there
- * is nothing for a version history to reproduce. Removing an entry changes
- * only what `publishEvent` accepts from then on: an event already published
- * stays published, and one whose only source it named is refused the next
- * time somebody publishes it.
+ * a setting of how sources are judged, not something that is published, so
+ * there is nothing for a version history to reproduce. Adding or removing an
+ * entry writes あしあと's public JSON again when that changes which events it
+ * calls 「出典の確認待ち」 (#282). `timelineCurrent` says whether the JSON is
+ * up to date afterwards: the entry is saved either way.
  */
 
 interface WhitelistRow {
@@ -80,7 +81,7 @@ function noteProblem(value: unknown): string | null {
  * `prefix` is the primary key, and a second row for it would be refused by
  * the schema anyway - this is the same refusal with a reason.
  */
-export async function addSourceWhitelist(env: Env, body: Record<string, unknown>): Promise<Response> {
+export async function addSourceWhitelist(env: Env, body: Record<string, unknown>, now: Date): Promise<Response> {
   const keys = ['prefix', 'note'] as const;
   const read = readEditableBody(body, keys, (key, value) =>
     key === 'prefix' ? prefixProblem(value) : noteProblem(value),
@@ -98,7 +99,10 @@ export async function addSourceWhitelist(env: Env, body: Record<string, unknown>
     .bind(prefix, read.values.note as string | null)
     .first<WhitelistRow>();
 
-  return jsonResponse({ sourceWhitelist: present(saved!) }, { status: 201 });
+  return jsonResponse(
+    { sourceWhitelist: present(saved!), timelineCurrent: await rejudgeFootprints(env, now) },
+    { status: 201 },
+  );
 }
 
 /**
@@ -139,12 +143,12 @@ export async function updateSourceWhitelist(
  * the list. Nothing refuses a prefix an event's source still matches:
  * refusing would make the list impossible to prune once anything used it.
  */
-export async function deleteSourceWhitelist(env: Env, prefix: string): Promise<Response> {
+export async function deleteSourceWhitelist(env: Env, prefix: string, now: Date): Promise<Response> {
   const existing = await env.DB.prepare('SELECT 1 FROM source_whitelist WHERE prefix = ?1').bind(prefix).first();
 
   if (existing === null) return errorResponse(404, `${prefix} is not on the list`);
 
   await env.DB.prepare('DELETE FROM source_whitelist WHERE prefix = ?1').bind(prefix).run();
 
-  return jsonResponse({});
+  return jsonResponse({ timelineCurrent: await rejudgeFootprints(env, now) });
 }

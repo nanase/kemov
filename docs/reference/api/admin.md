@@ -116,7 +116,7 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 
 `leadChannelIds` は、`channelIds` のうち出来事の主役のメンバーです。`channelIds` に無い ID を含めると、保存の時点で 400 を返します。主役が無いデビューも、下書きとしては保存できます。
 
-`GET .../pending` と `POST /admin/api/footprints/publish` は、公開の画面のために #285 まで残します。#281 より前の流れで公開待ちにした版は、`POST /admin/api/footprints/publish` か、次の公開・公開中の保存・非公開に戻すのどれかで公開の JSON に入ります。どれも、各できごとの最新の版から JSON を作るためです。`POST /admin/api/footprints/publish` も、書いた後に公開と同じ確かめを通ります。最新にできなかったときは、502 を返し、`publication` の行を足しません。公開待ちの版が無くても、`behind` が `true` なら記録から作り直します。
+`GET .../pending` と `POST /admin/api/footprints/publish` は、公開の画面のために #285 まで残します。#281 より前の流れで公開待ちにした版は、`POST /admin/api/footprints/publish` か、次の公開・公開中の保存・非公開に戻すのどれかで公開の JSON に入ります。どれも、各できごとの最新の版から JSON を作るためです。`POST /admin/api/footprints/publish` も、書いた後に公開と同じ確かめを通ります。最新にできなかったときは、502 を返し、`publication` の行を足しません。公開待ちの版が無くても、`behind` か `outdated` が `true` なら記録から作り直します。
 
 主役（`lead_channel_ids`）は、migration 0011 で足しました。それより前の `publish` の版は、このキーを持ちません。JSON を作るときと `GET .../pending` が比べるときは、この版を主役なし（`[]`）として読みます。
 
@@ -131,6 +131,12 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 - 版の `body` には、公開した時点の判定が残る
 - #282 より前に手で付けた印も、次に JSON を書くときに判定に置き換わる
 - `GET .../pending` の `changed` は、両側を今のホワイトリストで判定してから比べる。ホワイトリストを直しただけでは `changed` にならない
+
+ホワイトリストに項目を追加・削除すると、判定が変わる出来事があるときだけ、公開の JSON を書き直します。
+
+- 書き直したかどうかは、本番の JSON の出来事と、今の版とホワイトリストから作る出来事を比べて決める（`footprints-publish.ts` の `isOutdated`）
+- 書き直しだけが失敗しても、項目の追加・削除は取り消さない。応答の `timelineCurrent` が `false` になる
+- 本番の JSON が古いときは、`GET /admin/api/footprints/pending` の `outdated` が `true` になり、「いま公開する」で書き直せる
 
 ホワイトリストは、単独で出典として十分な URL の前方一致の一覧です。載っているのは、プロジェクト自身のドメインとアカウント、提携先の告知、イベントの主催者、ファンの wiki 2 つなどです。
 
@@ -150,12 +156,12 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 
 1 つの投稿や 1 つのアカウントを指す 2 つの URL は、1 つの出典として数えます。この読み替えはホストを数えるときだけに使い、ホワイトリストとの照合は URL の文字列そのもので行います。
 
-| メソッド | パス                                   | 返すもの                                         |
-| -------- | -------------------------------------- | ------------------------------------------------ |
-| GET      | `/admin/api/source-whitelist`          | すべての項目。足した順                           |
-| POST     | `/admin/api/source-whitelist`          | 足した後の項目。前方一致の文字列が既にあれば 409 |
-| PUT      | `/admin/api/source-whitelist/<prefix>` | `note` を変えた後の項目。直せる列は `note` だけ  |
-| DELETE   | `/admin/api/source-whitelist/<prefix>` | `{}`                                             |
+| メソッド | パス                                   | 返すもの                                                             |
+| -------- | -------------------------------------- | -------------------------------------------------------------------- |
+| GET      | `/admin/api/source-whitelist`          | すべての項目。足した順                                               |
+| POST     | `/admin/api/source-whitelist`          | 足した後の項目と `timelineCurrent`。前方一致の文字列が既にあれば 409 |
+| PUT      | `/admin/api/source-whitelist/<prefix>` | `note` を変えた後の項目。直せる列は `note` だけ                      |
+| DELETE   | `/admin/api/source-whitelist/<prefix>` | `timelineCurrent`                                                    |
 
 `<prefix>` は、URL をパーセントエンコードして 1 つのパスの区切りに収めたものです。
 
