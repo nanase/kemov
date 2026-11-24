@@ -35,6 +35,7 @@ import {
   validatedFields,
   withFields,
   type MilestoneFields,
+  type MilestoneStatus,
   type SubscriberMilestone,
 } from './subscriber-milestones';
 
@@ -418,6 +419,22 @@ async function notLoggedResponse(env: Env, milestoneId: number): Promise<Respons
 }
 
 /**
+ * `RevisionChange.whileRow` for a batch whose row statements write only
+ * while no revision was recorded since `revisionBefore`: the row was given
+ * `status`, and its newest revision is still that one. Both hold exactly
+ * when those statements wrote the row.
+ */
+function leftAs(status: MilestoneStatus, revisionBefore: number): string {
+  // Written into the SQL, so never anything but an integer from D1.
+  if (!Number.isSafeInteger(revisionBefore)) throw new Error(`not a revision id: ${revisionBefore}`);
+
+  return `status = '${status}'
+          AND (SELECT COALESCE(MAX(revision_id), 0) FROM revision
+                WHERE entity = 'subscriber_milestone'
+                  AND entity_key = CAST(subscriber_milestone.milestone_id AS TEXT)) = ${revisionBefore}`;
+}
+
+/**
  * The 502 when the row changed under the request - deleted or withdrawn - so
  * nothing was saved, but the JSON it had already written could not be built
  * again from `revision`. `publication_write` keeps it behind, so the 公開
@@ -439,13 +456,15 @@ function notMendedResponse(milestoneId: number, error: string): Response {
  * what a refusal leaves: a draft's fields are saved and it stays a draft, a
  * published row is left exactly as it was.
  *
- * A published row is saved only while it is still published: one withdrawn
- * after it was read is neither saved nor put back on the public site, and
- * 409 says so - or `notMendedResponse`'s 502, when the JSON written before
- * the batch could not be built again without it. `revisionBefore` is the milestone's newest revision, read
- * before `existing` was: the save that follows a JSON that could not be
- * written writes only while no revision was recorded since, so that it does
- * not land over another request's publish.
+ * Either row is written only while it is still as it was read: a published
+ * row still published, a draft still a draft with no revision recorded
+ * since `revisionBefore` - the milestone's newest revision, read before
+ * `existing` was. One that changed is neither saved nor put on the public
+ * site as this request has it, and 409 says so - or `notMendedResponse`'s
+ * 502, when the JSON written before the batch could not be built again
+ * without the change. The save that follows a JSON that could not be
+ * written is held to `revisionBefore` too, so that it does not land over
+ * another request's publish.
  */
 async function saveAndPublish(
   env: Env,
@@ -474,10 +493,20 @@ async function saveAndPublish(
   const outcome = await publishChange(
     env,
     MILESTONES_TARGET,
-    wasPublished
-      ? { key: String(milestoneId), action: 'publish', body: publishedBodyOf(next), whileRow: "status = 'published'" }
-      : { key: String(milestoneId), action: 'publish', body: publishedBodyOf(next) },
-    saveStatements(env, milestoneId, fields, wasPublished ? { whileStatus: 'published' } : { status: 'published' }),
+    {
+      key: String(milestoneId),
+      action: 'publish',
+      body: publishedBodyOf(next),
+      whileRow: wasPublished ? "status = 'published'" : leftAs('published', revisionBefore),
+    },
+    saveStatements(
+      env,
+      milestoneId,
+      fields,
+      wasPublished
+        ? { whileStatus: 'published' }
+        : { status: 'published', whileStatus: 'draft', whileRevision: revisionBefore },
+    ),
     now,
   );
 
@@ -558,7 +587,9 @@ export async function saveMilestone(
  * 「非公開に戻す」, footprints-publish.ts's `withdrawEvent` for a milestone:
  * the body is the fields, kept as the draft the milestone becomes. Nothing
  * at all changes when the JSON cannot be written, and 502 says so. 409 for a
- * milestone that is not published.
+ * milestone that is not published - when it was read, or by the time the
+ * batch runs: one withdrawn or saved again in between is not written over,
+ * and no second `withdraw` revision is recorded.
  */
 export async function withdrawMilestone(
   env: Env,
@@ -566,6 +597,7 @@ export async function withdrawMilestone(
   body: Record<string, unknown>,
   now: Date,
 ): Promise<Response> {
+  const revisionBefore = await newestRevisionOf(env, milestoneId);
   const saved = await readMilestone(env, milestoneId);
 
   if (saved === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
@@ -581,12 +613,17 @@ export async function withdrawMilestone(
   const outcome = await publishChange(
     env,
     MILESTONES_TARGET,
-    { key: String(milestoneId), action: 'withdraw', body: null },
-    saveStatements(env, milestoneId, fields, { status: 'draft' }),
+    { key: String(milestoneId), action: 'withdraw', body: null, whileRow: leftAs('draft', revisionBefore) },
+    saveStatements(env, milestoneId, fields, {
+      status: 'draft',
+      whileStatus: 'published',
+      whileRevision: revisionBefore,
+    }),
     now,
   );
 
   if (!outcome.written) {
+    if (outcome.recorded && outcome.revisionId === null) return notMendedResponse(milestoneId, outcome.error);
     if (outcome.recorded) return await notWrittenResponse(env, milestoneId, outcome);
 
     return errorResponse(502, `${OBJECT_KEY} could not be written: ${outcome.error}`);

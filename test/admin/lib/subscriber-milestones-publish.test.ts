@@ -104,6 +104,17 @@ describe('milestonesAnswerFor', () => {
     });
   });
 
+  test('says the same for a withdraw, under its own title, and reads the table again', () => {
+    const error = new AdminApiError(502, { error: 'subscriber milestone 3 changed while …', saved: false });
+
+    expect(milestonesAnswerFor('withdraw', 'published', error)).toEqual({
+      kind: 'band',
+      band: { title: '非公開に戻せません', lines: [], note: '本番の登録者数の節目への反映に失敗しました。' },
+      fields: [],
+      changed: true,
+    });
+  });
+
   test("marks the field a save's own message names", () => {
     const error = new AdminApiError(400, { error: 'reachedDate must be YYYY-MM-DD' });
 

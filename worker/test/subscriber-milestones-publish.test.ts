@@ -30,6 +30,22 @@ const R2_DOWN: Env = {
   } as unknown as R2Bucket,
 };
 
+/** `env` with an R2 that takes the first write and refuses every one after it: a rebuild that cannot be written. */
+function firstPutOnly(): Env {
+  let puts = 0;
+
+  return {
+    ...env,
+    PUBLIC_DATA: {
+      get: (key: string) => env.PUBLIC_DATA.get(key),
+      head: (key: string) => env.PUBLIC_DATA.head(key),
+      list: () => env.PUBLIC_DATA.list(),
+      put: (key: string, value: string, options?: R2PutOptions) =>
+        (puts += 1) === 1 ? env.PUBLIC_DATA.put(key, value, options) : Promise.reject(new Error('R2 is down')),
+    } as unknown as R2Bucket,
+  };
+}
+
 /** `env` with an R2 whose object always looks written by someone else, so the JSON is never found up to date. */
 const UNSETTLED: Env = {
   ...env,
@@ -472,7 +488,7 @@ describe("an event's change", () => {
     const eventId = await liveEvent('古い題');
 
     await createPublished({ eventId });
-    await saveEvent(env, eventId, eventFields('新しい題'), NOW);
+    expect((await saveEvent(env, eventId, eventFields('新しい題'), NOW)).status).toEqual(200);
 
     expect(await storedMilestones()).toEqual([
       expect.objectContaining({ event: { event_id: eventId, title: '新しい題', start_date: '2024-01-30' } }),
@@ -485,7 +501,7 @@ describe("an event's change", () => {
     const eventId = ((await response.json()) as { event: { eventId: number } }).event.eventId;
 
     await createPublished({ eventId });
-    await publishEvent(env, eventId, eventFields('記念配信'), NOW);
+    expect((await publishEvent(env, eventId, eventFields('記念配信'), NOW)).status).toEqual(200);
 
     expect(await storedMilestones()).toEqual([
       expect.objectContaining({ event: expect.objectContaining({ title: '記念配信' }) }),
@@ -496,7 +512,7 @@ describe("an event's change", () => {
     const eventId = await liveEvent('記念配信');
 
     await createPublished({ eventId });
-    await withdrawEvent(env, eventId, eventFields('記念配信'), NOW);
+    expect((await withdrawEvent(env, eventId, eventFields('記念配信'), NOW)).status).toEqual(200);
 
     expect(await storedMilestones()).toEqual([expect.objectContaining({ event: null })]);
   });
@@ -807,24 +823,69 @@ describe('a published save that finds the row withdrawn meanwhile', () => {
   // rebuild that would take it out fails: 409 would hide that.
   test('answers 502 and leaves the JSON behind when it cannot build the JSON again', async () => {
     const milestoneId = await createPublished();
-    let puts = 0;
-    const firstPutOnly: Env = {
-      ...env,
-      PUBLIC_DATA: {
-        get: (key: string) => env.PUBLIC_DATA.get(key),
-        head: (key: string) => env.PUBLIC_DATA.head(key),
-        list: () => env.PUBLIC_DATA.list(),
-        put: (key: string, value: string, options?: R2PutOptions) =>
-          (puts += 1) === 1 ? env.PUBLIC_DATA.put(key, value, options) : Promise.reject(new Error('R2 is down')),
-      } as unknown as R2Bucket,
-    };
-    const withdrawnFirst = beforeNextBatch(firstPutOnly, () => withdrawMilestone(env, milestoneId, body(), NOW));
+    const withdrawnFirst = beforeNextBatch(firstPutOnly(), () => withdrawMilestone(env, milestoneId, body(), NOW));
 
     const response = await saveMilestone(withdrawnFirst, milestoneId, body({ subscriberCount: 21000 }), NOW);
 
     expect(response.status).toEqual(502);
     expect(((await response.json()) as { saved: boolean }).saved).toBe(false);
     expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 20000 });
+    expect((await pending()).behind).toBe(true);
+  });
+});
+
+describe('a draft publish that finds the row published meanwhile', () => {
+  test('answers 409, and leaves the other publish on the row and the public site', async () => {
+    const milestoneId = await create();
+    const publishedFirst = beforeNextBatch(env, () =>
+      publishMilestone(env, milestoneId, body({ subscriberCount: 22000 }), NOW),
+    );
+
+    const response = await publishMilestone(publishedFirst, milestoneId, body({ subscriberCount: 21000 }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published', subscriberCount: 22000 });
+    expect(await storedMilestones()).toEqual([expect.objectContaining({ subscriber_count: 22000 })]);
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish']);
+  });
+});
+
+describe('a withdraw that finds the row changed meanwhile', () => {
+  test('answers 409, writes nothing over the draft, and records no second withdrawal', async () => {
+    const milestoneId = await createPublished();
+    const withdrawnFirst = beforeNextBatch(env, () =>
+      withdrawMilestone(env, milestoneId, body({ memo: '先に戻した' }), NOW),
+    );
+
+    const response = await withdrawMilestone(withdrawnFirst, milestoneId, body({ memo: '後から戻した' }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', memo: '先に戻した' });
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish', 'withdraw']);
+  });
+
+  test('answers 409 for a row saved again since it was read', async () => {
+    const milestoneId = await createPublished();
+    const savedFirst = beforeNextBatch(env, () =>
+      saveMilestone(env, milestoneId, body({ subscriberCount: 22000 }), NOW),
+    );
+
+    expect((await withdrawMilestone(savedFirst, milestoneId, body(), NOW)).status).toEqual(409);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published', subscriberCount: 22000 });
+    expect(await storedMilestones()).toEqual([expect.objectContaining({ subscriber_count: 22000 })]);
+  });
+
+  test('answers 502 with nothing saved when it cannot build the JSON again either', async () => {
+    const milestoneId = await createPublished();
+    const savedFirst = beforeNextBatch(firstPutOnly(), () =>
+      saveMilestone(env, milestoneId, body({ subscriberCount: 22000 }), NOW),
+    );
+
+    const response = await withdrawMilestone(savedFirst, milestoneId, body(), NOW);
+
+    expect(response.status).toEqual(502);
+    expect(((await response.json()) as { saved: boolean }).saved).toBe(false);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published', subscriberCount: 22000 });
     expect((await pending()).behind).toBe(true);
   });
 });

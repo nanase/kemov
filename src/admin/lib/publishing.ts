@@ -198,8 +198,9 @@ function statusNow(body: unknown, rowKey: string): string | null {
  *   anyway is the worker's answer too: a draft's are, a published row's are
  *   not
  * - A 502 that says it saved nothing is a row that changed under the
- *   request while the public JSON it wrote could not be mended: the
- *   target's `notMendedNote` says so, when it has one
+ *   request while the public JSON it wrote could not be mended - a save's
+ *   or a withdraw's: the target's `notMendedNote` says so, when it has one,
+ *   and the table is read again
  * - A 502 that says it saved is a save that went through while the public
  *   JSON could not be written, or could not be brought up to date after the
  *   change was recorded. The button to press again is the one the row shows
@@ -243,6 +244,19 @@ export function publishAnswerFor<F extends string>(
   }
 
   if (error instanceof AdminApiError && error.status === 502) {
+    if (shape.notMendedNote !== undefined && savedNothing(error.body)) {
+      return {
+        kind: 'band',
+        band: {
+          title: action === 'withdraw' ? PUBLISH_TEXT.notWithdrawn : PUBLISH_TEXT.failed,
+          lines: [],
+          note: shape.notMendedNote,
+        },
+        fields: [],
+        changed: true,
+      };
+    }
+
     if (action === 'withdraw' && savedAnyway(error.body)) {
       return {
         kind: 'band',
@@ -272,15 +286,6 @@ export function publishAnswerFor<F extends string>(
           lines: [],
           note: null,
         },
-        fields: [],
-        changed: true,
-      };
-    }
-
-    if (shape.notMendedNote !== undefined && savedNothing(error.body)) {
-      return {
-        kind: 'band',
-        band: { title: PUBLISH_TEXT.failed, lines: [], note: shape.notMendedNote },
         fields: [],
         changed: true,
       };

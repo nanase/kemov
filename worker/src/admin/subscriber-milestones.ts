@@ -451,9 +451,10 @@ export async function createMilestone(env: Env, body: Record<string, unknown>): 
 }
 
 /**
- * What `saveStatements` sets or expects: either the `status` to give the
- * row, or what it must still be for anything to be written - never both, as
- * the source statements look at the row after the first one set its status.
+ * What `saveStatements` sets and expects: the `status` to give the row, and
+ * what the row must still be for anything to be written. Every condition is
+ * checked against the row as it was before the batch: the source statements
+ * run before the row's own, so a status the row is given cannot answer them.
  *
  * - `whileStatus`: a save that read the row as a draft passes `'draft'`, so a
  *   publish that landed in between is not written over with no revision: the
@@ -464,11 +465,13 @@ export async function createMilestone(env: Env, body: Record<string, unknown>): 
  *   public JSON could not be written - then writes nothing over a publish or
  *   withdrawal recorded in between, even one that left the status as it was
  */
-export type SaveOptions =
-  | { status?: undefined; whileStatus?: MilestoneStatus; whileRevision?: number }
-  | { status: MilestoneStatus; whileStatus?: undefined; whileRevision?: undefined };
+export interface SaveOptions {
+  status?: MilestoneStatus;
+  whileStatus?: MilestoneStatus;
+  whileRevision?: number;
+}
 
-type MilestoneStatus = 'draft' | 'published';
+export type MilestoneStatus = 'draft' | 'published';
 
 /**
  * The condition, in `saveStatements`' statements over a `subscriber_milestone`
@@ -497,10 +500,10 @@ export async function newestRevisionOf(env: Env, milestoneId: number): Promise<n
 }
 
 /**
- * The statements that save `fields` over milestone `milestoneId`'s row and
- * sources (see `SaveOptions`). A plain draft save (`updateMilestone`) and
- * subscriber-milestones-publish.ts's publishing both run these, the latter in
- * the same batch as the revision it logs.
+ * The statements that save `fields` over milestone `milestoneId`'s sources
+ * and row (see `SaveOptions`), the row's own last. A plain draft save
+ * (`updateMilestone`) and subscriber-milestones-publish.ts's publishing both
+ * run these, the latter in the same batch as the revision it logs.
  */
 export function saveStatements(
   env: Env,
@@ -512,6 +515,12 @@ export function saveStatements(
   const whileRevision = options.whileRevision ?? null;
 
   return [
+    env.DB.prepare(
+      `DELETE FROM subscriber_milestone_source
+        WHERE milestone_id = ?1
+          AND EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1 AND ${stillAsRead('?2', '?3')})`,
+    ).bind(milestoneId, whileStatus, whileRevision),
+    ...sourceStatements(env, milestoneId, fields.sources, whileStatus, whileRevision),
     env.DB.prepare(
       `UPDATE subscriber_milestone
           SET channel_id = ?1, date_precision = ?2, reached_date = ?3, subscriber_count = ?4, announced_by = ?5,
@@ -531,18 +540,15 @@ export function saveStatements(
       whileStatus,
       whileRevision,
     ),
-    env.DB.prepare(
-      `DELETE FROM subscriber_milestone_source
-        WHERE milestone_id = ?1
-          AND EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1 AND ${stillAsRead('?2', '?3')})`,
-    ).bind(milestoneId, whileStatus, whileRevision),
-    ...sourceStatements(env, milestoneId, fields.sources, whileStatus, whileRevision),
   ];
 }
 
-/** Whether `saveStatements`' batch wrote the row: false when it was gone, or no longer as `SaveOptions` asked. */
+/**
+ * Whether `saveStatements`' batch - those statements alone - wrote the row:
+ * false when it was gone, or no longer as `SaveOptions` asked.
+ */
 export function savedRow(results: readonly D1Result[]): boolean {
-  return results[0]!.meta.changes > 0;
+  return results[results.length - 1]!.meta.changes > 0;
 }
 
 /** The answer when a save that read the row as a draft found it published by then. */
