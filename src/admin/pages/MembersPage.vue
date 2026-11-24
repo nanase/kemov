@@ -23,6 +23,7 @@ import {
   blankNewMember,
   editWouldBeLost,
   fieldForSaveError,
+  fieldsOnReload,
   isHexColor,
   memberOfListSaveError,
   moveId,
@@ -40,6 +41,8 @@ import {
 import { clearDraft, draft } from '../lib/members-draft';
 import { forgetPublicData, PREVIEW_NOTES, previewOpen } from '../lib/preview';
 import { showToast } from '../lib/toast';
+import { EDITING_TEXT } from '../lib/editing';
+import { confirmDiscard, useUnsavedGuard } from '../lib/unsaved-guard';
 
 /**
  * メンバー (#144's data screens task, #211) - #158's `GET`/`PUT
@@ -62,6 +65,14 @@ const newForm = ref<NewMemberFields | null>(null);
 const fields = ref<MemberFormFields | null>(null);
 const saving = ref(false);
 const listSaving = ref(false);
+
+/**
+ * A row's 保存 or 削除, or the list's 保存, is under way. Nothing starts another
+ * request or changes what the panel shows until it is answered, so the answer
+ * (an error, the panel closing, a read of the list) lands on the member it was
+ * asked for; the buttons that would are disabled and their handlers return.
+ */
+const busy = computed(() => listSaving.value || saving.value);
 const confirmingRemove = ref(false);
 const errorMessage = ref<string | null>(null);
 const errorField = ref<MemberFieldKey | null>(null);
@@ -164,19 +175,52 @@ const activeName = computed(() =>
 );
 const activeEnded = computed(() => (selected.value ?? selectedAdded.value)?.activityEndDate);
 
-watch(selected, (member) => {
-  fields.value = member === null ? null : toFormFields(member);
+/**
+ * What is typed in the edit panel and not yet kept (#286): a 「メンバーを足す」
+ * form that is not blank, or a saved member's fields that differ from the saved
+ * ones. An added member's own fields are not it: they are the draft's, and
+ * `dirty` covers the draft.
+ */
+const editDirty = computed(() => editWouldBeLost(newForm.value, fields.value, selected.value));
+
+/** What 変更を捨てる does: the panel shows what it showed before anything was typed. */
+function discardEdit(): void {
+  if (newForm.value !== null) {
+    newForm.value = blankNewMember();
+  } else if (selected.value !== null) {
+    fields.value = toFormFields(selected.value);
+  }
+
+  errorMessage.value = null;
+  errorField.value = null;
+}
+
+useUnsavedGuard(() => editDirty.value, discardEdit);
+
+// The one place a response writes `fields`: every read of the list (a save, the
+// list's 保存, 再読み込み, a delete) replaces `saved`, and so `selected`. What is
+// typed stays over the new values (`fieldsOnReload`); the only other writers
+// are the user's own typing and `discardEdit`, which they confirmed.
+watch(selected, (member, previous) => {
+  fields.value = fieldsOnReload(fields.value, previous, member);
   errorMessage.value = null;
   errorField.value = null;
   confirmingRemove.value = false;
 });
 
+/** Only the latest `load` writes: a slower, older one must not put its list over a newer one's (and so reset the fields a list save put back). */
+const loadGate = createRequestGate();
+
 async function load(): Promise<void> {
+  const ticket = loadGate.start();
+
   loading.value = true;
   loadError.value = null;
 
   try {
     const body = await getJson<{ members: Member[] }>('/members');
+
+    if (!loadGate.isCurrent(ticket)) return;
 
     saved.value = body.members;
 
@@ -196,19 +240,19 @@ async function load(): Promise<void> {
       draft.order = reconcileOrder(draft.order, [...savedIds.value, ...draft.added.map((a) => a.channelId)]);
     }
 
-    if (selectedId.value === null && rows.value.length > 0) {
+    // Not while 「メンバーを足す」 is open: that form is what the panel shows, and no row is chosen.
+    if (selectedId.value === null && newForm.value === null && rows.value.length > 0) {
       selectedId.value = rows.value[0]!.channelId;
     }
   } catch (error) {
-    loadError.value = error instanceof AdminApiError ? error.message : String(error);
+    if (loadGate.isCurrent(ticket)) loadError.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
-    loading.value = false;
+    if (loadGate.isCurrent(ticket)) loading.value = false;
   }
 }
 
 function selectRow(channelId: string): void {
-  // The edit panel is inert while 保存 is in flight; so is the choice of what it shows.
-  if (listSaving.value) return;
+  if (busy.value) return;
 
   // A click on the row the banner is about shows the error there, as the
   // banner's own button does: the banner has said all it had to. Only a click
@@ -217,6 +261,11 @@ function selectRow(channelId: string): void {
     openErrorRow();
     return;
   }
+
+  // Another row replaces what the edit panel shows; unsaved typing goes only if the user says so (#286).
+  // The open 「メンバーを足す」 form goes too, even for the row that looks selected: 元に戻す
+  // and a reload select the first row while the form is still open.
+  if ((channelId !== selectedId.value || newForm.value !== null) && !confirmDiscard()) return;
 
   // What a failed save said is about the member it was shown for.
   if (channelId !== selectedId.value) {
@@ -230,10 +279,15 @@ function selectRow(channelId: string): void {
 }
 
 function back(): void {
-  detail.value = false;
+  if (confirmDiscard()) detail.value = false;
 }
 
 function addMember(): void {
+  if (busy.value) return;
+
+  // A form already open is replaced by a blank one, and a member's typed changes go with it.
+  if (!confirmDiscard()) return;
+
   newForm.value = blankNewMember();
   selectedId.value = null;
   errorMessage.value = null;
@@ -288,13 +342,17 @@ function move(channelId: string, delta: -1 | 1): void {
 }
 
 function discard(): void {
+  if (busy.value) return;
+
   clearDraft();
   listError.value = null;
   rowError.value = null;
   errorMessage.value = null;
   errorField.value = null;
 
-  if (selectedAdded.value === null && selected.value === null) selectedId.value = rows.value[0]?.channelId ?? null;
+  if (newForm.value === null && selectedAdded.value === null && selected.value === null) {
+    selectedId.value = rows.value[0]?.channelId ?? null;
+  }
 }
 
 /**
@@ -316,11 +374,16 @@ async function showAddedMemberError(channelId: string, message: string): Promise
   errorField.value = fieldForSaveError(message);
 }
 
-/** The button over the list: the user chose to move, so what is typed in the edit panel goes, as it does for a click on a row. */
+/**
+ * The button over the list, and a click on that row: the user chose to move,
+ * so what is typed in the edit panel goes - once they have said it may (#286).
+ * Only the move the save's 400 would have made itself is automatic and asks
+ * nothing; that one stays over the list instead (`rowError`).
+ */
 function openErrorRow(): void {
   const error = rowError.value;
 
-  if (error === null || listSaving.value) return;
+  if (error === null || busy.value || !confirmDiscard()) return;
 
   rowError.value = null;
 
@@ -333,6 +396,8 @@ function openErrorRow(): void {
 }
 
 async function saveList(): Promise<void> {
+  if (busy.value) return;
+
   listSaving.value = true;
   listError.value = null;
   rowError.value = null;
@@ -346,6 +411,7 @@ async function saveList(): Promise<void> {
     forgetPublicData();
     clearDraft();
     await load();
+
     showToast('保存しました');
   } catch (error) {
     const channelId =
@@ -487,18 +553,20 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
     <div class="pane">
       <div class="toolbar">
         <h2>メンバー</h2>
-        <span v-if="dirty" class="chip waiting">{{ MEMBER_TEXT.unsaved }}</span>
+        <span v-if="dirty" class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
         <span class="grow"></span>
         <span class="sub num">{{ rows.length }} 人</span>
         <!-- Always there, unsaved changes or not: a 409 from 保存 says to reload, and the draft is kept across it. -->
-        <button class="btn quiet" type="button" :disabled="loading || listSaving" @click="load">再読み込み</button>
+        <button class="btn quiet" type="button" :disabled="loading || busy" @click="confirmDiscard() && load()">
+          再読み込み
+        </button>
         <template v-if="dirty">
-          <button class="btn quiet" type="button" :disabled="listSaving" @click="discard">
+          <button class="btn quiet" type="button" :disabled="busy" @click="discard">
             {{ MEMBER_TEXT.discard }}
           </button>
-          <button class="btn primary" type="button" :disabled="listSaving" @click="saveList">保存</button>
+          <button class="btn primary" type="button" :disabled="busy" @click="saveList">保存</button>
         </template>
-        <button class="btn" type="button" :disabled="listSaving" @click="addMember">＋ メンバーを足す</button>
+        <button class="btn" type="button" :disabled="busy" @click="addMember">＋ メンバーを足す</button>
       </div>
       <div class="scroller">
         <div v-if="loadError" class="empty-note">
@@ -513,9 +581,8 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
           <h4>保存できません</h4>
           <div class="hint">{{ MEMBER_TEXT.rowErrorLead(shownRowError.name, shownRowError.channelId) }}</div>
           <div class="hint">{{ shownRowError.message }}</div>
-          <div class="hint">{{ MEMBER_TEXT.rowErrorKept }}</div>
           <div class="stack">
-            <button class="btn" type="button" :disabled="listSaving" @click="openErrorRow">
+            <button class="btn" type="button" :disabled="busy" @click="openErrorRow">
               {{ MEMBER_TEXT.openErrorRow }}
             </button>
           </div>
@@ -570,7 +637,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
               </td>
               <td>
                 {{ m.name }}
-                <span v-if="m.isNew" class="chip waiting">{{ MEMBER_TEXT.unsaved }}</span>
+                <span v-if="m.isNew" class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
               </td>
               <td class="num sub">{{ m.activityStartDate }}</td>
               <td class="num sub">{{ m.activityEndDate ?? '—' }}</td>
@@ -583,8 +650,8 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
       </div>
     </div>
 
-    <!-- inert while 保存 is in flight: the request already carries the draft as it was, and what is typed meanwhile would be cleared with it. -->
-    <div v-if="activeFields" class="inspector" :inert="listSaving || undefined">
+    <!-- inert while a request is in flight: the list's 保存 already carries the draft as it was, and what is typed meanwhile would be cleared with it; a row's 保存, a 削除 or a read of the list is answered with saved values, which would meet a field typed in just then. -->
+    <div v-if="activeFields" class="inspector" :inert="loading || busy || undefined">
       <SplitHandle />
       <div class="inspector-head">
         <div>
@@ -593,7 +660,10 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
             <span class="chip" :class="{ published: activeEnded === null }">{{
               activeEnded === null ? '活動中' : '活動終了'
             }}</span>
-            <span v-if="selectedAdded" class="chip waiting">{{ MEMBER_TEXT.unsaved }}</span>
+            <span v-if="selectedAdded || editDirty" class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
+          </div>
+          <div v-else-if="editDirty" class="stack">
+            <span class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
           </div>
         </div>
         <PreviewButton />
@@ -611,8 +681,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
             <input v-if="newForm" id="f-cid" v-model="newForm.channelId" type="text" placeholder="UC…" />
             <input v-else id="f-cid" type="text" :value="selectedId" readonly />
             <div v-if="newForm" :id="LOOKUP_ID" class="lookup" aria-live="polite">
-              <p v-if="lookupShown === 'waiting'" class="hint">{{ LOOKUP_TEXT.waiting }}</p>
-              <p v-else-if="lookupShown === 'loading'" class="lookup-row hint">
+              <p v-if="lookupShown === 'loading'" class="lookup-row hint">
                 <span class="lookup-icon" aria-hidden="true"></span>
                 {{ LOOKUP_TEXT.loading }}
               </p>
