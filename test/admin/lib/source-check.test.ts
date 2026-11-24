@@ -60,6 +60,16 @@ describe('judgeSources', () => {
     });
   });
 
+  // Only an https URL can be saved, so the screen does not count one that is not.
+  test('gives no mark to a URL that is not https, and counts it for nothing', () => {
+    expect(judgeSources(['https://www.youtube.com/watch?v=a', 'http://ameblo.jp/someone/entry-1'], WHITELIST)).toEqual({
+      enough: false,
+      marks: [{ kind: 'host', host: 'youtube.com', sameSite: false }, { kind: 'none' }],
+      onlyHost: 'youtube.com',
+    });
+    expect(sourcesEnough(['https://www.youtube.com/watch?v=a', 'mailto:a@example.com'], WHITELIST)).toEqual(false);
+  });
+
   test('has no host to name for no source at all', () => {
     expect(judgeSources([], WHITELIST)).toEqual({ enough: false, marks: [], onlyHost: null });
   });

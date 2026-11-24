@@ -65,7 +65,9 @@ export async function inboxCounts(env: Env): Promise<Response> {
   const [events, streams, source, footprints, genet, milestones] = await Promise.all([
     env.DB.prepare(`SELECT count(*) AS n FROM footprints_event WHERE ${REVIEW_EVENTS}`).first<{ n: number }>(),
     env.DB.prepare(`SELECT count(*) AS n FROM genet_stream WHERE ${REVIEW_STREAMS}`).first<{ n: number }>(),
-    eventIdsShortOfSources(env),
+    // Judging reads the whitelist and every source; a failure there leaves
+    // this one count unknown rather than the sidebar without any.
+    eventIdsShortOfSources(env).catch(() => null),
     waitingFootprints(env),
     waitingGenetMusic(env),
     waitingSubscriberMilestones(env),
@@ -73,7 +75,7 @@ export async function inboxCounts(env: Env): Promise<Response> {
 
   return jsonResponse({
     review: (events?.n ?? 0) + (streams?.n ?? 0),
-    source: source.length,
+    source: source === null ? null : source.length,
     publish: footprints.length + genet.pending.length + milestones.pending.length + milestones.eventChanged.length,
   });
 }

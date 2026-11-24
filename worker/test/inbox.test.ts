@@ -340,4 +340,22 @@ describe('inboxCounts', () => {
 
     expect(await json(inboxCounts(env))).toEqual({ review: 2, source: 1, publish: 1 });
   });
+
+  test('leaves only the source count unknown when the whitelist cannot be read', async () => {
+    await createValidEvent({ sources: [] });
+
+    const prepare = env.DB.prepare.bind(env.DB);
+
+    const spy = vi.spyOn(env.DB, 'prepare').mockImplementation((query: string) => {
+      if (query.includes('source_whitelist')) throw new Error('D1 is unavailable');
+
+      return prepare(query);
+    });
+
+    try {
+      expect(await json(inboxCounts(env))).toEqual({ review: 1, source: null, publish: 0 });
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

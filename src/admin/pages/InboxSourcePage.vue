@@ -120,7 +120,7 @@ onMounted(() => {
           <tbody>
             <tr v-if="loaded && events.length === 0">
               <td colspan="6">
-                <div class="empty-note"><b>出典が足りない行はありません。</b></div>
+                <div class="empty-note"><b>出典が足りない行はありません</b></div>
               </td>
             </tr>
             <tr

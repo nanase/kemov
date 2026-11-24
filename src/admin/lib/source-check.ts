@@ -120,6 +120,18 @@ export function countedHost(url: string): string | null {
 }
 
 /**
+ * The host `url` counts for as a source, or null when it counts for none:
+ * only an `https` URL with a host does, as only such a URL can be saved.
+ */
+function sourceHost(url: string): string | null {
+  if (!url.startsWith('https://')) return null;
+
+  const host = countedHost(url);
+
+  return host === '' ? null : host;
+}
+
+/**
  * Whether `urls` are backed by at least two different hosts.
  *
  * What a source outside the whitelist can still count for: one YouTube video
@@ -127,14 +139,14 @@ export function countedHost(url: string): string | null {
  * same one written another way - only repeats it, so it is the number of
  * hosts and not of URLs that says the claim was checked somewhere else. A
  * host is counted as `countedHost` reads it, so `x.com`, `www.x.com` and
- * `twitter.com` are one. A URL `new URL` cannot parse names no host, and adds
- * none.
+ * `twitter.com` are one. A URL that is not `https`, or that `new URL` cannot
+ * parse, adds none.
  */
 export function hasTwoHosts(urls: readonly string[]): boolean {
   const hosts = new Set<string>();
 
   for (const url of urls) {
-    const host = countedHost(url);
+    const host = sourceHost(url);
 
     if (host !== null) hosts.add(host);
   }
@@ -178,10 +190,9 @@ export function judgeSources(urls: readonly string[], whitelist: readonly string
   const seen = new Set<string>();
 
   const marks = urls.map((url): SourceMark => {
-    const host = countedHost(url);
+    const host = sourceHost(url);
 
-    // '' is a URL with no authority, such as `mailto:`, which the worker refuses to save.
-    if (host === null || host === '') return { kind: 'none' };
+    if (host === null) return { kind: 'none' };
 
     const sameSite = seen.has(host);
 

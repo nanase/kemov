@@ -12,7 +12,8 @@ import type { PublishMark } from './publish-mark';
 /** `GET /admin/api/inbox`. */
 export interface InboxCounts {
   review: number;
-  source: number;
+  /** Null when the events short of sources could not be judged. */
+  source: number | null;
   publish: number;
 }
 

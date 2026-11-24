@@ -193,7 +193,14 @@ function setStatus(value: string): void {
 }
 
 function toggleShortOnly(): void {
-  if (inspectorBusy.value || !confirmDiscard()) return;
+  if (inspectorBusy.value) return;
+
+  // Turning the filter on hides the open row when it is not short of
+  // sources; turning it off hides nothing.
+  const hidesOpenRow =
+    !shortOnly.value && !adding.value && selected.value !== null && !isShortOfSources(selected.value, whitelist.value);
+
+  if (hidesOpenRow && !confirmDiscard()) return;
 
   shortOnly.value = !shortOnly.value;
 
