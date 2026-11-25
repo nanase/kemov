@@ -737,6 +737,9 @@ async function readTune(index: number): Promise<void> {
   try {
     const body = await getJson<TuneAnswer>(`/genet/tunes/${performance.tuneId}`);
 
+    // About the tune, wherever it is performed now: kept even when the fields go nowhere.
+    recordLive(body.live === true);
+
     // A newer read for the same index, or performances that moved since,
     // which sent a read of their own if one was needed.
     if (latestTuneRead.get(index) !== read) return;
@@ -745,7 +748,6 @@ async function readTune(index: number): Promise<void> {
 
     if (stillAt(index, videoId, performance.tuneId)) {
       rememberSavedTune(index, body.tune);
-      recordLive(body.live === true);
     } else {
       readOpenTuneAgain();
     }
@@ -820,10 +822,10 @@ async function saveTune(index: number): Promise<void> {
       void loadPending();
     }
 
-    if (answered !== null && stillAt(index, videoId, performance.tuneId)) {
-      rememberSavedTune(index, answered.tune);
-      recordLive(live);
-    }
+    // About the tune, wherever it is performed now.
+    recordLive(live);
+
+    if (answered !== null && stillAt(index, videoId, performance.tuneId)) rememberSavedTune(index, answered.tune);
 
     return;
   }
