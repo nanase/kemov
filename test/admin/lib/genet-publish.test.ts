@@ -3,7 +3,6 @@ import { SAVE_TOAST } from '@/admin/lib/editing';
 import {
   canPublishGenet,
   entityLabel,
-  GENET_BEHIND_TEXT,
   isChangedSincePublish,
   publishesOnlyForShape,
   STREAM_NOTE_ID,
@@ -90,12 +89,6 @@ describe('publishesOnlyForShape', () => {
 
   test('is false when the JSON may be behind too', () => {
     expect(publishesOnlyForShape({ pending: [], changed: [], shapeOutdated: true, behind: true })).toBe(false);
-  });
-});
-
-describe('GENET_BEHIND_TEXT', () => {
-  test('is the sentence the 公開 screen shows while the JSON may be behind', () => {
-    expect(GENET_BEHIND_TEXT).toEqual('本番の楽曲一覧が記録と食い違っているかもしれません。');
   });
 });
 

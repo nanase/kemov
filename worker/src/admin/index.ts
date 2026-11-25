@@ -4,6 +4,7 @@ import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
 import { lookupChannel } from './channel-lookup';
 import { ackCollectTask, listCollectTasks, markCollectTaskUnavailable, retryCollectTask } from './collect-tasks';
+import { listDrafts } from './drafts';
 import { createEvent, deleteEvent, getEvent, listEvents } from './footprints';
 import { pendingFootprints, publishEvent, publishFootprintsNow, saveEvent, withdrawEvent } from './footprints-publish';
 import { createPerson, deletePerson, getPerson, listPeople, updatePerson } from './genet-people';
@@ -17,7 +18,6 @@ import {
 } from './genet-publish';
 import { createStream, deleteStream, getStream, listStreams } from './genet-streams';
 import { createTune, deleteTune, getTune, listTunes } from './genet-tunes';
-import { inboxCounts, listPublishInbox, listReviewInbox, listSourceInbox } from './inbox';
 import { addMember, deleteMember, listMembers, saveMembers, updateMember } from './members';
 import { listPublications } from './publications';
 import { getRevision, listRevisions, readRevisionId } from './revisions';
@@ -377,20 +377,10 @@ export async function handleAdminRequest(
     return await publishGenetMusicNow(env, instant);
   }
 
-  if (segments.length === 3 && name === 'inbox') {
+  if (segments.length === 3 && name === 'drafts') {
     if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
 
-    return await inboxCounts(env);
-  }
-
-  if (segments.length === 4 && name === 'inbox') {
-    if (request.method !== 'GET') return methodNotAllowed(request, 'GET');
-
-    if (sub === 'review') return await listReviewInbox(env);
-    if (sub === 'source') return await listSourceInbox(env);
-    if (sub === 'publish') return await listPublishInbox(env);
-
-    return errorResponse(404, `no endpoint at ${pathname}`);
+    return await listDrafts(env);
   }
 
   if (segments.length === 4 && name === 'channel-lookup' && id !== undefined) {

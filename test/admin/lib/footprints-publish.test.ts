@@ -28,8 +28,8 @@ describe('isChangedSincePublish', () => {
   });
 });
 
-// The button on the 公開 screen reads the same list the worker's own
-// 「いま公開する」 does: what one calls waiting the other must call waiting too.
+// 「本番に反映」 above the list reads the same list the worker's own
+// publish does: what one calls waiting the other must call waiting too.
 describe('canPublishFootprints', () => {
   test('is false with nothing waiting', () => {
     expect(canPublishFootprints(NOTHING)).toBe(false);
@@ -153,9 +153,9 @@ describe('footprintsAnswerFor', () => {
     expect(footprintsAnswerFor('withdraw', 'published', error)).toEqual({
       kind: 'band',
       band: {
-        title: '非公開に戻しましたが、本番から外せませんでした',
+        title: '本番への反映に失敗しました',
         lines: [],
-        note: '公開の画面で「いま公開する」を押すと本番からも外れます',
+        note: '一覧の上の［本番に反映］を押してください',
       },
       fields: [],
       changed: true,

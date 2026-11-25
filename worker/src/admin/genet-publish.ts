@@ -814,7 +814,7 @@ export interface WaitingGenetEntry {
  * What "いま公開する" for `genet_music` would act on: every entity whose
  * latest revision is newer than the last run, whether the stored JSON is in
  * an older shape, and whether it may be behind. `pendingGenetMusic`,
- * `publishGenetMusicNow` and the やること screens' 公開待ち (inbox.ts) all
+ * `publishGenetMusicNow` and the sidebar's mark (drafts.ts) all
  * read it here, so they cannot count differently.
  */
 export async function waitingGenetMusic(
@@ -1007,9 +1007,10 @@ async function majorityChannelId(env: Env, streams: readonly PublicStream[]): Pr
  * (`GENET_MUSIC_SHAPE_VERSION`), and the JSON is not counted as behind
  * (publishing.ts's `isBehind`).
  *
- * Kept for the 公開 screen until it goes (#285): a stream left waiting from
- * before #284 is published by it, or by the next publish of any stream or
- * live tune, which builds from the same revisions.
+ * Pressed from the ジェネット楽曲一覧 list while the JSON needs it (#285): a
+ * stream left waiting from before #284, a JSON in an older shape or one that
+ * may be behind. The next publish of any stream or live tune builds from the
+ * same revisions too.
  *
  * The three entities share one `publication` row and one `last_revision_id`:
  * "newer than last time" is asked once, across whichever of the three

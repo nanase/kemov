@@ -38,7 +38,7 @@ export function isChangedSincePublish(state: FootprintsPending | null, eventId: 
 }
 
 /**
- * Whether the 公開 screen's 「いま公開する」 does anything for あしあと. The
+ * Whether 「本番に反映」 above the list does anything for あしあと. The
  * worker builds the JSON only when a revision is newer than the last time it
  * was written, when the JSON may be behind, or when it is outdated, and a row changed after it was
  * published has no new revision - so `changed` alone must not enable it, or
@@ -47,9 +47,6 @@ export function isChangedSincePublish(state: FootprintsPending | null, eventId: 
 export function canPublishFootprints(state: FootprintsPending): boolean {
   return state.pending.length > 0 || state.behind || state.outdated;
 }
-
-/** The 公開 screen's, while the worker says the JSON may be behind. */
-export const FOOTPRINTS_BEHIND_TEXT = '本番のあしあとが記録と食い違っているかもしれません。';
 
 /** The edit panel's note for a 502 that saved nothing (lib/publishing.ts's `notMendedNote`). */
 export const FOOTPRINTS_NOT_MENDED_TEXT = '本番の年表への反映に失敗しました。';

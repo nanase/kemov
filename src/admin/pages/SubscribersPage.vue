@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
+import BulkPublishBar from '../components/BulkPublishBar.vue';
+import BulkPublishOutcome from '../components/BulkPublishOutcome.vue';
+import RepublishBand from '../components/RepublishBand.vue';
 import SubscriberMilestoneInspector from '../components/SubscriberMilestoneInspector.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import type { FootprintsEvent, FootprintsMember } from '../lib/footprints';
-import { refreshPublishBadge } from '../lib/publish-badge';
+import { refreshSidebarDrafts } from '../lib/sidebar-drafts';
 import { liveMarkFor } from '../lib/publishing';
 import {
   announcerLabel,
@@ -21,11 +24,19 @@ import { SAVE_TOAST } from '../lib/editing';
 import { countText } from '../lib/list-count';
 import { useListTotal } from '../lib/list-total';
 import {
+  ABANDONED,
+  allTicked,
   ALREADY_PUBLISHED,
-  bulkPublishTargets,
+  BULK_TEXT,
+  isTickable,
   publishInTurn,
-  type BulkPublishOutcome,
-} from '../lib/subscriber-milestones-bulk';
+  tickedRows,
+  ticksAfterReload,
+  toggleAll,
+  toggleTick,
+  type BulkPublishOutcome as Outcome,
+} from '../lib/bulk-publish';
+import { milestonesBandText } from '../lib/republish';
 import type { MilestonesPending } from '../lib/subscriber-milestones-publish';
 import { showToast } from '../lib/toast';
 import { confirmDiscard } from '../lib/unsaved-guard';
@@ -50,14 +61,17 @@ const detail = ref(false);
 // Null when it could not be read: the edit panel then says nothing about a
 // row's public copy being behind.
 const pending = ref<MilestonesPending | null>(null);
-// まとめて公開する (#237, #283): how far a run has got, and what the last one did.
+// まとめて公開 (#237, #283, #285): the drafts ticked, how far a run has got, and what the last one did.
+const ticked = ref<Set<number>>(new Set());
 const bulkProgress = ref<{ done: number; total: number } | null>(null);
-const bulkOutcome = ref<BulkPublishOutcome | null>(null);
+const bulkOutcome = ref<Outcome<SubscriberMilestone> | null>(null);
 // How many of the edit panel's writes are on their way; a run waits for them
 // to land. Counted here, not in the panel: selecting another row unmounts the
 // panel but not its request.
 const writesInFlight = ref(0);
 const inspectorBusy = computed(() => writesInFlight.value > 0);
+// Neither the selection nor the table moves while the panel's write or a まとめて公開 is on its way.
+const locked = computed(() => inspectorBusy.value || bulkProgress.value !== null);
 
 function trackWrite(write: Promise<unknown>): void {
   writesInFlight.value++;
@@ -69,7 +83,7 @@ function trackWrite(write: Promise<unknown>): void {
   write.then(settled, settled);
 }
 
-// `/subscribers?milestone=<id>` is where the 公開 screen's rows lead. Read
+// `/subscribers?milestone=<id>` opens that row, for a link to it. Read
 // once, for the first list that arrives.
 const route = useRoute();
 let requestedId = typeof route.query.milestone === 'string' ? Number(route.query.milestone) : Number.NaN;
@@ -80,11 +94,13 @@ const listTotal = useListTotal(
   async () => (await getJson<{ milestones: SubscriberMilestone[] }>('/subscribers/milestones')).milestones.length,
 );
 const linkable = computed(() => linkableEvents(events.value));
+const keyOf = (m: SubscriberMilestone): number => m.milestoneId;
 // While a list is loading or failed to load, `milestones` is not what the
-// filters ask for, so the button acts on nothing until it is.
+// filters ask for, so the band acts on nothing until it is.
 const bulkTargets = computed(() =>
-  loading.value || loadError.value !== null ? [] : bulkPublishTargets(milestones.value),
+  loading.value || loadError.value !== null ? [] : tickedRows(ticked.value, milestones.value, keyOf),
 );
+const bandText = computed(() => milestonesBandText(pending.value));
 // A new milestone starts with the member the table is narrowed to, or the
 // first member when it is not narrowed.
 const newChannelId = computed(() =>
@@ -121,6 +137,7 @@ async function load(): Promise<void> {
     if (generation !== loadGeneration) return;
 
     milestones.value = body.milestones;
+    ticked.value = ticksAfterReload(ticked.value, milestones.value, keyOf);
     listTotal.update(milestones.value.length, filtered.value);
 
     if (selectedId.value !== null && !milestones.value.some((m) => m.milestoneId === selectedId.value)) {
@@ -147,25 +164,36 @@ async function load(): Promise<void> {
   }
 }
 
-// As with `load`: the first request can still be on its way when a bulk run
-// ends and asks again, and its older answer must not land last.
-let pendingGeneration = 0;
+// Generations of the pending reads: the latest one sent, and the one `pending` holds. An
+// older answer that lands later is dropped. The message above the list stays hidden after a
+// 「本番に反映」 through the read the press starts (RepublishBand.vue).
+let pendingSent = 0;
+const pendingHeld = ref(0);
 
 async function loadPending(): Promise<void> {
-  const generation = ++pendingGeneration;
+  const generation = ++pendingSent;
 
   try {
     const body = await getJson<MilestonesPending>('/subscribers/pending');
 
-    if (generation === pendingGeneration) pending.value = body;
+    if (generation === pendingSent) pending.value = body;
   } catch {
-    if (generation === pendingGeneration) pending.value = null;
+    if (generation === pendingSent) pending.value = null;
+  } finally {
+    if (generation === pendingSent) pendingHeld.value = generation;
   }
+}
+
+/** RepublishBand.vue's `reload`: reads the pending state again, and answers the generation of that read. */
+function reloadPending(): number {
+  void loadPending();
+
+  return pendingSent;
 }
 
 /**
  * reload() calls on their way. `loading` alone ends with the list, before
- * 公開待ち is read and so before created() opens the new row over whatever
+ * the pending state is read and so before created() opens the new row over whatever
  * was typed into the row shown meanwhile.
  */
 const reloading = ref(0);
@@ -200,6 +228,7 @@ async function loadEvents(): Promise<void> {
 
 /** A row clicked in the table: asks first when the open one has changes that would be lost. */
 function selectRow(milestoneId: number): void {
+  if (bulkProgress.value !== null) return;
   if ((adding.value || milestoneId !== selectedId.value) && !confirmDiscard()) return;
 
   openRow(milestoneId);
@@ -212,6 +241,7 @@ function openRow(milestoneId: number): void {
 }
 
 function startAdding(): void {
+  if (bulkProgress.value !== null) return;
   if (!adding.value && !confirmDiscard()) return;
 
   adding.value = true;
@@ -259,18 +289,18 @@ async function created(milestoneId: number): Promise<void> {
 }
 
 /**
- * Sends each draft the table shows through 「公開」, one at a time, with the
- * fields it has saved when its turn comes (lib/subscriber-milestones-bulk.ts). The filters
- * are locked meanwhile, so the table stays the one the confirmation counted.
- * The list is read again afterwards, stopped or not, and that puts the open
- * panel's saved fields back - so its unsaved changes are asked about too,
- * after the run itself is agreed to, so that declining the run keeps them.
+ * まとめて公開: sends each ticked draft through 「公開」, one at a time, with
+ * the fields it has saved when its turn comes (lib/bulk-publish.ts). The
+ * filters and the ticks are locked meanwhile, so the rows stay the ones the
+ * confirmation counted. The list is read again afterwards, stopped or not,
+ * and that puts the open panel's saved fields back - so its unsaved changes
+ * are asked about too, after the run itself is agreed to, so that declining
+ * the run keeps them.
  */
-async function publishShownDrafts(): Promise<void> {
+async function publishTicked(): Promise<void> {
   const targets = bulkTargets.value;
 
-  if (targets.length === 0 || inspectorBusy.value) return;
-  if (!window.confirm(bulkConfirmText(targets.length)) || inspectorBusy.value || !confirmDiscard()) return;
+  if (targets.length === 0 || locked.value || !confirmDiscard()) return;
 
   bulkOutcome.value = null;
   bulkProgress.value = { done: 0, total: targets.length };
@@ -283,6 +313,9 @@ async function publishShownDrafts(): Promise<void> {
         // save whose answer came after another row was opened is not in it.
         const saved = await getJson<SubscriberMilestone>(`/subscribers/milestones/${milestoneId}`);
 
+        // Left while the read was on its way: no publish starts after that.
+        if (left) return ABANDONED;
+
         // Published elsewhere since the table was read. Not counted as
         // published by this run: that publish may not have reached the public JSON.
         if (saved.status !== 'draft') return ALREADY_PUBLISHED;
@@ -292,29 +325,33 @@ async function publishShownDrafts(): Promise<void> {
       (done) => {
         bulkProgress.value = { done, total: targets.length };
       },
+      () => left,
     );
   } finally {
     bulkProgress.value = null;
-    void refreshPublishBadge();
-    await reload();
+    void refreshSidebarDrafts();
+    if (!left) await reload();
   }
 }
 
-function bulkConfirmText(count: number): string {
-  return `表に出ている下書き ${count} 件を公開します。出典が足りない行は飛ばして続けます。`;
-}
+// Whether the page was left: a run on its way sends no row after that, so it
+// does not go on unseen (lib/bulk-publish.ts's `publishInTurn`).
+let left = false;
 
-function bulkHeading(outcome: BulkPublishOutcome): string {
-  if (outcome.stopped) return '途中で止まりました';
-
-  return outcome.published > 0 ? 'まとめて公開しました' : '公開できた行はありません';
-}
+onUnmounted(() => {
+  left = true;
+});
 
 function milestoneLine(m: SubscriberMilestone): string {
   return `${m.reachedDate} ${formatCount(m.subscriberCount)} 人 ${memberName(m.channelId)}`;
 }
 
-watch([channelId, status], load);
+// Reading the list again reads the pending state with it, so the message above the list
+// comes back after a 「本番に反映」 if the worker still calls the JSON behind.
+watch([channelId, status], () => {
+  void load();
+  void loadPending();
+});
 onMounted(() => {
   load();
   loadPending();
@@ -346,75 +383,34 @@ onMounted(() => {
         </div>
         <span class="grow"></span>
         <span class="sub num">{{ countText(milestones.length, listTotal.total.value, filtered) }}</span>
-        <button
-          class="btn"
-          type="button"
-          :disabled="bulkProgress !== null || inspectorBusy || bulkTargets.length === 0"
-          @click="publishShownDrafts"
-        >
-          <template v-if="bulkProgress">
-            公開しています… {{ bulkProgress.done }} / {{ bulkProgress.total }} 件
-          </template>
-          <template v-else>下書きをまとめて公開する（{{ bulkTargets.length }} 件）</template>
-        </button>
         <button class="btn" type="button" :disabled="members.length === 0" @click="startAdding">＋ 足す</button>
       </div>
       <div class="scroller">
-        <div v-if="bulkOutcome" class="bulk">
-          <div class="panel" :class="{ flag: bulkOutcome.stopped || bulkOutcome.skipped.length > 0 }">
-            <h4>{{ bulkHeading(bulkOutcome) }}</h4>
-            <div v-if="bulkOutcome.stopped" class="hint">
-              失敗した行でいったん止めました。もう一度押すと、下書きのまま残っている行をもう一度試します。
-            </div>
-            <div class="kv">
-              <dt>公開できた</dt>
-              <dd class="num">{{ bulkOutcome.published }} / {{ bulkOutcome.total }} 件</dd>
-              <dt>出典が足りなかった</dt>
-              <dd class="num">{{ bulkOutcome.skipped.length }} 件</dd>
-              <dt>公開済みだった</dt>
-              <dd class="num">{{ bulkOutcome.alreadyPublished }} 件</dd>
-              <template v-if="bulkOutcome.stopped">
-                <dt>止まった行</dt>
-                <dd>{{ milestoneLine(bulkOutcome.stopped.milestone) }}</dd>
-                <dt>理由</dt>
-                <dd>{{ bulkOutcome.stopped.reason }}</dd>
-                <dt>まだ試していない</dt>
-                <dd class="num">
-                  {{
-                    bulkOutcome.total -
-                    bulkOutcome.published -
-                    bulkOutcome.alreadyPublished -
-                    bulkOutcome.skipped.length -
-                    1
-                  }}
-                  件
-                </dd>
-              </template>
-            </div>
-            <template v-if="bulkOutcome.skipped.length > 0">
-              <div class="hint">出典が足りなかった行（下書きのまま）</div>
-              <ul class="bulk-skipped">
-                <li v-for="s in bulkOutcome.skipped" :key="s.milestone.milestoneId">
-                  <span>{{ milestoneLine(s.milestone) }}</span>
-                  <span class="sub">{{ s.reason }}</span>
-                </li>
-              </ul>
-            </template>
-            <div class="stack">
-              <button class="btn quiet" type="button" @click="bulkOutcome = null">閉じる</button>
-            </div>
-          </div>
-        </div>
+        <RepublishBand target="milestones" :text="bandText" :held="pendingHeld" :reload="reloadPending" />
         <div v-if="loadError" class="empty-note">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
-          <button class="btn quiet" type="button" :disabled="loading" @click="confirmDiscard() && load()">
+          <button
+            class="btn quiet"
+            type="button"
+            :disabled="loading || bulkProgress !== null"
+            @click="confirmDiscard() && load()"
+          >
             再読み込み
           </button>
         </div>
         <table class="grid">
           <thead>
             <tr>
+              <th class="tick">
+                <input
+                  type="checkbox"
+                  :checked="allTicked(ticked, milestones, keyOf)"
+                  :disabled="bulkProgress !== null || !milestones.some(isTickable)"
+                  :aria-label="BULK_TEXT.selectAll"
+                  @change="ticked = toggleAll(ticked, milestones, keyOf)"
+                />
+              </th>
               <th>状態</th>
               <th>達成の日</th>
               <th>メンバー</th>
@@ -435,6 +431,16 @@ onMounted(() => {
               @keydown.enter="selectRow(m.milestoneId)"
               @keydown.space.prevent="selectRow(m.milestoneId)"
             >
+              <td class="tick" @click.stop @keydown.stop>
+                <input
+                  v-if="isTickable(m)"
+                  type="checkbox"
+                  :checked="ticked.has(m.milestoneId)"
+                  :disabled="bulkProgress !== null"
+                  :aria-label="BULK_TEXT.select"
+                  @change="ticked = toggleTick(ticked, m.milestoneId)"
+                />
+              </td>
               <td>
                 <span class="chip" :class="liveMarkFor(m.status).tone">{{ liveMarkFor(m.status).label }}</span>
               </td>
@@ -464,6 +470,20 @@ onMounted(() => {
           <div class="sub">該当する節目はありません</div>
         </div>
       </div>
+      <BulkPublishOutcome
+        v-if="bulkOutcome && !bulkProgress"
+        :outcome="bulkOutcome"
+        :describe="milestoneLine"
+        :key-of="keyOf"
+        @close="bulkOutcome = null"
+      />
+      <BulkPublishBar
+        :count="bulkTargets.length"
+        :progress="bulkProgress"
+        :disabled="inspectorBusy"
+        @publish="publishTicked"
+        @clear="ticked = new Set()"
+      />
     </div>
     <!-- inert while the list is read, or read again after a save: the answer puts the open row's saved fields back, or leaves the row out of the table and closes the panel, over anything typed meanwhile. -->
     <SubscriberMilestoneInspector
@@ -489,28 +509,5 @@ onMounted(() => {
 .seg button:disabled {
   opacity: 0.55;
   pointer-events: none;
-}
-
-.bulk {
-  padding: 10px 14px;
-}
-
-.bulk-skipped {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 4px;
-  font-size: var(--a-small);
-}
-
-.bulk-skipped li {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.bulk-skipped .sub {
-  overflow-wrap: anywhere;
 }
 </style>

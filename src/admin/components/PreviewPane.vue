@@ -6,8 +6,8 @@
  * part's container queries measure this column rather than the page.
  */
 defineProps<{
-  /** Where the change shows once saved (`PREVIEW_NOTES`). */
-  note: string;
+  /** Where the change shows once saved (`PREVIEW_NOTES`), or nothing. */
+  note?: string;
   /** A public page's own colours, as that page opts in on its root (`src/shell/palette-*.css`). */
   palette?: string;
 }>();
@@ -19,6 +19,6 @@ defineProps<{
     <div class="preview-frame" :data-palette="palette">
       <slot />
     </div>
-    <p class="hint">{{ note }}</p>
+    <p v-if="note" class="hint">{{ note }}</p>
   </aside>
 </template>

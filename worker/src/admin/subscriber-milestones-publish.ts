@@ -739,7 +739,7 @@ async function publishState(env: Env) {
 
 /**
  * What 「いま公開する」 for `subscriber_milestones` would act on, for the
- * やること screens' 公開待ち (inbox.ts): the milestones waiting, those whose
+ * sidebar's mark (drafts.ts): the milestones waiting, those whose
  * linked event changed under them, and whether the run would build at all -
  * `publishState`'s own answer, so the two cannot disagree.
  */
@@ -806,7 +806,7 @@ export async function pendingSubscriberMilestones(env: Env): Promise<Response> {
  * `publishState` finds nothing to build. 502 when the JSON could not be
  * brought up to date, with no `publication` row recorded for it.
  *
- * Kept for the 公開 screen until it goes (#285).
+ * Pressed from the 登録者数の節目 list while the JSON needs it (#285).
  */
 export async function publishSubscriberMilestonesNow(env: Env, now: Date): Promise<Response> {
   const state = await publishState(env);

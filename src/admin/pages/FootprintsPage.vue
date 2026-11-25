@@ -1,21 +1,40 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
+import BulkPublishBar from '../components/BulkPublishBar.vue';
+import BulkPublishOutcome from '../components/BulkPublishOutcome.vue';
 import FootprintsInspector from '../components/FootprintsInspector.vue';
-import { AdminApiError, getJson } from '../lib/api';
+import RepublishBand from '../components/RepublishBand.vue';
+import { AdminApiError, getJson, postJson } from '../lib/api';
+import {
+  ABANDONED,
+  allTicked,
+  ALREADY_PUBLISHED,
+  BULK_TEXT,
+  isTickable,
+  publishInTurn,
+  tickedRows,
+  ticksAfterReload,
+  toggleAll,
+  toggleTick,
+  type BulkPublishOutcome as Outcome,
+} from '../lib/bulk-publish';
 import { SAVE_TOAST } from '../lib/editing';
 import {
   footprintsQuery,
   kindLabel,
   STATUS_OPTIONS,
+  toFormFields,
   withKeptRow,
   type FootprintsEvent,
   type FootprintsMember,
 } from '../lib/footprints';
 import type { FootprintsPending } from '../lib/footprints-publish';
 import { isShortOfSources, useWhitelist, SOURCE_TEXT } from '../lib/footprints-sources';
+import { refreshSidebarDrafts } from '../lib/sidebar-drafts';
 import { liveMarkFor } from '../lib/publishing';
+import { footprintsBandText } from '../lib/republish';
 import { countText } from '../lib/list-count';
 import { useListTotal } from '../lib/list-total';
 import { showToast } from '../lib/toast';
@@ -40,6 +59,12 @@ const adding = ref(false);
 // Whether the edit panel's request is on its way. Selecting another row
 // meanwhile would unmount the panel, and its answer would never reach the table.
 const inspectorBusy = ref(false);
+// まとめて公開 (#285): the drafts ticked, how far a run has got, and what the last one did.
+const ticked = ref<Set<number>>(new Set());
+const bulkProgress = ref<{ done: number; total: number } | null>(null);
+const bulkOutcome = ref<Outcome<FootprintsEvent> | null>(null);
+// Neither the filters nor the selection move while the panel's request or a run is on its way.
+const locked = computed(() => inspectorBusy.value || bulkProgress.value !== null);
 // Which published rows the public JSON has not caught up with - the edit
 // panel says so. Null when it could not be read.
 const pending = ref<FootprintsPending | null>(null);
@@ -56,7 +81,7 @@ let keptCopy: FootprintsEvent | null = null;
 // The rows the worker answered for the filter, without a kept one put back.
 const answeredIds = ref<Set<number>>(new Set());
 
-// `/footprints?event=<id>` is where the 公開 screen's rows lead. Read once,
+// `/footprints?event=<id>` opens that row, for a link to it. Read once,
 // for the first list that arrives; later loads keep whatever is selected.
 const route = useRoute();
 let requestedId = typeof route.query.event === 'string' ? Number(route.query.event) : Number.NaN;
@@ -81,6 +106,11 @@ function keptOnly(e: FootprintsEvent): boolean {
 }
 
 const matchedCount = computed(() => shown.value.filter((e) => !keptOnly(e)).length);
+const keyOf = (e: FootprintsEvent): number => e.eventId;
+const bulkTargets = computed(() =>
+  loading.value || loadError.value !== null ? [] : tickedRows(ticked.value, shown.value, keyOf),
+);
+const bandText = computed(() => footprintsBandText(pending.value));
 const listTotal = useListTotal(
   async () => (await getJson<{ events: FootprintsEvent[] }>('/footprints/events')).events.length,
 );
@@ -132,6 +162,7 @@ async function load(): Promise<void> {
     }
 
     events.value = rows;
+    ticked.value = ticksAfterReload(ticked.value, shown.value, keyOf);
     listTotal.update(matchedCount.value, filtered.value);
 
     if (selectedId.value !== null && !shown.value.some((e) => e.eventId === selectedId.value)) {
@@ -141,8 +172,7 @@ async function load(): Promise<void> {
 
     // The wide layout always keeps the inspector column filled - matching
     // the mock, which never leaves it empty - so the first row is selected
-    // by default, the same as the やること screens the mock's own
-    // inboxTable auto-selects. This does not open the narrow layout's
+    // by default. This does not open the narrow layout's
     // detail view; only clicking a row does that. Not while a new event is
     // being entered there.
     if (selectedId.value === null && !adding.value && shown.value.length > 0) {
@@ -164,12 +194,31 @@ async function load(): Promise<void> {
   }
 }
 
+// Generations of the pending reads: the latest one sent, and the one `pending` holds. An
+// older answer that lands later is dropped. The message above the list stays hidden after a
+// 「本番に反映」 through the read the press starts (RepublishBand.vue).
+let pendingSent = 0;
+const pendingHeld = ref(0);
+
 async function loadPending(): Promise<void> {
+  const generation = ++pendingSent;
+
   try {
-    pending.value = await getJson<FootprintsPending>('/footprints/pending');
+    const body = await getJson<FootprintsPending>('/footprints/pending');
+
+    if (generation === pendingSent) pending.value = body;
   } catch {
-    pending.value = null;
+    if (generation === pendingSent) pending.value = null;
+  } finally {
+    if (generation === pendingSent) pendingHeld.value = generation;
   }
+}
+
+/** RepublishBand.vue's `reload`: reads the pending state again, and answers the generation of that read. */
+function reloadPending(): number {
+  void loadPending();
+
+  return pendingSent;
 }
 
 /**
@@ -212,7 +261,7 @@ async function reload(): Promise<void> {
 
 /** A row clicked in the table: asks first when the open one has changes that would be lost. */
 function selectRow(eventId: number): void {
-  if (inspectorBusy.value) return;
+  if (locked.value) return;
   if ((adding.value || eventId !== selectedId.value) && !confirmDiscard()) return;
 
   openRow(eventId);
@@ -238,7 +287,7 @@ function openRow(eventId: number): void {
 }
 
 function startAdding(): void {
-  if (inspectorBusy.value) return;
+  if (locked.value) return;
   if (!adding.value && !confirmDiscard()) return;
 
   adding.value = true;
@@ -259,7 +308,7 @@ function back(): void {
 // A filter can leave the open row out of the table, which closes its panel,
 // so changing one asks first, as selecting another row does.
 function setStatus(value: string): void {
-  if (inspectorBusy.value) return;
+  if (locked.value) return;
   if (value !== status.value && confirmDiscard()) {
     releaseKept();
     status.value = value;
@@ -267,7 +316,7 @@ function setStatus(value: string): void {
 }
 
 function toggleShortOnly(): void {
-  if (inspectorBusy.value) return;
+  if (locked.value) return;
 
   // Either way the kept row is let go, which hides the open row when the
   // worker's answer does not hold it; turning the filter on also hides it
@@ -292,7 +341,7 @@ function toggleShortOnly(): void {
 function setQuery(event: Event): void {
   const input = event.target as HTMLInputElement;
 
-  if (!inspectorBusy.value && confirmDiscard()) {
+  if (!locked.value && confirmDiscard()) {
     releaseKept();
     q.value = input.value;
   } else input.value = q.value;
@@ -325,6 +374,60 @@ async function created(eventId: number): Promise<void> {
   }
 }
 
+/**
+ * まとめて公開: each ticked draft through 「公開」, one at a time, with the
+ * fields it has saved when its turn comes (lib/bulk-publish.ts), as
+ * SubscribersPage.vue does. The list is read again afterwards, which puts
+ * the open panel's saved fields back, so its unsaved changes are asked
+ * about first.
+ */
+async function publishTicked(): Promise<void> {
+  const targets = bulkTargets.value;
+
+  if (targets.length === 0 || locked.value || !confirmDiscard()) return;
+
+  releaseKept();
+  bulkOutcome.value = null;
+  bulkProgress.value = { done: 0, total: targets.length };
+
+  try {
+    bulkOutcome.value = await publishInTurn(
+      targets,
+      async ({ eventId }) => {
+        // Read again just before: the table can be older than the row.
+        const saved = await getJson<FootprintsEvent>(`/footprints/events/${eventId}`);
+
+        // Left while the read was on its way: no publish starts after that.
+        if (left) return ABANDONED;
+
+        if (saved.status !== 'draft') return ALREADY_PUBLISHED;
+
+        await postJson(`/footprints/events/${eventId}/publish`, toFormFields(saved));
+      },
+      (done) => {
+        bulkProgress.value = { done, total: targets.length };
+      },
+      () => left,
+    );
+  } finally {
+    bulkProgress.value = null;
+    void refreshSidebarDrafts();
+    if (!left) await reload();
+  }
+}
+
+// Whether the page was left: a run on its way sends no row after that, so it
+// does not go on unseen (lib/bulk-publish.ts's `publishInTurn`).
+let left = false;
+
+onUnmounted(() => {
+  left = true;
+});
+
+function eventLine(e: FootprintsEvent): string {
+  return `${e.startDate} ${e.title}`;
+}
+
 async function loadMembers(): Promise<void> {
   try {
     const body = await getJson<{ members: FootprintsMember[] }>('/members');
@@ -335,7 +438,12 @@ async function loadMembers(): Promise<void> {
   }
 }
 
-watch([status, q], load);
+// Reading the list again reads the pending state with it, so the message above the list
+// comes back after a 「本番に反映」 if the worker still calls the JSON behind.
+watch([status, q], () => {
+  void load();
+  void loadPending();
+});
 onMounted(() => {
   load();
   loadPending();
@@ -383,6 +491,7 @@ onMounted(() => {
         <button class="btn" type="button" @click="startAdding">＋ 足す</button>
       </div>
       <div class="scroller">
+        <RepublishBand target="footprints" :text="bandText" :held="pendingHeld" :reload="reloadPending" />
         <div v-if="loadError" class="empty-note">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
@@ -393,6 +502,15 @@ onMounted(() => {
         <table class="grid">
           <thead>
             <tr>
+              <th class="tick">
+                <input
+                  type="checkbox"
+                  :checked="allTicked(ticked, shown, keyOf)"
+                  :disabled="bulkProgress !== null || !shown.some(isTickable)"
+                  :aria-label="BULK_TEXT.selectAll"
+                  @change="ticked = toggleAll(ticked, shown, keyOf)"
+                />
+              </th>
               <th>状態</th>
               <th>日付</th>
               <th>種類</th>
@@ -412,6 +530,16 @@ onMounted(() => {
               @keydown.enter="selectRow(e.eventId)"
               @keydown.space.prevent="selectRow(e.eventId)"
             >
+              <td class="tick" @click.stop @keydown.stop>
+                <input
+                  v-if="isTickable(e)"
+                  type="checkbox"
+                  :checked="ticked.has(e.eventId)"
+                  :disabled="bulkProgress !== null"
+                  :aria-label="BULK_TEXT.select"
+                  @change="ticked = toggleTick(ticked, e.eventId)"
+                />
+              </td>
               <td>
                 <span class="chip" :class="liveMarkFor(e.status).tone">{{ liveMarkFor(e.status).label }}</span>
               </td>
@@ -439,6 +567,20 @@ onMounted(() => {
           </tbody>
         </table>
       </div>
+      <BulkPublishOutcome
+        v-if="bulkOutcome && !bulkProgress"
+        :outcome="bulkOutcome"
+        :describe="eventLine"
+        :key-of="keyOf"
+        @close="bulkOutcome = null"
+      />
+      <BulkPublishBar
+        :count="bulkTargets.length"
+        :progress="bulkProgress"
+        :disabled="inspectorBusy"
+        @publish="publishTicked"
+        @clear="ticked = new Set()"
+      />
     </div>
     <!-- inert while the list is read, or read again after a save: the answer puts the open row's saved fields back, or leaves the row out of the table and closes the panel, over anything typed meanwhile. -->
     <FootprintsInspector
@@ -449,7 +591,7 @@ onMounted(() => {
       :pending="pending"
       :whitelist="whitelist"
       :whitelist-failed="whitelistFailed"
-      :inert="loading || reloading > 0 || undefined"
+      :inert="loading || reloading > 0 || bulkProgress !== null || undefined"
       @changed="keepAndReload"
       @created="created"
       @back="back"

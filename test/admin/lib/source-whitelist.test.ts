@@ -87,7 +87,7 @@ describe('the sidebar', () => {
   test('lists 出典ホワイトリスト under 運用, after 版の履歴', () => {
     const group = SIDEBAR_GROUPS.find((g) => g.label === '運用');
 
-    expect(group?.items.map((item) => item.page)).toEqual(['publish', 'history', 'source-whitelist']);
+    expect(group?.items.map((item) => item.page)).toEqual(['history', 'source-whitelist']);
     expect(pageTitle('source-whitelist')).toEqual('出典ホワイトリスト');
   });
 });

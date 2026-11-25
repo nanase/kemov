@@ -343,6 +343,15 @@ textarea {
   font-weight: 700;
 }
 
+/* Beside a data whose public JSON needs 「本番に反映」 - the same triangle as .panel.flag's heading. */
+.nav-mark {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%237C5210' d='M8.87 1.98a1 1 0 0 0-1.74 0L.63 13.5A1 1 0 0 0 1.5 15h13a1 1 0 0 0 .87-1.5z'/%3E%3Cpath fill='%23F7ECD6' d='M7.25 5.5h1.5v4.2h-1.5zM7.25 10.9h1.5v1.5h-1.5z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
 /* ---- main: the list above, the open item below -------------------------- */
 
 .main {
@@ -365,7 +374,9 @@ textarea {
 
 .pane {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+
+  /* The toolbar, the table, and under it a まとめて公開's outcome and its bar. */
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   min-height: 0;
   min-width: 0;
 }
@@ -552,7 +563,7 @@ table.grid tbody tr[aria-selected='true'] td {
   background: var(--k-accent-soft);
 }
 
-/* やること's own select column, and the band under the table that acts on what it selects. */
+/* A list's select column, and the band under the table that acts on what it selects (まとめて公開). */
 table.grid td.tick,
 table.grid th.tick {
   width: 36px;
@@ -575,23 +586,6 @@ table.grid input[type='checkbox'] {
   border-top: 1px solid var(--k-line);
   background: var(--k-accent-soft);
   color: var(--k-accent);
-}
-
-.keys {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-  color: var(--k-text-3);
-  font-size: var(--a-small);
-}
-
-.keys kbd {
-  padding: 0 4px;
-  border: 1px solid var(--k-line-2);
-  border-radius: 4px;
-  background: var(--k-surface);
-  font-family: var(--a-mono);
-  font-size: 12px;
 }
 
 .num {
@@ -636,7 +630,7 @@ table.grid input[type='checkbox'] {
   color: var(--k-accent);
 }
 
-/* 公開待ち: the same green as 公開, drawn as an outline - on its way, not there yet. */
+/* 未保存: the same green as 公開中, drawn as an outline - on its way, not there yet. */
 .chip.waiting {
   padding: 0 8px;
   border: 1px dashed var(--k-accent);
@@ -927,6 +921,16 @@ table.grid input[type='checkbox'] {
   overflow-wrap: anywhere;
 }
 
+/* The message above a list while its public JSON needs 「本番に反映」. */
+.list-band {
+  padding: 10px 14px 0;
+}
+
+.list-band .panel.flag {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
 /* A row of buttons under a form or a notice. */
 .actions {
   display: flex;
@@ -937,14 +941,6 @@ table.grid input[type='checkbox'] {
 
 .actions .grow {
   flex: 1 1 auto;
-}
-
-/* A page that is a column of panels rather than a list (公開). */
-.page-body {
-  display: grid;
-  gap: 14px;
-  max-width: 820px;
-  padding: 16px 20px;
 }
 
 /* A second table further down the same list (版の履歴's 公開の記録). */
@@ -1316,14 +1312,43 @@ table.grid input[type='checkbox'] {
 
 .setlist {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   min-height: 0;
   overflow: auto;
 }
 
 .setlist-filter {
-  padding: 8px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px 8px 12px;
   border-bottom: 1px solid var(--k-line);
+}
+
+/* The select column beside each stream: the checkbox sits outside the button that opens it. */
+.setlist-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  border-bottom: 1px solid var(--k-line);
+}
+
+.setlist-row .setlist-item {
+  padding-left: 8px;
+  border-bottom: 0;
+}
+
+.setlist-row .tick {
+  display: grid;
+  place-items: center;
+  padding-left: 12px;
+}
+
+.setlist input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--k-accent);
+  cursor: pointer;
 }
 
 .setlist-items {

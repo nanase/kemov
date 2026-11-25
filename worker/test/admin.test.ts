@@ -452,6 +452,13 @@ describe('handleAdminRequest routing to footprints', () => {
     expect((await call('/admin/api/footprints/pending')).status).toEqual(200);
     expect((await post('/admin/api/footprints/publish', {})).status).toEqual(200);
   });
+
+  test('routes GET /admin/api/drafts, and nothing at /admin/api/inbox', async () => {
+    expect((await call('/admin/api/drafts')).status).toEqual(200);
+    expect((await post('/admin/api/drafts', {})).status).toEqual(405);
+    expect((await call('/admin/api/inbox')).status).toEqual(404);
+    expect((await call('/admin/api/inbox/review')).status).toEqual(404);
+  });
 });
 
 // What each resource actually does with a valid save or delete is

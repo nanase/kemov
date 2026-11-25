@@ -1,15 +1,31 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref, shallowRef, toRaw, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, shallowRef, toRaw, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { unescapeHtml } from '@nanase/alnilam/string';
 
 import { markdownHtml } from '@/lib/genet/musicSong';
 
+import BulkPublishBar from '../components/BulkPublishBar.vue';
+import BulkPublishOutcome from '../components/BulkPublishOutcome.vue';
 import DeleteButton from '../components/DeleteButton.vue';
 import PreviewButton from '../components/PreviewButton.vue';
 import PreviewPane from '../components/PreviewPane.vue';
+import RepublishBand from '../components/RepublishBand.vue';
 import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, getJson, postJson, putJson } from '../lib/api';
+import {
+  ABANDONED,
+  allTicked,
+  ALREADY_PUBLISHED,
+  BULK_TEXT,
+  isTickable,
+  publishInTurn,
+  tickedRows,
+  ticksAfterReload,
+  toggleAll,
+  toggleTick,
+  type BulkPublishOutcome as Outcome,
+} from '../lib/bulk-publish';
 import { useCrumbDetail } from '../lib/crumb';
 import { EDITING_TEXT, SAVE_TOAST, sameFields } from '../lib/editing';
 import { insertAt, mdSnippet, clock, type MdLinkKind } from '../lib/genet-markdown';
@@ -59,8 +75,8 @@ import {
 } from '../lib/genet-streams';
 import { countText } from '../lib/list-count';
 import { useListTotal } from '../lib/list-total';
-import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
-import { refreshPublishBadge } from '../lib/publish-badge';
+import { previewOpen } from '../lib/preview';
+import { refreshSidebarDrafts } from '../lib/sidebar-drafts';
 import {
   FOOT_TEXT,
   liveMarkFor,
@@ -69,6 +85,7 @@ import {
   type PublishAction,
   type PublishBand,
 } from '../lib/publishing';
+import { genetBandText } from '../lib/republish';
 import { showToast } from '../lib/toast';
 import { confirmDiscard, useUnsavedGuard } from '../lib/unsaved-guard';
 
@@ -105,8 +122,14 @@ const people = ref<GenetPerson[]>([]);
 // Which published streams the public JSON has not caught up with - the
 // editor says so. Null when it could not be read.
 const pending = ref<GenetPendingResponse | null>(null);
+const bandText = computed(() => genetBandText(pending.value));
+// まとめて公開 (#285): the drafts ticked, how far a run has got, and what the last one did.
+const ticked = ref<Set<string>>(new Set());
+const bulkProgress = ref<{ done: number; total: number } | null>(null);
+const bulkOutcome = ref<Outcome<GenetStream> | null>(null);
+const keyOf = (s: GenetStream): string => s.videoId;
 
-// `/sets?video=<videoId>` is where the 公開 screen's rows lead. Read once,
+// `/sets?video=<videoId>` opens that stream, for a link to it. Read once,
 // for the first list that arrives.
 const route = useRoute();
 let requestedVideoId = typeof route.query.video === 'string' ? route.query.video : null;
@@ -235,12 +258,31 @@ function closeTunes(): void {
   latestTuneRead.clear();
 }
 
+// Generations of the pending reads: the latest one sent, and the one `pending` holds. An
+// older answer that lands later is dropped. The message above the list stays hidden after a
+// 「本番に反映」 through the read the press starts (RepublishBand.vue).
+let pendingSent = 0;
+const pendingHeld = ref(0);
+
 async function loadPending(): Promise<void> {
+  const generation = ++pendingSent;
+
   try {
-    pending.value = await getJson<GenetPendingResponse>('/genet/pending');
+    const body = await getJson<GenetPendingResponse>('/genet/pending');
+
+    if (generation === pendingSent) pending.value = body;
   } catch {
-    pending.value = null;
+    if (generation === pendingSent) pending.value = null;
+  } finally {
+    if (generation === pendingSent) pendingHeld.value = generation;
   }
+}
+
+/** RepublishBand.vue's `reload`: reads the pending state again, and answers the generation of that read. */
+function reloadPending(): number {
+  void loadPending();
+
+  return pendingSent;
 }
 
 // A filter changed mid-request starts a second, overlapping GET; only the
@@ -264,6 +306,7 @@ async function load(): Promise<boolean> {
     if (generation !== loadGeneration) return false;
 
     streams.value = body.streams;
+    ticked.value = ticksAfterReload(ticked.value, streams.value, keyOf);
     listTotal.update(streams.value.length, filtered.value);
 
     // A stream the filter now leaves out closes its editor, and the first
@@ -314,12 +357,21 @@ async function loadPeople(): Promise<void> {
 
 /** Whether anything about the stream, or a tune, is on its way: the list and the filters wait for it. */
 const busy = computed(() => sending.value || tuneSaving.value);
-/** The bottom buttons wait for the list too: a reload may close the stream or put its saved fields back. */
-const footBusy = computed(() => busy.value || loading.value);
+/**
+ * The bottom buttons wait for the list too: a reload may close the stream or
+ * put its saved fields back. They wait for a まとめて公開 as well, which
+ * reads the list again when it ends: `inert` on the editor does not reach them.
+ */
+const footBusy = computed(() => busy.value || loading.value || bulkProgress.value !== null);
+/** Neither the filters nor the selection move while the editor's request or a まとめて公開 is on its way. */
+const locked = computed(() => busy.value || bulkProgress.value !== null);
+const bulkTargets = computed(() =>
+  loading.value || loadError.value !== null ? [] : tickedRows(ticked.value, streams.value, keyOf),
+);
 
 /** A stream clicked in the list: asks first when the open one has changes that would be lost. */
 function selectStream(videoId: string): void {
-  if (busy.value) return;
+  if (locked.value) return;
   if ((adding.value || videoId !== selectedVideoId.value) && !confirmDiscard()) return;
 
   adding.value = false;
@@ -329,7 +381,7 @@ function selectStream(videoId: string): void {
 
 /** ＋ 足す: the editor holds a blank stream, created only when it is saved. */
 function startAdding(): void {
-  if (busy.value) return;
+  if (locked.value) return;
   // A new stream being typed is unsaved too, and starting again would clear it.
   if (!confirmDiscard()) return;
 
@@ -355,15 +407,70 @@ function stopAdding(): void {
 // A filter can leave the open stream out of the list, which closes its
 // editor, so changing one asks first, as selecting another stream does.
 function setStatusFilter(value: string): void {
-  if (busy.value) return;
+  if (locked.value) return;
   if (value !== statusFilter.value && confirmDiscard()) statusFilter.value = value;
 }
 
 function setQuery(event: Event): void {
   const input = event.target as HTMLInputElement;
 
-  if (!busy.value && confirmDiscard()) q.value = input.value;
+  if (!locked.value && confirmDiscard()) q.value = input.value;
   else input.value = q.value;
+}
+
+/**
+ * まとめて公開: each ticked draft through 「公開」, one at a time, with the
+ * fields it has saved when its turn comes (lib/bulk-publish.ts), as
+ * SubscribersPage.vue does. The list is read again afterwards, which puts
+ * the open stream's saved fields back, so its unsaved changes are asked
+ * about first.
+ */
+async function publishTicked(): Promise<void> {
+  const targets = bulkTargets.value;
+
+  if (targets.length === 0 || locked.value || !confirmDiscard()) return;
+
+  bulkOutcome.value = null;
+  bulkProgress.value = { done: 0, total: targets.length };
+
+  try {
+    bulkOutcome.value = await publishInTurn(
+      targets,
+      async ({ videoId }) => {
+        // Read again just before: the list can be older than the stream.
+        const { stream: saved } = await getJson<{ stream: GenetStream }>(
+          `/genet/streams/${encodeURIComponent(videoId)}`,
+        );
+
+        // Left while the read was on its way: no publish starts after that.
+        if (left) return ABANDONED;
+
+        if (saved.status !== 'draft') return ALREADY_PUBLISHED;
+
+        await postJson(`/genet/streams/${encodeURIComponent(videoId)}/publish`, toStreamFormFields(saved));
+      },
+      (done) => {
+        bulkProgress.value = { done, total: targets.length };
+      },
+      () => left,
+    );
+  } finally {
+    bulkProgress.value = null;
+    void refreshSidebarDrafts();
+    if (!left) await reload();
+  }
+}
+
+// Whether the page was left: a run on its way sends no row after that, so it
+// does not go on unseen (lib/bulk-publish.ts's `publishInTurn`).
+let left = false;
+
+onUnmounted(() => {
+  left = true;
+});
+
+function streamLine(s: GenetStream): string {
+  return `${s.publishedAt.slice(0, 10)} ${s.shortTitle || s.title}`;
 }
 
 /** After a request that may have changed the streams: the list and which of them the public JSON is behind. */
@@ -424,7 +531,7 @@ async function act(action: PublishAction): Promise<void> {
     const answer = streamAnswerFor(action, status, error);
 
     if (answer.kind === 'done') {
-      void refreshPublishBadge();
+      void refreshSidebarDrafts();
       showToast(answer.toast);
       await reloadSaved(videoId);
       void refreshTuneLive();
@@ -436,7 +543,7 @@ async function act(action: PublishAction): Promise<void> {
     invalidFields.value = answer.fields;
 
     if (answer.changed) {
-      void refreshPublishBadge();
+      void refreshSidebarDrafts();
       await reloadSaved(videoId);
       void refreshTuneLive();
     }
@@ -491,7 +598,7 @@ async function create(): Promise<void> {
     createdVideoId = videoId;
     selectedVideoId.value = videoId;
     adding.value = false;
-    void refreshPublishBadge();
+    void refreshSidebarDrafts();
     await reload();
     createdVideoId = null;
 
@@ -546,7 +653,7 @@ async function remove(): Promise<void> {
     selectedVideoId.value = null;
     detail.value = false;
     showToast(EDITING_TEXT.removed);
-    void refreshPublishBadge();
+    void refreshSidebarDrafts();
     await reload();
   } finally {
     sending.value = false;
@@ -818,7 +925,7 @@ async function saveTune(index: number): Promise<void> {
     showToast(answer.toast);
 
     if (live) {
-      void refreshPublishBadge();
+      void refreshSidebarDrafts();
       void loadPending();
     }
 
@@ -834,7 +941,7 @@ async function saveTune(index: number): Promise<void> {
   tuneInvalid.value = answer.fields;
 
   if (answer.changed) {
-    void refreshPublishBadge();
+    void refreshSidebarDrafts();
     void loadPending();
 
     // Saved, though the public JSON could not be written: what was sent is
@@ -1129,6 +1236,13 @@ useCrumbDetail(() =>
         <button class="btn" type="button" @click="startAdding">＋ 足す</button>
       </div>
       <div class="setlist-filter">
+        <input
+          type="checkbox"
+          :checked="allTicked(ticked, streams, keyOf)"
+          :disabled="bulkProgress !== null || !streams.some(isTickable)"
+          :aria-label="BULK_TEXT.selectAll"
+          @change="ticked = toggleAll(ticked, streams, keyOf)"
+        />
         <div class="seg" role="group" aria-label="状態で絞る">
           <button
             v-for="opt in STATUS_OPTIONS"
@@ -1150,6 +1264,7 @@ useCrumbDetail(() =>
         />
       </div>
       <div class="setlist-items">
+        <RepublishBand target="genet" :text="bandText" :held="pendingHeld" :reload="reloadPending" />
         <div v-if="loadError" class="empty-note">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
@@ -1157,22 +1272,46 @@ useCrumbDetail(() =>
             再読み込み
           </button>
         </div>
-        <button
-          v-for="s in streams"
-          :key="s.videoId"
-          class="setlist-item"
-          type="button"
-          :aria-current="s.videoId === selectedVideoId"
-          @click="selectStream(s.videoId)"
-        >
-          <span class="t">{{ s.shortTitle || s.title }}</span>
-          <span class="meta">
-            <span class="num sub">{{ s.publishedAt.slice(0, 10) }}</span>
-            <span class="sub">{{ s.performances.length }} 曲</span>
-            <span class="chip" :class="liveMarkFor(s.status).tone">{{ liveMarkFor(s.status).label }}</span>
+        <div v-for="s in streams" :key="s.videoId" class="setlist-row">
+          <span class="tick">
+            <input
+              v-if="isTickable(s)"
+              type="checkbox"
+              :checked="ticked.has(s.videoId)"
+              :disabled="bulkProgress !== null"
+              :aria-label="BULK_TEXT.select"
+              @change="ticked = toggleTick(ticked, s.videoId)"
+            />
           </span>
-        </button>
+          <button
+            class="setlist-item"
+            type="button"
+            :aria-current="s.videoId === selectedVideoId"
+            @click="selectStream(s.videoId)"
+          >
+            <span class="t">{{ s.shortTitle || s.title }}</span>
+            <span class="meta">
+              <span class="num sub">{{ s.publishedAt.slice(0, 10) }}</span>
+              <span class="sub">{{ s.performances.length }} 曲</span>
+              <span class="chip" :class="liveMarkFor(s.status).tone">{{ liveMarkFor(s.status).label }}</span>
+            </span>
+          </button>
+        </div>
       </div>
+      <BulkPublishOutcome
+        v-if="bulkOutcome && !bulkProgress"
+        :outcome="bulkOutcome"
+        :describe="streamLine"
+        :key-of="keyOf"
+        @close="bulkOutcome = null"
+      />
+      <BulkPublishBar
+        :count="bulkTargets.length"
+        :progress="bulkProgress"
+        :disabled="busy"
+        @publish="publishTicked"
+        @clear="ticked = new Set()"
+      />
     </div>
 
     <div v-if="selected || adding" class="editor">
@@ -1195,7 +1334,7 @@ useCrumbDetail(() =>
       <div
         class="inspector-main"
         :class="{ 'with-preview': previewOpen }"
-        :inert="loading || sending || tuneSaving || undefined"
+        :inert="loading || sending || tuneSaving || bulkProgress !== null || undefined"
       >
         <div class="scroller">
           <div v-if="band" class="editor-notice">
@@ -1659,7 +1798,7 @@ useCrumbDetail(() =>
             </div>
           </div>
         </div>
-        <PreviewPane v-if="previewOpen" :note="PREVIEW_NOTES.published" palette="genet">
+        <PreviewPane v-if="previewOpen" palette="genet">
           <GenetSongPreview
             v-if="previewTune"
             :tune="previewTune.fields"

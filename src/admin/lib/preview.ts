@@ -26,7 +26,6 @@ export function forgetPublicData(): void {
 
 /** Where a change shows once saved, for the line under a preview. */
 export const PREVIEW_NOTES = {
-  published: '保存したあと「公開」で「いま公開する」を押すまで、公開ページは変わりません',
   live: '保存すると、そのまま公開ページに出ます',
 } as const;
 

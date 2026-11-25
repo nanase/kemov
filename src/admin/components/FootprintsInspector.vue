@@ -14,7 +14,6 @@ import {
 import { deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
 import { EDITING_TEXT, sameFields } from '../lib/editing';
-import { REJECTED_TOAST } from '../lib/inbox';
 import { footprintsAnswerFor, isChangedSincePublish, type FootprintsPending } from '../lib/footprints-publish';
 import {
   BAND_NOTE_ID,
@@ -34,8 +33,8 @@ import {
   shortWhateverTheWhitelist,
   SOURCE_TEXT,
 } from '../lib/footprints-sources';
-import { refreshPublishBadge } from '../lib/publish-badge';
-import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
+import { refreshSidebarDrafts } from '../lib/sidebar-drafts';
+import { previewOpen } from '../lib/preview';
 import { todayJst } from '../lib/snapshots';
 import { showToast } from '../lib/toast';
 import { confirmDiscard, useUnsavedGuard } from '../lib/unsaved-guard';
@@ -54,9 +53,6 @@ import SplitHandle from './SplitHandle.vue';
  * copy (`fields`), and never writes back into `event` itself - the table's
  * own row only changes once the parent refetches.
  *
- * `mode` is where the panel was opened from, and decides only the buttons at
- * the bottom: あしあと's own (#277's decision 1a) or 確認待ち's (承認 / 却下).
- *
  * Whether the sources are enough is judged as they are typed (#277's
  * decision 2a), by the same rule publishing uses for the public timeline's
  * 「出典の確認待ち」. Nothing is judged while `whitelist` is unknown, and the
@@ -72,9 +68,8 @@ const props = withDefaults(
     whitelist: readonly string[] | null;
     /** True when `whitelist` is null because it could not be read, not because it is on its way. */
     whitelistFailed?: boolean;
-    mode?: 'data' | 'review';
   }>(),
-  { mode: 'data', whitelistFailed: false },
+  { whitelistFailed: false },
 );
 const emit = defineEmits<{ changed: []; created: [eventId: number]; back: []; busy: [busy: boolean] }>();
 
@@ -196,15 +191,9 @@ function send(action: PublishAction): Promise<unknown> {
  * Runs `request`, then says what came of it (`footprintsAnswerFor`): a toast
  * when it went through, otherwise the band above the fields and the fields
  * it names marked. The table is read again whenever the row may have
- * changed: a refusal that saved a draft's fields, and a failed request that
- * `changedAnyway` says got part of the way, included.
+ * changed, a refusal that saved a draft's fields included.
  */
-async function run(
-  action: AnsweredAction,
-  request: () => Promise<unknown>,
-  toast?: string,
-  changedAnyway: () => boolean = () => false,
-): Promise<void> {
+async function run(action: AnsweredAction, request: () => Promise<unknown>): Promise<void> {
   if (saving.value) return;
 
   const status = props.event?.status ?? null;
@@ -226,8 +215,8 @@ async function run(
 
   if (answer.kind === 'done') {
     emit('changed');
-    void refreshPublishBadge();
-    showToast(toast ?? answer.toast);
+    void refreshSidebarDrafts();
+    showToast(answer.toast);
 
     return;
   }
@@ -235,9 +224,9 @@ async function run(
   band.value = answer.band;
   invalidFields.value = answer.fields;
 
-  if (answer.changed || changedAnyway()) {
+  if (answer.changed) {
     emit('changed');
-    void refreshPublishBadge();
+    void refreshSidebarDrafts();
   }
 }
 
@@ -256,6 +245,7 @@ async function create(): Promise<void> {
   try {
     const body = await postJson<{ event: { eventId: number } }>('/footprints/events', fields.value);
 
+    void refreshSidebarDrafts();
     emit('created', body.event.eventId);
   } catch (error) {
     const answer = footprintsAnswerFor('save', null, error);
@@ -273,22 +263,10 @@ function remove(): Promise<void> {
   return run('delete', () => deleteJson(`/footprints/events/${eventId.value}`));
 }
 
-/** 確認待ち's 承認: 「公開」, the fields as they stand. */
-function approve(): Promise<void> {
-  return act('publish');
-}
-
-/** 確認待ち's 却下: the row was never published, so it is deleted outright. */
-function reject(): Promise<void> {
-  return run('delete', () => deleteJson(`/footprints/events/${eventId.value}`), REJECTED_TOAST);
-}
-
 /** ← 一覧 and a new row's やめる: on a narrow screen the panel stays behind the list, so what is let go here is thrown away, not kept for later. */
 function back(): void {
   if (confirmDiscard()) emit('back');
 }
-
-defineExpose({ approve });
 
 import PreviewButton from './PreviewButton.vue';
 import PreviewPane from './PreviewPane.vue';
@@ -493,19 +471,12 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
           </div>
         </div>
       </div>
-      <PreviewPane v-if="previewOpen" :note="PREVIEW_NOTES.published">
+      <PreviewPane v-if="previewOpen">
         <FootprintsPreview :fields="fields" :event-id="eventId ?? 0" :source-pending="previewSourcePending" />
       </PreviewPane>
     </div>
 
-    <div v-if="mode === 'review'" class="inspector-foot">
-      <button class="btn primary" type="button" :disabled="saving" @click="approve">承認</button>
-      <button class="btn back quiet" type="button" @click="back">← 一覧</button>
-      <span class="grow"></span>
-      <span class="foot-sep" aria-hidden="true"></span>
-      <button class="btn danger" type="button" :disabled="saving" @click="reject">却下</button>
-    </div>
-    <div v-else-if="event === null" class="inspector-foot">
+    <div v-if="event === null" class="inspector-foot">
       <button class="btn primary" type="button" :disabled="saving" @click="create">保存</button>
       <span class="grow"></span>
       <button class="btn quiet" type="button" :disabled="saving" @click="back">やめる</button>

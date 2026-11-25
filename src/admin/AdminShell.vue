@@ -6,8 +6,8 @@ import { useStoredChoice } from '../lib/useStoredChoice';
 
 import { getJson } from './lib/api';
 import { crumbDetail } from './lib/crumb';
-import { inboxBadges, publishBadge, refreshPublishBadge } from './lib/publish-badge';
-import { pageGroup, pageTitle, SIDEBAR_GROUPS } from './lib/sidebar';
+import { refreshSidebarDrafts, sidebarDrafts } from './lib/sidebar-drafts';
+import { badgeFor, pageGroup, pageTitle, SIDEBAR_GROUPS, SIDEBAR_TEXT, type NavBadge } from './lib/sidebar';
 import { toastMessage } from './lib/toast';
 
 /**
@@ -34,14 +34,8 @@ const currentPage = computed(() => route.path.replace(/^\/+/, ''));
 const currentGroup = computed(() => pageGroup(currentPage.value));
 const currentTitle = computed(() => pageTitle(currentPage.value));
 
-function badgeFor(page: string): number | null {
-  if (page === 'publish') return publishBadge.value;
-  if (page === 'inbox-collect') return collectFailuresBadge.value;
-  if (page === 'inbox-review') return inboxBadges.value?.review ?? null;
-  if (page === 'inbox-source') return inboxBadges.value?.source ?? null;
-  if (page === 'inbox-publish') return inboxBadges.value?.publish ?? null;
-
-  return null;
+function badge(page: string): NavBadge {
+  return badgeFor(page, collectFailuresBadge.value, sidebarDrafts.value);
 }
 
 function closeDrawer(): void {
@@ -67,7 +61,7 @@ onMounted(async () => {
   document.addEventListener('pointerdown', onDocumentPointer);
   document.addEventListener('keydown', onDocumentKey);
 
-  await refreshPublishBadge();
+  await refreshSidebarDrafts();
 
   try {
     const failing = await getJson<{ count: number }>('/collect-tasks');
@@ -235,7 +229,16 @@ onUnmounted(() => {
               "
             >
               <span class="name">{{ item.name }}</span>
-              <span v-if="(badgeFor(item.page) ?? 0) > 0" class="nav-count due">{{ badgeFor(item.page) }}</span>
+              <span
+                v-if="badge(item.page).needsPublish"
+                class="nav-mark"
+                role="img"
+                :aria-label="SIDEBAR_TEXT.needsPublish"
+                :title="SIDEBAR_TEXT.needsPublish"
+              ></span>
+              <span v-if="badge(item.page).count !== null" class="nav-count" :class="{ due: badge(item.page).due }">{{
+                badge(item.page).count
+              }}</span>
             </button>
           </router-link>
         </div>
