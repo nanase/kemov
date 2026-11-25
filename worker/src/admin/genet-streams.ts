@@ -1,6 +1,6 @@
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { changedElsewhereResponse, errorResponse, jsonResponse } from '../lib/json';
 import { isSchemaTimestamp } from '../lib/time';
 
 /**
@@ -704,7 +704,7 @@ export function savedRow(results: readonly D1Result[]): boolean {
 
 /** The answer when a save that read the stream as a draft found it published by then. */
 export function noLongerDraftResponse(videoId: string): Response {
-  return errorResponse(409, `stream ${videoId} is no longer a draft`);
+  return changedElsewhereResponse(`stream ${videoId} is no longer a draft`);
 }
 
 /** `saved` as it reads once `fields` are saved over it with `status`, without reading it back. */
@@ -770,7 +770,7 @@ export async function deleteStream(env: Env, videoId: string): Promise<Response>
   if (existing === null) return errorResponse(404, `no stream ${videoId}`);
 
   if (existing.stream.status === 'published') {
-    return errorResponse(409, 'withdraw this stream before deleting it');
+    return changedElsewhereResponse('withdraw this stream before deleting it');
   }
 
   // The check above and this batch are two round trips, not one, so a
@@ -798,7 +798,7 @@ export async function deleteStream(env: Env, videoId: string): Promise<Response>
   if (results[2]!.meta.changes === 0) {
     if ((await readStream(env, videoId)) === null) return errorResponse(404, `no stream ${videoId}`);
 
-    return errorResponse(409, 'withdraw this stream before deleting it');
+    return changedElsewhereResponse('withdraw this stream before deleting it');
   }
 
   return jsonResponse({});

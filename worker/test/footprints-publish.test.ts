@@ -1037,3 +1037,25 @@ describe('a delete that finds the event published meanwhile', () => {
     expect(await childCounts(eventId)).toEqual({ members: 1, sources: 1 });
   });
 });
+
+describe('a 409 for an event another screen changed', () => {
+  test('is marked changedElsewhere, so the screen says it in its own words', async () => {
+    const eventId = await createValidEvent();
+    const publishedFirst = beforeNextBatch(env, () => publishEvent(env, eventId, validBody(), NOW));
+
+    const response = await saveEvent(publishedFirst, eventId, validBody({ title: '後から保存' }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ changedElsewhere: true });
+  });
+
+  test('of a delete is marked too', async () => {
+    const eventId = await createValidEvent();
+    const publishedFirst = beforeNextBatch(env, () => publishEvent(env, eventId, validBody(), NOW));
+
+    const response = await deleteEvent(publishedFirst, eventId);
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ changedElsewhere: true });
+  });
+});

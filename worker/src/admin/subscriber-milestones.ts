@@ -1,6 +1,6 @@
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { changedElsewhereResponse, errorResponse, jsonResponse } from '../lib/json';
 import { sourceUrlProblem } from '../lib/source-whitelist';
 import { isSchemaDate, isSchemaMonth } from '../lib/time';
 
@@ -526,7 +526,7 @@ export function savedRow(results: readonly D1Result[]): boolean {
 
 /** The answer when a save that read the row as a draft found it published by then. */
 export function noLongerDraftResponse(milestoneId: number): Response {
-  return errorResponse(409, `subscriber milestone ${milestoneId} is no longer a draft`);
+  return changedElsewhereResponse(`subscriber milestone ${milestoneId} is no longer a draft`);
 }
 
 /**
@@ -599,7 +599,7 @@ export async function deleteMilestone(env: Env, milestoneId: number): Promise<Re
   if (existing === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
 
   if (existing.milestone.status === 'published') {
-    return errorResponse(409, 'withdraw this milestone before deleting it');
+    return changedElsewhereResponse('withdraw this milestone before deleting it');
   }
 
   const results = await env.DB.batch([
@@ -615,7 +615,7 @@ export async function deleteMilestone(env: Env, milestoneId: number): Promise<Re
     if ((await readMilestone(env, milestoneId)) === null)
       return errorResponse(404, `no subscriber milestone ${milestoneId}`);
 
-    return errorResponse(409, 'withdraw this milestone before deleting it');
+    return changedElsewhereResponse('withdraw this milestone before deleting it');
   }
 
   return jsonResponse({});

@@ -1,5 +1,5 @@
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { changedElsewhereResponse, errorResponse, jsonResponse } from '../lib/json';
 import { readSourceWhitelist, sourcesEnough } from '../lib/source-whitelist';
 import { formatTimestamp } from '../lib/time';
 import {
@@ -271,7 +271,7 @@ async function writtenResponse(env: Env, eventId: number, outcome: Extract<Publi
 
 /** The answer when the row changed under a request that read it: published, withdrawn or saved elsewhere. */
 function changedMeanwhileResponse(eventId: number): Response {
-  return errorResponse(409, `footprints event ${eventId} changed while this request was saving it`);
+  return changedElsewhereResponse(`footprints event ${eventId} changed while this request was saving it`);
 }
 
 /**
@@ -494,7 +494,7 @@ export async function withdrawEvent(
 
   if (saved === null) return errorResponse(404, `no footprints event ${eventId}`);
 
-  if (saved.event.status !== 'published') return errorResponse(409, 'only a published event can be withdrawn');
+  if (saved.event.status !== 'published') return changedElsewhereResponse('only a published event can be withdrawn');
 
   const fields = await validatedFields(env, body);
 

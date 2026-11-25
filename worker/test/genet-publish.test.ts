@@ -1479,3 +1479,15 @@ describe("a stream's save whose JSON could not be written", () => {
     expect(await streamTitle(videoId)).toEqual('先に保存');
   });
 });
+
+describe('a 409 for a stream another screen changed', () => {
+  test('is marked changedElsewhere, so the screen says it in its own words', async () => {
+    const { videoId } = await createPerformableStream();
+    const publishedFirst = beforeNextBatch(env, () => publish(videoId));
+
+    const response = await saveStream(publishedFirst, videoId, await fieldsOf(videoId, { title: '後から保存' }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ changedElsewhere: true });
+  });
+});

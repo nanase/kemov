@@ -1,7 +1,7 @@
 import { byteLength } from '../lib/backup';
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { changedElsewhereResponse, errorResponse, jsonResponse } from '../lib/json';
 import { sourcesEnough } from '../lib/source-whitelist';
 import { isSchemaDate, isSchemaMonth, isSchemaTimestamp, japanDateOf } from '../lib/time';
 
@@ -722,7 +722,7 @@ export function savedRow(results: readonly D1Result[]): boolean {
 
 /** The answer when a save that read the row as a draft found it published by then. */
 export function noLongerDraftResponse(eventId: number): Response {
-  return errorResponse(409, `footprints event ${eventId} is no longer a draft`);
+  return changedElsewhereResponse(`footprints event ${eventId} is no longer a draft`);
 }
 
 /**
@@ -810,7 +810,7 @@ export async function deleteEvent(env: Env, eventId: number): Promise<Response> 
   if (existing === null) return errorResponse(404, `no footprints event ${eventId}`);
 
   if (existing.event.status === 'published') {
-    return errorResponse(409, 'withdraw this event before deleting it');
+    return changedElsewhereResponse('withdraw this event before deleting it');
   }
 
   // subscriber_milestone.event_id is a foreign key to this row, so the
@@ -841,7 +841,7 @@ export async function deleteEvent(env: Env, eventId: number): Promise<Response> 
   if (results[2]!.meta.changes === 0) {
     if ((await readEvent(env, eventId)) === null) return errorResponse(404, `no footprints event ${eventId}`);
 
-    return errorResponse(409, 'withdraw this event before deleting it');
+    return changedElsewhereResponse('withdraw this event before deleting it');
   }
 
   // {} rather than 204: every other answer in this API is JSON, and this one

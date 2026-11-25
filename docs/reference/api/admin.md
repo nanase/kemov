@@ -44,7 +44,7 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 | GET      | `/admin/api/footprints/events/<できごと ID>`          | 1 行と、そのメンバーと出典                                                                   |
 | POST     | `/admin/api/footprints/events`                        | `draft` で作成した後の行                                                                     |
 | PUT      | `/admin/api/footprints/events/<できごと ID>`          | 「保存」。下書きなら保存した後の行。公開中なら、保存して JSON を書き直した後の行             |
-| DELETE   | `/admin/api/footprints/events/<できごと ID>`          | `{}`。`published` のできごとなら 409                                                         |
+| DELETE   | `/admin/api/footprints/events/<できごと ID>`          | `{}`。消す時点で `published` のできごとなら 409                                              |
 | POST     | `/admin/api/footprints/events/<できごと ID>/publish`  | 「公開」。保存し、検証し、JSON を書き直した後の行                                            |
 | POST     | `/admin/api/footprints/events/<できごと ID>/withdraw` | 「非公開に戻す」。JSON から外し、`draft` として保存した後の行。`published` でなければ 409    |
 | GET      | `/admin/api/footprints/pending`                       | 公開の JSON がまだ写していない版と、公開中なのに公開の JSON と違うできごと                   |
@@ -111,6 +111,15 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 - 公開の JSON にその変更が出ているかは分からない
 - `publication` の行は足さない。そのため、次に `publication` の行が足されるまで、`GET .../pending` はその版を公開待ちとして返す
 - 次にどれかの行を公開・公開中の保存・非公開に戻すと、JSON は記録済みの版から作り直される
+
+ほかの操作とぶつかったときは、読んだときの状態のままの行にだけ書きます（#299）。合わなければ 409 を返し、行も版も書きません。決まりは[登録者数の節目](#登録者数の節目)と同じです。
+
+- 下書きの保存と公開中の保存は、読んだときと同じ状態の行にだけ書く。メンバーと出典の行も同じ条件で消して入れ直す
+- 下書きの公開と非公開に戻すは、読んでからできごとの版が増えていない行にだけ書く
+- 削除は、消す時点でまだ下書きの行と、そのメンバー・出典だけを消す
+- 先に書いた JSON を作り直せなかったときは、409 ではなく 502 を返す。`saved` は `false`
+
+ぶつかったときの 409 の本文は、`error` のほかに `changedElsewhere: true` を持ちます。管理サイトの画面は、これを見て `error` の代わりに決まった文を出します。節目とのつなぎが残る出来事の削除のように、ぶつかったのではない 409 には付きません。楽曲一覧と節目の 409 も同じです。
 
 公開の処理のうち、書く順と失敗したときに残すものは `worker/src/admin/publishing.ts` の `publishChange` にあります。あしあとに固有の部分（欄、条件、版の中身、JSON の形）は `worker/src/admin/footprints-publish.ts` にあります。[登録者数の節目](#登録者数の節目)と[ジェネット楽曲一覧](#ジェネット楽曲一覧)も同じ形です（#283、#284）。
 
@@ -189,7 +198,7 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 | POST     | `/admin/api/genet/streams`                    | `draft` で作成した後の行                                                                     |
 | GET      | `/admin/api/genet/streams/<動画 ID>`          | 1 行と、その演奏とシーン                                                                     |
 | PUT      | `/admin/api/genet/streams/<動画 ID>`          | 「保存」。下書きなら保存した後の行。公開中なら、保存して JSON を書き直した後の行             |
-| DELETE   | `/admin/api/genet/streams/<動画 ID>`          | `{}`。`published` の配信なら 409                                                             |
+| DELETE   | `/admin/api/genet/streams/<動画 ID>`          | `{}`。消す時点で `published` の配信なら 409                                                  |
 | POST     | `/admin/api/genet/streams/<動画 ID>/publish`  | 「公開」。保存し、検証し、JSON を書き直した後の行                                            |
 | POST     | `/admin/api/genet/streams/<動画 ID>/withdraw` | 「非公開に戻す」。JSON から外し、`draft` として保存した後の行。`published` でなければ 409    |
 | GET      | `/admin/api/genet/pending`                    | 公開の JSON がまだ写していない版と、公開中なのに公開の JSON と違う配信・曲・人物             |
@@ -207,6 +216,7 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 
 - 配信の公開と公開中の保存では、演奏するすべての曲と、その曲がクレジットするすべての人物を、配信と一緒に検証する
   - 自分の最新の版と一致しない曲・人物には、`publish` の版を配信の版と同じ `db.batch` で記録する
+  - 曲と人物の最新の版は、行より先に読む。読んでから新しい版が記録された曲・人物には、古い内容の版を記録しない（`LoggedRevision.whileLatest`、#299）。そのときは JSON を記録済みの版から作り直し、新しい版を載せる
 - 非公開に戻すでは、配信の `withdraw` の版だけを記録する
   - 曲と人物の版はそのまま残る。ほかの公開中の配信が演奏していなければ、配信と一緒に JSON から外れる
 - 公開中の配信が演奏していない曲の保存は、行を保存するだけで、版を記録しない

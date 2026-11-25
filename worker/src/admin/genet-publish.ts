@@ -1,6 +1,6 @@
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { changedElsewhereResponse, errorResponse, jsonResponse } from '../lib/json';
 import type { RevisionEntity } from '../lib/revision';
 import { formatTimestamp } from '../lib/time';
 import { publicShapeOf as personPublicShapeOf, readPeople, type PersonRow } from './genet-people';
@@ -422,7 +422,7 @@ async function notLoggedResponse(env: Env, videoId: string): Promise<Response> {
 
 /** The answer when the stream changed under a request that read it: published, withdrawn or saved elsewhere. */
 function changedMeanwhileResponse(videoId: string): Response {
-  return errorResponse(409, `stream ${videoId} changed while this request was saving it`);
+  return changedElsewhereResponse(`stream ${videoId} changed while this request was saving it`);
 }
 
 /**
@@ -609,7 +609,7 @@ export async function withdrawStream(
 
   if (saved === null) return errorResponse(404, `no stream ${videoId}`);
 
-  if (saved.stream.status !== 'published') return errorResponse(409, 'only a published stream can be withdrawn');
+  if (saved.stream.status !== 'published') return changedElsewhereResponse('only a published stream can be withdrawn');
 
   const fields = await validatedStreamFields(env, body);
 
