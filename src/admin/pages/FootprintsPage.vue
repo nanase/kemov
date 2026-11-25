@@ -8,6 +8,7 @@ import FootprintsInspector from '../components/FootprintsInspector.vue';
 import RepublishBand from '../components/RepublishBand.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import {
+  ABANDONED,
   allTicked,
   ALREADY_PUBLISHED,
   BULK_TEXT,
@@ -395,6 +396,9 @@ async function publishTicked(): Promise<void> {
       async ({ eventId }) => {
         // Read again just before: the table can be older than the row.
         const saved = await getJson<FootprintsEvent>(`/footprints/events/${eventId}`);
+
+        // Left while the read was on its way: no publish starts after that.
+        if (left) return ABANDONED;
 
         if (saved.status !== 'draft') return ALREADY_PUBLISHED;
 

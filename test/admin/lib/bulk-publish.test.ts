@@ -1,6 +1,7 @@
 import { AdminApiError } from '@/admin/lib/api';
 import type { SubscriberMilestone } from '@/admin/lib/subscriber-milestones';
 import {
+  ABANDONED,
   allTicked,
   ALREADY_PUBLISHED,
   outcomeSummary,
@@ -212,6 +213,24 @@ describe('publishInTurn', () => {
 
     expect(calls).toEqual([1]);
     expect(outcome).toEqual({ total: 3, published: 1, alreadyPublished: 0, skipped: [], stopped: null });
+  });
+
+  // The page was left while a row's read was on its way: that row's publish
+  // was not sent, so it is untried like the rows after it.
+  test('ends the run at a row whose publish noticed the page was left', async () => {
+    const calls: number[] = [];
+
+    const outcome = await publishInTurn(
+      [milestone(1, 'draft'), milestone(2, 'draft'), milestone(3, 'draft')],
+      async ({ milestoneId: id }) => {
+        calls.push(id);
+        if (id === 2) return ABANDONED;
+      },
+    );
+
+    expect(calls).toEqual([1, 2]);
+    expect(outcome).toEqual({ total: 3, published: 1, alreadyPublished: 0, skipped: [], stopped: null });
+    expect(outcomeSummary(outcome).untried).toBe(2);
   });
 
   // A 404 (the row was deleted since the list was read) is not a refused

@@ -14,6 +14,7 @@ import RepublishBand from '../components/RepublishBand.vue';
 import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, getJson, postJson, putJson } from '../lib/api';
 import {
+  ABANDONED,
   allTicked,
   ALREADY_PUBLISHED,
   BULK_TEXT,
@@ -356,8 +357,12 @@ async function loadPeople(): Promise<void> {
 
 /** Whether anything about the stream, or a tune, is on its way: the list and the filters wait for it. */
 const busy = computed(() => sending.value || tuneSaving.value);
-/** The bottom buttons wait for the list too: a reload may close the stream or put its saved fields back. */
-const footBusy = computed(() => busy.value || loading.value);
+/**
+ * The bottom buttons wait for the list too: a reload may close the stream or
+ * put its saved fields back. They wait for a まとめて公開 as well, which
+ * reads the list again when it ends: `inert` on the editor does not reach them.
+ */
+const footBusy = computed(() => busy.value || loading.value || bulkProgress.value !== null);
 /** Neither the filters nor the selection move while the editor's request or a まとめて公開 is on its way. */
 const locked = computed(() => busy.value || bulkProgress.value !== null);
 const bulkTargets = computed(() =>
@@ -436,6 +441,9 @@ async function publishTicked(): Promise<void> {
         const { stream: saved } = await getJson<{ stream: GenetStream }>(
           `/genet/streams/${encodeURIComponent(videoId)}`,
         );
+
+        // Left while the read was on its way: no publish starts after that.
+        if (left) return ABANDONED;
 
         if (saved.status !== 'draft') return ALREADY_PUBLISHED;
 

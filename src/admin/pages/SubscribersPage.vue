@@ -24,6 +24,7 @@ import { SAVE_TOAST } from '../lib/editing';
 import { countText } from '../lib/list-count';
 import { useListTotal } from '../lib/list-total';
 import {
+  ABANDONED,
   allTicked,
   ALREADY_PUBLISHED,
   BULK_TEXT,
@@ -311,6 +312,9 @@ async function publishTicked(): Promise<void> {
         // Read again just before: the table can be older than the row - a
         // save whose answer came after another row was opened is not in it.
         const saved = await getJson<SubscriberMilestone>(`/subscribers/milestones/${milestoneId}`);
+
+        // Left while the read was on its way: no publish starts after that.
+        if (left) return ABANDONED;
 
         // Published elsewhere since the table was read. Not counted as
         // published by this run: that publish may not have reached the public JSON.

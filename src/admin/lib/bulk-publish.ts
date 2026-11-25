@@ -119,6 +119,9 @@ function isRefusal(error: unknown): error is AdminApiError {
 /** What `publishInTurn`'s `publish` answers for a row it found published already, and sent nothing for. */
 export const ALREADY_PUBLISHED = 'already_published';
 
+/** What `publishInTurn`'s `publish` answers when it found the page left before sending the row's publish: the run ends there. */
+export const ABANDONED = 'abandoned';
+
 /**
  * Publishes `targets` one at a time, each request waiting for the one before.
  * A 400 that lists the publish's own problems is the check refusing that
@@ -127,14 +130,16 @@ export const ALREADY_PUBLISHED = 'already_published';
  * written among them), a 404 for a row deleted since the list was read, a
  * 409 for one published since - stops the run there: the rows after it are
  * not tried. `publish` answers `ALREADY_PUBLISHED` for a row it found
- * published already and sent nothing for.
+ * published already and sent nothing for, and `ABANDONED` when the page
+ * was left while it was reading the row, before it sent the publish: that
+ * row and the rows after it count as untried.
  * `onProgress` is told how many rows have been answered, stopped row aside.
  * `abandoned` is asked before each row: once it says so - the page was left
  * - no row after is sent, and they count as untried.
  */
 export async function publishInTurn<T>(
   targets: readonly T[],
-  publish: (row: T) => Promise<typeof ALREADY_PUBLISHED | void>,
+  publish: (row: T) => Promise<typeof ALREADY_PUBLISHED | typeof ABANDONED | void>,
   onProgress?: (done: number) => void,
   abandoned?: () => boolean,
 ): Promise<BulkPublishOutcome<T>> {
@@ -150,7 +155,10 @@ export async function publishInTurn<T>(
     if (abandoned?.() === true) break;
 
     try {
-      if ((await publish(row)) === ALREADY_PUBLISHED) outcome.alreadyPublished++;
+      const answer = await publish(row);
+
+      if (answer === ABANDONED) break;
+      if (answer === ALREADY_PUBLISHED) outcome.alreadyPublished++;
       else outcome.published++;
     } catch (error) {
       if (!isRefusal(error)) {
