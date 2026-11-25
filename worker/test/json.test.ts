@@ -40,4 +40,13 @@ describe('errorResponse', () => {
   test('carries the message as JSON', async () => {
     expect(await errorResponse(404, 'nope').json()).toEqual({ error: 'nope' });
   });
+
+  // #291: `error` is what the admin screen shows; `detail` says in English
+  // which value was refused, for the screen to mark the field and for logs.
+  test('carries the detail beside the message when one is given', async () => {
+    expect(await errorResponse(400, '保存に失敗しました', 'order must be a list of channel ids').json()).toEqual({
+      error: '保存に失敗しました',
+      detail: 'order must be a list of channel ids',
+    });
+  });
 });

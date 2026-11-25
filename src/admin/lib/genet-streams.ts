@@ -148,22 +148,22 @@ const BARE_MARKERS: [RegExp, StreamFieldSection][] = [
   [/^unknown tuneIds/, 'performances'],
 ];
 
-/** Which field (and which performance/scene row within it, if any) a save's 400 message is about, or null when it names none this screen tracks. */
-export function fieldForSaveError(message: string): StreamFieldError | null {
-  const sceneMatch = SCENE_MARKER.exec(message);
+/** Which field (and which performance/scene row within it, if any) a save's 400 is about, read from its detail (`errorDetail`), or null when it names none this screen tracks. */
+export function fieldForSaveError(detail: string): StreamFieldError | null {
+  const sceneMatch = SCENE_MARKER.exec(detail);
 
   if (sceneMatch !== null) {
     return { section: 'performances', performanceIndex: Number(sceneMatch[1]), sceneIndex: Number(sceneMatch[2]) };
   }
 
-  const performanceMatch = PERFORMANCE_MARKER.exec(message);
+  const performanceMatch = PERFORMANCE_MARKER.exec(detail);
 
   if (performanceMatch !== null) {
     return { section: 'performances', performanceIndex: Number(performanceMatch[1]), sceneIndex: null };
   }
 
   for (const [pattern, section] of BARE_MARKERS) {
-    if (pattern.test(message)) return { section, performanceIndex: null, sceneIndex: null };
+    if (pattern.test(detail)) return { section, performanceIndex: null, sceneIndex: null };
   }
 
   return null;

@@ -68,9 +68,9 @@ const FIELD_MARKERS: readonly [RegExp, OverrideFieldKey][] = [
   [/^availability\b/, 'availability'],
 ];
 
-export function fieldForSaveError(message: string): OverrideFieldKey | null {
+export function fieldForSaveError(detail: string): OverrideFieldKey | null {
   for (const [pattern, field] of FIELD_MARKERS) {
-    if (pattern.test(message)) return field;
+    if (pattern.test(detail)) return field;
   }
 
   return null;

@@ -4,7 +4,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import MemberAvatar from '@/parts/MemberAvatar.vue';
 
 import SplitHandle from '../components/SplitHandle.vue';
-import { AdminApiError, deleteJson, getJson, putJson } from '../lib/api';
+import { AdminApiError, deleteJson, errorDetail, getJson, putJson } from '../lib/api';
 import {
   LOOKUP_TEXT,
   blocksAdding,
@@ -83,7 +83,7 @@ const listError = ref<string | null>(null);
  * shown in the edit panel: set only when showing that member would throw away
  * what is typed there (`editWouldBeLost`). 該当の行を表示 shows it then.
  */
-const rowError = ref<{ channelId: string; message: string } | null>(null);
+const rowError = ref<{ channelId: string; message: string; detail: string } | null>(null);
 const shownRowError = computed(() => {
   const error = rowError.value;
   const member = error === null ? undefined : draft.added.find((a) => a.channelId === error.channelId);
@@ -358,10 +358,10 @@ function discard(): void {
 /**
  * Puts a list save's 400 where a one-member save's goes: the member it is
  * about is selected and the edit panel says why. The worker names the member;
- * which field is read from the message, as `save` does, so this screen does
+ * which field is read from the worker's detail, as `save` does, so this screen does
  * not hold a second copy of the worker's checks.
  */
-async function showAddedMemberError(channelId: string, message: string): Promise<void> {
+async function showAddedMemberError(channelId: string, message: string, refusedDetail: string): Promise<void> {
   newForm.value = null;
   selectedId.value = channelId;
   detail.value = true;
@@ -371,7 +371,7 @@ async function showAddedMemberError(channelId: string, message: string): Promise
   await nextTick();
 
   errorMessage.value = message;
-  errorField.value = fieldForSaveError(message);
+  errorField.value = fieldForSaveError(refusedDetail);
 }
 
 /**
@@ -389,7 +389,7 @@ function openErrorRow(): void {
 
   // The banner, and the button in it that may have had focus, is gone; the
   // field the error is about is where the user goes next.
-  void showAddedMemberError(error.channelId, error.message).then(async () => {
+  void showAddedMemberError(error.channelId, error.message, error.detail).then(async () => {
     await nextTick();
     document.querySelector<HTMLElement>('.inspector [aria-invalid="true"]')?.focus();
   });
@@ -426,9 +426,9 @@ async function saveList(): Promise<void> {
       // Moving to the member would replace what is typed in the edit panel;
       // say so over the list and leave the panel as it is.
       if (editWouldBeLost(newForm.value, fields.value, selected.value)) {
-        rowError.value = { channelId, message: error.message };
+        rowError.value = { channelId, message: error.message, detail: errorDetail(error) };
       } else {
-        await showAddedMemberError(channelId, error.message);
+        await showAddedMemberError(channelId, error.message, errorDetail(error));
       }
     } else if (error instanceof AdminApiError && error.status === 409) {
       showToast(MEMBER_TEXT.listChanged);
@@ -457,7 +457,7 @@ async function save(): Promise<void> {
   } catch (error) {
     if (error instanceof AdminApiError) {
       errorMessage.value = error.message;
-      errorField.value = fieldForSaveError(error.message);
+      errorField.value = fieldForSaveError(errorDetail(error));
     } else {
       errorMessage.value = String(error);
     }

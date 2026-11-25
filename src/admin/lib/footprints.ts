@@ -49,11 +49,12 @@ export function footprintsQuery(status: string, q: string): string {
 
 /**
  * Which of `EventFields` (`worker/src/admin/footprints.ts`) a save's 400
- * message is about, so the panel can mark that one field - null when the
- * message does not name a field this form has, which the panel then shows as
- * a plain save-failed line instead.
+ * is about, read from the worker's English detail (`errorDetail`), so the
+ * panel can mark that one field - null when the detail does not name a field
+ * this form has, which the panel then shows as a plain save-failed line
+ * instead.
  *
- * Reads the worker's own error text rather than duplicating its validation:
+ * Reads the worker's own detail rather than duplicating its validation:
  * duplicated rules drift apart from what the worker actually enforces, and
  * the worker is what decides validity either way.
  */
@@ -71,7 +72,7 @@ export type EventFieldKey =
   | 'emphasized';
 
 // endDate before startDate: "endDate is before startDate" names both, and
-// endDate is the one actually out of range - the message's own subject.
+// endDate is the one actually out of range - the detail's own subject.
 const FIELD_MARKERS: readonly [RegExp, EventFieldKey][] = [
   [/\bdatePrecision\b/, 'datePrecision'],
   [/\bstartsAt\b/, 'startsAt'],
@@ -87,9 +88,9 @@ const FIELD_MARKERS: readonly [RegExp, EventFieldKey][] = [
   [/\bemphasized\b/, 'emphasized'],
 ];
 
-export function fieldForSaveError(message: string): EventFieldKey | null {
+export function fieldForSaveError(detail: string): EventFieldKey | null {
   for (const [pattern, field] of FIELD_MARKERS) {
-    if (pattern.test(message)) return field;
+    if (pattern.test(detail)) return field;
   }
 
   return null;

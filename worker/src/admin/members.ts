@@ -464,9 +464,9 @@ export async function addMember(env: Env, body: Record<string, unknown>): Promis
  * member. `error` is left as it was.
  */
 async function namingMember(refusal: Response, member: Record<string, unknown>): Promise<Response> {
-  const { error } = (await refusal.json()) as { error: string };
+  const refused = (await refusal.json()) as { error: string; detail?: string };
 
-  return jsonResponse(typeof member.channelId === 'string' ? { error, channelId: member.channelId } : { error }, {
+  return jsonResponse(typeof member.channelId === 'string' ? { ...refused, channelId: member.channelId } : refused, {
     status: refusal.status,
   });
 }

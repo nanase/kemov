@@ -1,4 +1,4 @@
-import { AdminApiError } from '@/admin/lib/api';
+import { AdminApiError, errorDetail } from '@/admin/lib/api';
 
 describe('AdminApiError', () => {
   test('keeps a plain string body as the message', () => {
@@ -42,5 +42,37 @@ describe('AdminApiError for a 409 the worker marks changedElsewhere', () => {
 
     expect(other.message).toEqual('stream abcdefghijk already exists');
     expect(other.changedElsewhere).toBe(false);
+  });
+});
+
+// #291: the worker's `error` is in Japanese for the screen; `detail` keeps the
+// English that says which value was refused.
+describe('AdminApiError detail', () => {
+  test('reads the detail beside the error', () => {
+    const error = new AdminApiError(400, { error: '色の形式が正しくありません', detail: 'colorBack must be #RRGGBB' });
+
+    expect([error.message, error.detail]).toEqual(['色の形式が正しくありません', 'colorBack must be #RRGGBB']);
+  });
+
+  test('answers null when the body has none', () => {
+    expect(new AdminApiError(404, { error: 'nope' }).detail).toBeNull();
+    expect(new AdminApiError(400, { error: 'nope', detail: 3 }).detail).toBeNull();
+    expect(new AdminApiError(0, 'could not be reached').detail).toBeNull();
+  });
+});
+
+describe('errorDetail', () => {
+  test('is the detail when the worker gave one', () => {
+    expect(
+      errorDetail(new AdminApiError(400, { error: '日付の形式が正しくありません', detail: 'from must be YYYY-MM-DD' })),
+    ).toEqual('from must be YYYY-MM-DD');
+  });
+
+  test('is the message otherwise', () => {
+    expect(errorDetail(new AdminApiError(400, { error: 'name must be a non-empty string' }))).toEqual(
+      'name must be a non-empty string',
+    );
+    expect(errorDetail(new Error('boom'))).toEqual('boom');
+    expect(errorDetail('plain')).toEqual('plain');
   });
 });

@@ -156,19 +156,20 @@ const FIELD_MARKERS: readonly [RegExp, MilestoneFieldKey][] = [
 ];
 
 /**
- * Which field a save's 400 message is about, or null when it names none this
- * form has. Reads the worker's own text rather than repeating its checks
- * here, as lib/footprints.ts's `fieldForSaveError` does.
+ * Which field a save's 400 is about, read from its detail (`errorDetail`), or
+ * null when it names none this form has. Reads the worker's own detail rather
+ * than repeating its checks here, as lib/footprints.ts's `fieldForSaveError`
+ * does.
  *
- * Unlike that one, the field marked is the one named first in the message,
- * not the first in `FIELD_MARKERS`: a message naming two fields is about the
+ * Unlike that one, the field marked is the one named first in the detail,
+ * not the first in `FIELD_MARKERS`: a detail naming two fields is about the
  * one it names first.
  */
-export function fieldForSaveError(message: string): MilestoneFieldKey | null {
+export function fieldForSaveError(detail: string): MilestoneFieldKey | null {
   let first: { at: number; field: MilestoneFieldKey } | null = null;
 
   for (const [pattern, field] of FIELD_MARKERS) {
-    const at = message.search(pattern);
+    const at = detail.search(pattern);
 
     if (at !== -1 && (first === null || at < first.at)) first = { at, field };
   }

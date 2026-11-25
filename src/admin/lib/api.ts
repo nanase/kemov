@@ -27,6 +27,18 @@ export class AdminApiError extends Error {
     this.name = 'AdminApiError';
   }
 
+  /**
+   * The worker's English for which value it refused (#291), or null when it
+   * gave none. Not for the screen to show: `message` is that.
+   */
+  get detail(): string | null {
+    const { body } = this;
+
+    return typeof body === 'object' && body !== null && 'detail' in body && typeof body.detail === 'string'
+      ? body.detail
+      : null;
+  }
+
   /** Whether the worker answered that another screen changed the row meanwhile (`CHANGED_ELSEWHERE_TEXT`). */
   get changedElsewhere(): boolean {
     return AdminApiError.isChangedElsewhere(this.body);
@@ -56,6 +68,18 @@ export class AdminApiError extends Error {
 
     return `/admin/api answered ${status}`;
   }
+}
+
+/**
+ * What a screen's `fieldForSaveError` reads to find the field `error` is
+ * about: the worker's `detail` when it gave one, its message otherwise. The
+ * message alone is not enough - fields that share one sentence, such as the
+ * four colours, differ only in the detail.
+ */
+export function errorDetail(error: unknown): string {
+  if (error instanceof AdminApiError) return error.detail ?? error.message;
+
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {

@@ -9,7 +9,7 @@
  * a row itself (#277's decision 1d).
  */
 
-import { AdminApiError, CHANGED_ELSEWHERE_TEXT } from './api';
+import { AdminApiError, CHANGED_ELSEWHERE_TEXT, errorDetail } from './api';
 import { EDITING_TEXT, SAVE_TOAST } from './editing';
 
 /** What the buttons at the bottom of the edit panel do. */
@@ -164,8 +164,8 @@ export type RefusalProblem = { field: string; message: string } & Record<string,
 export interface AnswerShape<F> {
   /** The key the row comes back under in the worker's answer: `event`, `milestone`, `stream`. */
   rowKey: string;
-  /** Which field a failed save's message is about, or null when it names none. */
-  fieldForSaveError(message: string): F | null;
+  /** Which field a failed save is about, read from `errorDetail`, or null when it names none. */
+  fieldForSaveError(detail: string): F | null;
   /**
    * The field to mark for one reason a refusal lists. Without it, the
    * problem's `field` is the field - a data whose fields are plain names.
@@ -325,7 +325,7 @@ export function publishAnswerFor<F>(
       : error instanceof Error
         ? error.message
         : String(error);
-  const field = shape.fieldForSaveError(message);
+  const field = shape.fieldForSaveError(errorDetail(error));
   const answered = error instanceof AdminApiError ? error.status : 0;
 
   return {
