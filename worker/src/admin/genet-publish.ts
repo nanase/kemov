@@ -5,16 +5,19 @@ import type { RevisionEntity } from '../lib/revision';
 import { formatTimestamp } from '../lib/time';
 import { publicShapeOf as personPublicShapeOf, readPeople, type PersonRow } from './genet-people';
 import {
+  newestRevisionOf as newestStreamRevisionOf,
   present as presentStream,
   publicShapeOf as streamPublicShapeOf,
   readStream,
   readStreams,
+  savedRow,
   saveStatements as streamSaveStatements,
   updateStream,
   validatedStreamFields,
   withFields as streamWithFields,
   type GenetStream,
   type StreamFields,
+  type StreamStatus,
 } from './genet-streams';
 import {
   isPerformedLive,
@@ -273,39 +276,71 @@ function differs(body: string | null, shape: Record<string, unknown>): boolean {
   return body === null || JSON.stringify(JSON.parse(body)) !== JSON.stringify(shape);
 }
 
+/** The latest revisions of every tune and person, as `changedAlongside` compares them. */
+interface AlongsideRevisions {
+  tunes: readonly LatestRevisionRow[];
+  people: readonly LatestRevisionRow[];
+}
+
+/**
+ * The latest revisions of every tune and person - read before the tunes and
+ * people themselves are, so that a tune saved in between is newer than what
+ * `changedAlongside` was told, and its `whileLatest` keeps the stale body out.
+ */
+async function readAlongsideRevisions(env: Env): Promise<AlongsideRevisions> {
+  const [tunes, people] = await Promise.all([latestRevisions(env, 'genet_tune'), latestRevisions(env, 'genet_person')]);
+
+  return { tunes, people };
+}
+
 /**
  * The `publish` revisions of `tunes` and `people` whose public shape is not
- * what their latest revision already says - what a stream's publish, or a
- * tune's, brings along, so that the JSON has them as they are now.
+ * what their latest revision in `revisions` already says - what a stream's
+ * publish, or a tune's, brings along, so that the JSON has them as they are
+ * now. Each is logged only while that revision is still the latest
+ * (publishing.ts's `whileLatest`).
  */
-async function changedAlongside(
-  env: Env,
+function changedAlongside(
+  revisions: AlongsideRevisions,
   tunes: readonly GenetTune[],
   people: readonly PersonRow[],
-): Promise<LoggedRevision[]> {
-  const [tuneRevisions, personRevisions] = await Promise.all([
-    latestRevisions(env, 'genet_tune'),
-    latestRevisions(env, 'genet_person'),
-  ]);
-
-  const tuneBody = new Map(tuneRevisions.map((r) => [r.entity_key, r.body]));
-  const personBody = new Map(personRevisions.map((r) => [r.entity_key, r.body]));
+): LoggedRevision[] {
+  const tuneRevision = new Map(revisions.tunes.map((r) => [r.entity_key, r]));
+  const personRevision = new Map(revisions.people.map((r) => [r.entity_key, r]));
 
   return [
     ...tunes.flatMap((tune) => {
       const shape = tunePublicShapeOf(tune);
       const key = String(tune.tune.tune_id);
+      const latest = tuneRevision.get(key);
 
-      return differs(tuneBody.get(key) ?? null, shape)
-        ? [{ entity: 'genet_tune' as const, key, action: 'publish' as const, body: shape }]
+      return differs(latest?.body ?? null, shape)
+        ? [
+            {
+              entity: 'genet_tune' as const,
+              key,
+              action: 'publish' as const,
+              body: shape,
+              whileLatest: latest?.revision_id ?? 0,
+            },
+          ]
         : [];
     }),
     ...people.flatMap((person) => {
       const shape = personPublicShapeOf(person);
       const key = String(person.person_id);
+      const latest = personRevision.get(key);
 
-      return differs(personBody.get(key) ?? null, shape)
-        ? [{ entity: 'genet_person' as const, key, action: 'publish' as const, body: shape }]
+      return differs(latest?.body ?? null, shape)
+        ? [
+            {
+              entity: 'genet_person' as const,
+              key,
+              action: 'publish' as const,
+              body: shape,
+              whileLatest: latest?.revision_id ?? 0,
+            },
+          ]
         : [];
     }),
   ];
@@ -329,12 +364,13 @@ function refusalResponse(problems: readonly { message: string }[], saved: boolea
  * the status the stream has now.
  */
 async function notWrittenResponse(env: Env, videoId: string, outcome: Extract<PublishOutcome, { written: false }>) {
-  // Deleted before the batch ran, which then logged no revision for it, and
-  // the JSON already written with it could not be built again without it.
+  // Deleted, published, withdrawn or saved elsewhere before the batch ran,
+  // which then logged no revision for it, and the JSON already written with
+  // the change could not be built again without it.
   if (outcome.recorded && outcome.revisionId === null) {
     return jsonResponse(
       {
-        error: `stream ${videoId} was deleted while this request was saving it, and ${GENET_MUSIC_OBJECT_KEY} could not be built again without it: ${outcome.error}`,
+        error: `stream ${videoId} changed while this request was saving it, and ${GENET_MUSIC_OBJECT_KEY} could not be built again without the change: ${outcome.error}`,
         saved: false,
       },
       { status: 502 },
@@ -355,17 +391,12 @@ async function notWrittenResponse(env: Env, videoId: string, outcome: Extract<Pu
 
 /**
  * The 200 once a change reached the public JSON: the stream as it now
- * stands, and what was recorded for it. 404 when the stream was deleted
- * before the change could be recorded, as when it was gone before the
- * request came.
+ * stands, and what was recorded for it. When no revision was logged for it,
+ * `notLoggedResponse`'s 404 or 409: the JSON was built again without the
+ * change.
  */
-async function writtenResponse(
-  env: Env,
-  videoId: string,
-  outcome: Extract<PublishOutcome, { written: true }>,
-  alongside: readonly LoggedRevision[],
-) {
-  if (outcome.revisionId === null) return errorResponse(404, `no stream ${videoId}`);
+async function writtenResponse(env: Env, videoId: string, outcome: Extract<PublishOutcome, { written: true }>) {
+  if (outcome.revisionId === null) return await notLoggedResponse(env, videoId);
 
   const saved = await readStream(env, videoId);
 
@@ -373,9 +404,41 @@ async function writtenResponse(
     stream: saved === null ? null : presentStream(saved),
     revisionId: outcome.revisionId,
     publicationId: outcome.publicationId,
-    tuneRevisionCount: alongside.filter((r) => r.entity === 'genet_tune').length,
-    personRevisionCount: alongside.filter((r) => r.entity === 'genet_person').length,
+    tuneRevisionCount: outcome.loggedAlongside.filter((r) => r.entity === 'genet_tune').length,
+    personRevisionCount: outcome.loggedAlongside.filter((r) => r.entity === 'genet_person').length,
   });
+}
+
+/**
+ * The answer when the batch logged no revision for the stream: 404 when it
+ * was deleted, 409 when it was still there but no longer as the request read
+ * it - published, withdrawn or saved elsewhere.
+ */
+async function notLoggedResponse(env: Env, videoId: string): Promise<Response> {
+  if ((await readStream(env, videoId)) === null) return errorResponse(404, `no stream ${videoId}`);
+
+  return changedMeanwhileResponse(videoId);
+}
+
+/** The answer when the stream changed under a request that read it: published, withdrawn or saved elsewhere. */
+function changedMeanwhileResponse(videoId: string): Response {
+  return errorResponse(409, `stream ${videoId} changed while this request was saving it`);
+}
+
+/**
+ * `RevisionChange.whileRow` for a batch whose row statements write only
+ * while no revision was recorded since `revisionBefore` -
+ * subscriber-milestones-publish.ts's `leftAs` for a stream. The tunes and
+ * people a publish brings along are logged before the stream's own revision
+ * (publishing.ts), so this answers the same for each of them.
+ */
+function leftAs(status: StreamStatus, revisionBefore: number): string {
+  // Written into the SQL, so never anything but an integer from D1.
+  if (!Number.isSafeInteger(revisionBefore)) throw new Error(`not a revision id: ${revisionBefore}`);
+
+  return `status = '${status}'
+          AND (SELECT COALESCE(MAX(revision_id), 0) FROM revision
+                WHERE entity = 'genet_stream' AND entity_key = genet_stream.video_id) = ${revisionBefore}`;
 }
 
 /**
@@ -394,38 +457,80 @@ async function writtenResponse(
  * changes, and 502 says so. When it was written but could not be brought up
  * to date after the revisions were recorded, the stream is published all
  * the same, and 502 says that too.
+ *
+ * The stream is written only while it is still as it was read, as
+ * subscriber-milestones-publish.ts's `saveAndPublish` writes a milestone,
+ * its performances and scenes with it - and 409 says when it was not. A
+ * tune or person saved since its latest revision was read keeps its newer
+ * revision (publishing.ts's `whileLatest`), and the JSON is built with that.
  */
-async function saveAndPublish(env: Env, existing: GenetStream, fields: StreamFields, now: Date): Promise<Response> {
+async function saveAndPublish(
+  env: Env,
+  existing: GenetStream,
+  revisionBefore: number,
+  fields: StreamFields,
+  now: Date,
+): Promise<Response> {
   const videoId = existing.stream.video_id;
   const wasPublished = existing.stream.status === 'published';
   const next = streamWithFields(existing, fields, 'published');
+  const revisions = await readAlongsideRevisions(env);
   const tunes = await readTunes(env, tuneIdsOf(next));
   const problems = publishProblems(next, tunes);
 
   if (problems.length > 0) {
-    if (!wasPublished) await env.DB.batch(streamSaveStatements(env, videoId, fields));
+    if (wasPublished) return refusalResponse(problems, false);
 
-    return refusalResponse(problems, !wasPublished);
+    // Saved only while it is still the draft it was read as: one published
+    // in between is not written over with no revision, and 409 says so - or
+    // 404, for one deleted in between.
+    if (!savedRow(await env.DB.batch(streamSaveStatements(env, videoId, fields, { whileStatus: 'draft' })))) {
+      return await notLoggedResponse(env, videoId);
+    }
+
+    return refusalResponse(problems, true);
   }
 
   const people = await readPeople(env, personIdsOf(tunes.values()));
-  const alongside = await changedAlongside(env, [...tunes.values()], [...people.values()]);
+  const alongside = changedAlongside(revisions, [...tunes.values()], [...people.values()]);
 
   const outcome = await publishChange(
     env,
     GENET_STREAM_TARGET,
-    { key: videoId, action: 'publish', body: streamPublicShapeOf(next), alongside },
-    streamSaveStatements(env, videoId, fields, 'published'),
+    {
+      key: videoId,
+      action: 'publish',
+      body: streamPublicShapeOf(next),
+      alongside,
+      whileRow: wasPublished ? "status = 'published'" : leftAs('published', revisionBefore),
+    },
+    streamSaveStatements(
+      env,
+      videoId,
+      fields,
+      wasPublished
+        ? { whileStatus: 'published' }
+        : { status: 'published', whileStatus: 'draft', whileRevision: revisionBefore },
+    ),
     now,
   );
 
   if (!outcome.written) {
-    if (!outcome.recorded) await env.DB.batch(streamSaveStatements(env, videoId, fields));
+    if (!outcome.recorded) {
+      const fallback = await env.DB.batch(
+        streamSaveStatements(env, videoId, fields, {
+          whileStatus: wasPublished ? 'published' : 'draft',
+          whileRevision: revisionBefore,
+        }),
+      );
+
+      if (!savedRow(fallback)) return await notLoggedResponse(env, videoId);
+    }
 
     return await notWrittenResponse(env, videoId, outcome);
   }
 
-  return await writtenResponse(env, videoId, outcome, alongside);
+  return await writtenResponse(env, videoId, outcome);
 }
 
 /**
@@ -440,6 +545,7 @@ export async function publishStream(
   body: Record<string, unknown>,
   now: Date,
 ): Promise<Response> {
+  const revisionBefore = await newestStreamRevisionOf(env, videoId);
   const existing = await readStream(env, videoId);
 
   if (existing === null) return errorResponse(404, `no stream ${videoId}`);
@@ -448,7 +554,7 @@ export async function publishStream(
 
   if ('error' in fields) return fields.error;
 
-  return await saveAndPublish(env, existing, fields, now);
+  return await saveAndPublish(env, existing, revisionBefore, fields, now);
 }
 
 /**
@@ -463,6 +569,7 @@ export async function saveStream(
   body: Record<string, unknown>,
   now: Date,
 ): Promise<Response> {
+  const revisionBefore = await newestStreamRevisionOf(env, videoId);
   const existing = await readStream(env, videoId);
 
   if (existing === null) return errorResponse(404, `no stream ${videoId}`);
@@ -473,7 +580,7 @@ export async function saveStream(
 
   if ('error' in fields) return fields.error;
 
-  return await saveAndPublish(env, existing, fields, now);
+  return await saveAndPublish(env, existing, revisionBefore, fields, now);
 }
 
 /**
@@ -487,7 +594,9 @@ export async function saveStream(
  * Nothing at all changes when the JSON cannot be written, and 502 says so.
  * When it was written but could not be brought up to date after the revision
  * was recorded, the stream is a draft all the same, and 502 says so with
- * `saved: true`. 409 for a stream that is not published.
+ * `saved: true`. 409 for a stream that is not published - when it was read,
+ * or by the time the batch runs: one withdrawn or saved again in between is
+ * not written over, and no second `withdraw` revision is recorded.
  */
 export async function withdrawStream(
   env: Env,
@@ -495,6 +604,7 @@ export async function withdrawStream(
   body: Record<string, unknown>,
   now: Date,
 ): Promise<Response> {
+  const revisionBefore = await newestStreamRevisionOf(env, videoId);
   const saved = await readStream(env, videoId);
 
   if (saved === null) return errorResponse(404, `no stream ${videoId}`);
@@ -508,8 +618,12 @@ export async function withdrawStream(
   const outcome = await publishChange(
     env,
     GENET_STREAM_TARGET,
-    { key: videoId, action: 'withdraw', body: null },
-    streamSaveStatements(env, videoId, fields, 'draft'),
+    { key: videoId, action: 'withdraw', body: null, whileRow: leftAs('draft', revisionBefore) },
+    streamSaveStatements(env, videoId, fields, {
+      status: 'draft',
+      whileStatus: 'published',
+      whileRevision: revisionBefore,
+    }),
     now,
   );
 
@@ -519,7 +633,7 @@ export async function withdrawStream(
     return errorResponse(502, `${GENET_MUSIC_OBJECT_KEY} could not be written: ${outcome.error}`);
   }
 
-  return await writtenResponse(env, videoId, outcome, []);
+  return await writtenResponse(env, videoId, outcome);
 }
 
 /**
@@ -555,8 +669,9 @@ export async function saveTune(env: Env, tuneId: number, body: Record<string, un
 
   if (problems.length > 0) return refusalResponse(problems, false);
 
+  const revisions = await readAlongsideRevisions(env);
   const people = await readPeople(env, personIdsOf([next]));
-  const alongside = await changedAlongside(env, [], [...people.values()]);
+  const alongside = changedAlongside(revisions, [], [...people.values()]);
 
   const outcome = await publishChange(
     env,

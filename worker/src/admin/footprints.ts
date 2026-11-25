@@ -502,26 +502,42 @@ export async function validatedFields(
 
 /**
  * Member and source rows for an event that already has its row. Inserted
- * only while that row is still there: an event deleted between the caller's
- * read and its batch would otherwise fail the whole batch on the foreign
- * key, and a publish with it, after the public JSON was already written,
- * instead of letting the batch end with no revision logged (publishing.ts).
+ * only while that row is still there - and still as `SaveOptions` asks:
+ * `?status` and `?revision` are null for no condition, as `stillAsRead`
+ * reads them. An event deleted between the caller's read and its batch
+ * would otherwise fail the whole batch on the foreign key, and a publish
+ * with it, after the public JSON was already written, instead of letting the
+ * batch end with no revision logged (publishing.ts).
  */
-function memberStatements(env: Env, eventId: number, fields: EventFields): D1PreparedStatement[] {
+function memberStatements(
+  env: Env,
+  eventId: number,
+  fields: EventFields,
+  whileStatus: string | null,
+  whileRevision: number | null,
+): D1PreparedStatement[] {
   return fields.channelIds.map((channelId) =>
     env.DB.prepare(
       `INSERT INTO footprints_event_member (event_id, channel_id, lead)
-       SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1)`,
-    ).bind(eventId, channelId, fields.leadChannelIds.includes(channelId) ? 1 : 0),
+       SELECT ?1, ?2, ?3
+        WHERE EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND ${stillAsRead('?4', '?5')})`,
+    ).bind(eventId, channelId, fields.leadChannelIds.includes(channelId) ? 1 : 0, whileStatus, whileRevision),
   );
 }
 
-function sourceStatements(env: Env, eventId: number, sources: readonly SourceRow[]): D1PreparedStatement[] {
+function sourceStatements(
+  env: Env,
+  eventId: number,
+  sources: readonly SourceRow[],
+  whileStatus: string | null,
+  whileRevision: number | null,
+): D1PreparedStatement[] {
   return sources.map((source, index) =>
     env.DB.prepare(
       `INSERT INTO footprints_event_source (event_id, position, url, title)
-       SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1)`,
-    ).bind(eventId, index + 1, source.url, source.title),
+       SELECT ?1, ?2, ?3, ?4
+        WHERE EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND ${stillAsRead('?5', '?6')})`,
+    ).bind(eventId, index + 1, source.url, source.title, whileStatus, whileRevision),
   );
 }
 
@@ -594,8 +610,57 @@ export async function createEvent(env: Env, body: Record<string, unknown>): Prom
 }
 
 /**
- * The statements that save `fields` over event `eventId`'s row, members and
- * sources - and `status` too, when one is given. A plain draft save
+ * What `saveStatements` sets and expects, as subscriber-milestones.ts's
+ * `SaveOptions` is for a milestone: the `status` to give the row, and what
+ * the row must still be for anything to be written. Every condition is
+ * checked against the row as it was before the batch: the member and source
+ * statements run before the row's own, so a status the row is given cannot
+ * answer them.
+ *
+ * - `whileStatus`: a save that read the row as a draft passes `'draft'`, so a
+ *   publish that landed in between is not written over with no revision
+ * - `whileRevision`: the event's newest revision, 0 for none, as the caller
+ *   saw it before reading the row. A save that lands late - after its public
+ *   JSON could not be written - then writes nothing over a publish or
+ *   withdrawal recorded in between, even one that left the status as it was
+ */
+export interface SaveOptions {
+  status?: EventStatus;
+  whileStatus?: EventStatus;
+  whileRevision?: number;
+}
+
+export type EventStatus = 'draft' | 'published';
+
+/**
+ * The condition, in `saveStatements`' statements over a `footprints_event`
+ * row, that the row is still as `SaveOptions` asks: `?status` and `?revision`
+ * are null for no condition. The key is cast from the row's own column, for
+ * the reason subscriber-milestones.ts's `stillAsRead` gives.
+ */
+function stillAsRead(status: string, revision: string): string {
+  return `(${status} IS NULL OR footprints_event.status = ${status})
+          AND (${revision} IS NULL
+               OR (SELECT COALESCE(MAX(revision_id), 0) FROM revision
+                    WHERE entity = 'footprints_event'
+                      AND entity_key = CAST(footprints_event.event_id AS TEXT)) = ${revision})`;
+}
+
+/** The newest revision of event `eventId`, or 0 when it has none: `SaveOptions.whileRevision`. */
+export async function newestRevisionOf(env: Env, eventId: number): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT COALESCE(MAX(revision_id), 0) AS revision_id FROM revision
+      WHERE entity = 'footprints_event' AND entity_key = ?1`,
+  )
+    .bind(String(eventId))
+    .first<{ revision_id: number }>();
+
+  return row!.revision_id;
+}
+
+/**
+ * The statements that save `fields` over event `eventId`'s members, sources
+ * and row (see `SaveOptions`), the row's own last. A plain draft save
  * (`updateEvent`) and footprints-publish.ts's publishing both run these, the
  * latter in the same batch as the revision it logs.
  */
@@ -603,15 +668,30 @@ export function saveStatements(
   env: Env,
   eventId: number,
   fields: EventFields,
-  status?: 'draft' | 'published',
+  options: SaveOptions = {},
 ): D1PreparedStatement[] {
+  const whileStatus = options.whileStatus ?? null;
+  const whileRevision = options.whileRevision ?? null;
+
   return [
+    env.DB.prepare(
+      `DELETE FROM footprints_event_member
+        WHERE event_id = ?1
+          AND EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND ${stillAsRead('?2', '?3')})`,
+    ).bind(eventId, whileStatus, whileRevision),
+    env.DB.prepare(
+      `DELETE FROM footprints_event_source
+        WHERE event_id = ?1
+          AND EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND ${stillAsRead('?2', '?3')})`,
+    ).bind(eventId, whileStatus, whileRevision),
+    ...memberStatements(env, eventId, fields, whileStatus, whileRevision),
+    ...sourceStatements(env, eventId, fields.sources, whileStatus, whileRevision),
     env.DB.prepare(
       `UPDATE footprints_event
           SET date_precision = ?1, start_date = ?2, starts_at = ?3, end_date = ?4, kind = ?5, emphasized = ?6,
               title = ?7, place = ?8, supplement = ?9, video_id = ?10, memo = ?11,
               status = COALESCE(?12, status), updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE event_id = ?13`,
+        WHERE event_id = ?13 AND ${stillAsRead('?14', '?15')}`,
     ).bind(
       fields.datePrecision,
       fields.startDate,
@@ -624,14 +704,25 @@ export function saveStatements(
       fields.supplement,
       fields.videoId,
       fields.memo,
-      status ?? null,
+      options.status ?? null,
       eventId,
+      whileStatus,
+      whileRevision,
     ),
-    env.DB.prepare('DELETE FROM footprints_event_member WHERE event_id = ?1').bind(eventId),
-    env.DB.prepare('DELETE FROM footprints_event_source WHERE event_id = ?1').bind(eventId),
-    ...memberStatements(env, eventId, fields),
-    ...sourceStatements(env, eventId, fields.sources),
   ];
+}
+
+/**
+ * Whether `saveStatements`' batch - those statements alone - wrote the row:
+ * false when it was gone, or no longer as `SaveOptions` asked.
+ */
+export function savedRow(results: readonly D1Result[]): boolean {
+  return results[results.length - 1]!.meta.changes > 0;
+}
+
+/** The answer when a save that read the row as a draft found it published by then. */
+export function noLongerDraftResponse(eventId: number): Response {
+  return errorResponse(409, `footprints event ${eventId} is no longer a draft`);
 }
 
 /**
@@ -673,7 +764,8 @@ export function withFields(
  * Saves a draft's fields. Replaces members and sources along with the row;
  * `status` is left untouched, and no `revision` is logged, same as
  * createEvent. A published event's save reaches the public site, and that
- * is footprints-publish.ts's `saveEvent`.
+ * is footprints-publish.ts's `saveEvent`. 409, and nothing written, when the
+ * row was published between the read and the write.
  */
 export async function updateEvent(env: Env, eventId: number, body: Record<string, unknown>): Promise<Response> {
   const existing = await readEvent(env, eventId);
@@ -684,11 +776,15 @@ export async function updateEvent(env: Env, eventId: number, body: Record<string
 
   if ('error' in fields) return fields.error;
 
-  await env.DB.batch(saveStatements(env, eventId, fields));
+  if (existing.event.status !== 'draft') return noLongerDraftResponse(eventId);
 
+  const results = await env.DB.batch(saveStatements(env, eventId, fields, { whileStatus: 'draft' }));
   const saved = await readEvent(env, eventId);
 
-  return jsonResponse({ event: present(saved!) });
+  if (saved === null) return errorResponse(404, `no footprints event ${eventId}`);
+  if (!savedRow(results)) return noLongerDraftResponse(eventId);
+
+  return jsonResponse({ event: present(saved) });
 }
 
 /**
@@ -702,6 +798,11 @@ export async function updateEvent(env: Env, eventId: number, body: Record<string
  * and makes the row eligible for deletion the same request could otherwise
  * not safely make. Logs no `revision`, same as createEvent and updateEvent.
  * Also 409 while a subscriber milestone links to the event (#225).
+ *
+ * Deleted only while it is still a draft when the batch runs, members and
+ * sources too: a 「公開」 that lands between the read and the delete would
+ * otherwise leave its revision and its public entry with no row to withdraw
+ * them from.
  */
 export async function deleteEvent(env: Env, eventId: number): Promise<Response> {
   const existing = await readEvent(env, eventId);
@@ -723,11 +824,25 @@ export async function deleteEvent(env: Env, eventId: number): Promise<Response> 
     return errorResponse(409, `subscriber milestone ${linked.milestone_id} links to this event; unlink it there first`);
   }
 
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM footprints_event_member WHERE event_id = ?1').bind(eventId),
-    env.DB.prepare('DELETE FROM footprints_event_source WHERE event_id = ?1').bind(eventId),
-    env.DB.prepare('DELETE FROM footprints_event WHERE event_id = ?1').bind(eventId),
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `DELETE FROM footprints_event_member
+        WHERE event_id = ?1
+          AND EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND status = 'draft')`,
+    ).bind(eventId),
+    env.DB.prepare(
+      `DELETE FROM footprints_event_source
+        WHERE event_id = ?1
+          AND EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND status = 'draft')`,
+    ).bind(eventId),
+    env.DB.prepare(`DELETE FROM footprints_event WHERE event_id = ?1 AND status = 'draft'`).bind(eventId),
   ]);
+
+  if (results[2]!.meta.changes === 0) {
+    if ((await readEvent(env, eventId)) === null) return errorResponse(404, `no footprints event ${eventId}`);
+
+    return errorResponse(409, 'withdraw this event before deleting it');
+  }
 
   // {} rather than 204: every other answer in this API is JSON, and this one
   // has nothing more to say than "done" - no row survives to echo back, and

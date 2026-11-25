@@ -51,9 +51,17 @@ export function canPublishFootprints(state: FootprintsPending): boolean {
 /** The 公開 screen's, while the worker says the JSON may be behind. */
 export const FOOTPRINTS_BEHIND_TEXT = '本番のあしあとが記録と食い違っているかもしれません。';
 
+/** The edit panel's note for a 502 that saved nothing (lib/publishing.ts's `notMendedNote`). */
+export const FOOTPRINTS_NOT_MENDED_TEXT = '本番の年表への反映に失敗しました。';
+
 export type FootprintsAnswer = PublishAnswer<EventFieldKey>;
 
 /** lib/publishing.ts's `publishAnswerFor` for an event: the row comes back as `event`. */
 export function footprintsAnswerFor(action: AnsweredAction, status: string | null, error: unknown): FootprintsAnswer {
-  return publishAnswerFor({ rowKey: 'event', fieldForSaveError }, action, status, error);
+  return publishAnswerFor(
+    { rowKey: 'event', fieldForSaveError, notMendedNote: FOOTPRINTS_NOT_MENDED_TEXT },
+    action,
+    status,
+    error,
+  );
 }

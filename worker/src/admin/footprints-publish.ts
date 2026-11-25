@@ -3,15 +3,18 @@ import { errorResponse, jsonResponse } from '../lib/json';
 import { readSourceWhitelist, sourcesEnough } from '../lib/source-whitelist';
 import { formatTimestamp } from '../lib/time';
 import {
+  newestRevisionOf,
   present,
   publicShapeOf,
   readEvent,
   readEvents,
+  savedRow,
   saveStatements,
   updateEvent,
   validatedFields,
   withFields,
   type EventFields,
+  type EventStatus,
   type FootprintsEvent,
 } from './footprints';
 import {
@@ -250,11 +253,12 @@ async function notWrittenResponse(env: Env, eventId: number, outcome: Extract<Pu
 
 /**
  * The 200 once a change reached the public JSON: the row as it now stands,
- * and what was recorded for it. 404 when the row was deleted before the
- * change could be recorded, as when it was gone before the request came.
+ * and what was recorded for it. When no revision was logged for it,
+ * `notLoggedResponse`'s 404 or 409: the JSON was built again without the
+ * change.
  */
 async function writtenResponse(env: Env, eventId: number, outcome: Extract<PublishOutcome, { written: true }>) {
-  if (outcome.revisionId === null) return errorResponse(404, `no footprints event ${eventId}`);
+  if (outcome.revisionId === null) return await notLoggedResponse(env, eventId);
 
   const saved = await readEvent(env, eventId);
 
@@ -263,6 +267,55 @@ async function writtenResponse(env: Env, eventId: number, outcome: Extract<Publi
     revisionId: outcome.revisionId,
     publicationId: outcome.publicationId,
   });
+}
+
+/** The answer when the row changed under a request that read it: published, withdrawn or saved elsewhere. */
+function changedMeanwhileResponse(eventId: number): Response {
+  return errorResponse(409, `footprints event ${eventId} changed while this request was saving it`);
+}
+
+/**
+ * The answer when the batch logged no revision for the row: 404 when it was
+ * deleted, 409 when it was still there but no longer as the request read it.
+ */
+async function notLoggedResponse(env: Env, eventId: number): Promise<Response> {
+  if ((await readEvent(env, eventId)) === null) return errorResponse(404, `no footprints event ${eventId}`);
+
+  return changedMeanwhileResponse(eventId);
+}
+
+/**
+ * `RevisionChange.whileRow` for a batch whose row statements write only
+ * while no revision was recorded since `revisionBefore`: the row was given
+ * `status`, and its newest revision is still that one - subscriber-milestones-
+ * publish.ts's `leftAs` for an event. Both hold exactly when those statements
+ * wrote the row.
+ */
+function leftAs(status: EventStatus, revisionBefore: number): string {
+  // Written into the SQL, so never anything but an integer from D1.
+  if (!Number.isSafeInteger(revisionBefore)) throw new Error(`not a revision id: ${revisionBefore}`);
+
+  return `status = '${status}'
+          AND (SELECT COALESCE(MAX(revision_id), 0) FROM revision
+                WHERE entity = 'footprints_event'
+                  AND entity_key = CAST(footprints_event.event_id AS TEXT)) = ${revisionBefore}`;
+}
+
+/**
+ * The 502 when the row changed under the request - deleted, published,
+ * withdrawn or saved elsewhere - so nothing was saved, but the JSON it had
+ * already written could not be built again from `revision`.
+ * `publication_write` keeps it behind, so the 公開 screen offers
+ * 「いま公開する」.
+ */
+function notMendedResponse(eventId: number, error: string): Response {
+  return jsonResponse(
+    {
+      error: `footprints event ${eventId} changed while this request was saving it, and ${OBJECT_KEY} could not be built again without the change: ${error}`,
+      saved: false,
+    },
+    { status: 502 },
+  );
 }
 
 /**
@@ -280,36 +333,87 @@ async function writtenResponse(env: Env, eventId: number, outcome: Extract<Publi
  * and 502 says so. When it was written but could not be brought up to date
  * after the revision was recorded, the row is published all the same, and
  * 502 says that too.
+ *
+ * Either row is written only while it is still as it was read, as
+ * subscriber-milestones-publish.ts's `saveAndPublish` writes a milestone: a
+ * published row still published, a draft still a draft with no revision
+ * recorded since `revisionBefore` - the event's newest revision, read before
+ * `existing` was. One that changed is neither saved nor put on the public
+ * timeline as this request has it, and 409 says so - or `notMendedResponse`'s
+ * 502, when the JSON written before the batch could not be built again
+ * without the change. The save that follows a JSON that could not be written
+ * is held to `revisionBefore` too, so that it does not land over another
+ * request's publish.
  */
-async function saveAndPublish(env: Env, existing: FootprintsEvent, fields: EventFields, now: Date): Promise<Response> {
+async function saveAndPublish(
+  env: Env,
+  existing: FootprintsEvent,
+  revisionBefore: number,
+  fields: EventFields,
+  now: Date,
+): Promise<Response> {
   const eventId = existing.event.event_id;
   const wasPublished = existing.event.status === 'published';
   const next = withFields(existing, fields, 'published');
   const problems = publishProblems(next);
 
   if (problems.length > 0) {
-    if (!wasPublished) await env.DB.batch(saveStatements(env, eventId, fields));
+    if (wasPublished) return refusalResponse(problems, false);
 
-    return refusalResponse(problems, !wasPublished);
+    // Saved only while it is still the draft it was read as: one published
+    // in between is not written over with no revision, and 409 says so - or
+    // 404, for one deleted in between.
+    if (!savedRow(await env.DB.batch(saveStatements(env, eventId, fields, { whileStatus: 'draft' })))) {
+      return await notLoggedResponse(env, eventId);
+    }
+
+    return refusalResponse(problems, true);
   }
 
   const whitelist = await readSourceWhitelist(env);
   const outcome = await publishChange(
     env,
     footprintsTarget(whitelist),
-    { key: String(eventId), action: 'publish', body: publicShapeOf(next, whitelist) },
-    saveStatements(env, eventId, fields, 'published'),
+    {
+      key: String(eventId),
+      action: 'publish',
+      body: publicShapeOf(next, whitelist),
+      whileRow: wasPublished ? "status = 'published'" : leftAs('published', revisionBefore),
+    },
+    saveStatements(
+      env,
+      eventId,
+      fields,
+      wasPublished
+        ? { whileStatus: 'published' }
+        : { status: 'published', whileStatus: 'draft', whileRevision: revisionBefore },
+    ),
     now,
   );
 
   if (!outcome.written) {
-    if (!outcome.recorded) await env.DB.batch(saveStatements(env, eventId, fields));
-    else await republishMilestonesForEvents(env, now);
+    if (outcome.recorded) {
+      // Nothing was saved, but the JSON written with the change could not
+      // be built again without it: the public timeline may still show it.
+      if (outcome.revisionId === null) return notMendedResponse(eventId, outcome.error);
+
+      await republishMilestonesForEvents(env, now);
+    } else {
+      const fallback = await env.DB.batch(
+        saveStatements(env, eventId, fields, {
+          whileStatus: wasPublished ? 'published' : 'draft',
+          whileRevision: revisionBefore,
+        }),
+      );
+
+      if (!savedRow(fallback)) return await notLoggedResponse(env, eventId);
+    }
 
     return await notWrittenResponse(env, eventId, outcome);
   }
 
-  await republishMilestonesForEvents(env, now);
+  // A change no revision was logged for left the timeline as it was.
+  if (outcome.revisionId !== null) await republishMilestonesForEvents(env, now);
 
   return await writtenResponse(env, eventId, outcome);
 }
@@ -326,6 +430,7 @@ export async function publishEvent(
   body: Record<string, unknown>,
   now: Date,
 ): Promise<Response> {
+  const revisionBefore = await newestRevisionOf(env, eventId);
   const existing = await readEvent(env, eventId);
 
   if (existing === null) return errorResponse(404, `no footprints event ${eventId}`);
@@ -334,7 +439,7 @@ export async function publishEvent(
 
   if ('error' in fields) return fields.error;
 
-  return await saveAndPublish(env, existing, fields, now);
+  return await saveAndPublish(env, existing, revisionBefore, fields, now);
 }
 
 /**
@@ -349,6 +454,7 @@ export async function saveEvent(
   body: Record<string, unknown>,
   now: Date,
 ): Promise<Response> {
+  const revisionBefore = await newestRevisionOf(env, eventId);
   const existing = await readEvent(env, eventId);
 
   if (existing === null) return errorResponse(404, `no footprints event ${eventId}`);
@@ -359,7 +465,7 @@ export async function saveEvent(
 
   if ('error' in fields) return fields.error;
 
-  return await saveAndPublish(env, existing, fields, now);
+  return await saveAndPublish(env, existing, revisionBefore, fields, now);
 }
 
 /**
@@ -372,7 +478,10 @@ export async function saveEvent(
  * written, and 502 says so. When it was written but could not be brought up
  * to date after the revision was recorded, the event is a draft all the
  * same, and 502 says so with `saved: true`, as a publish's does. 409 for an
- * event that is not published: there is nothing on the timeline to take off.
+ * event that is not published - when it was read, or by the time the batch
+ * runs: one withdrawn or saved again in between is not written over, and no
+ * second `withdraw` revision is recorded. There is nothing on the timeline
+ * to take off.
  */
 export async function withdrawEvent(
   env: Env,
@@ -380,6 +489,7 @@ export async function withdrawEvent(
   body: Record<string, unknown>,
   now: Date,
 ): Promise<Response> {
+  const revisionBefore = await newestRevisionOf(env, eventId);
   const saved = await readEvent(env, eventId);
 
   if (saved === null) return errorResponse(404, `no footprints event ${eventId}`);
@@ -393,12 +503,13 @@ export async function withdrawEvent(
   const outcome = await publishChange(
     env,
     footprintsTarget(await readSourceWhitelist(env)),
-    { key: String(eventId), action: 'withdraw', body: null },
-    saveStatements(env, eventId, fields, 'draft'),
+    { key: String(eventId), action: 'withdraw', body: null, whileRow: leftAs('draft', revisionBefore) },
+    saveStatements(env, eventId, fields, { status: 'draft', whileStatus: 'published', whileRevision: revisionBefore }),
     now,
   );
 
   if (!outcome.written) {
+    if (outcome.recorded && outcome.revisionId === null) return notMendedResponse(eventId, outcome.error);
     if (!outcome.recorded) return errorResponse(502, `${OBJECT_KEY} could not be written: ${outcome.error}`);
 
     await republishMilestonesForEvents(env, now);
@@ -406,7 +517,8 @@ export async function withdrawEvent(
     return await notWrittenResponse(env, eventId, outcome);
   }
 
-  await republishMilestonesForEvents(env, now);
+  // A change no revision was logged for left the timeline as it was.
+  if (outcome.revisionId !== null) await republishMilestonesForEvents(env, now);
 
   return await writtenResponse(env, eventId, outcome);
 }
