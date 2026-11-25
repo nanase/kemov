@@ -1,9 +1,13 @@
 import {
   emptyFormFields,
   fieldForSaveError,
+  leavesFilter,
   moveEntries,
+  openTuneUnread,
   performanceMoves,
+  streamsQuery,
   toFormFields,
+  withoutIndex,
   withoutItem,
   type GenetStream,
 } from '@/admin/lib/genet-streams';
@@ -172,5 +176,86 @@ describe('moveEntries', () => {
         [0, 'c'],
       ]),
     );
+  });
+});
+
+describe('fieldForSaveError on a new stream', () => {
+  test('a taken id marks the id', () => {
+    expect(fieldForSaveError('stream abcdefghijk already exists')).toEqual({
+      section: 'videoId',
+      performanceIndex: null,
+      sceneIndex: null,
+    });
+  });
+
+  test('a missing id marks the id', () => {
+    expect(fieldForSaveError('videoId must be a non-empty string')?.section).toEqual('videoId');
+  });
+});
+
+describe('streamsQuery', () => {
+  test('is empty when nothing narrows the list', () => {
+    expect(streamsQuery('all', '  ')).toEqual('');
+  });
+
+  test('carries the status and the trimmed title', () => {
+    expect(streamsQuery('published', ' 歌枠 ')).toEqual(`?status=published&q=${encodeURIComponent('歌枠')}`);
+  });
+});
+
+describe('leavesFilter', () => {
+  test('a stream stays under すべて, and under the status it becomes', () => {
+    expect(leavesFilter('all', 'published')).toBe(false);
+    expect(leavesFilter('published', 'published')).toBe(false);
+  });
+
+  test('a stream published under 下書き, or withdrawn under 公開中, leaves the list', () => {
+    expect(leavesFilter('draft', 'published')).toBe(true);
+    expect(leavesFilter('published', 'draft')).toBe(true);
+  });
+
+  test('a stream whose title no longer has the title filter in it leaves the list', () => {
+    expect(leavesFilter('all', 'draft', 'ライブ', 'ピアノ演奏会')).toBe(true);
+    expect(leavesFilter('all', 'draft', 'ライブ', '夜のライブ配信')).toBe(false);
+    expect(leavesFilter('all', 'draft', '  ', '')).toBe(false);
+  });
+
+  test('matches the title filter as the worker does, ignoring the case of ASCII letters alone', () => {
+    expect(leavesFilter('all', 'draft', 'live', 'LIVE 配信')).toBe(false);
+    expect(leavesFilter('all', 'draft', 'ａ', 'Ａ')).toBe(true);
+  });
+});
+
+describe('withoutIndex', () => {
+  test('drops the entry taken off, and moves every later one up by one', () => {
+    const byIndex = new Map([
+      [0, 'a'],
+      [1, 'b'],
+      [3, 'd'],
+    ]);
+
+    expect(withoutIndex(byIndex, 1)).toEqual(
+      new Map([
+        [0, 'a'],
+        [2, 'd'],
+      ]),
+    );
+  });
+});
+
+// #284: a tune still being read when a performance above it was taken off
+// lost its answer, and stayed open with nothing read until opened again.
+describe('openTuneUnread', () => {
+  test('is true for an open tune with nothing read and no read on its way', () => {
+    expect(openTuneUnread(1, new Map([[0, 'a']]), new Map())).toBe(true);
+  });
+
+  test('is false while a read is on its way for it, or once it is read', () => {
+    expect(openTuneUnread(1, new Map(), new Map([[1, 7]]))).toBe(false);
+    expect(openTuneUnread(1, new Map([[1, 'b']]), new Map())).toBe(false);
+  });
+
+  test('is false when no tune is open', () => {
+    expect(openTuneUnread(null, new Map(), new Map())).toBe(false);
   });
 });

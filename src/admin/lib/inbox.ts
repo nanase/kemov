@@ -35,9 +35,8 @@ export function jstDate(instant: string): string {
 }
 
 /**
- * あしあと and ジェネット楽曲一覧 in one list: the rows nobody has looked at
- * first, then the ones put off with 「あとで」 (`review`), each part by date.
- * A month-only date sorts before the days of that month.
+ * あしあと and ジェネット楽曲一覧 in one list, by date. A month-only date
+ * sorts before the days of that month.
  */
 export function reviewRows(inbox: ReviewInbox): ReviewRow[] {
   const rows: ReviewRow[] = [
@@ -57,9 +56,7 @@ export function reviewRows(inbox: ReviewInbox): ReviewRow[] {
     })),
   ];
 
-  const deferred = (row: ReviewRow) => (row.status === 'review' ? 1 : 0);
-
-  return rows.sort((a, b) => deferred(a) - deferred(b) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
 /** The key `step` rows away from `current`, kept inside the list - the first row when `current` is not in it. */
@@ -75,7 +72,7 @@ export function moveSelection(keys: readonly string[], current: string | null, s
 
 /**
  * What to select once the list is read again after a row was settled: the
- * same row if it is still there (「あとで」 keeps it), otherwise the row that
+ * same row if it is still there (a refused 承認 keeps it), otherwise the row that
  * now sits where it was, so the next one comes up without a click.
  */
 export function selectionAfterReload(
@@ -204,6 +201,4 @@ export function rebuildsOnlyShape(inbox: PublishInbox): boolean {
   return inbox.items.length === 0 && !inbox.canPublish.footprints && canPublishAny(inbox);
 }
 
-export const APPROVED_TOAST = '承認しました。「公開待ち」で「いま公開する」を押すと本番に反映されます';
-export const DEFERRED_TOAST = 'あとでに回しました';
 export const REJECTED_TOAST = '却下して削除しました';

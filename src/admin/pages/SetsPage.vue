@@ -1,53 +1,74 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref, shallowRef, toRaw, watch } from 'vue';
-import { RouterLink, useRoute } from 'vue-router';
+import { useRoute } from 'vue-router';
 import { unescapeHtml } from '@nanase/alnilam/string';
 
 import { markdownHtml } from '@/lib/genet/musicSong';
 
+import DeleteButton from '../components/DeleteButton.vue';
 import PreviewButton from '../components/PreviewButton.vue';
 import PreviewPane from '../components/PreviewPane.vue';
 import SplitHandle from '../components/SplitHandle.vue';
-import { AdminApiError, getJson, postJson, putJson } from '../lib/api';
+import { AdminApiError, deleteJson, getJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, SAVE_TOAST, sameFields, saveToastFor } from '../lib/editing';
+import { EDITING_TEXT, SAVE_TOAST, sameFields } from '../lib/editing';
 import { insertAt, mdSnippet, clock, type MdLinkKind } from '../lib/genet-markdown';
 import { type GenetPerson } from '../lib/genet-people';
 import {
-  canRepublishStream,
   isChangedSincePublish,
-  isWaiting,
-  streamMarkFor,
+  STREAM_NOTE_ID,
+  streamAnswerFor,
+  streamBandReasonIds,
+  streamReasonId,
+  TUNE_NOTE_ID,
+  tuneAnswerFor,
+  tuneBandReasonIds,
+  tuneReasonId,
   type GenetPendingResponse,
 } from '../lib/genet-publish';
 import {
   attrNameOptions,
   emptyFormFields as emptyTuneFields,
-  fieldForSaveError as fieldForTuneSaveError,
+  latestPerKey,
   learnName,
   toFormFields as toTuneFormFields,
   type Attribute,
   type GenetTune,
+  type TuneFieldError,
   type TuneFormFields,
 } from '../lib/genet-tunes';
 import {
   emptyFormFields as emptyStreamFields,
-  fieldForSaveError as fieldForStreamSaveError,
+  leavesFilter,
   moveEntries,
+  openTuneUnread,
   performanceMoves,
   PLATFORMS,
   SCENE_STYLE_LABEL,
   SCENE_STYLES,
+  STATUS_OPTIONS,
+  streamsQuery,
   toFormFields as toStreamFormFields,
   VIDEO_TYPES,
+  withoutIndex,
   withoutItem,
   type GenetStream,
+  type StreamFieldError,
+  type StreamFieldSection,
   type StreamFormFields,
 } from '../lib/genet-streams';
 import { countText } from '../lib/list-count';
 import { useListTotal } from '../lib/list-total';
 import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
-import { CHANGED_NOTICE, PUBLISH_QUEUED_TOAST, waitingNoticeFor, WITHDRAW_QUEUED_TOAST } from '../lib/publish-mark';
+import { refreshPublishBadge } from '../lib/publish-badge';
+import {
+  FOOT_TEXT,
+  liveMarkFor,
+  PUBLISH_TEXT,
+  publishFootFor,
+  type PublishAction,
+  type PublishBand,
+} from '../lib/publishing';
 import { showToast } from '../lib/toast';
 import { confirmDiscard, useUnsavedGuard } from '../lib/unsaved-guard';
 
@@ -72,20 +93,17 @@ const GenetSongPreview = defineAsyncComponent(() => import('../components/previe
  * sharing the real schema settled on (#141 comment 5704563615), where one
  * save silently affecting every other stream performing the same tune would
  * be a surprise. See the artifact's own "モックとの違い" for this.
+ *
+ * A stream's 「公開」, a published stream's 「保存」 and 「非公開に戻す」 reach
+ * the public JSON in the one request that pressed them, and so does a tune's
+ * 保存 when a published stream performs it (#284). The buttons sit in the
+ * band at the bottom, as あしあと's do (#277's decision 1a, 6-1).
  */
-
-const STATUS_OPTIONS = [
-  { value: 'all', label: 'すべて' },
-  { value: 'draft', label: '下書き' },
-  { value: 'review', label: '確認中' },
-  { value: 'published', label: '公開' },
-] as const;
 
 const streams = ref<GenetStream[]>([]);
 const people = ref<GenetPerson[]>([]);
-// What the 状態 chip needs that a stream's `status` cannot say: whether the
-// public JSON has caught up with it. Null when it could not be read, so a
-// failed request does not draw every published stream as already public.
+// Which published streams the public JSON has not caught up with - the
+// editor says so. Null when it could not be read.
 const pending = ref<GenetPendingResponse | null>(null);
 
 // `/sets?video=<videoId>` is where the 公開 screen's rows lead. Read once,
@@ -96,50 +114,76 @@ const loading = ref(false);
 const loadError = ref<string | null>(null);
 const peopleLoadError = ref<string | null>(null);
 
-const statusFilter = ref<(typeof STATUS_OPTIONS)[number]['value']>('all');
+const UNTITLED = '（無題）';
+
+const statusFilter = ref('all');
+const q = ref('');
 const selectedVideoId = ref<string | null>(null);
 const detail = ref(false);
+// ＋ 足す: the editor holds a new stream, not yet created (#277's 6-4).
+const adding = ref(false);
+const newVideoId = ref('');
 
+const filtered = computed(() => statusFilter.value !== 'all' || q.value.trim() !== '');
 // `load` asks the worker for the filtered list, so `streams` is already what the filter shows.
 const listTotal = useListTotal(
   async () => (await getJson<{ streams: GenetStream[] }>('/genet/streams')).streams.length,
 );
 const selected = computed(() => streams.value.find((s) => s.videoId === selectedVideoId.value) ?? null);
-const selectedWaiting = computed(() =>
-  selected.value === null ? null : isWaiting(pending.value, 'genet_stream', selected.value.videoId),
-);
+/** The stream the editor's scenes and プレビュー point at: the one open, or the id typed for a new one. */
+const currentVideoId = computed(() => (adding.value ? newVideoId.value : (selected.value?.videoId ?? '')));
 const selectedChanged = computed(
-  () => selected.value !== null && isChangedSincePublish(pending.value, 'genet_stream', selected.value.videoId),
-);
-// A published stream is offered 「公開待ちにする」 again only while something
-// is changed, the same as あしあと - otherwise it would add a version that
-// matches the last one.
-const showPublish = computed(
   () =>
-    selected.value !== null &&
-    (selected.value.status !== 'published' || canRepublishStream(pending.value, selected.value.videoId)),
+    selected.value?.status === 'published' &&
+    isChangedSincePublish(pending.value, 'genet_stream', selected.value.videoId),
 );
+const foot = computed(() => publishFootFor(selected.value?.status ?? 'draft'));
 
 const streamFields = ref<StreamFormFields>(emptyStreamFields());
-const streamSaving = ref(false);
-/** 公開待ちにする or 下書きに戻す on its way, through the list read after it. */
-const statusSending = ref(false);
-const streamError = ref<string | null>(null);
-const streamErrorField = ref<ReturnType<typeof fieldForStreamSaveError>>(null);
+/** A request about the stream on its way, through the list read after it. */
+const sending = ref(false);
+const band = ref<PublishBand | null>(null);
+const invalidFields = ref<readonly StreamFieldError[]>([]);
+
+function invalid(section: StreamFieldSection, performanceIndex: number | null = null): boolean {
+  return invalidFields.value.some(
+    (f) => f.section === section && (performanceIndex === null || f.performanceIndex === performanceIndex),
+  );
+}
+
+function reasonIds(section: StreamFieldSection, performanceIndex: number | null = null): string | undefined {
+  return streamBandReasonIds(
+    band.value,
+    invalidFields.value,
+    (f) => f.section === section && (performanceIndex === null || f.performanceIndex === performanceIndex),
+  );
+}
+
+/** A refusal for a stream with no tune at all, which the tune search box takes. */
+const noTuneRefused = computed(() =>
+  invalidFields.value.some((f) => f.section === 'performances' && f.performanceIndex === null),
+);
+
+function clearBand(): void {
+  band.value = null;
+  invalidFields.value = [];
+}
+
+/** A new stream's id while its 保存 reads the list, so that opening it keeps the tunes typed into while it was new. */
+let createdVideoId: string | null = null;
 
 watch(selected, (stream, previous) => {
-  streamError.value = null;
-  streamErrorField.value = null;
-
   if (stream === null || stream.videoId !== previous?.videoId) {
+    clearBand();
     streamFields.value = stream === null ? emptyStreamFields() : toStreamFormFields(stream);
-    closeTunes();
+    if (stream === null || stream.videoId !== createdVideoId) closeTunes();
     return;
   }
 
-  // The open stream read again - after 公開待ちにする, 下書きに戻す or a
-  // filter that keeps it - leaves what is typed alone. Its own 保存 puts the
-  // saved fields back itself, once the list has been read.
+  // The open stream read again - after a request about it, or a filter that
+  // keeps it - leaves what is typed alone. A request that saved the fields
+  // puts the saved ones back itself, once the list has been read. The band
+  // is left alone too: it is the answer to the request that read it again.
   if (previous !== null && !sameFields(streamFields.value, toStreamFormFields(previous))) return;
 
   replaceStreamFields(toStreamFormFields(stream));
@@ -172,12 +216,15 @@ function replaceStreamFields(next: StreamFormFields): void {
   streamFields.value = next;
   tuneFieldsByIndex.value = moveEntries(tuneFieldsByIndex.value, moves);
   tuneSavedByIndex.value = moveEntries(tuneSavedByIndex.value, moves);
-  // A read on its way names its old index; the tune is read again when opened.
+  // A read on its way names its old index, so its answer is dropped.
   latestTuneRead.clear();
 
   const open = openIndex.value === null ? undefined : moves.get(openIndex.value);
 
-  openIndex.value = open !== undefined && tuneFieldsByIndex.value.has(open) ? open : null;
+  // A tune still being read when the order changed has no fields to move, so
+  // it stays open and its read is sent again (#284).
+  openIndex.value = open ?? null;
+  readOpenTuneAgain();
 }
 
 /** Closes the tunes and forgets them; each is read again when opened. */
@@ -208,18 +255,26 @@ async function load(): Promise<boolean> {
   void loadPending();
 
   const generation = ++loadGeneration;
-  const filter = statusFilter.value;
 
   try {
-    const query = filter === 'all' ? '' : `?status=${filter}`;
-    const body = await getJson<{ streams: GenetStream[] }>(`/genet/streams${query}`);
+    const body = await getJson<{ streams: GenetStream[] }>(
+      `/genet/streams${streamsQuery(statusFilter.value, q.value)}`,
+    );
 
     if (generation !== loadGeneration) return false;
 
     streams.value = body.streams;
-    listTotal.update(streams.value.length, filter !== 'all');
+    listTotal.update(streams.value.length, filtered.value);
 
-    if (selectedVideoId.value === null && streams.value.length > 0) {
+    // A stream the filter now leaves out closes its editor, and the first
+    // one in the list takes its place, as on あしあと.
+    if (selectedVideoId.value !== null && selected.value === null) {
+      selectedVideoId.value = null;
+      detail.value = false;
+    }
+
+    // Not while a new stream is being entered in the editor.
+    if (selectedVideoId.value === null && !adding.value && streams.value.length > 0) {
       const requested = streams.value.find((s) => s.videoId === requestedVideoId);
 
       selectedVideoId.value = (requested ?? streams.value[0]!).videoId;
@@ -257,87 +312,244 @@ async function loadPeople(): Promise<void> {
   }
 }
 
+/** Whether anything about the stream, or a tune, is on its way: the list and the filters wait for it. */
+const busy = computed(() => sending.value || tuneSaving.value);
+/** The bottom buttons wait for the list too: a reload may close the stream or put its saved fields back. */
+const footBusy = computed(() => busy.value || loading.value);
+
 /** A stream clicked in the list: asks first when the open one has changes that would be lost. */
 function selectStream(videoId: string): void {
-  if (videoId !== selectedVideoId.value && !confirmDiscard()) return;
+  if (busy.value) return;
+  if ((adding.value || videoId !== selectedVideoId.value) && !confirmDiscard()) return;
 
+  adding.value = false;
   selectedVideoId.value = videoId;
   detail.value = true;
 }
 
+/** ＋ 足す: the editor holds a blank stream, created only when it is saved. */
+function startAdding(): void {
+  if (busy.value) return;
+  // A new stream being typed is unsaved too, and starting again would clear it.
+  if (!confirmDiscard()) return;
+
+  adding.value = true;
+  newVideoId.value = '';
+  selectedVideoId.value = null;
+  // `selected` may already have been null, which the watch on it would not see.
+  streamFields.value = emptyStreamFields();
+  closeTunes();
+  clearBand();
+  detail.value = true;
+}
+
+/** A new stream's やめる. */
+function stopAdding(): void {
+  if (!confirmDiscard()) return;
+
+  adding.value = false;
+  detail.value = false;
+  selectedVideoId.value = streams.value[0]?.videoId ?? null;
+}
+
 // A filter can leave the open stream out of the list, which closes its
 // editor, so changing one asks first, as selecting another stream does.
-function setStatusFilter(value: (typeof STATUS_OPTIONS)[number]['value']): void {
+function setStatusFilter(value: string): void {
+  if (busy.value) return;
   if (value !== statusFilter.value && confirmDiscard()) statusFilter.value = value;
 }
 
-async function saveStream(): Promise<void> {
-  if (selected.value === null) return;
+function setQuery(event: Event): void {
+  const input = event.target as HTMLInputElement;
+
+  if (!busy.value && confirmDiscard()) q.value = input.value;
+  else input.value = q.value;
+}
+
+/** After a request that may have changed the streams: the list and which of them the public JSON is behind. */
+async function reload(): Promise<boolean> {
+  listTotal.invalidate();
+
+  return await load();
+}
+
+/**
+ * The list read again after the fields of `videoId` were saved. The reload
+ * keeps the typed fields (see the watch on `selected`); they are saved now,
+ * so the saved stream takes their place - unless the reload failed, when
+ * `selected` is still the stream from before the save and putting it back
+ * would undo the save at the next one.
+ */
+async function reloadSaved(videoId: string): Promise<void> {
+  if ((await reload()) && selected.value?.videoId === videoId) {
+    replaceStreamFields(toStreamFormFields(selected.value));
+  }
+}
+
+/**
+ * 「公開」, 「保存」 or 「非公開に戻す」 on the open stream. Each sends the
+ * fields as they stand, and the worker saves them in the same request
+ * (#277's 6-2); the open tunes are not sent, and keep what is typed into
+ * them. A stream the status filter then leaves out closes its editor and the
+ * tunes in it, so that is asked first when a tune has unsaved changes.
+ */
+async function act(action: PublishAction): Promise<void> {
+  if (selected.value === null || footBusy.value) return;
+
+  const { videoId, status } = selected.value;
+  const next = action === 'publish' ? 'published' : action === 'withdraw' ? 'draft' : status;
+
+  if (
+    leavesFilter(statusFilter.value, next, q.value, streamFields.value.title) &&
+    tunesDirty.value &&
+    !window.confirm(EDITING_TEXT.confirmDiscard)
+  ) {
+    return;
+  }
+
+  const path = `/genet/streams/${encodeURIComponent(videoId)}`;
+  let error: unknown = null;
+
+  sending.value = true;
+  clearBand();
+
+  try {
+    if (action === 'save') await putJson(path, streamFields.value);
+    else await postJson(`${path}/${action}`, streamFields.value);
+  } catch (caught) {
+    error = caught;
+  }
+
+  try {
+    const answer = streamAnswerFor(action, status, error);
+
+    if (answer.kind === 'done') {
+      void refreshPublishBadge();
+      showToast(answer.toast);
+      await reloadSaved(videoId);
+      void refreshTuneLive();
+
+      return;
+    }
+
+    band.value = answer.band;
+    invalidFields.value = answer.fields;
+
+    if (answer.changed) {
+      void refreshPublishBadge();
+      await reloadSaved(videoId);
+      void refreshTuneLive();
+    }
+  } finally {
+    sending.value = false;
+  }
+}
+
+/** A new stream's 保存: creates it as a draft, and opens it once the list has it. */
+async function create(): Promise<void> {
+  if (footBusy.value) return;
+
+  const videoId = newVideoId.value.trim();
+
+  if (
+    leavesFilter(statusFilter.value, 'draft', q.value, streamFields.value.title) &&
+    tunesDirty.value &&
+    !window.confirm(EDITING_TEXT.confirmDiscard)
+  ) {
+    return;
+  }
+
+  // A scene added before the video ID was typed carries what the field held then.
+  const fields = {
+    ...streamFields.value,
+    performances: streamFields.value.performances.map((p) => ({
+      ...p,
+      scenes: p.scenes.map((s) => ({ ...s, videoId })),
+    })),
+  };
+
+  sending.value = true;
+  clearBand();
+
+  try {
+    await postJson('/genet/streams', { videoId, ...fields });
+  } catch (error) {
+    const answer = streamAnswerFor('save', 'draft', error);
+
+    if (answer.kind === 'band') {
+      band.value = answer.band;
+      invalidFields.value = answer.fields;
+    }
+
+    sending.value = false;
+
+    return;
+  }
+
+  try {
+    // The tunes typed into while it was new stay open with it (see the watch on `selected`).
+    createdVideoId = videoId;
+    selectedVideoId.value = videoId;
+    adding.value = false;
+    void refreshPublishBadge();
+    await reload();
+    createdVideoId = null;
+
+    // A list that could not be read says nothing about the filter.
+    if (loadError.value !== null) {
+      detail.value = false;
+      showToast(SAVE_TOAST.saveDraft);
+
+      return;
+    }
+
+    // A new stream is always a draft - the status or title filter can leave
+    // it out of the list, and the list then opens its first stream instead.
+    if (selectedVideoId.value === videoId) {
+      showToast(SAVE_TOAST.saveDraft);
+    } else {
+      detail.value = false;
+      showToast(`${SAVE_TOAST.saveDraft}（いまの絞り込みには出ません）`);
+    }
+  } finally {
+    sending.value = false;
+  }
+}
+
+/** 削除: a published stream cannot be, and its button cannot be pressed. */
+async function remove(): Promise<void> {
+  if (selected.value === null || footBusy.value) return;
 
   const { videoId, status } = selected.value;
 
-  streamSaving.value = true;
-  streamError.value = null;
-  streamErrorField.value = null;
+  sending.value = true;
+  clearBand();
 
   try {
-    await putJson(`/genet/streams/${encodeURIComponent(videoId)}`, streamFields.value);
-    showToast(saveToastFor(status));
-    // The reload kept the typed fields (see the watch on `selected`); they
-    // are saved now, so the saved stream takes their place - unless the
-    // reload failed, when `selected` is still the stream from before the
-    // save and putting it back would undo the save at the next one.
-    if ((await load()) && selected.value?.videoId === videoId) {
-      replaceStreamFields(toStreamFormFields(selected.value));
-    }
+    await deleteJson(`/genet/streams/${encodeURIComponent(videoId)}`);
   } catch (error) {
-    if (error instanceof AdminApiError) {
-      streamError.value = error.message;
-      streamErrorField.value = fieldForStreamSaveError(error.message);
-    } else {
-      streamError.value = String(error);
+    const answer = streamAnswerFor('delete', status, error);
+
+    if (answer.kind === 'band') {
+      band.value = answer.band;
+      invalidFields.value = answer.fields;
+
+      if (answer.changed) await reload();
     }
-  } finally {
-    streamSaving.value = false;
+
+    sending.value = false;
+
+    return;
   }
-}
-
-// 公開待ちにする and 下書きに戻す send the saved stream, not what is typed, and
-// the list read again afterwards can leave the stream out under the current
-// filter and close the editor - either way what is typed would go unasked.
-async function publishStream(): Promise<void> {
-  if (selected.value === null || statusSending.value || !confirmDiscard()) return;
-
-  statusSending.value = true;
 
   try {
-    await postJson(`/genet/streams/${encodeURIComponent(selected.value.videoId)}/publish`, {});
-    showToast(PUBLISH_QUEUED_TOAST);
-    await load();
-  } catch (error) {
-    if (error instanceof AdminApiError && Array.isArray((error.body as { errors?: unknown })?.errors)) {
-      showToast((error.body as { errors: string[] }).errors.join(' / '));
-    } else {
-      showToast(error instanceof AdminApiError ? error.message : String(error));
-    }
+    selectedVideoId.value = null;
+    detail.value = false;
+    showToast(EDITING_TEXT.removed);
+    void refreshPublishBadge();
+    await reload();
   } finally {
-    statusSending.value = false;
-  }
-}
-
-async function withdrawStream(): Promise<void> {
-  if (selected.value === null || statusSending.value || !confirmDiscard()) return;
-
-  statusSending.value = true;
-
-  try {
-    await postJson(`/genet/streams/${encodeURIComponent(selected.value.videoId)}/withdraw`, {});
-    showToast(WITHDRAW_QUEUED_TOAST);
-    await load();
-  } catch (error) {
-    showToast(error instanceof AdminApiError ? error.message : String(error));
-  } finally {
-    statusSending.value = false;
+    sending.value = false;
   }
 }
 
@@ -362,6 +574,8 @@ const tuneSavedByIndex = shallowRef<Map<number, TuneFormFields>>(new Map());
  */
 const latestTuneRead = new Map<number, number>();
 let tuneReadCount = 0;
+/** The open tune's band when it could not be read: the words the list uses when it cannot be. */
+const TUNE_READ_FAILED = '読み込めません';
 
 function rememberSavedTune(index: number, tune: GenetTune): void {
   tuneFieldsByIndex.value.set(index, toTuneFormFields(tune));
@@ -375,15 +589,25 @@ function isTuneDirty(index: number): boolean {
   return fields !== undefined && saved !== undefined && !sameFields(fields, saved);
 }
 
-const streamDirty = computed(
-  () => selected.value !== null && !sameFields(streamFields.value, toStreamFormFields(selected.value)),
+/** Against the saved stream, or a new stream's blank fields. */
+const streamDirty = computed(() =>
+  adding.value
+    ? newVideoId.value !== '' || !sameFields(streamFields.value, emptyStreamFields())
+    : selected.value !== null && !sameFields(streamFields.value, toStreamFormFields(selected.value)),
 );
+const tunesDirty = computed(() => [...tuneFieldsByIndex.value.keys()].some(isTuneDirty));
 // The tunes' own 保存 is separate from the stream's, so either can be unsaved.
-const dirty = computed(() => streamDirty.value || [...tuneFieldsByIndex.value.keys()].some(isTuneDirty));
+const dirty = computed(() => streamDirty.value || tunesDirty.value);
 
 /** Puts the stream's saved fields back and closes the tunes, which are read again when opened. */
 function discardEdits(): void {
-  if (selected.value !== null) streamFields.value = toStreamFormFields(selected.value);
+  if (adding.value) {
+    newVideoId.value = '';
+    streamFields.value = emptyStreamFields();
+  } else if (selected.value !== null) {
+    streamFields.value = toStreamFormFields(selected.value);
+  }
+
   closeTunes();
 }
 
@@ -399,17 +623,63 @@ function back(): void {
  * when a request for it was sent. A stream switched, or a tune taken off
  * above it, moves what an index names while the request is on its way.
  */
-function stillAt(index: number, videoId: string | undefined, tuneId: number): boolean {
-  return selected.value?.videoId === videoId && streamFields.value.performances[index]?.tuneId === tuneId;
+function stillAt(index: number, videoId: string, tuneId: number): boolean {
+  return currentVideoId.value === videoId && streamFields.value.performances[index]?.tuneId === tuneId;
 }
 const tuneSaving = ref(false);
-const tuneError = ref<string | null>(null);
-const tuneErrorField = ref<ReturnType<typeof fieldForTuneSaveError>>(null);
+const tuneBand = ref<PublishBand | null>(null);
+const tuneInvalid = ref<readonly TuneFieldError[]>([]);
+/**
+ * Whether a published stream performs each tune read, by tune id: its 保存
+ * then reaches the public JSON (#284's 6-5), and the panel says so beside the
+ * button. A tune's own, not a performance's, so it needs no moving when the
+ * performances do.
+ */
+const tuneLive = ref<Map<number, boolean>>(new Map());
+// Several requests can ask about one tune at once; only the latest one's answer is kept.
+const tuneLiveRequests = latestPerKey<number>();
+
+/**
+ * Starts a request that answers whether a published stream performs
+ * `tuneId`: the returned function records its answer, unless a request
+ * started later has asked about the same tune since.
+ */
+function askTuneLive(tuneId: number): (live: boolean) => void {
+  const isLatest = tuneLiveRequests.start(tuneId);
+
+  return (live) => {
+    if (isLatest()) tuneLive.value = new Map(tuneLive.value).set(tuneId, live);
+  };
+}
 const tuneQuery = ref('');
 const tuneSearchResults = ref<{ tuneId: number; title: string }[]>([]);
 const tuneSearchError = ref<string | null>(null);
 
-async function openTune(index: number): Promise<void> {
+function clearTuneBand(): void {
+  tuneBand.value = null;
+  tuneInvalid.value = [];
+}
+
+function tuneInvalidAt(section: TuneFieldError['section'], index: number | null = null): boolean {
+  return tuneInvalid.value.some((f) => f.section === section && (index === null || f.index === index));
+}
+
+function tuneReasonIds(section: TuneFieldError['section'], index: number | null = null): string | undefined {
+  return tuneBandReasonIds(
+    tuneBand.value,
+    tuneInvalid.value,
+    (f) => f.section === section && (index === null || f.index === index),
+  );
+}
+
+/** `GET /admin/api/genet/tunes/:tuneId` and the `PUT`'s answer. */
+interface TuneAnswer {
+  tune: GenetTune;
+  /** Whether a published stream performs the tune. */
+  live: boolean;
+}
+
+function openTune(index: number): void {
   if (openIndex.value === index) {
     openIndex.value = null;
 
@@ -417,27 +687,85 @@ async function openTune(index: number): Promise<void> {
   }
 
   openIndex.value = index;
-  tuneError.value = null;
-  tuneErrorField.value = null;
+  clearTuneBand();
 
+  if (!tuneFieldsByIndex.value.has(index)) void readTune(index);
+}
+
+/** Reads the tune performance `index` names, for the panel open on it. */
+/** Whether a failed request says it saved what it sent all the same. */
+function savedAnyway(error: unknown): boolean {
+  if (!(error instanceof AdminApiError)) return false;
+
+  const body = error.body;
+
+  return typeof body === 'object' && body !== null && 'saved' in body && body.saved === true;
+}
+
+/**
+ * Reads again whether a published stream performs each open tune, keeping
+ * what is typed into them: a stream's 「公開」, 「保存」 or 「非公開に戻す」 can
+ * change it. A read that fails keeps the last answer.
+ */
+async function refreshTuneLive(): Promise<void> {
+  const tuneIds = new Set(
+    [...tuneFieldsByIndex.value.keys()].flatMap((i) => streamFields.value.performances[i]?.tuneId ?? []),
+  );
+
+  await Promise.all(
+    [...tuneIds].map(async (tuneId) => {
+      const record = askTuneLive(tuneId);
+      const body = await getJson<TuneAnswer>(`/genet/tunes/${tuneId}`).catch(() => null);
+
+      if (body !== null) record(body.live === true);
+    }),
+  );
+}
+
+async function readTune(index: number): Promise<void> {
   const performance = streamFields.value.performances[index];
 
-  if (performance === undefined || tuneFieldsByIndex.value.has(index)) return;
+  if (performance === undefined) return;
 
-  const videoId = selected.value?.videoId;
+  const videoId = currentVideoId.value;
   const read = ++tuneReadCount;
 
   latestTuneRead.set(index, read);
 
-  try {
-    const body = await getJson<{ tune: GenetTune }>(`/genet/tunes/${performance.tuneId}`);
+  const recordLive = askTuneLive(performance.tuneId);
 
-    if (latestTuneRead.get(index) === read && stillAt(index, videoId, performance.tuneId)) {
+  try {
+    const body = await getJson<TuneAnswer>(`/genet/tunes/${performance.tuneId}`);
+
+    // About the tune, wherever it is performed now: kept even when the fields go nowhere.
+    recordLive(body.live === true);
+
+    // A newer read for the same index, or performances that moved since,
+    // which sent a read of their own if one was needed.
+    if (latestTuneRead.get(index) !== read) return;
+
+    latestTuneRead.delete(index);
+
+    if (stillAt(index, videoId, performance.tuneId)) {
       rememberSavedTune(index, body.tune);
+    } else {
+      readOpenTuneAgain();
     }
   } catch (error) {
-    tuneError.value = error instanceof AdminApiError ? error.message : String(error);
+    if (latestTuneRead.get(index) !== read) return;
+
+    latestTuneRead.delete(index);
+    tuneBand.value = {
+      title: TUNE_READ_FAILED,
+      lines: [],
+      note: error instanceof Error ? error.message : String(error),
+    };
   }
+}
+
+/** Sends a read for the open tune when it has nothing read and none on its way (#284). */
+function readOpenTuneAgain(): void {
+  if (openTuneUnread(openIndex.value, tuneFieldsByIndex.value, latestTuneRead)) void readTune(openIndex.value!);
 }
 
 /** The tune open in the editor, with what the プレビュー needs to draw it - null until one is open and read. */
@@ -454,43 +782,66 @@ function tuneTitleFor(index: number): string {
   return tuneFieldsByIndex.value.get(index)?.title ?? `曲 #${streamFields.value.performances[index]?.tuneId ?? ''}`;
 }
 
+/**
+ * この曲を保存. A tune a published stream performs reaches the public JSON in
+ * the same request, or is refused, and nothing saved, when it would not pass
+ * publishing (#284's 6-5). The streams are not read again: that would put the
+ * saved stream back into the fields over anything typed there.
+ */
 async function saveTune(index: number): Promise<void> {
   const performance = streamFields.value.performances[index];
   const fields = tuneFieldsByIndex.value.get(index);
 
-  if (performance === undefined || fields === undefined) return;
+  if (performance === undefined || fields === undefined || busy.value) return;
 
-  const videoId = selected.value?.videoId;
+  const videoId = currentVideoId.value;
   const sent = structuredClone(toRaw(fields));
+  const recordLive = askTuneLive(performance.tuneId);
+  let answered: TuneAnswer | null = null;
+  let error: unknown = null;
 
   tuneSaving.value = true;
-  tuneError.value = null;
-  tuneErrorField.value = null;
+  clearTuneBand();
 
   try {
-    await putJson(`/genet/tunes/${performance.tuneId}`, sent);
-    showToast(SAVE_TOAST.saved);
-    // Only what the chips need: reading the streams again would also put the
-    // saved stream back into the fields over anything typed there.
-    void loadPending();
-
-    // What was sent is what is saved, even if reading it back fails below.
-    if (stillAt(index, videoId, performance.tuneId)) {
-      tuneSavedByIndex.value = new Map(tuneSavedByIndex.value).set(index, structuredClone(sent));
-    }
-
-    const refreshed = await getJson<{ tune: GenetTune }>(`/genet/tunes/${performance.tuneId}`);
-
-    if (stillAt(index, videoId, performance.tuneId)) rememberSavedTune(index, refreshed.tune);
-  } catch (error) {
-    if (error instanceof AdminApiError) {
-      tuneError.value = error.message;
-      tuneErrorField.value = fieldForTuneSaveError(error.message);
-    } else {
-      tuneError.value = String(error);
-    }
+    answered = await putJson<TuneAnswer>(`/genet/tunes/${performance.tuneId}`, sent);
+  } catch (caught) {
+    error = caught;
   } finally {
     tuneSaving.value = false;
+  }
+
+  const live = answered?.live === true;
+  const answer = tuneAnswerFor(live, error);
+
+  if (answer.kind === 'done') {
+    showToast(answer.toast);
+
+    if (live) {
+      void refreshPublishBadge();
+      void loadPending();
+    }
+
+    // About the tune, wherever it is performed now.
+    recordLive(live);
+
+    if (answered !== null && stillAt(index, videoId, performance.tuneId)) rememberSavedTune(index, answered.tune);
+
+    return;
+  }
+
+  tuneBand.value = answer.band;
+  tuneInvalid.value = answer.fields;
+
+  if (answer.changed) {
+    void refreshPublishBadge();
+    void loadPending();
+
+    // Saved, though the public JSON could not be written: what was sent is
+    // what is saved. A 404 changed nothing here - the tune is gone.
+    if (savedAnyway(error) && stillAt(index, videoId, performance.tuneId)) {
+      tuneSavedByIndex.value = new Map(tuneSavedByIndex.value).set(index, structuredClone(sent));
+    }
   }
 }
 
@@ -561,8 +912,8 @@ function removePerformance(index: number): void {
   if (isTuneDirty(index) && !window.confirm(EDITING_TEXT.confirmDiscardTune)) return;
 
   streamFields.value.performances.splice(index, 1);
-  // A read on its way names an index that may now be another tune's; the
-  // tunes not yet read are read again when opened.
+  // A read on its way names an index that may now be another tune's, so its
+  // answer is dropped; the open tune is read again below.
   latestTuneRead.clear();
 
   // Every cached entry after the removed one now belongs to the performance
@@ -574,17 +925,8 @@ function removePerformance(index: number): void {
 
   if (openIndex.value === index) openIndex.value = null;
   else if (openIndex.value !== null && openIndex.value > index) openIndex.value -= 1;
-}
 
-function withoutIndex<T>(byIndex: Map<number, T>, index: number): Map<number, T> {
-  const reindexed = new Map<number, T>();
-
-  for (const [i, value] of byIndex) {
-    if (i < index) reindexed.set(i, value);
-    else if (i > index) reindexed.set(i - 1, value);
-  }
-
-  return reindexed;
+  readOpenTuneAgain();
 }
 
 /* ---- 曲ごとの行編集: 小曲・作曲/作詞など・参考の動画・外部の資料 --------- */
@@ -684,7 +1026,7 @@ function addScene(performanceIndex: number): void {
 
   if (performance === undefined) return;
 
-  performance.scenes.push({ style: 'play', videoId: selected.value?.videoId ?? '', startSeconds: null });
+  performance.scenes.push({ style: 'play', videoId: currentVideoId.value, startSeconds: null });
 }
 
 /* ---- Markdown の欄: 書く欄とすぐ下のプレビュー、4つの挿入ボタン ---------- */
@@ -738,7 +1080,7 @@ function confirmPicker(): void {
   const { kind, target, label } = picker.value;
   const snippetTarget =
     kind === 'yt'
-      ? `${selected.value?.videoId ?? ''}?t=${picker.value.seconds}`
+      ? `${currentVideoId.value}?t=${picker.value.seconds}`
       : kind === 'url'
         ? picker.value.articleOrUrl
         : picker.value.articleOrUrl;
@@ -766,9 +1108,15 @@ onMounted(async () => {
   await Promise.all([load(), loadPeople()]);
 });
 
-watch(statusFilter, load);
+watch([statusFilter, q], load);
 
-useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.value.title : null));
+useCrumbDetail(() =>
+  adding.value
+    ? streamFields.value.shortTitle || streamFields.value.title || UNTITLED
+    : selected.value
+      ? selected.value.shortTitle || selected.value.title
+      : null,
+);
 </script>
 
 <template>
@@ -777,7 +1125,8 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
       <div class="toolbar">
         <h2>配信</h2>
         <span class="grow"></span>
-        <span class="sub num">{{ countText(streams.length, listTotal.total.value, statusFilter !== 'all') }}</span>
+        <span class="sub num">{{ countText(streams.length, listTotal.total.value, filtered) }}</span>
+        <button class="btn" type="button" @click="startAdding">＋ 足す</button>
       </div>
       <div class="setlist-filter">
         <div class="seg" role="group" aria-label="状態で絞る">
@@ -791,11 +1140,22 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
             {{ opt.label }}
           </button>
         </div>
+        <input
+          :value="q"
+          type="text"
+          class="btn"
+          placeholder="題で絞り込み"
+          aria-label="題で絞り込み"
+          @input="setQuery"
+        />
       </div>
       <div class="setlist-items">
         <div v-if="loadError" class="empty-note">
           <b>読み込めません</b>
           <div class="sub">{{ loadError }}</div>
+          <button class="btn quiet" type="button" :disabled="loading" @click="confirmDiscard() && load()">
+            再読み込み
+          </button>
         </div>
         <button
           v-for="s in streams"
@@ -809,82 +1169,74 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
           <span class="meta">
             <span class="num sub">{{ s.publishedAt.slice(0, 10) }}</span>
             <span class="sub">{{ s.performances.length }} 曲</span>
-            <span class="chip" :class="streamMarkFor(s.status, s.videoId, pending).tone">{{
-              streamMarkFor(s.status, s.videoId, pending).label
-            }}</span>
+            <span class="chip" :class="liveMarkFor(s.status).tone">{{ liveMarkFor(s.status).label }}</span>
           </span>
         </button>
       </div>
     </div>
 
-    <div v-if="selected" class="editor">
+    <div v-if="selected || adding" class="editor">
       <SplitHandle />
       <div class="toolbar">
-        <button class="btn quiet back" type="button" @click="back">← 一覧</button>
         <h2>
-          {{ selected.shortTitle || selected.title }}
+          {{
+            adding ? streamFields.shortTitle || streamFields.title || UNTITLED : selected!.shortTitle || selected!.title
+          }}
         </h2>
-        <span class="chip" :class="streamMarkFor(selected.status, selected.videoId, pending).tone">{{
-          streamMarkFor(selected.status, selected.videoId, pending).label
+        <span v-if="selected" class="chip" :class="liveMarkFor(selected.status).tone">{{
+          liveMarkFor(selected.status).label
         }}</span>
         <span v-if="dirty" class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
         <span class="grow"></span>
         <PreviewButton />
-        <button class="btn primary" type="button" :disabled="streamSaving" @click="saveStream">保存</button>
-        <button v-if="showPublish" class="btn" type="button" :disabled="statusSending" @click="publishStream">
-          公開待ちにする
-        </button>
-        <button
-          v-if="selected.status === 'published'"
-          class="btn"
-          type="button"
-          :disabled="statusSending"
-          @click="withdrawStream"
-        >
-          下書きに戻す
-        </button>
       </div>
 
-      <!-- inert while the list is read, or a 保存, 公開待ちにする or 下書きに戻す is on its way: the answer puts saved fields back, or leaves the stream out of the list and closes the editor, over anything typed meanwhile. -->
+      <!-- inert while the list is read, or a request is on its way: the answer puts saved fields back, or leaves the stream out of the list and closes the editor, over anything typed meanwhile. -->
       <div
         class="inspector-main"
         :class="{ 'with-preview': previewOpen }"
-        :inert="loading || streamSaving || tuneSaving || statusSending || undefined"
+        :inert="loading || sending || tuneSaving || undefined"
       >
         <div class="scroller">
-          <div v-if="selectedWaiting" class="editor-notice">
-            <div class="panel">
-              <h4>{{ waitingNoticeFor(selected.status).title }}</h4>
-              <div class="hint">{{ waitingNoticeFor(selected.status).body }}</div>
-              <div>
-                <RouterLink class="btn" to="/publish">公開画面へ</RouterLink>
-              </div>
+          <div v-if="band" class="editor-notice">
+            <div class="panel flag" role="alert">
+              <h4>{{ band.title }}</h4>
+              <ul v-if="band.lines.length > 0" class="reasons">
+                <li v-for="(line, i) in band.lines" :id="streamReasonId(i)" :key="i">{{ line }}</li>
+              </ul>
+              <div v-if="band.note" :id="STREAM_NOTE_ID" class="hint">{{ band.note }}</div>
             </div>
           </div>
 
           <div v-if="selectedChanged" class="editor-notice">
             <div class="panel flag">
-              <h4>{{ CHANGED_NOTICE.title }}</h4>
-              <div class="hint">{{ CHANGED_NOTICE.body }}</div>
-            </div>
-          </div>
-
-          <div v-if="streamError" class="editor-notice">
-            <div class="panel flag">
-              <h4>保存できません</h4>
-              <div class="hint">{{ streamError }}</div>
+              <h4>{{ PUBLISH_TEXT.changedTitle }}</h4>
+              <div class="hint">{{ PUBLISH_TEXT.changedBody }}</div>
             </div>
           </div>
 
           <div class="editor-section">
             <h3>配信</h3>
             <div class="field">
+              <label for="f-video">動画 ID</label>
+              <input
+                id="f-video"
+                type="text"
+                :value="currentVideoId"
+                :readonly="!adding"
+                :aria-invalid="invalid('videoId')"
+                :aria-describedby="reasonIds('videoId')"
+                @input="newVideoId = ($event.target as HTMLInputElement).value"
+              />
+            </div>
+            <div class="field">
               <label for="f-title">タイトル</label>
               <input
                 id="f-title"
                 v-model="streamFields.title"
                 type="text"
-                :aria-invalid="streamErrorField?.section === 'title'"
+                :aria-invalid="invalid('title')"
+                :aria-describedby="reasonIds('title')"
               />
             </div>
             <div class="field">
@@ -894,7 +1246,7 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
                 type="text"
                 :value="streamFields.shortTitle ?? ''"
                 placeholder="省くと上のタイトルを使います"
-                :aria-invalid="streamErrorField?.section === 'shortTitle'"
+                :aria-invalid="invalid('shortTitle')"
                 @input="streamFields.shortTitle = ($event.target as HTMLInputElement).value || null"
               />
             </div>
@@ -933,21 +1285,13 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
             <div class="row2">
               <div class="field">
                 <label for="f-vtype">種別</label>
-                <select
-                  id="f-vtype"
-                  v-model="streamFields.videoType"
-                  :aria-invalid="streamErrorField?.section === 'videoType'"
-                >
+                <select id="f-vtype" v-model="streamFields.videoType" :aria-invalid="invalid('videoType')">
                   <option v-for="t in VIDEO_TYPES" :key="t" :value="t">{{ t }}</option>
                 </select>
               </div>
               <div class="field">
                 <label for="f-platform">プラットフォーム</label>
-                <select
-                  id="f-platform"
-                  v-model="streamFields.platform"
-                  :aria-invalid="streamErrorField?.section === 'platform'"
-                >
+                <select id="f-platform" v-model="streamFields.platform" :aria-invalid="invalid('platform')">
                   <option v-for="p in PLATFORMS" :key="p" :value="p">{{ p }}</option>
                 </select>
               </div>
@@ -959,7 +1303,7 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
                   id="f-pub"
                   v-model="streamFields.publishedAt"
                   type="text"
-                  :aria-invalid="streamErrorField?.section === 'publishedAt'"
+                  :aria-invalid="invalid('publishedAt')"
                 />
               </div>
               <div v-if="streamFields.platform !== 'youtube'" class="field">
@@ -968,7 +1312,7 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
                   id="f-url"
                   type="text"
                   :value="streamFields.url ?? ''"
-                  :aria-invalid="streamErrorField?.section === 'url'"
+                  :aria-invalid="invalid('url')"
                   @input="streamFields.url = ($event.target as HTMLInputElement).value || null"
                 />
               </div>
@@ -986,8 +1330,19 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
           <div class="editor-section">
             <h3>曲 {{ streamFields.performances.length }} 件</h3>
 
-            <div v-for="(perf, pi) in streamFields.performances" :key="pi" class="tune">
-              <button class="tune-head" type="button" :aria-expanded="openIndex === pi" @click="openTune(pi)">
+            <div
+              v-for="(perf, pi) in streamFields.performances"
+              :key="pi"
+              class="tune"
+              :class="{ invalid: invalid('performances', pi) }"
+            >
+              <button
+                class="tune-head"
+                type="button"
+                :aria-expanded="openIndex === pi"
+                :aria-describedby="reasonIds('performances', pi)"
+                @click="openTune(pi)"
+              >
                 <span class="no">{{ pi + 1 }}</span>
                 <span class="t">{{ tuneTitleFor(pi) }}</span>
                 <span class="sub num">tune_id {{ perf.tuneId }}</span>
@@ -997,9 +1352,12 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
               </button>
 
               <div v-if="openIndex === pi" class="tune-body">
-                <div v-if="tuneError" class="panel flag">
-                  <h4>曲を保存できません</h4>
-                  <div class="hint">{{ tuneError }}</div>
+                <div v-if="tuneBand" class="panel flag" role="alert">
+                  <h4>{{ tuneBand.title }}</h4>
+                  <ul v-if="tuneBand.lines.length > 0" class="reasons">
+                    <li v-for="(line, i) in tuneBand.lines" :id="tuneReasonId(i)" :key="i">{{ line }}</li>
+                  </ul>
+                  <div v-if="tuneBand.note" :id="TUNE_NOTE_ID" class="hint">{{ tuneBand.note }}</div>
                 </div>
 
                 <div class="md">
@@ -1063,7 +1421,8 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
                     <input
                       type="text"
                       v-model="tuneFieldsByIndex.get(pi)!.title"
-                      :aria-invalid="tuneErrorField?.section === 'title'"
+                      :aria-invalid="tuneInvalidAt('title')"
+                      :aria-describedby="tuneReasonIds('title')"
                     />
                     <div class="md-prev">
                       <span v-if="!tuneFieldsByIndex.get(pi)!.title" class="sub">（空）</span>
@@ -1124,11 +1483,18 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
                     </div>
                     <div class="rows">
                       <span v-if="tuneFieldsByIndex.get(pi)!.attributes.length === 0" class="sub">なし</span>
-                      <div v-for="(attr, ai) in tuneFieldsByIndex.get(pi)!.attributes" :key="ai" class="attr-block">
+                      <div
+                        v-for="(attr, ai) in tuneFieldsByIndex.get(pi)!.attributes"
+                        :key="ai"
+                        class="attr-block"
+                        :class="{ invalid: tuneInvalidAt('attributes', ai) }"
+                      >
                         <div class="row-item">
                           <select
                             :value="attr.name ?? '（名前なし）'"
                             aria-label="項目の名前"
+                            :aria-invalid="tuneInvalidAt('attributes', ai)"
+                            :aria-describedby="tuneReasonIds('attributes', ai)"
                             @change="onAttributeNameChange(attr, ($event.target as HTMLSelectElement).value)"
                           >
                             <option>（名前なし）</option>
@@ -1248,9 +1614,10 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
                   </div>
 
                   <div class="actions">
-                    <button class="btn primary" type="button" :disabled="tuneSaving" @click="saveTune(pi)">
+                    <button class="btn primary" type="button" :disabled="busy" @click="saveTune(pi)">
                       この曲を保存
                     </button>
+                    <span v-if="tuneLive.get(perf.tuneId)" class="hint">{{ FOOT_TEXT.liveNote }}</span>
                     <span class="grow"></span>
                     <button class="btn danger" type="button" @click="removePerformance(pi)">
                       この配信からこの曲を外す
@@ -1262,7 +1629,14 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
 
             <div class="field">
               <label for="f-tune-q">曲を探す、または曲名を書いて新しく作る</label>
-              <input id="f-tune-q" v-model="tuneQuery" type="text" placeholder="曲名で絞り込み" />
+              <input
+                id="f-tune-q"
+                v-model="tuneQuery"
+                type="text"
+                placeholder="曲名で絞り込み"
+                :aria-invalid="noTuneRefused"
+                :aria-describedby="noTuneRefused ? reasonIds('performances') : undefined"
+              />
             </div>
             <div v-if="tuneSearchError" class="panel flag">
               <h4>曲を探せません</h4>
@@ -1291,14 +1665,39 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
             :tune="previewTune.fields"
             :tune-id="previewTune.tuneId"
             :stream="streamFields"
-            :video-id="selected.videoId"
+            :video-id="currentVideoId"
             :people="people"
           />
           <p v-else-if="openIndex !== null" class="preview-label">
-            {{ tuneError ? '曲を読み込めないので、描けません' : '曲を読み込んでいます' }}
+            {{ tuneBand ? '曲を読み込めないので、描けません' : '曲を読み込んでいます' }}
           </p>
           <p v-else class="preview-label">曲を開くと、公開ページの「楽曲」の欄をここに描きます</p>
         </PreviewPane>
+      </div>
+
+      <div v-if="adding" class="inspector-foot">
+        <button class="btn primary" type="button" :disabled="footBusy" @click="create">{{ FOOT_TEXT.save }}</button>
+        <span class="grow"></span>
+        <button class="btn quiet" type="button" :disabled="busy" @click="stopAdding">やめる</button>
+      </div>
+      <div v-else class="inspector-foot">
+        <button
+          v-for="(button, i) in foot.actions"
+          :key="button.action"
+          class="btn"
+          :class="{ primary: i === 0 }"
+          type="button"
+          :disabled="footBusy"
+          @click="act(button.action)"
+        >
+          {{ button.label }}
+        </button>
+        <span v-if="foot.note" class="hint">{{ foot.note }}</span>
+        <button class="btn back quiet" type="button" @click="back">← 一覧</button>
+        <span class="grow"></span>
+        <span class="foot-sep" aria-hidden="true"></span>
+        <DeleteButton :disabled="footBusy || foot.deleteDisabled" @remove="remove" />
+        <span v-if="foot.deleteReason" class="hint">{{ foot.deleteReason }}</span>
       </div>
     </div>
   </div>
@@ -1334,7 +1733,7 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
             mdSnippet(
               picker.kind,
               picker.kind === 'yt' ? picker.playLabel : picker.label || '…',
-              picker.kind === 'yt' ? `${selected?.videoId ?? ''}?t=${picker.seconds}` : picker.articleOrUrl || '…',
+              picker.kind === 'yt' ? `${currentVideoId}?t=${picker.seconds}` : picker.articleOrUrl || '…',
             )
           }}」になります
         </div>
@@ -1346,3 +1745,23 @@ useCrumbDetail(() => (selected.value ? selected.value.shortTitle || selected.val
     </div>
   </div>
 </template>
+
+<style scoped>
+/* The reasons a publish was refused, one each, as the worker gave them - as on あしあと. */
+.reasons {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--k-text-2);
+  font-size: var(--a-small);
+}
+
+/* A tune, or one of its attributes, a refusal names. */
+.tune.invalid {
+  border-color: var(--a-danger);
+}
+
+.attr-block.invalid {
+  outline: 1px solid var(--a-danger);
+  outline-offset: 2px;
+}
+</style>

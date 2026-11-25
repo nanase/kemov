@@ -900,7 +900,7 @@ describe('revisions logged alongside', () => {
     expect((await revisions()).map((r) => r.action)).toEqual(['publish', 'publish']);
   });
 
-  test('are recorded though the row is gone, and the JSON is built again without the row', async () => {
+  test('are not recorded when the row is gone, and the JSON is built again without either', async () => {
     const outcome = await publishChange(
       env,
       MIXED,
@@ -912,9 +912,10 @@ describe('revisions logged alongside', () => {
       NOW,
     );
 
+    // A change that logs nothing for its row logs nothing alongside it (#302's review).
     expect(outcome).toMatchObject({ written: true, revisionId: null });
-    expect((await revisions()).map((r) => r.entity_key)).toEqual(['9']);
-    expect(await publishedJson()).toEqual({ events: [], milestones: [9] });
+    expect(await revisions()).toEqual([]);
+    expect(await publishedJson()).toEqual({ events: [], milestones: [] });
   });
 });
 

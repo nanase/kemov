@@ -6,6 +6,7 @@ import GenetStreamReview from '../components/GenetStreamReview.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import { toFormFields, type FootprintsMember } from '../lib/footprints';
 import { isShortOfSources, useWhitelist, SOURCE_TEXT } from '../lib/footprints-sources';
+import { toFormFields as toStreamFormFields } from '../lib/genet-streams';
 import { liveMarkFor } from '../lib/publishing';
 import {
   moveSelection,
@@ -17,19 +18,17 @@ import {
   type ReviewRow,
 } from '../lib/inbox';
 import { refreshPublishBadge } from '../lib/publish-badge';
-import { publishMarkFor } from '../lib/publish-mark';
 import { showToast } from '../lib/toast';
 import { confirmDiscard } from '../lib/unsaved-guard';
 
 /**
  * やること > 確認待ち (#141): あしあと and ジェネット楽曲一覧 rows nobody has let
  * through yet, in one table. A saved filter, not a screen of its own - the
- * panel is the data screens' own, with 承認 / 却下 at the bottom (and あとで
- * for a stream). `↑` `↓` move through the rows and `A` approves the one
- * selected.
+ * panel is the data screens' own, with 承認 / 却下 at the bottom. `↑` `↓`
+ * move through the rows and `A` approves the one selected.
  *
- * 承認 is each data's own 「公開」: an あしあと row goes to the public
- * timeline at once (#281), a stream to 公開待ち.
+ * 承認 is each data's own 「公開」, which reaches the public JSON at once
+ * (#281, #284).
  */
 
 const inbox = ref<ReviewInbox | null>(null);
@@ -124,7 +123,7 @@ function toggleAll(): void {
 function approveRow(row: ReviewRow): Promise<unknown> {
   return row.kind === 'event'
     ? postJson(`/footprints/events/${row.event.eventId}/publish`, toFormFields(row.event))
-    : postJson(`/genet/streams/${encodeURIComponent(row.stream.videoId)}/publish`, {});
+    : postJson(`/genet/streams/${encodeURIComponent(row.stream.videoId)}/publish`, toStreamFormFields(row.stream));
 }
 
 /** まとめて承認: each row the way a single 承認 sends it, carrying on past one that is refused. */
@@ -288,11 +287,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
                 <span v-if="row.kind === 'event' && isShortOfSources(row.event, whitelist)" class="chip alarm">{{
                   SOURCE_TEXT.shortChip
                 }}</span>
-                <span v-else-if="row.kind === 'event'" class="chip" :class="liveMarkFor(row.status).tone">{{
+                <span v-else class="chip" :class="liveMarkFor(row.status).tone">{{
                   liveMarkFor(row.status).label
-                }}</span>
-                <span v-else class="chip" :class="publishMarkFor(row.status, false).tone">{{
-                  publishMarkFor(row.status, false).label
                 }}</span>
               </td>
             </tr>
@@ -340,9 +336,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
       <div class="picker-box" role="dialog" aria-label="まとめて承認">
         <div class="picker-head">{{ tickedRows.length }} 件を承認します</div>
         <div class="picker-body">
-          <div class="sub">
-            あしあとの行は、すぐ本番に出ます。楽曲一覧の行は、このあと「公開待ち」で「いま公開する」を押したときに出ます。
-          </div>
+          <div class="sub">選んだ行は、すぐ本番に出ます。</div>
         </div>
         <div class="picker-foot">
           <button class="btn primary" type="button" @click="approveTicked">承認する</button>

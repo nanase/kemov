@@ -5,6 +5,13 @@
  * admin screen's own lib file uses.
  */
 
+/** The 状態 filter of the stream list (#277's decision 3). */
+export const STATUS_OPTIONS: readonly { value: string; label: string }[] = [
+  { value: 'all', label: 'すべて' },
+  { value: 'draft', label: '下書き' },
+  { value: 'published', label: '公開中' },
+];
+
 export const PLATFORMS = ['youtube', 'tiktok'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
@@ -101,6 +108,7 @@ export function emptyFormFields(): StreamFormFields {
 }
 
 export type StreamFieldSection =
+  | 'videoId'
   | 'title'
   | 'shortTitle'
   | 'platform'
@@ -122,6 +130,8 @@ const SCENE_MARKER = /^performances\[(\d+)\]\.scenes\[(\d+)\]/;
 const PERFORMANCE_MARKER = /^performances\[(\d+)\]/;
 
 const BARE_MARKERS: [RegExp, StreamFieldSection][] = [
+  [/^videoId /, 'videoId'],
+  [/^stream \S+ already exists/, 'videoId'],
   [/^title /, 'title'],
   [/^shortTitle /, 'shortTitle'],
   [/^platform /, 'platform'],
@@ -204,4 +214,66 @@ export function moveEntries<T>(byIndex: ReadonlyMap<number, T>, moves: ReadonlyM
   }
 
   return moved;
+}
+
+/**
+ * `GET /admin/api/genet/streams`'s query string for a status and a title
+ * substring - '' when neither narrows anything. The same shape as あしあと's
+ * `footprintsQuery`.
+ */
+export function streamsQuery(status: string, q: string): string {
+  const params = new URLSearchParams();
+
+  if (status !== 'all') params.set('status', status);
+  if (q.trim() !== '') params.set('q', q.trim());
+
+  const query = params.toString();
+
+  return query === '' ? '' : `?${query}`;
+}
+
+/**
+ * Whether a stream that becomes `status`, titled `title`, drops out of the
+ * list under the status filter `filter` and the title filter `q`, which
+ * closes its editor and the tunes open in it. `q` is matched as the worker's
+ * `LIKE` matches it: a substring, ignoring the case of ASCII letters alone.
+ */
+export function leavesFilter(filter: string, status: string, q = '', title = ''): boolean {
+  if (filter !== 'all' && filter !== status) return true;
+
+  const needle = q.trim();
+  const asciiLower = (text: string) => text.replace(/[A-Z]/g, (c) => c.toLowerCase());
+
+  return needle !== '' && !asciiLower(title).includes(asciiLower(needle));
+}
+
+/**
+ * `byIndex` with entry `index` taken out and every later one moved up by one,
+ * for the open tunes when a performance is taken off: each entry must stay
+ * with the performance it belongs to, not with the index it had.
+ */
+export function withoutIndex<T>(byIndex: ReadonlyMap<number, T>, index: number): Map<number, T> {
+  const reindexed = new Map<number, T>();
+
+  for (const [i, value] of byIndex) {
+    if (i < index) reindexed.set(i, value);
+    else if (i > index) reindexed.set(i - 1, value);
+  }
+
+  return reindexed;
+}
+
+/**
+ * Whether the open tune needs a read sent for it: it is open, nothing read of
+ * it is in `loaded`, and no read is on its way for its index in `reading`. A
+ * read names the index it was sent for, so a performance taken off above it,
+ * or a new order of them, drops its answer, and the tune would otherwise stay
+ * open with nothing read (#284).
+ */
+export function openTuneUnread(
+  openIndex: number | null,
+  loaded: ReadonlyMap<number, unknown>,
+  reading: ReadonlyMap<number, unknown>,
+): boolean {
+  return openIndex !== null && !loaded.has(openIndex) && !reading.has(openIndex);
 }

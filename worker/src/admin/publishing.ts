@@ -111,8 +111,9 @@ export interface RevisionChange {
   body: Record<string, unknown> | null;
   /**
    * Revisions of other entities logged in the same batch - the tunes and
-   * people a stream's publish brings along (#284). Unlike the row's own,
-   * each is logged whether or not the row is still there.
+   * people a stream's publish brings along (#284). Each is logged under the
+   * same condition as the row's own, so a change that logs no revision for
+   * its row logs none for them either.
    */
   alongside?: readonly LoggedRevision[];
   /**
@@ -472,7 +473,8 @@ async function bringUpToDate(
  * meets `change.whileRow` when there is one, as `revisionStatement`
  * (lib/revision.ts) cannot say: a row deleted between the caller's read and
  * this batch gets no `publish` revision, and the JSON already written with
- * its body is built again without it. `alongside` is logged either way.
+ * its body is built again without it. `alongside` is logged under the same
+ * condition.
  */
 export async function publishChange(
   env: Env,
@@ -503,22 +505,18 @@ export async function publishChange(
     byteLength: byteLength(json),
   };
   let results: D1Result[];
+  // The row still there, and as `whileRow` asks: what each revision of the batch is logged under.
+  const rowStill = `EXISTS (SELECT 1 FROM ${target.table}
+                     WHERE ${target.keyColumn} = ?5${change.whileRow === undefined ? '' : ` AND (${change.whileRow})`})`;
+  const logRevision = (revision: LoggedRevision) =>
+    env.DB.prepare(
+      `INSERT INTO revision (entity, entity_key, action, body, created_via)
+       SELECT ?1, ?2, ?3, ?4, 'admin'
+       WHERE ${rowStill}`,
+    ).bind(revision.entity, revision.key, revision.action, bodyText(revision.body), change.key);
 
   try {
-    results = await env.DB.batch([
-      ...rowStatements,
-      env.DB.prepare(
-        `INSERT INTO revision (entity, entity_key, action, body, created_via)
-         SELECT ?1, ?2, ?3, ?4, 'admin'
-         WHERE EXISTS (SELECT 1 FROM ${target.table}
-                        WHERE ${target.keyColumn} = ?2${change.whileRow === undefined ? '' : ` AND (${change.whileRow})`})`,
-      ).bind(target.entity, change.key, change.action, bodyText(change.body)),
-      ...(change.alongside ?? []).map((revision) =>
-        env.DB.prepare(
-          `INSERT INTO revision (entity, entity_key, action, body, created_via) VALUES (?1, ?2, ?3, ?4, 'admin')`,
-        ).bind(revision.entity, revision.key, revision.action, bodyText(revision.body)),
-      ),
-    ]);
+    results = await env.DB.batch([...rowStatements, ...loggedRevisions(target, change).map(logRevision)]);
   } catch (error) {
     // The JSON has a change nothing recorded: built again from `revision`,
     // or left in `publication_write` for the 公開 screen when that fails too.
@@ -531,7 +529,9 @@ export async function publishChange(
 
   const revision = results[rowStatements.length]!;
   const revisionId = revision.meta.changes > 0 ? revision.meta.last_row_id : null;
-  const alongsideIds = results.slice(rowStatements.length + 1).map((result) => result.meta.last_row_id);
+  const alongsideIds = results
+    .slice(rowStatements.length + 1)
+    .flatMap((result) => (result.meta.changes > 0 ? [result.meta.last_row_id] : []));
 
   // Trusted only with the row's own revision recorded: without it, the JSON
   // carries a body nothing recorded.

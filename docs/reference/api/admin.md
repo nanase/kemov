@@ -112,7 +112,7 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 - `publication` の行は足さない。そのため、次に `publication` の行が足されるまで、`GET .../pending` はその版を公開待ちとして返す
 - 次にどれかの行を公開・公開中の保存・非公開に戻すと、JSON は記録済みの版から作り直される
 
-公開の処理のうち、書く順と失敗したときに残すものは `worker/src/admin/publishing.ts` の `publishChange` にあります。あしあとに固有の部分（欄、条件、版の中身、JSON の形）は `worker/src/admin/footprints-publish.ts` にあります。[登録者数の節目](#登録者数の節目)も同じ形です（#283）。ジェネット楽曲一覧も、同じ形に移す予定です（#284）。
+公開の処理のうち、書く順と失敗したときに残すものは `worker/src/admin/publishing.ts` の `publishChange` にあります。あしあとに固有の部分（欄、条件、版の中身、JSON の形）は `worker/src/admin/footprints-publish.ts` にあります。[登録者数の節目](#登録者数の節目)と[ジェネット楽曲一覧](#ジェネット楽曲一覧)も同じ形です（#283、#284）。
 
 出来事の公開・公開中の保存・非公開に戻すの後には、節目の JSON も書き直します。節目の JSON が、つないだ出来事の題と日付を写すためです（[登録者数の節目](#登録者数の節目)）。
 
@@ -173,47 +173,69 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 
 ## ジェネット楽曲一覧
 
-| メソッド | パス                                          | 返すもの                                                                       |
-| -------- | --------------------------------------------- | ------------------------------------------------------------------------------ |
-| GET      | `/admin/api/genet/people`                     | `genet_person` の全行                                                          |
-| POST     | `/admin/api/genet/people`                     | 作成した後の行                                                                 |
-| GET      | `/admin/api/genet/people/<人物 ID>`           | 1 行                                                                           |
-| PUT      | `/admin/api/genet/people/<人物 ID>`           | 置き換えた後の行                                                               |
-| DELETE   | `/admin/api/genet/people/<人物 ID>`           | `{}`。まだその人をクレジットする曲があれば 409                                 |
-| GET      | `/admin/api/genet/tunes`                      | `genet_tune` の全行と、それぞれの属性・動画・楽譜                              |
-| POST     | `/admin/api/genet/tunes`                      | 作成した後の行                                                                 |
-| GET      | `/admin/api/genet/tunes/<曲 ID>`              | 1 行と、その属性・動画・楽譜                                                   |
-| PUT      | `/admin/api/genet/tunes/<曲 ID>`              | 行・属性・動画・楽譜を置き換えた後の行                                         |
-| DELETE   | `/admin/api/genet/tunes/<曲 ID>`              | `{}`。まだその曲を演奏する配信があれば 409                                     |
-| GET      | `/admin/api/genet/streams`                    | `genet_stream` の全行と、それぞれの演奏とシーン                                |
-| POST     | `/admin/api/genet/streams`                    | `draft` で作成した後の行                                                       |
-| GET      | `/admin/api/genet/streams/<動画 ID>`          | 1 行と、その演奏とシーン                                                       |
-| PUT      | `/admin/api/genet/streams/<動画 ID>`          | 行・演奏・シーンを置き換えた後の行。`status` は変えない                        |
-| DELETE   | `/admin/api/genet/streams/<動画 ID>`          | `{}`。`published` の配信なら 409                                               |
-| POST     | `/admin/api/genet/streams/<動画 ID>/publish`  | 配信と、演奏する曲・人物を検証し、`status` を `published` にした後の行         |
-| POST     | `/admin/api/genet/streams/<動画 ID>/withdraw` | `status` を `draft` に戻した後の行                                             |
-| GET      | `/admin/api/genet/pending`                    | 公開した JSON にまだ入っていない配信・曲・人物と、公開した後に行が変わったもの |
-| POST     | `/admin/api/genet/publish`                    | 何かを公開したかどうかと、公開したなら配信・曲・人物それぞれの数               |
+| メソッド | パス                                          | 返すもの                                                                                     |
+| -------- | --------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| GET      | `/admin/api/genet/people`                     | `genet_person` の全行                                                                        |
+| POST     | `/admin/api/genet/people`                     | 作成した後の行                                                                               |
+| GET      | `/admin/api/genet/people/<人物 ID>`           | 1 行                                                                                         |
+| PUT      | `/admin/api/genet/people/<人物 ID>`           | 置き換えた後の行                                                                             |
+| DELETE   | `/admin/api/genet/people/<人物 ID>`           | `{}`。まだその人をクレジットする曲があれば 409                                               |
+| GET      | `/admin/api/genet/tunes`                      | `genet_tune` の全行と、それぞれの属性・動画・楽譜                                            |
+| POST     | `/admin/api/genet/tunes`                      | 作成した後の行                                                                               |
+| GET      | `/admin/api/genet/tunes/<曲 ID>`              | 1 行と、その属性・動画・楽譜。公開中の配信が演奏しているか（`live`）も返す                   |
+| PUT      | `/admin/api/genet/tunes/<曲 ID>`              | 「この曲を保存」。置き換えた後の行と `live`。`live` なら JSON も書き直す                     |
+| DELETE   | `/admin/api/genet/tunes/<曲 ID>`              | `{}`。まだその曲を演奏する配信があれば 409                                                   |
+| GET      | `/admin/api/genet/streams`                    | `genet_stream` の全行と、それぞれの演奏とシーン                                              |
+| POST     | `/admin/api/genet/streams`                    | `draft` で作成した後の行                                                                     |
+| GET      | `/admin/api/genet/streams/<動画 ID>`          | 1 行と、その演奏とシーン                                                                     |
+| PUT      | `/admin/api/genet/streams/<動画 ID>`          | 「保存」。下書きなら保存した後の行。公開中なら、保存して JSON を書き直した後の行             |
+| DELETE   | `/admin/api/genet/streams/<動画 ID>`          | `{}`。`published` の配信なら 409                                                             |
+| POST     | `/admin/api/genet/streams/<動画 ID>/publish`  | 「公開」。保存し、検証し、JSON を書き直した後の行                                            |
+| POST     | `/admin/api/genet/streams/<動画 ID>/withdraw` | 「非公開に戻す」。JSON から外し、`draft` として保存した後の行。`published` でなければ 409    |
+| GET      | `/admin/api/genet/pending`                    | 公開の JSON がまだ写していない版と、公開中なのに公開の JSON と違う配信・曲・人物             |
+| POST     | `/admin/api/genet/publish`                    | 公開の JSON がまだ写していない版から JSON を作り直したかどうかと、配信・曲・人物それぞれの数 |
 
-`GET /admin/api/genet/tunes` は `q`（`title` の部分文字列）で絞ります。`GET /admin/api/genet/streams` は、あしあとの一覧と同じく `status` と `q` で絞ります。
+`GET /admin/api/genet/tunes` は `q`（`title` の部分文字列）で絞ります。`GET /admin/api/genet/streams` は、あしあとの一覧と同じく `status`（`draft` か `published`）と `q`（`title` の部分文字列）で絞ります。
 
-`genet_tune` と `genet_person` は、自分の `status` を持ちません。#141 の設計では、公開の門を持つのは `genet_stream` だけだからです。そのため、どちらを保存しても `revision` は記録しません。
+配信の状態は、あしあとと同じく下書き（`draft`）と公開中（`published`）の 2 つです（#277、#284）。「あとで」（`status = 'review'`）はなくしました。`review` だった配信は、migration 0016 で `draft` に移しました。表の CHECK は `review` を許したままですが、コードはもう書きません。
 
-配信を公開するときは、その配信・演奏するすべての曲・その曲がクレジットするすべての人物を、まとめて検証します。そのうえで、配信の `publish` の版と、自分の最新の版と一致しない曲・人物の `publish` の版を、1 つの `db.batch` で記録します。
+下書きの保存・公開・公開中の保存・非公開に戻すの 4 つの操作は、[あしあと](#あしあと)と同じ形です。どれも配信のすべての欄を本文に送ります。公開・公開中の保存・非公開に戻すは、1 回の要求で公開の JSON（`genet/music.json`）まで書き直します。書く順、記録した後の確かめ、`publication_write` の扱い、断ったときと書けなかったときの答えも、あしあとと同じです。公開の処理は `worker/src/admin/publishing.ts` の `publishChange` を通り、楽曲一覧に固有の部分は `worker/src/admin/genet-publish.ts` にあります。
 
-`POST /admin/api/genet/streams/<動画 ID>/publish` は、あしあとの公開と同じく、満たしていない条件をまとめて 400 で返します。条件は次のとおりです。
+公開の JSON は、配信・曲・人物の 3 つの版から作ります。そのため `publishing.ts` には、配信の操作なら曲と人物を、曲の保存なら配信と人物を `alsoBuiltFrom` として渡します。3 つは 1 つの `publication` の行（`target = 'genet_music'`）を共有します。
+
+`genet_tune` と `genet_person` は、自分の `status` を持ちません。#141 の設計では、公開の門を持つのは `genet_stream` だけだからです。曲と人物が公開の JSON に載るのは、公開中の配信が演奏しているときです。
+
+- 配信の公開と公開中の保存では、演奏するすべての曲と、その曲がクレジットするすべての人物を、配信と一緒に検証する
+  - 自分の最新の版と一致しない曲・人物には、`publish` の版を配信の版と同じ `db.batch` で記録する
+- 非公開に戻すでは、配信の `withdraw` の版だけを記録する
+  - 曲と人物の版はそのまま残る。ほかの公開中の配信が演奏していなければ、配信と一緒に JSON から外れる
+- 公開中の配信が演奏していない曲の保存は、行を保存するだけで、版を記録しない
+- 公開中の配信が演奏している曲の保存は、公開中の配信の保存と同じく、1 回の要求で JSON まで書き直す（#277 の 6-5）
+  - 曲の `publish` の版と、自分の最新の版と一致しない人物の `publish` の版を記録する
+  - 条件を満たさなければ 400 を返し、何も保存しない。本文は配信と同じく `problems`・`errors`・`saved` を持ち、`saved` は `false`。`problems` の `field` は `attributes` で、`attributeIndex` が何番目の属性かを 0 から数える
+  - JSON を書けなかったときは、欄だけを保存し、502 と `saved: true` を返す
+- 人物の保存は、行を保存するだけで、版を記録しない。次にその人物をクレジットする曲が公開中の配信と一緒に保存されたときに、JSON へ届く
+
+配信の公開と公開中の保存は、満たしていない条件をまとめて 400 で返します。本文はあしあとと同じく `problems`・`errors`・`saved` を持ちます。`problems` の `field` は `title`・`videoId`・`performances` のどれかで、演奏についての条件には何曲目かを 0 から数えた `performanceIndex` が付きます。条件は次のとおりです。
 
 - `title` が空でない
-- `youtube` の配信なら、`videoId` が 11 文字
-- `publishedAt` が正しい
+- `youtube` の配信なら、`videoId` と、各シーンの動画 ID が 11 文字
 - 演奏が 1 つ以上ある
-- 演奏とシーンが指す曲・動画が存在する
-  - 外部キーが保存の時点で既に止めるので、この API からは起こりえない
-  - それでも二重の備えとして検査を残している
 - 曲の属性が、`text` とクレジットする人物の両方を持っていない
-- 曲の題と人物の名前が空でない
+  - 曲は配信をまたいで共有するので、同じ曲の条件は最初の演奏にだけ付ける
 
-`POST /admin/api/genet/publish` は、最新の操作が `withdraw` でない配信それぞれの最新の `revision` から `genet/music.json` を作ります。曲と人物は、それらの配信の公開済みの本文が名指ししているものを含めます。作業中の表を読み直すのではありません。そのため、公開した後に配信から外した曲が、JSON に戻ってくることはありません。配信・曲・人物は、1 つの `publication` の行（`target = 'genet_music'`）を共有します。
+保存で既に断る条件は、ここでもう一度は見ません。`publishedAt` の形、シーンの開始秒、存在しない曲・人物を指す演奏とクレジット、曲の空の題、人物の空の名前です。
+
+`GET .../pending` と `POST /admin/api/genet/publish` は、公開の画面のために #285 まで残します。#284 より前の流れで公開待ちにした版は、`POST /admin/api/genet/publish` か、次の配信の操作・公開中の配信が演奏する曲の保存のどれかで公開の JSON に入ります。どれも、配信・曲・人物それぞれの最新の版から JSON を作るためです。`GET .../pending` が返すものは次のとおりです。
+
+| キー            | 中身                                                                                                            |
+| --------------- | --------------------------------------------------------------------------------------------------------------- |
+| `pending`       | 最新の版が、前回 JSON を書いたときより新しい配信・曲・人物。#284 より前に「公開待ちにする」を押した配信など     |
+| `changed`       | 行が最新の `publish` の版から変わったもの。配信は公開中のものだけを、曲と人物は一度でも版を記録したものを比べる |
+| `shapeOutdated` | 保存済みの JSON の形が、コードの版より古い。`pending` も `behind` も無いときだけ、R2 の JSON を読んで確かめる   |
+| `behind`        | 公開の JSON が記録と食い違っているかもしれない。あしあとの `behind` と同じ                                      |
+
+`POST /admin/api/genet/publish` は、`pending`・`shapeOutdated`・`behind` のどれかがあるときだけ、最新の操作が `withdraw` でない配信それぞれの最新の `revision` から `genet/music.json` を作ります。曲と人物は、それらの配信の公開済みの本文が名指ししているものを含めます。作業中の表を読み直すのではありません。そのため、公開した後に配信から外した曲が、JSON に戻ってくることはありません。書いた後に公開と同じ確かめを通ります。最新にできなかったときは、502 を返し、`publication` の行を足しません。
 
 JSON は `shape_version` と `channel_id` も持ちます。
 
@@ -334,24 +356,18 @@ JSON は `shape_version`（`subscriber-milestones-publish.ts` の `SUBSCRIBER_MI
 
 確認待ち・出典の確認待ち・公開待ちの 3 つの画面は、上のデータの絞り込みです。自分の表は持ちません（#141）。`worker/src/admin/inbox.ts` が行を選び、1 段だけ動かします。行の中身と公開の仕方は、上の各エンドポイントが受け持ちます。
 
-| メソッド | パス                                       | 返すもの                                                                                                                      |
-| -------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| GET      | `/admin/api/inbox`                         | 確認待ち・出典の確認待ち・公開待ちそれぞれの行の数。サイドバーに出す。出典を判定できないときは、出典の確認待ちの数だけ `null` |
-| GET      | `/admin/api/inbox/review`                  | 確認待ちの出来事と配信。配信が演奏する曲の題も返す                                                                            |
-| GET      | `/admin/api/inbox/source`                  | 出典が足りない出来事のすべて。`status` を問わない                                                                             |
-| GET      | `/admin/api/inbox/publish`                 | 次の「いま公開する」が扱うものを、公開の JSON ごとに題と日付を付けて返す。押して何か起きるかも返す                            |
-| POST     | `/admin/api/genet/streams/<動画 ID>/defer` | `{ "status": "review" }`。`published` の配信なら 409                                                                          |
+| メソッド | パス                       | 返すもの                                                                                                                      |
+| -------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| GET      | `/admin/api/inbox`         | 確認待ち・出典の確認待ち・公開待ちそれぞれの行の数。サイドバーに出す。出典を判定できないときは、出典の確認待ちの数だけ `null` |
+| GET      | `/admin/api/inbox/review`  | 確認待ちの出来事と配信。配信が演奏する曲の題も返す                                                                            |
+| GET      | `/admin/api/inbox/source`  | 出典が足りない出来事のすべて。`status` を問わない                                                                             |
+| GET      | `/admin/api/inbox/publish` | 次の「いま公開する」が扱うものを、公開の JSON ごとに題と日付を付けて返す。押して何か起きるかも返す                            |
 
-確認待ちに並ぶのは、次の行です。
+確認待ちに並ぶのは、`status` が `draft` で、`import` か `publish` の版が無い行です。公開してから取り下げた行は入りません。
 
-- `status` が `draft` で、`import` か `publish` の版が無い行。公開してから取り下げた行は入りません
-- `status` が `review` の配信。「あとで」に回した配信で、まだ見ていない行の後ろに並べます
+「あとで」は、あしあとでは #281 で、楽曲一覧では #284 でなくしました。`status` が `review` だった出来事と配信は、migration 0013 と 0016 で `draft` に移しました。
 
-あしあとの「あとで」は #281 でなくしました。`status` が `review` だった出来事は、migration 0013 で `draft` に移しました。表の CHECK は `review` を許したままですが、コードはもう書きません。
-
-承認は各行の `POST .../publish`、却下は各行の `DELETE` を使います。ここに専用のエンドポイントはありません。あしあとの承認は、行の欄を本文に送ります。
-
-`defer` は、保存と同じく `revision` を記録しません。
+承認は各行の `POST .../publish`、却下は各行の `DELETE` を使います。ここに専用のエンドポイントはありません。承認は、行の欄を本文に送ります。
 
 公開待ちの登録者数の節目には、`eventChanged` の節目も入ります。`latestAction` は `event_changed` です。
 

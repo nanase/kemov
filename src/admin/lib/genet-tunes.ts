@@ -182,3 +182,23 @@ export function attrNameOptions(current: string | null): string[] {
 
   return names;
 }
+
+/**
+ * Keeps track of the latest request started for each key, so that an answer
+ * arriving after a later request's is not taken over it. `start(key)` starts
+ * one, and answers whether it is still the latest for `key` when asked.
+ */
+export function latestPerKey<K>(): { start(key: K): () => boolean } {
+  const latest = new Map<K, number>();
+  let count = 0;
+
+  return {
+    start(key) {
+      const started = ++count;
+
+      latest.set(key, started);
+
+      return () => latest.get(key) === started;
+    },
+  };
+}

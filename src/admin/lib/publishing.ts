@@ -119,16 +119,30 @@ export function bandReasonIds<F extends string>(
   fields: readonly F[],
   field: F,
 ): string | undefined {
-  if (band === null || !fields.includes(field)) return undefined;
-
-  if (band.lines.length === fields.length) {
-    return fields.flatMap((f, i) => (f === field ? [bandReasonId(i)] : [])).join(' ');
-  }
-
-  return band.note === null ? undefined : BAND_NOTE_ID;
+  return bandReasonIdsWhere(band, fields, (f) => f === field);
 }
 
-export type PublishAnswer<F extends string> =
+/**
+ * `bandReasonIds` for fields that are not plain names - the ones `matches`
+ * picks - and for a page with more than one band, each naming its lines and
+ * its note by its own `ids`.
+ */
+export function bandReasonIdsWhere<F>(
+  band: PublishBand | null,
+  fields: readonly F[],
+  matches: (field: F) => boolean,
+  ids: { reasonId: (index: number) => string; noteId: string } = { reasonId: bandReasonId, noteId: BAND_NOTE_ID },
+): string | undefined {
+  if (band === null || !fields.some(matches)) return undefined;
+
+  if (band.lines.length === fields.length) {
+    return fields.flatMap((f, i) => (matches(f) ? [ids.reasonId(i)] : [])).join(' ');
+  }
+
+  return band.note === null ? undefined : ids.noteId;
+}
+
+export type PublishAnswer<F> =
   | { kind: 'done'; toast: string }
   | {
       kind: 'band';
@@ -139,12 +153,20 @@ export type PublishAnswer<F extends string> =
       changed: boolean;
     };
 
+/** One reason a refusal lists: the field it is about, and whatever else the worker says of it. */
+export type RefusalProblem = { field: string; message: string } & Record<string, unknown>;
+
 /** How one data's answers name its row and its fields. */
-export interface AnswerShape<F extends string> {
-  /** The key the row comes back under in the worker's answer: `event`, `milestone`. */
+export interface AnswerShape<F> {
+  /** The key the row comes back under in the worker's answer: `event`, `milestone`, `stream`. */
   rowKey: string;
   /** Which field a failed save's message is about, or null when it names none. */
   fieldForSaveError(message: string): F | null;
+  /**
+   * The field to mark for one reason a refusal lists. Without it, the
+   * problem's `field` is the field - a data whose fields are plain names.
+   */
+  fieldOfProblem?(problem: RefusalProblem): F;
   /**
    * The note in place of the worker's message for a 502 that saved nothing:
    * the row changed under the request, and the public JSON it had written
@@ -154,12 +176,12 @@ export interface AnswerShape<F extends string> {
   notMendedNote?: string;
 }
 
-interface ProblemsBody<F extends string> {
-  problems: { field: F; message: string }[];
+interface ProblemsBody {
+  problems: RefusalProblem[];
   saved: boolean;
 }
 
-function isProblemsBody<F extends string>(body: unknown): body is ProblemsBody<F> {
+function isProblemsBody(body: unknown): body is ProblemsBody {
   return (
     typeof body === 'object' &&
     body !== null &&
@@ -214,7 +236,7 @@ function statusNow(body: unknown, rowKey: string): string | null {
  *   changed nothing, and reading again would put back the fields over what
  *   was typed
  */
-export function publishAnswerFor<F extends string>(
+export function publishAnswerFor<F>(
   shape: AnswerShape<F>,
   action: AnsweredAction,
   status: string | null,
@@ -228,8 +250,9 @@ export function publishAnswerFor<F extends string>(
     return { kind: 'done', toast: status === 'published' ? SAVE_TOAST.savePublished : SAVE_TOAST.saveDraft };
   }
 
-  if (error instanceof AdminApiError && error.status === 400 && isProblemsBody<F>(error.body)) {
+  if (error instanceof AdminApiError && error.status === 400 && isProblemsBody(error.body)) {
     const { problems, saved } = error.body;
+    const fieldOf = shape.fieldOfProblem ?? ((problem: RefusalProblem) => problem.field as F);
 
     return {
       kind: 'band',
@@ -238,7 +261,7 @@ export function publishAnswerFor<F extends string>(
         lines: problems.map((p) => p.message),
         note: saved ? PUBLISH_TEXT.refusedPublishNote : PUBLISH_TEXT.refusedSaveNote,
       },
-      fields: problems.map((p) => p.field),
+      fields: problems.map(fieldOf),
       changed: saved,
     };
   }

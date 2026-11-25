@@ -1,114 +1,172 @@
-import { byteLength } from '../lib/backup';
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
 import { errorResponse, jsonResponse } from '../lib/json';
-import { revisionStatement } from '../lib/revision';
-import { isSchemaTimestamp, formatTimestamp } from '../lib/time';
+import type { RevisionEntity } from '../lib/revision';
+import { formatTimestamp } from '../lib/time';
 import { publicShapeOf as personPublicShapeOf, readPeople, type PersonRow } from './genet-people';
-import { publicShapeOf as tunePublicShapeOf, readTunes, type GenetTune } from './genet-tunes';
 import {
   present as presentStream,
   publicShapeOf as streamPublicShapeOf,
   readStream,
   readStreams,
+  saveStatements as streamSaveStatements,
+  updateStream,
+  validatedStreamFields,
+  withFields as streamWithFields,
   type GenetStream,
+  type StreamFields,
 } from './genet-streams';
+import {
+  isPerformedLive,
+  present as presentTune,
+  publicShapeOf as tunePublicShapeOf,
+  readTune,
+  readTunes,
+  saveStatements as tuneSaveStatements,
+  validatedTuneFields,
+  withFields as tuneWithFields,
+  type GenetTune,
+} from './genet-tunes';
+import {
+  isBehind,
+  latestRevisions,
+  liveBodiesOf,
+  loggedRevisions,
+  publishChange,
+  republish,
+  type LatestRevisionRow,
+  type LoggedRevision,
+  type PublishOutcome,
+  type PublishTarget,
+} from './publishing';
 
 /**
- * Publishing `genet_stream` (#141, task 10): the validation that lets a
- * stream become part of the public JSON, withdrawing it back to a draft, and
- * building `genet/music.json` from `revision` rather than from the working
- * rows, in the two steps 「公開待ちにする」 and 「いま公開する」. Publishing a
- * stream also has to decide whether the tunes and people it performs need a
- * fresh `publish` revision of their own.
- * genet-streams.ts, genet-tunes.ts and genet-people.ts are everything up to
- * this point - reading, saving and deleting each of the three without ever
+ * Publishing ジェネット楽曲一覧 (#141, #284): the validation that lets a
+ * stream become part of the public JSON, and the requests that change what
+ * `genet/music.json` holds - 「公開」 on a draft stream, 「保存」 on a
+ * published one, 「非公開に戻す」, and the 保存 of a tune a published stream
+ * performs (#277's 6-5). Each writes the JSON itself, through
+ * publishing.ts's `publishChange`, built from `revision` rather than from
+ * the working rows. A stream's publish also logs a `publish` revision for
+ * each tune and person it performs whose public shape changed.
+ * genet-streams.ts, genet-tunes.ts and genet-people.ts are everything else -
+ * reading, saving a draft and deleting each of the three without ever
  * touching a `revision` row.
  */
 
 const VIDEO_ID_LENGTH = 11;
 
+const GENET_MUSIC_OBJECT_KEY = 'genet/music.json';
+
 /**
- * Every way `saved` (and the tunes and people it performs) falls short of
- * what `publish` requires, collected rather than stopped at the first one -
- * the same shape footprints-publish.ts's `publishProblems` uses.
- *
- * `tunes` and `people` hold every tune a performance names and every person
- * an attribute of one of those tunes names - the caller (`publishStream`)
- * reads them first so this function can stay a pure check. A tune or person
- * id with no entry in its map is itself one of the problems reported below.
- * In practice this can never actually happen through this admin API:
- * `genet_performance.tune_id` and `genet_tune_attribute_person.person_id` are
- * both foreign keys D1 enforces, and genet-streams.ts's `createStream`/
- * `updateStream` and genet-tunes.ts's `createTune`/`updateTune` already
- * refuse an unknown id with a 400 before any row naming it is ever saved
- * (task 10's handoff still asks for the check here too, task 9's own
- * `publishProblems` in footprints-publish.ts does the same for its own
- * schema-guaranteed conditions).
+ * One way a stream falls short of publishing: the part of the form it is
+ * about, and the sentence the edit panel lists under 「公開できません」 as it
+ * stands (#277's decision 1d) - the screen does not check these again.
+ * `performanceIndex` names the performance, counted from 0, for a problem
+ * with one; it is null otherwise.
  */
-function publishProblems(
-  saved: GenetStream,
-  tunes: ReadonlyMap<number, GenetTune>,
-  people: ReadonlyMap<number, PersonRow>,
-): string[] {
+export interface StreamPublishProblem {
+  field: 'title' | 'videoId' | 'performances';
+  performanceIndex: number | null;
+  message: string;
+}
+
+/** One way a tune falls short of publishing, for a tune a published stream performs (#284's 6-5). */
+export interface TunePublishProblem {
+  field: 'attributes';
+  /** The attribute, counted from 0. */
+  attributeIndex: number;
+  message: string;
+}
+
+/** Why `tune`'s attributes would not pass publishing, the `k` in each sentence counted from 1. */
+function attributeProblems(tune: GenetTune): { attributeIndex: number; sentence: string }[] {
+  return tune.attributes.flatMap((a, index) =>
+    a.text !== null && a.people.length > 0
+      ? [
+          {
+            attributeIndex: index,
+            sentence: `作曲・作詞などの ${index + 1} 番目に、文章と人物の両方が書かれています。どちらか一方にしてください。`,
+          },
+        ]
+      : [],
+  );
+}
+
+/**
+ * Every way `saved`, and the tunes it performs, fall short of what
+ * `publish` requires, collected rather than stopped at the first one - the
+ * same shape footprints-publish.ts's `publishProblems` uses.
+ *
+ * What saving already refuses is not checked again here, as
+ * footprints-publish.ts does not either: `published_at`'s shape, a scene's
+ * `start_seconds`, an unknown `tune_id` or `person_id`
+ * (genet-streams.ts's and genet-tunes.ts's `validated*Fields`, and the
+ * foreign keys behind them), a tune's empty title and a person's empty name.
+ * Nothing that can be saved fails them. A tune `tunes` has no entry for is
+ * passed over for the same reason.
+ *
+ * A tune is shared, so its problem is said once, at the first performance
+ * of it.
+ */
+function publishProblems(saved: GenetStream, tunes: ReadonlyMap<number, GenetTune>): StreamPublishProblem[] {
   const { stream, performances } = saved;
-  const problems: string[] = [];
+  const problems: StreamPublishProblem[] = [];
 
   // The 11-character length is YouTube's own; a TikTok id is 19 digits, and
   // a scene points at the same id as its stream, so the scenes follow the
   // stream's platform.
   const isYoutube = stream.platform === 'youtube';
 
+  if (stream.title === '')
+    problems.push({ field: 'title', performanceIndex: null, message: 'タイトルを書いてください。' });
+
   if (isYoutube && stream.video_id.length !== VIDEO_ID_LENGTH) {
-    problems.push(`videoId must be ${VIDEO_ID_LENGTH} characters`);
+    problems.push({
+      field: 'videoId',
+      performanceIndex: null,
+      message: `動画 ID は ${VIDEO_ID_LENGTH} 文字です。いまは ${stream.video_id.length} 文字です。`,
+    });
   }
 
-  if (stream.title === '') problems.push('title must not be empty');
-  if (!isSchemaTimestamp(stream.published_at)) problems.push('publishedAt must be YYYY-MM-DDTHH:MM:SSZ');
-  if (performances.length === 0) problems.push('performances must have at least one tune');
+  if (performances.length === 0) {
+    problems.push({ field: 'performances', performanceIndex: null, message: '曲を 1 曲以上足してください。' });
+  }
 
-  const referencedTuneIds = new Set<number>();
+  const told = new Set<number>();
 
   performances.forEach((p, index) => {
-    if (!tunes.has(p.tune_id)) {
-      problems.push(`performances[${index}].tuneId ${p.tune_id} does not exist`);
-    } else {
-      referencedTuneIds.add(p.tune_id);
-    }
-
     p.scenes.forEach((s, sceneIndex) => {
       if (isYoutube && s.video_id.length !== VIDEO_ID_LENGTH) {
-        problems.push(`performances[${index}].scenes[${sceneIndex}].videoId must be ${VIDEO_ID_LENGTH} characters`);
-      }
-      if (s.start_seconds !== null && s.start_seconds < 0) {
-        problems.push(`performances[${index}].scenes[${sceneIndex}].startSeconds must be 0 or more`);
+        problems.push({
+          field: 'performances',
+          performanceIndex: index,
+          message: `${index + 1} 曲目の場面 ${sceneIndex + 1} の動画 ID は ${VIDEO_ID_LENGTH} 文字です。いまは ${s.video_id.length} 文字です。`,
+        });
       }
     });
+
+    const tune = tunes.get(p.tune_id);
+
+    if (tune === undefined || told.has(p.tune_id)) return;
+
+    told.add(p.tune_id);
+
+    for (const { sentence } of attributeProblems(tune)) {
+      problems.push({ field: 'performances', performanceIndex: index, message: `${index + 1} 曲目の${sentence}` });
+    }
   });
 
-  for (const tuneId of referencedTuneIds) {
-    const tune = tunes.get(tuneId)!;
-
-    if (tune.tune.title === '') problems.push(`tune ${tuneId}: title must not be empty`);
-
-    tune.attributes.forEach((a, index) => {
-      if (a.text !== null && a.people.length > 0) {
-        problems.push(`tune ${tuneId} attributes[${index}]: text and people must not both be present`);
-      }
-
-      for (const p of a.people) {
-        const person = people.get(p.person_id);
-
-        if (person === undefined) {
-          problems.push(`tune ${tuneId} attributes[${index}]: person ${p.person_id} does not exist`);
-        } else if (person.name === '') {
-          problems.push(`person ${p.person_id}: name must not be empty`);
-        }
-      }
-    });
-  }
-
   return problems;
+}
+
+/** Every way `tune` falls short of publishing, for the save of a tune a published stream performs. */
+export function tunePublishProblems(tune: GenetTune): TunePublishProblem[] {
+  return attributeProblems(tune).map(({ attributeIndex, sentence }) => ({
+    field: 'attributes',
+    attributeIndex,
+    message: sentence,
+  }));
 }
 
 /** Every distinct `tuneId` a stream's performances name. */
@@ -129,31 +187,6 @@ function personIdsOf(tunes: Iterable<GenetTune>): number[] {
   return [...ids];
 }
 
-interface LatestRevisionRow {
-  entity_key: string;
-  revision_id: number;
-  action: string;
-  body: string | null;
-}
-
-/** The latest `revision` row for every `entity_key` an entity has one for, oldest concerns first - parameterized because this file tracks three entities instead of one. */
-async function latestRevisions(env: Env, entity: string): Promise<LatestRevisionRow[]> {
-  const { results } = await env.DB.prepare(
-    `SELECT r.entity_key, r.revision_id, r.action, r.body
-       FROM revision r
-       JOIN (SELECT entity_key, MAX(revision_id) AS revision_id
-               FROM revision
-              WHERE entity = ?1
-              GROUP BY entity_key) latest
-         ON latest.entity_key = r.entity_key AND latest.revision_id = r.revision_id
-      WHERE r.entity = ?1`,
-  )
-    .bind(entity)
-    .all<LatestRevisionRow>();
-
-  return results;
-}
-
 /** The `last_revision_id` of the newest `publication` row for `target`, or 0 when there has never been one. */
 async function lastPublishedRevisionId(env: Env, target: string): Promise<number> {
   const row = await env.DB.prepare(
@@ -165,126 +198,407 @@ async function lastPublishedRevisionId(env: Env, target: string): Promise<number
   return row?.last_revision_id ?? 0;
 }
 
+const GENET_ENTITIES = ['genet_stream', 'genet_tune', 'genet_person'] as const satisfies readonly RevisionEntity[];
+
 /**
- * POST /admin/api/genet/streams/:videoId/publish.
- *
- * 400 with every failing condition when `saved`, or a tune or person it
- * performs, is not ready; otherwise `status` becomes `published` and a
- * `publish` revision is logged for the stream, and for every tune and person
- * it performs whose current shape does not already match its own latest
- * revision - all in one `db.batch`, so the stream and the tunes/people it
- * depends on cannot end up with a revision history that disagrees about what
- * was actually published together. Publishing an already-published stream is
- * allowed, the same as footprints-publish.ts's `publishEvent`.
+ * The streams, tunes and people `genet/music.json` holds, from `latest` - the
+ * latest revisions of all three - with `logged` applied over them: every
+ * stream whose latest revision is a `publish`, every tune those streams'
+ * bodies perform, and every person those tunes' bodies name. Built from the
+ * revision bodies, not from a fresh read of `genet_performance` or
+ * `genet_tune_attribute_person`, so a tune or person dropped from a stream
+ * after it was published cannot leak back in from a table this JSON is not
+ * built from. Sorted as the JSON has them.
  */
-export async function publishStream(env: Env, videoId: string): Promise<Response> {
-  const saved = await readStream(env, videoId);
+function musicData(latest: readonly LatestRevisionRow[], logged: readonly LoggedRevision[]) {
+  const streams = liveBodiesOf(latest, 'genet_stream', logged) as unknown as PublicStream[];
+  const tunesById = new Map(
+    (liveBodiesOf(latest, 'genet_tune', logged) as unknown as PublicTune[]).map((t) => [t.tune_id, t]),
+  );
+  const peopleById = new Map(
+    (liveBodiesOf(latest, 'genet_person', logged) as unknown as PublicPerson[]).map((p) => [p.person_id, p]),
+  );
 
-  if (saved === null) return errorResponse(404, `no stream ${videoId}`);
+  const tuneIds = new Set(streams.flatMap((s) => s.performances.map((p) => p.tune_id)));
+  const tunes = [...tuneIds].flatMap((tuneId) => tunesById.get(tuneId) ?? []);
+  const personIds = new Set(tunes.flatMap((t) => t.attributes.flatMap((a) => a.people.map((p) => p.person_id))));
+  const people = [...personIds].flatMap((personId) => peopleById.get(personId) ?? []);
 
-  const tuneIds = tuneIdsOf(saved);
-  const tunes = await readTunes(env, tuneIds);
-  const personIds = personIdsOf(tunes.values());
-  const people = await readPeople(env, personIds);
+  streams.sort((a, b) => (a.published_at === b.published_at ? 0 : a.published_at < b.published_at ? 1 : -1));
+  tunes.sort((a, b) => a.tune_id - b.tune_id);
+  people.sort((a, b) => a.person_id - b.person_id);
 
-  const problems = publishProblems(saved, tunes, people);
+  return { streams, tunes, people };
+}
 
-  if (problems.length > 0) return jsonResponse({ errors: problems }, { status: 400 });
+/** `genet/music.json`'s text for `data`, with the channel the page draws beside its title. */
+async function musicJson(env: Env, now: Date, data: ReturnType<typeof musicData>): Promise<string> {
+  return JSON.stringify({
+    published_at: formatTimestamp(now),
+    shape_version: GENET_MUSIC_SHAPE_VERSION,
+    channel_id: await majorityChannelId(env, data.streams),
+    streams: data.streams,
+    tunes: data.tunes,
+    people: data.people,
+  });
+}
 
+/**
+ * What publishing.ts needs to know about ジェネット楽曲一覧, for a change whose
+ * own row is of `entity`. A stream's 「公開」 and 「保存」 change a stream, and
+ * a tune's 保存 a tune (#284's 6-5); both write the one `genet/music.json`,
+ * built from all three entities' revisions.
+ */
+function genetTarget(entity: 'genet_stream' | 'genet_tune', table: string, keyColumn: string): PublishTarget {
+  const target: PublishTarget = {
+    entity,
+    alsoBuiltFrom: GENET_ENTITIES.filter((e) => e !== entity),
+    target: 'genet_music',
+    objectKey: GENET_MUSIC_OBJECT_KEY,
+    table,
+    keyColumn,
+    async buildJson(env, now, latest, change) {
+      return await musicJson(env, now, musicData(latest, change === null ? [] : loggedRevisions(target, change)));
+    },
+  };
+
+  return target;
+}
+
+export const GENET_STREAM_TARGET = genetTarget('genet_stream', 'genet_stream', 'video_id');
+export const GENET_TUNE_TARGET = genetTarget('genet_tune', 'genet_tune', 'tune_id');
+
+/** Whether `body`, a revision's, says something other than `shape`, the row's public shape now. */
+function differs(body: string | null, shape: Record<string, unknown>): boolean {
+  return body === null || JSON.stringify(JSON.parse(body)) !== JSON.stringify(shape);
+}
+
+/**
+ * The `publish` revisions of `tunes` and `people` whose public shape is not
+ * what their latest revision already says - what a stream's publish, or a
+ * tune's, brings along, so that the JSON has them as they are now.
+ */
+async function changedAlongside(
+  env: Env,
+  tunes: readonly GenetTune[],
+  people: readonly PersonRow[],
+): Promise<LoggedRevision[]> {
   const [tuneRevisions, personRevisions] = await Promise.all([
     latestRevisions(env, 'genet_tune'),
     latestRevisions(env, 'genet_person'),
   ]);
 
-  const tuneRevisionByKey = new Map(tuneRevisions.map((r) => [r.entity_key, r]));
-  const personRevisionByKey = new Map(personRevisions.map((r) => [r.entity_key, r]));
+  const tuneBody = new Map(tuneRevisions.map((r) => [r.entity_key, r.body]));
+  const personBody = new Map(personRevisions.map((r) => [r.entity_key, r.body]));
 
-  const changedTunes = [...tunes.values()].filter((tune) => {
-    const latest = tuneRevisionByKey.get(String(tune.tune.tune_id));
-    const current = JSON.stringify(tunePublicShapeOf(tune));
+  return [
+    ...tunes.flatMap((tune) => {
+      const shape = tunePublicShapeOf(tune);
+      const key = String(tune.tune.tune_id);
 
-    return latest === undefined || latest.body === null || JSON.stringify(JSON.parse(latest.body)) !== current;
-  });
+      return differs(tuneBody.get(key) ?? null, shape)
+        ? [{ entity: 'genet_tune' as const, key, action: 'publish' as const, body: shape }]
+        : [];
+    }),
+    ...people.flatMap((person) => {
+      const shape = personPublicShapeOf(person);
+      const key = String(person.person_id);
 
-  const changedPeople = [...people.values()].filter((person) => {
-    const latest = personRevisionByKey.get(String(person.person_id));
-    const current = JSON.stringify(personPublicShapeOf(person));
+      return differs(personBody.get(key) ?? null, shape)
+        ? [{ entity: 'genet_person' as const, key, action: 'publish' as const, body: shape }]
+        : [];
+    }),
+  ];
+}
 
-    return latest === undefined || latest.body === null || JSON.stringify(JSON.parse(latest.body)) !== current;
-  });
+/**
+ * The 400 a refused publish answers: every problem, and whether the fields
+ * sent were saved anyway. `errors` carries the messages alone, the shape
+ * every other refusal under /admin/api has.
+ */
+function refusalResponse(problems: readonly { message: string }[], saved: boolean): Response {
+  return jsonResponse({ errors: problems.map((p) => p.message), problems, saved }, { status: 400 });
+}
 
-  // The readStream above and this batch are two round trips, not one, so a
-  // concurrent deleteStream can land in between - genet_stream has no
-  // ON DELETE CASCADE, and nothing stops that delete's own batch from
-  // running once this one has (see deleteStream's own comment on the same
-  // race from its side). Gating the stream's own revision INSERT on EXISTS,
-  // the same way footprints-publish.ts's publishEvent does, ties "did we log
-  // a revision" to the row as this batch actually finds it: the UPDATE above
-  // still runs even when the row is gone (SET on nothing changes nothing),
-  // but no `publish` revision is logged for a stream no longer there to
-  // publish. `changedTunes`/`changedPeople` below are not gated the same
-  // way - a tune or person is never deleted by deleteStream, so nothing here
-  // races their own rows.
-  const results = await env.DB.batch([
-    env.DB.prepare(`UPDATE genet_stream SET status = 'published' WHERE video_id = ?1`).bind(videoId),
-    env.DB.prepare(
-      `INSERT INTO revision (entity, entity_key, action, body, created_via)
-       SELECT 'genet_stream', ?1, 'publish', ?2, 'admin'
-       WHERE EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1)
-       RETURNING revision_id`,
-    ).bind(videoId, JSON.stringify(streamPublicShapeOf(saved))),
-    ...changedTunes.map((tune) =>
-      revisionStatement(env.DB, 'genet_tune', String(tune.tune.tune_id), 'publish', tunePublicShapeOf(tune)),
-    ),
-    ...changedPeople.map((person) =>
-      revisionStatement(env.DB, 'genet_person', String(person.person_id), 'publish', personPublicShapeOf(person)),
-    ),
-  ]);
+/**
+ * The answer when the fields were saved but the public JSON could not be
+ * written, or could not be brought up to date after the change was recorded
+ * (publishing.ts): 502, since what failed is R2 behind this worker, with
+ * `saved: true` and the stream as it now stands, so the screen can tell it
+ * apart from a request that changed nothing, and say what to press next by
+ * the status the stream has now.
+ */
+async function notWrittenResponse(env: Env, videoId: string, outcome: Extract<PublishOutcome, { written: false }>) {
+  // Deleted before the batch ran, which then logged no revision for it, and
+  // the JSON already written with it could not be built again without it.
+  if (outcome.recorded && outcome.revisionId === null) {
+    return jsonResponse(
+      {
+        error: `stream ${videoId} was deleted while this request was saving it, and ${GENET_MUSIC_OBJECT_KEY} could not be built again without it: ${outcome.error}`,
+        saved: false,
+      },
+      { status: 502 },
+    );
+  }
 
-  // `RETURNING` rather than `results[1].meta.last_row_id`: when the EXISTS
-  // guard above skips the INSERT (the concurrent-delete race the comment
-  // above this batch explains), `last_row_id` would answer with whatever the
-  // last statement in this same batch that did insert left behind - one of
-  // changedTunes/changedPeople's own revisions, not this stream's - rather
-  // than admitting no revision was actually logged for it.
-  const streamRevision = (results[1].results as { revision_id: number }[])[0];
+  const saved = await readStream(env, videoId);
+
+  return jsonResponse(
+    {
+      error: `saved, but ${GENET_MUSIC_OBJECT_KEY} could not be written: ${outcome.error}`,
+      saved: true,
+      stream: saved === null ? null : presentStream(saved),
+    },
+    { status: 502 },
+  );
+}
+
+/**
+ * The 200 once a change reached the public JSON: the stream as it now
+ * stands, and what was recorded for it. 404 when the stream was deleted
+ * before the change could be recorded, as when it was gone before the
+ * request came.
+ */
+async function writtenResponse(
+  env: Env,
+  videoId: string,
+  outcome: Extract<PublishOutcome, { written: true }>,
+  alongside: readonly LoggedRevision[],
+) {
+  if (outcome.revisionId === null) return errorResponse(404, `no stream ${videoId}`);
+
+  const saved = await readStream(env, videoId);
 
   return jsonResponse({
-    stream: presentStream(withStatus(saved, 'published')),
-    ...(streamRevision === undefined ? {} : { revisionId: streamRevision.revision_id }),
-    tuneRevisionCount: changedTunes.length,
-    personRevisionCount: changedPeople.length,
+    stream: saved === null ? null : presentStream(saved),
+    revisionId: outcome.revisionId,
+    publicationId: outcome.publicationId,
+    tuneRevisionCount: alongside.filter((r) => r.entity === 'genet_tune').length,
+    personRevisionCount: alongside.filter((r) => r.entity === 'genet_person').length,
   });
 }
 
 /**
- * POST /admin/api/genet/streams/:videoId/withdraw. `status` becomes `draft`
- * and a `withdraw` revision (a `null` body) is logged for the stream alone -
- * the tunes and people it performs keep whatever `revision` they already
- * have. Withdrawing is a decision about this one stream's own place in the
- * public JSON, not about whether a tune or person it once performed still
- * belongs there; "publish now" (`publishGenetMusicNow`) is what actually
- * decides that, from which streams are still `published` at the time it
- * runs.
+ * Saves `fields` over `existing` and puts the result in the public JSON, or
+ * refuses - 「公開」 on a draft and 「保存」 on a published stream both come
+ * here, as on あしあと (footprints-publish.ts's `saveAndPublish`):
+ *
+ * - A refused draft's fields are saved anyway, and it stays a draft
+ * - A refused published stream is left exactly as it was (#277's decision 1d)
+ *
+ * The tunes and people the stream performs get a `publish` revision of their
+ * own in the same batch, each one whose public shape is not what its latest
+ * revision says (`changedAlongside`).
+ *
+ * When the JSON cannot be written, the fields are saved and nothing else
+ * changes, and 502 says so. When it was written but could not be brought up
+ * to date after the revisions were recorded, the stream is published all
+ * the same, and 502 says that too.
  */
-export async function withdrawStream(env: Env, videoId: string): Promise<Response> {
+async function saveAndPublish(env: Env, existing: GenetStream, fields: StreamFields, now: Date): Promise<Response> {
+  const videoId = existing.stream.video_id;
+  const wasPublished = existing.stream.status === 'published';
+  const next = streamWithFields(existing, fields, 'published');
+  const tunes = await readTunes(env, tuneIdsOf(next));
+  const problems = publishProblems(next, tunes);
+
+  if (problems.length > 0) {
+    if (!wasPublished) await env.DB.batch(streamSaveStatements(env, videoId, fields));
+
+    return refusalResponse(problems, !wasPublished);
+  }
+
+  const people = await readPeople(env, personIdsOf(tunes.values()));
+  const alongside = await changedAlongside(env, [...tunes.values()], [...people.values()]);
+
+  const outcome = await publishChange(
+    env,
+    GENET_STREAM_TARGET,
+    { key: videoId, action: 'publish', body: streamPublicShapeOf(next), alongside },
+    streamSaveStatements(env, videoId, fields, 'published'),
+    now,
+  );
+
+  if (!outcome.written) {
+    if (!outcome.recorded) await env.DB.batch(streamSaveStatements(env, videoId, fields));
+
+    return await notWrittenResponse(env, videoId, outcome);
+  }
+
+  return await writtenResponse(env, videoId, outcome, alongside);
+}
+
+/**
+ * POST /admin/api/genet/streams/:videoId/publish - 「公開」. The body is the
+ * stream's fields, the same as a PUT's: what is typed is saved, checked and
+ * published in this one request (#284). A stream already published is saved
+ * as `saveStream` saves one.
+ */
+export async function publishStream(
+  env: Env,
+  videoId: string,
+  body: Record<string, unknown>,
+  now: Date,
+): Promise<Response> {
+  const existing = await readStream(env, videoId);
+
+  if (existing === null) return errorResponse(404, `no stream ${videoId}`);
+
+  const fields = await validatedStreamFields(env, body);
+
+  if ('error' in fields) return fields.error;
+
+  return await saveAndPublish(env, existing, fields, now);
+}
+
+/**
+ * PUT /admin/api/genet/streams/:videoId - 「保存」. A draft is saved as a
+ * draft (genet-streams.ts's `updateStream`). A published stream's save
+ * reaches the public JSON at once, and is refused, leaving the stream and
+ * the JSON as they were, when the fields would not pass publishing.
+ */
+export async function saveStream(
+  env: Env,
+  videoId: string,
+  body: Record<string, unknown>,
+  now: Date,
+): Promise<Response> {
+  const existing = await readStream(env, videoId);
+
+  if (existing === null) return errorResponse(404, `no stream ${videoId}`);
+
+  if (existing.stream.status !== 'published') return await updateStream(env, videoId, body);
+
+  const fields = await validatedStreamFields(env, body);
+
+  if ('error' in fields) return fields.error;
+
+  return await saveAndPublish(env, existing, fields, now);
+}
+
+/**
+ * POST /admin/api/genet/streams/:videoId/withdraw - 「非公開に戻す」. The body
+ * is the stream's fields, the same as a PUT's: what is typed is kept, as the
+ * draft the stream becomes. Takes the stream off `genet/music.json`, then
+ * saves the fields as a draft and logs a `withdraw` revision for the stream
+ * alone - the tunes and people it performs keep the revisions they have, and
+ * leave the JSON with it unless another published stream performs them.
+ *
+ * Nothing at all changes when the JSON cannot be written, and 502 says so.
+ * When it was written but could not be brought up to date after the revision
+ * was recorded, the stream is a draft all the same, and 502 says so with
+ * `saved: true`. 409 for a stream that is not published.
+ */
+export async function withdrawStream(
+  env: Env,
+  videoId: string,
+  body: Record<string, unknown>,
+  now: Date,
+): Promise<Response> {
   const saved = await readStream(env, videoId);
 
   if (saved === null) return errorResponse(404, `no stream ${videoId}`);
 
-  const results = await env.DB.batch([
-    env.DB.prepare(`UPDATE genet_stream SET status = 'draft' WHERE video_id = ?1`).bind(videoId),
-    revisionStatement(env.DB, 'genet_stream', videoId, 'withdraw', null),
-  ]);
+  if (saved.stream.status !== 'published') return errorResponse(409, 'only a published stream can be withdrawn');
 
-  return jsonResponse({
-    stream: presentStream(withStatus(saved, 'draft')),
-    revisionId: results[1].meta.last_row_id,
+  const fields = await validatedStreamFields(env, body);
+
+  if ('error' in fields) return fields.error;
+
+  const outcome = await publishChange(
+    env,
+    GENET_STREAM_TARGET,
+    { key: videoId, action: 'withdraw', body: null },
+    streamSaveStatements(env, videoId, fields, 'draft'),
+    now,
+  );
+
+  if (!outcome.written) {
+    if (outcome.recorded) return await notWrittenResponse(env, videoId, outcome);
+
+    return errorResponse(502, `${GENET_MUSIC_OBJECT_KEY} could not be written: ${outcome.error}`);
+  }
+
+  return await writtenResponse(env, videoId, outcome, []);
+}
+
+/**
+ * PUT /admin/api/genet/tunes/:tuneId - この曲を保存 (#284's 6-5). A tune no
+ * published stream performs is saved, and nothing else. One a published
+ * stream performs is in the public JSON, so its save reaches the JSON at
+ * once, with a `publish` revision for the tune and for each person it names
+ * whose public shape changed - or is refused, nothing saved, when the tune
+ * would not pass publishing, as a published stream's save is.
+ *
+ * `live` in the answer says which of the two it was. When the JSON cannot be
+ * written, the fields are saved, the tune keeps its last revision, and 502
+ * says so with `saved: true`; when it was written but could not be brought
+ * up to date, the revisions are recorded all the same, and 502 says that too.
+ */
+export async function saveTune(env: Env, tuneId: number, body: Record<string, unknown>, now: Date): Promise<Response> {
+  const existing = await readTune(env, tuneId);
+
+  if (existing === null) return errorResponse(404, `no tune ${tuneId}`);
+
+  const fields = await validatedTuneFields(env, body);
+
+  if ('error' in fields) return fields.error;
+
+  if (!(await isPerformedLive(env, tuneId))) {
+    await env.DB.batch(tuneSaveStatements(env, tuneId, fields));
+
+    return await tuneResponse(env, tuneId, false, {});
+  }
+
+  const next = tuneWithFields(existing, fields);
+  const problems = tunePublishProblems(next);
+
+  if (problems.length > 0) return refusalResponse(problems, false);
+
+  const people = await readPeople(env, personIdsOf([next]));
+  const alongside = await changedAlongside(env, [], [...people.values()]);
+
+  const outcome = await publishChange(
+    env,
+    GENET_TUNE_TARGET,
+    { key: String(tuneId), action: 'publish', body: tunePublicShapeOf(next), alongside },
+    tuneSaveStatements(env, tuneId, fields),
+    now,
+  );
+
+  if (!outcome.written) {
+    if (!outcome.recorded) await env.DB.batch(tuneSaveStatements(env, tuneId, fields));
+
+    return await tuneResponse(
+      env,
+      tuneId,
+      true,
+      { error: `saved, but ${GENET_MUSIC_OBJECT_KEY} could not be written: ${outcome.error}`, saved: true },
+      502,
+    );
+  }
+
+  if (outcome.revisionId === null) return errorResponse(404, `no tune ${tuneId}`);
+
+  return await tuneResponse(env, tuneId, true, {
+    revisionId: outcome.revisionId,
+    publicationId: outcome.publicationId,
   });
 }
 
-function withStatus(saved: GenetStream, status: string): GenetStream {
-  return { ...saved, stream: { ...saved.stream, status } };
+/** The tune as it now stands, whether a published stream performs it, and `extra`. 404 when it is gone. */
+async function tuneResponse(
+  env: Env,
+  tuneId: number,
+  live: boolean,
+  extra: Record<string, unknown>,
+  status = 200,
+): Promise<Response> {
+  const saved = await readTune(env, tuneId);
+
+  if (saved === null) return errorResponse(404, `no tune ${tuneId}`);
+
+  return jsonResponse({ tune: presentTune(saved), live, ...extra }, { status });
 }
 
 /**
@@ -300,12 +614,17 @@ function withStatus(saved: GenetStream, status: string): GenetStream {
  * person has no `status` of its own, so "has a revision at all" stands in
  * for "is currently live" the way `status = 'published'` does for a stream.
  *
+ * Since #284 every publish writes the JSON, so nothing waits once the rows
+ * from before it have been published again; and a published stream changes
+ * only together with its revision, unless the JSON could not be written.
+ *
  * `shapeOutdated`: the stored JSON is in an older shape than this code builds
  * (`shapeIsOutdated`), so "いま公開する" would build it again even when
- * nothing above is waiting.
+ * nothing above is waiting. `behind`: a write of the JSON was sent that no
+ * check found up to date since (publishing.ts's `isBehind`).
  */
 export async function pendingGenetMusic(env: Env): Promise<Response> {
-  const { pending, shapeOutdated, streamRevisions, tuneRevisions, personRevisions } = await readWaiting(env);
+  const { pending, shapeOutdated, behind, streamRevisions, tuneRevisions, personRevisions } = await readWaiting(env);
 
   const changed: { entity: 'genet_stream' | 'genet_tune' | 'genet_person'; key: string; title: string }[] = [];
 
@@ -366,7 +685,7 @@ export async function pendingGenetMusic(env: Env): Promise<Response> {
     if (current !== publishedBody) changed.push({ entity: 'genet_person', key: String(personId), title: person.name });
   }
 
-  return jsonResponse({ pending, changed, shapeOutdated });
+  return jsonResponse({ pending, changed, shapeOutdated, behind });
 }
 
 export interface WaitingGenetEntry {
@@ -378,23 +697,27 @@ export interface WaitingGenetEntry {
 
 /**
  * What "いま公開する" for `genet_music` would act on: every entity whose
- * latest revision is newer than the last run, and whether the stored JSON is
- * in an older shape. `pendingGenetMusic` and the やること screens' 公開待ち
- * (inbox.ts) both read it here, so the two cannot count differently.
+ * latest revision is newer than the last run, whether the stored JSON is in
+ * an older shape, and whether it may be behind. `pendingGenetMusic`,
+ * `publishGenetMusicNow` and the やること screens' 公開待ち (inbox.ts) all
+ * read it here, so they cannot count differently.
  */
-export async function waitingGenetMusic(env: Env): Promise<{ pending: WaitingGenetEntry[]; shapeOutdated: boolean }> {
-  const { pending, shapeOutdated } = await readWaiting(env);
+export async function waitingGenetMusic(
+  env: Env,
+): Promise<{ pending: WaitingGenetEntry[]; shapeOutdated: boolean; behind: boolean }> {
+  const { pending, shapeOutdated, behind } = await readWaiting(env);
 
-  return { pending, shapeOutdated };
+  return { pending, shapeOutdated, behind };
 }
 
 /** `waitingGenetMusic`, with the latest revisions it was worked out from left in for `pendingGenetMusic` to compare against. */
 async function readWaiting(env: Env) {
-  const [lastRevisionId, streamRevisions, tuneRevisions, personRevisions] = await Promise.all([
+  const [lastRevisionId, streamRevisions, tuneRevisions, personRevisions, behind] = await Promise.all([
     lastPublishedRevisionId(env, 'genet_music'),
     latestRevisions(env, 'genet_stream'),
     latestRevisions(env, 'genet_tune'),
     latestRevisions(env, 'genet_person'),
+    isBehind(env, 'genet_music'),
   ]);
 
   const pending: WaitingGenetEntry[] = [
@@ -418,9 +741,20 @@ async function readWaiting(env: Env) {
     })),
   ].filter((row) => row.revisionId > lastRevisionId);
 
-  const shapeOutdated = await shapeIsOutdated(env, newestRevisionIdOf(streamRevisions, tuneRevisions, personRevisions));
+  const newestRevisionId = newestRevisionIdOf(streamRevisions, tuneRevisions, personRevisions);
+  // Read from R2 only when nothing else already asks for a build: a failed
+  // read must not stop one that would go ahead without it.
+  const shapeOutdated = pending.length === 0 && !behind && (await shapeIsOutdated(env, newestRevisionId));
 
-  return { pending, shapeOutdated, streamRevisions, tuneRevisions, personRevisions };
+  return {
+    pending,
+    nothingNewer: newestRevisionId <= lastRevisionId,
+    shapeOutdated,
+    behind,
+    streamRevisions,
+    tuneRevisions,
+    personRevisions,
+  };
 }
 
 interface PublicStream {
@@ -440,7 +774,7 @@ interface PublicPerson {
 }
 
 /**
- * The shape of the JSON `publishGenetMusicNow` writes. Raise it whenever that
+ * The shape of the JSON `musicJson` writes. Raise it whenever that
  * shape changes, and a run that finds an older one already stored builds again
  * even though no revision is newer than the last run (see
  * `storedShapeVersion`). Without it, a new field would not reach the public
@@ -451,8 +785,6 @@ interface PublicPerson {
  * 2: adds `shape_version` and `channel_id`.
  */
 export const GENET_MUSIC_SHAPE_VERSION = 2;
-
-const GENET_MUSIC_OBJECT_KEY = 'genet/music.json';
 
 /**
  * The `shape_version` of the JSON stored in `PUBLIC_DATA`. A JSON with no such
@@ -553,96 +885,45 @@ async function majorityChannelId(env: Env, streams: readonly PublicStream[]): Pr
 
 /**
  * POST /admin/api/genet/publish - "いま公開する". Builds `genet/music.json`
- * from the latest `revision` of every `genet_stream` entity whose latest
- * action is not `withdraw`, together with every tune and person those
- * streams' own published bodies name - not from a fresh read of
- * `genet_performance`/`genet_tune_attribute_person`, so a tune or person
- * dropped from a stream after it was published cannot leak back in from a
- * table this JSON is not built from. Writes the result to `PUBLIC_DATA` and
- * appends one `publication` row. Nothing is written, and 200 answers
- * `{ published: false }`, when there is nothing newer than the last run.
+ * from the latest revisions of all three entities alone (`musicData`),
+ * writes it to `PUBLIC_DATA`, and appends one `publication` row. Nothing is
+ * written, and 200 answers `{ published: false }`, when there is nothing
+ * newer than the last run, the stored JSON is in the current shape
+ * (`GENET_MUSIC_SHAPE_VERSION`), and the JSON is not counted as behind
+ * (publishing.ts's `isBehind`).
+ *
+ * Kept for the 公開 screen until it goes (#285): a stream left waiting from
+ * before #284 is published by it, or by the next publish of any stream or
+ * live tune, which builds from the same revisions.
  *
  * The three entities share one `publication` row and one `last_revision_id`:
  * "newer than last time" is asked once, across whichever of the three
  * changed, the same way #141's design describes one `target` per public JSON
  * file rather than one per table.
  *
- * A JSON stored in an older shape (`GENET_MUSIC_SHAPE_VERSION`) is built again
- * even when no revision is newer, so a change of shape reaches the public
- * JSON without anyone having to edit a stream first.
+ * Written through publishing.ts's `republish`, which checks the JSON again
+ * after writing it as a publish does. 502 when the JSON could not be
+ * brought up to date, with no `publication` row recorded for it.
  */
 export async function publishGenetMusicNow(env: Env, now: Date): Promise<Response> {
-  const [lastRevisionId, streamRevisions, tuneRevisions, personRevisions] = await Promise.all([
-    lastPublishedRevisionId(env, 'genet_music'),
-    latestRevisions(env, 'genet_stream'),
-    latestRevisions(env, 'genet_tune'),
-    latestRevisions(env, 'genet_person'),
-  ]);
+  const { nothingNewer, shapeOutdated, behind } = await readWaiting(env);
 
-  const newestRevisionId = newestRevisionIdOf(streamRevisions, tuneRevisions, personRevisions);
-  const nothingNewer = newestRevisionId <= lastRevisionId;
+  if (nothingNewer && !shapeOutdated && !behind) return jsonResponse({ published: false });
 
-  if (nothingNewer && !(await shapeIsOutdated(env, newestRevisionId))) {
-    return jsonResponse({ published: false });
+  const outcome = await republish(env, GENET_STREAM_TARGET, now);
+
+  if (!outcome.current) {
+    return errorResponse(502, `${GENET_MUSIC_OBJECT_KEY} could not be brought up to date: ${outcome.error}`);
   }
 
-  const streams = streamRevisions
-    .filter((r) => r.action !== 'withdraw' && r.body !== null)
-    .map((r) => JSON.parse(r.body!) as PublicStream);
-
-  const channelId = await majorityChannelId(env, streams);
-
-  const tuneIds = new Set<number>();
-
-  for (const s of streams) for (const p of s.performances) tuneIds.add(p.tune_id);
-
-  const tuneRevisionByKey = new Map(tuneRevisions.map((r) => [r.entity_key, r]));
-  const tunes = [...tuneIds]
-    .map((tuneId) => tuneRevisionByKey.get(String(tuneId)))
-    .filter((r): r is LatestRevisionRow => r !== undefined && r.body !== null)
-    .map((r) => JSON.parse(r.body!) as PublicTune);
-
-  const personIds = new Set<number>();
-
-  for (const t of tunes) for (const a of t.attributes) for (const p of a.people) personIds.add(p.person_id);
-
-  const personRevisionByKey = new Map(personRevisions.map((r) => [r.entity_key, r]));
-  const people = [...personIds]
-    .map((personId) => personRevisionByKey.get(String(personId)))
-    .filter((r): r is LatestRevisionRow => r !== undefined && r.body !== null)
-    .map((r) => JSON.parse(r.body!) as PublicPerson);
-
-  streams.sort((a, b) => (a.published_at === b.published_at ? 0 : a.published_at < b.published_at ? 1 : -1));
-  tunes.sort((a, b) => a.tune_id - b.tune_id);
-  people.sort((a, b) => a.person_id - b.person_id);
-
-  const objectKey = GENET_MUSIC_OBJECT_KEY;
-  const json = JSON.stringify({
-    published_at: formatTimestamp(now),
-    shape_version: GENET_MUSIC_SHAPE_VERSION,
-    channel_id: channelId,
-    streams,
-    tunes,
-    people,
-  });
-  const jsonByteLength = byteLength(json);
-
-  await env.PUBLIC_DATA.put(objectKey, json, {
-    httpMetadata: { contentType: 'application/json; charset=UTF-8' },
-  });
-
-  const inserted = await env.DB.prepare(
-    `INSERT INTO publication (target, last_revision_id, object_key, byte_length) VALUES ('genet_music', ?1, ?2, ?3)`,
-  )
-    .bind(newestRevisionId, objectKey, jsonByteLength)
-    .run();
+  const data = musicData(outcome.latest, []);
 
   return jsonResponse({
     published: true,
-    publicationId: inserted.meta.last_row_id,
-    streamCount: streams.length,
-    tuneCount: tunes.length,
-    personCount: people.length,
-    byteLength: jsonByteLength,
+    publicationId: outcome.publicationId,
+    streamCount: data.streams.length,
+    tuneCount: data.tunes.length,
+    personCount: data.people.length,
+    byteLength: outcome.byteLength,
   });
 }

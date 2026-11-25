@@ -1,4 +1,11 @@
-import { bandReasonIds, liveMarkFor, publishFootFor } from '@/admin/lib/publishing';
+import { AdminApiError } from '@/admin/lib/api';
+import {
+  bandReasonIds,
+  bandReasonIdsWhere,
+  liveMarkFor,
+  publishAnswerFor,
+  publishFootFor,
+} from '@/admin/lib/publishing';
 
 // #277's decision 1a: the chip is the row's status, and nothing else - every
 // publish reaches the public site in the same request (#281, #283).
@@ -68,5 +75,38 @@ describe('bandReasonIds', () => {
 
     expect(bandReasonIds(failed, ['startDate'], 'startDate')).toEqual('foot-band-note');
     expect(bandReasonIds({ ...failed, note: null }, ['startDate'], 'startDate')).toBeUndefined();
+  });
+});
+
+describe('bandReasonIdsWhere', () => {
+  const refusal = { title: '公開できません', lines: ['a', 'b', 'c'], note: 'note' };
+  const fields = [{ at: 1 }, { at: 2 }, { at: 1 }];
+  const ids = { reasonId: (index: number) => `r-${index}`, noteId: 'n' };
+
+  test('points the fields `matches` picks at their reasons, by the ids it is given', () => {
+    expect(bandReasonIdsWhere(refusal, fields, (f) => f.at === 1, ids)).toEqual('r-0 r-2');
+  });
+
+  test('points them at the note when the band lists no reason for each', () => {
+    expect(bandReasonIdsWhere({ ...refusal, lines: [] }, [{ at: 1 }], (f) => f.at === 1, ids)).toEqual('n');
+  });
+
+  test('points at nothing when nothing is picked, or there is no band', () => {
+    expect(bandReasonIdsWhere(refusal, fields, (f) => f.at === 3, ids)).toBeUndefined();
+    expect(bandReasonIdsWhere(null, fields, (f) => f.at === 1, ids)).toBeUndefined();
+  });
+});
+
+describe('publishAnswerFor', () => {
+  test("marks a refusal's reasons by the shape's `fieldOfProblem` when it has one", () => {
+    const problems = [{ field: 'performances', at: 3, message: '3 曲目の…' }];
+    const answer = publishAnswerFor(
+      { rowKey: 'stream', fieldForSaveError: () => null, fieldOfProblem: (p) => ({ section: p.field, at: p.at }) },
+      'publish',
+      'draft',
+      new AdminApiError(400, { errors: [], problems, saved: true }),
+    );
+
+    expect(answer.kind === 'band' && answer.fields).toEqual([{ section: 'performances', at: 3 }]);
   });
 });

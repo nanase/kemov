@@ -65,19 +65,19 @@ describe('jstDate', () => {
 });
 
 describe('reviewRows', () => {
-  test('puts rows not yet looked at first, then by date across both pages', () => {
+  test('puts the rows of both pages in one list by date', () => {
     const rows = reviewRows({
-      events: [event(1, '2025-03-01'), event(2, '2021-01-01', 'review'), event(3, '2022-10')],
-      streams: [stream('s1', '2024-06-30T15:30:00Z'), stream('s2', '2020-01-01T00:00:00Z', 'review')],
+      events: [event(1, '2025-03-01'), event(2, '2021-01-01'), event(3, '2022-10')],
+      streams: [stream('s1', '2024-06-30T15:30:00Z'), stream('s2', '2020-01-01T00:00:00Z')],
       tuneTitles: {},
     });
 
     expect(rows.map((r) => [r.key, r.date])).toEqual([
+      ['stream:s2', '2020-01-01'],
+      ['event:2', '2021-01-01'],
       ['event:3', '2022-10'],
       ['stream:s1', '2024-07-01'],
       ['event:1', '2025-03-01'],
-      ['stream:s2', '2020-01-01'],
-      ['event:2', '2021-01-01'],
     ]);
   });
 });
