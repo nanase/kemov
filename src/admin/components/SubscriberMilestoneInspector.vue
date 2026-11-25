@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue';
-import { RouterLink } from 'vue-router';
 
 import { deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
 import { EDITING_TEXT, sameFields } from '../lib/editing';
 import type { FootprintsEvent, FootprintsMember } from '../lib/footprints';
-import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
-import { refreshPublishBadge } from '../lib/publish-badge';
+import { previewOpen } from '../lib/preview';
+import { refreshSidebarDrafts } from '../lib/sidebar-drafts';
 import {
   BAND_NOTE_ID,
   bandReasonId,
@@ -264,7 +263,7 @@ async function run(action: AnsweredAction, request: () => Promise<unknown>, toas
 
   if (answer.kind === 'done') {
     emit('changed');
-    void refreshPublishBadge();
+    void refreshSidebarDrafts();
     showToast(toast ?? answer.toast);
 
     return;
@@ -275,7 +274,7 @@ async function run(action: AnsweredAction, request: () => Promise<unknown>, toas
 
   if (answer.changed) {
     emit('changed');
-    void refreshPublishBadge();
+    void refreshSidebarDrafts();
   }
 }
 
@@ -370,12 +369,7 @@ const previewEvent = computed(() => {
 
         <div v-if="eventChanged" class="panel">
           <h4>つないだ出来事が変わりました</h4>
-          <div class="hint">
-            本番の節目には、変わる前の出来事の題と日付が出ています。「公開」画面で「いま公開する」を押すと反映されます
-          </div>
-          <div>
-            <RouterLink class="btn" to="/publish">公開画面へ</RouterLink>
-          </div>
+          <div class="hint">一覧の上の［本番に反映］を押してください</div>
         </div>
 
         <div class="field">
@@ -492,7 +486,7 @@ const previewEvent = computed(() => {
           <input id="m-id" type="text" :value="milestone.milestoneId" readonly />
         </div>
       </div>
-      <PreviewPane v-if="previewOpen" :note="PREVIEW_NOTES.published">
+      <PreviewPane v-if="previewOpen">
         <MilestonePreview :fields="fields" :milestone-id="milestoneId" :event="previewEvent" />
       </PreviewPane>
     </div>

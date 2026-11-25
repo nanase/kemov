@@ -496,7 +496,7 @@ export interface WaitingFootprintsEntry {
 /**
  * Every event whose latest revision is newer than the last time the JSON was
  * written - what "いま公開する" would act on. `pendingFootprints` and the
- * やること screens' 公開待ち (inbox.ts) both read it here, so the two cannot
+ * sidebar's mark (drafts.ts) both read it here, so the two cannot
  * count differently.
  */
 export async function waitingFootprints(env: Env): Promise<WaitingFootprintsEntry[]> {
@@ -505,16 +505,16 @@ export async function waitingFootprints(env: Env): Promise<WaitingFootprintsEntr
 
 /**
  * Whether 「いま公開する」 writes the JSON with nothing waiting: it may be
- * behind (`isBehind`), or it is outdated (`isOutdated`). False when R2 cannot
- * be read. The やること screens' 公開待ち (inbox.ts) reads it here, so its
- * button follows the 公開 screen's.
+ * behind (`isBehind`), or it is outdated (`isOutdated`). Throws when R2
+ * cannot be read: the sidebar's mark (drafts.ts) reads it here, and an
+ * answer it cannot give must not read as "up to date".
  */
 export async function footprintsNeedsWrite(env: Env): Promise<boolean> {
   if (await isBehind(env, TARGET)) return true;
 
   const [latest, whitelist] = await Promise.all([latestRevisions(env, 'footprints_event'), readSourceWhitelist(env)]);
 
-  return isOutdated(env, latest, whitelist).catch(() => false);
+  return isOutdated(env, latest, whitelist);
 }
 
 /** `waitingFootprints`, with the latest revisions it was worked out from left in for `pendingFootprints` to compare against. */
@@ -542,9 +542,9 @@ async function readWaiting(env: Env): Promise<{ pending: WaitingFootprintsEntry[
  * say what no revision says, which only a build from `revision` takes back
  * out, and one that is outdated was judged by another whitelist.
  *
- * Kept for the 公開 screen until it goes (#285): a row left waiting from
- * before #281 is published by it, or by the next publish of any event, which
- * builds from the same revisions.
+ * Pressed from the あしあと list while the JSON needs it (#285): a row left
+ * waiting from before #281, a JSON that may be behind or one that is
+ * outdated. The next publish of any event builds from the same revisions too.
  *
  * Written through publishing.ts's `republish`, which checks the JSON again
  * after writing it as a publish does: a 「公開」 recorded while this was

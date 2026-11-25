@@ -1,4 +1,4 @@
-import { SAVE_TOAST, sameFields, saveToastFor } from '@/admin/lib/editing';
+import { sameFields } from '@/admin/lib/editing';
 import { toFormFields, type FootprintsEvent } from '@/admin/lib/footprints';
 
 const EVENT: FootprintsEvent = {
@@ -65,18 +65,5 @@ describe('sameFields', () => {
 
   it('does not take an empty list for null', () => {
     expect(sameFields({ list: [] }, { list: null })).toBe(false);
-  });
-});
-
-describe('saveToastFor', () => {
-  it('says a draft was saved for a row that is not public', () => {
-    expect(saveToastFor('draft')).toBe('下書きを保存しました');
-    expect(saveToastFor('review')).toBe('下書きを保存しました');
-  });
-
-  // Until #281, saving a published row does not reach the public site.
-  it('does not say a published row reached the public site', () => {
-    expect(saveToastFor('published')).toBe('保存しました');
-    expect(saveToastFor('published')).not.toBe(SAVE_TOAST.savePublished);
   });
 });

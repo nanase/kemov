@@ -45,7 +45,7 @@ import type { RevisionEntity } from '../lib/revision';
  * built again - is left in `publication_write` (migration 0014): a row is
  * added there before each write is sent, and taken away by a check that
  * passed after it - the request's own, or another's once R2 had answered
- * the write. `isBehind` reads it, and the 公開 screen offers 「いま公開する」
+ * the write. `isBehind` reads it, and each list offers 「本番に反映」
  * while it says so.
  */
 
@@ -281,7 +281,7 @@ async function startWrite(env: Env, target: PublishTarget): Promise<number> {
  * `target` older than `ABANDONED_WRITE_MINUTES`. Another request's write
  * still on its way stays: it may land after this check, and only a check
  * after it can say it did no harm. A failure here is not answered: the rows
- * stay, and the 公開 screen offers to build the JSON again, which costs
+ * stay, and the list offers to build the JSON again, which costs
  * nothing.
  */
 async function clearWrites(env: Env, target: PublishTarget, writeIds: readonly number[]): Promise<void> {
@@ -519,7 +519,7 @@ export async function publishChange(
     results = await env.DB.batch([...rowStatements, ...loggedRevisions(target, change).map(logRevision)]);
   } catch (error) {
     // The JSON has a change nothing recorded: built again from `revision`,
-    // or left in `publication_write` for the 公開 screen when that fails too.
+    // or left in `publication_write` for the list's 「本番に反映」 when that fails too.
     const repaired = await bringUpToDate(env, target, now, { ...first, own: [] }, false);
 
     if (repaired.current) await settle(env, target, repaired).catch(() => null);

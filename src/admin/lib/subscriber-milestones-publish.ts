@@ -68,9 +68,6 @@ export function publishesOnlyForShape(state: MilestonesPending): boolean {
   return state.pending.length === 0 && state.eventChanged.length === 0 && !state.behind && state.shapeOutdated;
 }
 
-/** The 公開 screen's, while the worker says the JSON may be behind. */
-export const MILESTONES_BEHIND_TEXT = '本番の登録者数の節目が記録と食い違っているかもしれません。';
-
 /** The edit panel's note for a 502 that saved nothing (lib/publishing.ts's `notMendedNote`). */
 export const MILESTONES_NOT_MENDED_TEXT = '本番の登録者数の節目への反映に失敗しました。';
 

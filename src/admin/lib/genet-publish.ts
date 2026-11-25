@@ -1,7 +1,7 @@
 /**
  * Pure logic for publishing ジェネット楽曲一覧 (#141, #144, #284) -
  * `GET /admin/api/genet/pending` and `POST /admin/api/genet/publish`'s
- * response shapes for PublishPage.vue, and what SetsPage.vue says after a
+ * response shapes for the list's 「本番に反映」, and what SetsPage.vue says after a
  * stream's 「公開」, 「保存」 or 「非公開に戻す」 and after a tune's 保存.
  * `worker/src/admin/genet-publish.ts` decides whether a stream or a tune may
  * reach the public JSON and says why not; the functions here only turn its
@@ -69,9 +69,6 @@ export function publishesOnlyForShape(state: GenetPendingResponse): boolean {
 export function isChangedSincePublish(state: GenetPendingResponse | null, entity: GenetEntity, key: string): boolean {
   return state?.changed.some((entry) => entry.entity === entity && entry.key === key) ?? false;
 }
-
-/** The 公開 screen's, while the worker says the JSON may be behind. */
-export const GENET_BEHIND_TEXT = '本番の楽曲一覧が記録と食い違っているかもしれません。';
 
 export interface GenetPublishResult {
   published: boolean;

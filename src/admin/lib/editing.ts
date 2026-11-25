@@ -17,11 +17,7 @@ export const EDITING_TEXT = {
 
 /**
  * The toasts #277's 1c decided. `publish`, `savePublished` and `withdraw` are
- * for a data whose save reaches the public site in the same request (#281). A
- * data still publishing in two steps uses `saveToastFor` instead: its
- * published row's save does not reach the public site until the 公開
- * screen's 「いま公開する」, so `savePublished` would say something untrue
- * there.
+ * for a data whose save reaches the public site in the same request (#281).
  */
 export const SAVE_TOAST = {
   publish: '公開しました。本番に出ています',
@@ -31,11 +27,6 @@ export const SAVE_TOAST = {
   /** A save that neither lands on the public site nor stays a draft: a published row before #281, or a tune. */
   saved: '保存しました',
 } as const;
-
-/** The toast after saving a row whose `status` is `status`, for a data whose publishing still takes the 公開 screen. */
-export function saveToastFor(status: string): string {
-  return status === 'published' ? SAVE_TOAST.saved : SAVE_TOAST.saveDraft;
-}
 
 /**
  * Whether two sets of form fields say the same thing - plain data only

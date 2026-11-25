@@ -11,7 +11,6 @@
 
 import { AdminApiError } from './api';
 import { EDITING_TEXT, SAVE_TOAST } from './editing';
-import type { PublishMark } from './publish-mark';
 
 /** What the buttons at the bottom of the edit panel do. */
 export type PublishAction = 'publish' | 'save' | 'withdraw';
@@ -19,11 +18,16 @@ export type PublishAction = 'publish' | 'save' | 'withdraw';
 /** What `publishAnswerFor` answers for: the buttons above, and 削除. */
 export type AnsweredAction = PublishAction | 'delete';
 
+/** The 状態 chip for one row. */
+export interface PublishMark {
+  label: string;
+  /** Doubles as the chip's CSS class. */
+  tone: 'draft' | 'published';
+}
+
 /**
  * The 状態 chip for one row: its status, and nothing else - every publish
- * reaches the public site in the same request. Not `publishMarkFor`
- * (publish-mark.ts): that one tells 公開待ち from 公開 for a data publishing
- * in two steps.
+ * reaches the public site in the same request.
  */
 export function liveMarkFor(status: string): PublishMark {
   return status === 'published' ? { label: '公開中', tone: 'published' } : { label: '下書き', tone: 'draft' };
@@ -88,8 +92,8 @@ export const PUBLISH_TEXT = {
   notWithdrawn: '非公開に戻せません',
   notWithdrawnNote:
     '本番を書き直せませんでした。行は公開中のまま、本番も前の内容のままです。もう一度「非公開に戻す」を押してください。',
-  withdrawnBehind: '非公開に戻しましたが、本番から外せませんでした',
-  withdrawnBehindNote: '公開の画面で「いま公開する」を押すと本番からも外れます',
+  withdrawnBehind: '本番への反映に失敗しました',
+  withdrawnBehindNote: '一覧の上の［本番に反映］を押してください',
   failed: '保存できません',
   removeFailed: '削除できません',
   changedTitle: '本番は前の内容のままです',
