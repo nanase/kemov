@@ -245,6 +245,7 @@ async function create(): Promise<void> {
   try {
     const body = await postJson<{ event: { eventId: number } }>('/footprints/events', fields.value);
 
+    void refreshSidebarDrafts();
     emit('created', body.event.eventId);
   } catch (error) {
     const answer = footprintsAnswerFor('save', null, error);

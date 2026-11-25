@@ -297,7 +297,10 @@ async function create(): Promise<void> {
     );
 
     props.trackWrite(write);
-    emit('created', (await write).milestone.milestoneId);
+    const milestoneId = (await write).milestone.milestoneId;
+
+    void refreshSidebarDrafts();
+    emit('created', milestoneId);
   } catch (error) {
     const answer = milestonesAnswerFor('save', null, error);
 

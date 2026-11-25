@@ -96,6 +96,7 @@ worker も、`/admin/api/*` への要求をすべて `worker/src/lib/access.ts` 
 - 登録者数の節目・あしあと・ジェネット楽曲一覧は、`GET /admin/api/drafts` が返す下書きの行の数を、収集の失敗と同じ注意の色の丸で出す
   - 本番の JSON が記録に追いついたか確かめていないときは、数の横に ⚠ の印を出す。読み上げと、マウスを載せたときの表示は「本番に未反映の変更あり」。条件は一覧の上の「本番に反映」と同じ
   - 読めなかったデータには、数も印も出さない
+  - 行の作成・保存・公開・非公開に戻す・削除と、まとめて公開の後に読み直す（`src/admin/lib/sidebar-drafts.ts` の `refreshSidebarDrafts`）
 - それ以外の項目は、名前だけを出す
 - サイドバーのどの項目にも当たらないパスには、`src/admin/pages/PlaceholderPage.vue` を出す
 
