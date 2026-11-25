@@ -8,6 +8,16 @@
  * worker, typed the same way on both sides.
  */
 
+/**
+ * What the screen says for a 409 the worker marks `changedElsewhere`: another
+ * screen changed the row between this one's read and its write (#299). The
+ * worker's own message is for logs, and is not shown.
+ */
+export const CHANGED_ELSEWHERE_TEXT = {
+  save: '別の画面で変更されたため保存できませんでした',
+  remove: '別の画面で変更されたため削除できませんでした',
+} as const;
+
 export class AdminApiError extends Error {
   constructor(
     readonly status: number,
@@ -17,12 +27,24 @@ export class AdminApiError extends Error {
     this.name = 'AdminApiError';
   }
 
+  /** Whether the worker answered that another screen changed the row meanwhile (`CHANGED_ELSEWHERE_TEXT`). */
+  get changedElsewhere(): boolean {
+    return AdminApiError.isChangedElsewhere(this.body);
+  }
+
+  private static isChangedElsewhere(body: unknown): boolean {
+    return typeof body === 'object' && body !== null && 'changedElsewhere' in body && body.changedElsewhere === true;
+  }
+
   private static messageFor(status: number, body: unknown): string {
     // `call`'s own catch passes a plain description string here (status 0,
     // the fetch itself failed) rather than a parsed JSON error body - without
     // this, that string fails every check below and the network failure's
     // own message is lost behind "/admin/api answered 0".
     if (typeof body === 'string') return body;
+
+    // A delete's words are put in by `publishAnswerFor`, which knows the action.
+    if (AdminApiError.isChangedElsewhere(body)) return CHANGED_ELSEWHERE_TEXT.save;
 
     if (typeof body === 'object' && body !== null && 'error' in body && typeof body.error === 'string') {
       return body.error;

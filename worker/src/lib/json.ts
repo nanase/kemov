@@ -17,3 +17,12 @@ export function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 export function errorResponse(status: number, message: string): Response {
   return jsonResponse({ error: message }, { status });
 }
+
+/**
+ * The 409 for a row another request changed between this one's read and its
+ * write (#299). `changedElsewhere` lets the admin screen put its own words in
+ * place of `message`, which stays for logs and tests.
+ */
+export function changedElsewhereResponse(message: string): Response {
+  return jsonResponse({ error: message, changedElsewhere: true }, { status: 409 });
+}

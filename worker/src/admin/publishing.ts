@@ -113,7 +113,9 @@ export interface RevisionChange {
    * Revisions of other entities logged in the same batch - the tunes and
    * people a stream's publish brings along (#284). Each is logged under the
    * same condition as the row's own, so a change that logs no revision for
-   * its row logs none for them either.
+   * its row logs none for them either, and under its own `whileLatest` too.
+   * They are logged before the row's own, so that a `whileRow` reading the
+   * row's own newest revision answers the same for every one of them.
    */
   alongside?: readonly LoggedRevision[];
   /**
@@ -134,6 +136,15 @@ export interface LoggedRevision {
   key: string;
   action: 'publish' | 'withdraw';
   body: Record<string, unknown> | null;
+  /**
+   * For an `alongside` revision: the newest revision of its entity and key,
+   * 0 for none, as the caller read it before reading the row `body` was
+   * made from. It is logged only while that is still the newest one (#299):
+   * a tune saved in between keeps its newer revision rather than getting
+   * the body read before it, and the JSON already written with that body is
+   * built again from `revision`.
+   */
+  whileLatest?: number;
 }
 
 /** Every revision `change` logs for `target`: the row's own first, then `alongside`. */
@@ -147,7 +158,8 @@ export function loggedRevisions(target: PublishTarget, change: RevisionChange): 
 /**
  * `revisionId` is null when the row was gone by the time the batch ran - a
  * delete in between - or no longer met `change.whileRow`, and no revision
- * was logged for it. `publicationId` is
+ * was logged for it. `loggedAlongside` is each of `change.alongside` that
+ * was logged. `publicationId` is
  * null when, besides, no revision of `entity` exists at all: a publication
  * names the newest revision it was built from, and there is none. It is null
  * too when another request already recorded a publication naming a newer
@@ -162,7 +174,13 @@ export function loggedRevisions(target: PublishTarget, change: RevisionChange): 
  * next publish of `entity` builds the JSON again.
  */
 export type PublishOutcome =
-  | { written: true; revisionId: number | null; publicationId: number | null; byteLength: number }
+  | {
+      written: true;
+      revisionId: number | null;
+      loggedAlongside: readonly LoggedRevision[];
+      publicationId: number | null;
+      byteLength: number;
+    }
   | { written: false; recorded: false; error: string }
   | { written: false; recorded: true; revisionId: number | null; error: string };
 
@@ -474,7 +492,9 @@ async function bringUpToDate(
  * (lib/revision.ts) cannot say: a row deleted between the caller's read and
  * this batch gets no `publish` revision, and the JSON already written with
  * its body is built again without it. `alongside` is logged under the same
- * condition.
+ * condition, and each under its own `whileLatest`. The JSON written before
+ * the batch is trusted only when every revision it was built with was
+ * logged: one left out is a body nothing recorded.
  */
 export async function publishChange(
   env: Env,
@@ -512,11 +532,22 @@ export async function publishChange(
     env.DB.prepare(
       `INSERT INTO revision (entity, entity_key, action, body, created_via)
        SELECT ?1, ?2, ?3, ?4, 'admin'
-       WHERE ${rowStill}`,
-    ).bind(revision.entity, revision.key, revision.action, bodyText(revision.body), change.key);
+       WHERE ${rowStill}
+         AND (?6 IS NULL
+              OR (SELECT COALESCE(MAX(revision_id), 0) FROM revision WHERE entity = ?1 AND entity_key = ?2) = ?6)`,
+    ).bind(
+      revision.entity,
+      revision.key,
+      revision.action,
+      bodyText(revision.body),
+      change.key,
+      revision.whileLatest ?? null,
+    );
+  const [own, ...alongside] = loggedRevisions(target, change);
 
   try {
-    results = await env.DB.batch([...rowStatements, ...loggedRevisions(target, change).map(logRevision)]);
+    // The row's own last: see `RevisionChange.alongside`.
+    results = await env.DB.batch([...rowStatements, ...alongside.map(logRevision), logRevision(own!)]);
   } catch (error) {
     // The JSON has a change nothing recorded: built again from `revision`,
     // or left in `publication_write` for the 公開 screen when that fails too.
@@ -527,20 +558,20 @@ export async function publishChange(
     throw error;
   }
 
-  const revision = results[rowStatements.length]!;
+  const revision = results[results.length - 1]!;
   const revisionId = revision.meta.changes > 0 ? revision.meta.last_row_id : null;
-  const alongsideIds = results
-    .slice(rowStatements.length + 1)
-    .flatMap((result) => (result.meta.changes > 0 ? [result.meta.last_row_id] : []));
+  const alongsideResults = results.slice(rowStatements.length, results.length - 1);
+  const loggedAlongside = alongside.filter((_, index) => alongsideResults[index]!.meta.changes > 0);
+  const alongsideIds = alongsideResults.flatMap((result) => (result.meta.changes > 0 ? [result.meta.last_row_id] : []));
 
-  // Trusted only with the row's own revision recorded: without it, the JSON
-  // carries a body nothing recorded.
+  // Trusted only with every revision recorded: without one, the JSON carries
+  // a body nothing recorded.
   const upToDate = await bringUpToDate(
     env,
     target,
     now,
     { ...first, own: revisionId === null ? alongsideIds : [revisionId, ...alongsideIds] },
-    revisionId !== null,
+    revisionId !== null && loggedAlongside.length === alongside.length,
   );
 
   if (!upToDate.current) return { written: false, recorded: true, revisionId, error: upToDate.error };
@@ -548,6 +579,7 @@ export async function publishChange(
   return {
     written: true,
     revisionId,
+    loggedAlongside,
     publicationId: await settle(env, target, upToDate),
     byteLength: upToDate.written.byteLength,
   };

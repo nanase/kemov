@@ -1193,3 +1193,301 @@ describe('the JSON: channel_id and shape_version', () => {
     });
   });
 });
+
+// #299: what #293 put right for 登録者数の節目, for ジェネット楽曲一覧 -
+// requests that land between another's read and its write.
+/** `env` with an R2 that takes the first write and refuses every one after it: a rebuild that cannot be written. */
+function firstPutOnly(): typeof env {
+  let puts = 0;
+
+  return {
+    ...env,
+    PUBLIC_DATA: {
+      get: env.PUBLIC_DATA.get.bind(env.PUBLIC_DATA),
+      head: env.PUBLIC_DATA.head.bind(env.PUBLIC_DATA),
+      put: (key: string, value: string, options?: R2PutOptions) =>
+        (puts += 1) === 1 ? env.PUBLIC_DATA.put(key, value, options) : Promise.reject(new Error('R2 is down')),
+    },
+  } as unknown as typeof env;
+}
+
+/**
+ * `base` whose next `DB.batch` first runs `before` - another tab's request
+ * landing between this request's read and its write.
+ */
+function beforeNextBatch(base: typeof env, before: () => Promise<unknown>): typeof env {
+  let done = false;
+
+  return {
+    ...base,
+    DB: new Proxy(base.DB, {
+      get(target, property) {
+        if (property === 'batch') {
+          return async (statements: D1PreparedStatement[]) => {
+            if (!done) {
+              done = true;
+              await before();
+            }
+
+            return await target.batch(statements);
+          };
+        }
+
+        const value = Reflect.get(target, property) as unknown;
+
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    }),
+  } as typeof env;
+}
+
+/**
+ * `env` that runs `then` once, right after the first statement whose SQL
+ * starts with `prefix` has answered `all()` - another tab's request landing
+ * between two of this request's reads.
+ */
+function afterFirstRead(prefix: string, then: () => Promise<unknown>): typeof env {
+  const realPrepare = env.DB.prepare.bind(env.DB);
+  let done = false;
+
+  const DB = {
+    batch: env.DB.batch.bind(env.DB),
+    prepare: (sql: string) => {
+      const stmt = realPrepare(sql);
+
+      if (!sql.startsWith(prefix)) return stmt;
+
+      return {
+        bind: (...args: unknown[]) => {
+          const bound = stmt.bind(...args);
+
+          return {
+            all: async <T = unknown>() => {
+              const result = await bound.all<T>();
+
+              if (!done) {
+                done = true;
+                await then();
+              }
+
+              return result;
+            },
+            first: bound.first.bind(bound),
+            run: bound.run.bind(bound),
+            raw: bound.raw.bind(bound),
+          };
+        },
+      };
+    },
+  };
+
+  return { ...env, DB } as unknown as typeof env;
+}
+
+async function childCount(videoId: string): Promise<{ performances: number; scenes: number }> {
+  const performances = await env.DB.prepare('SELECT count(*) AS n FROM genet_performance WHERE video_id = ?1')
+    .bind(videoId)
+    .first<{ n: number }>();
+  const scenes = await env.DB.prepare('SELECT count(*) AS n FROM genet_scene WHERE video_id = ?1')
+    .bind(videoId)
+    .first<{ n: number }>();
+
+  return { performances: performances!.n, scenes: scenes!.n };
+}
+
+async function streamTitle(videoId: string): Promise<string> {
+  return ((await fieldsOf(videoId)) as { title: string }).title;
+}
+
+async function isBehindNow(): Promise<boolean> {
+  return ((await (await pendingGenetMusic(env)).json()) as { behind: boolean }).behind;
+}
+
+describe("a stream's publish that finds a tune it performs saved meanwhile", () => {
+  test('keeps the newer tune in the revisions and the JSON, and still publishes the stream', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const other = await createValidStream({
+      videoId: 'bbbbbbbbbbb',
+      performances: [{ tuneId, description: null, scenes: [] }],
+    });
+    const tuneSavedBetween = afterFirstRead('SELECT tune_id, title, original_title, subtunes, memo', async () =>
+      saveTune(env, tuneId, await tuneFieldsOf(tuneId, { title: '後から直した曲名' }), NOW),
+    );
+
+    const response = await publishStream(tuneSavedBetween, other, await fieldsOf(other), NOW);
+
+    expect(response.status).toEqual(200);
+    expect(await response.json()).toMatchObject({ tuneRevisionCount: 0 });
+    expect(await streamStatus(other)).toEqual('published');
+
+    const tuneRevisions = await revisionRows('genet_tune');
+
+    expect(tuneRevisions).toHaveLength(2);
+    expect(JSON.parse(tuneRevisions[1]!.body!)).toMatchObject({ title: '後から直した曲名' });
+    expect((await readPublished())!.tunes).toEqual([expect.objectContaining({ title: '後から直した曲名' })]);
+  });
+});
+
+describe('a draft save that finds the stream published meanwhile', () => {
+  /** `env` whose next `batch` first publishes `videoId` elsewhere, as another tab would. */
+  function publishedFirst(videoId: string): typeof env {
+    return beforeNextBatch(env, () => publish(videoId, { title: '先に公開' }));
+  }
+
+  // #302's first pass: a PUT with an empty title saved over a stream
+  // published in between, and answered 200.
+  test('of a plain save answers 409 and writes nothing over it', async () => {
+    const { videoId } = await createPerformableStream();
+
+    const response = await saveStream(publishedFirst(videoId), videoId, await fieldsOf(videoId, { title: '' }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await streamStatus(videoId)).toEqual('published');
+    expect(await streamTitle(videoId)).toEqual('先に公開');
+    expect(await childCount(videoId)).toEqual({ performances: 1, scenes: 1 });
+  });
+
+  test('of a refused publish answers 409 and writes nothing over it', async () => {
+    const { videoId } = await createPerformableStream();
+
+    const response = await publishStream(
+      publishedFirst(videoId),
+      videoId,
+      await fieldsOf(videoId, { title: '', performances: [] }),
+      NOW,
+    );
+
+    expect(response.status).toEqual(409);
+    expect(await streamTitle(videoId)).toEqual('先に公開');
+    expect(await childCount(videoId)).toEqual({ performances: 1, scenes: 1 });
+  });
+});
+
+describe('a published save that finds the stream withdrawn meanwhile', () => {
+  test('answers 409, and neither saves the stream and its performances nor puts it back in the JSON', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const withdrawnFirst = beforeNextBatch(env, () => withdraw(videoId));
+
+    const fields = await fieldsOf(videoId, { title: '後から保存' });
+    const performances = fields.performances as { scenes: unknown[] }[];
+    const response = await saveStream(
+      withdrawnFirst,
+      videoId,
+      // The scene dropped: a save let through would delete it.
+      { ...fields, performances: performances.map((p) => ({ ...p, scenes: [] })) },
+      NOW,
+    );
+
+    expect(response.status).toEqual(409);
+    expect(await streamStatus(videoId)).toEqual('draft');
+    expect(await streamTitle(videoId)).toEqual('配信題');
+    expect(await childCount(videoId)).toEqual({ performances: 1, scenes: 1 });
+    expect((await readPublished())!.streams).toEqual([]);
+    expect((await revisionRows('genet_stream')).map((row) => row.action)).toEqual(['publish', 'withdraw']);
+  });
+
+  test('answers 502 with nothing saved, and leaves the JSON behind, when it cannot build the JSON again', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const withdrawnFirst = beforeNextBatch(firstPutOnly(), () => withdraw(videoId));
+
+    const response = await saveStream(withdrawnFirst, videoId, await fieldsOf(videoId, { title: '後から保存' }), NOW);
+
+    expect(response.status).toEqual(502);
+    expect(((await response.json()) as { saved: boolean }).saved).toBe(false);
+    expect(await streamTitle(videoId)).toEqual('配信題');
+    expect(await isBehindNow()).toBe(true);
+  });
+});
+
+describe('a draft publish that finds the stream published meanwhile', () => {
+  test('answers 409, and leaves the other publish on the stream and in the JSON', async () => {
+    const { videoId } = await createPerformableStream();
+    const publishedFirst = beforeNextBatch(env, () => publish(videoId, { title: '先に公開' }));
+
+    const response = await publishStream(
+      publishedFirst,
+      videoId,
+      await fieldsOf(videoId, { title: '後から公開' }),
+      NOW,
+    );
+
+    expect(response.status).toEqual(409);
+    expect(await streamTitle(videoId)).toEqual('先に公開');
+    expect(await childCount(videoId)).toEqual({ performances: 1, scenes: 1 });
+    expect((await readPublished())!.streams).toEqual([expect.objectContaining({ title: '先に公開' })]);
+    expect((await revisionRows('genet_stream')).map((row) => row.action)).toEqual(['publish']);
+  });
+});
+
+describe('a withdraw that finds the stream changed meanwhile', () => {
+  test('answers 409, writes nothing over the draft, and records no second withdrawal', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const withdrawnFirst = beforeNextBatch(env, () => withdraw(videoId, { memo: '先に戻した' }));
+
+    const response = await withdrawStream(
+      withdrawnFirst,
+      videoId,
+      await fieldsOf(videoId, { memo: '後から戻した' }),
+      NOW,
+    );
+
+    expect(response.status).toEqual(409);
+    expect(await fieldsOf(videoId)).toMatchObject({ status: 'draft', memo: '先に戻した' });
+    expect((await revisionRows('genet_stream')).map((row) => row.action)).toEqual(['publish', 'withdraw']);
+  });
+
+  test('answers 409 for a stream saved again since it was read', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const savedFirst = beforeNextBatch(env, async () =>
+      saveStream(env, videoId, await fieldsOf(videoId, { title: '先に保存' }), NOW),
+    );
+
+    expect((await withdrawStream(savedFirst, videoId, await fieldsOf(videoId), NOW)).status).toEqual(409);
+    expect(await streamStatus(videoId)).toEqual('published');
+    expect((await readPublished())!.streams).toEqual([expect.objectContaining({ title: '先に保存' })]);
+  });
+});
+
+describe("a stream's save whose JSON could not be written", () => {
+  test('writes nothing over a publish recorded since it read the stream, and answers 409', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const savedFirst = beforeNextBatch(failingPutEnv(), async () =>
+      saveStream(env, videoId, await fieldsOf(videoId, { title: '先に保存' }), NOW),
+    );
+
+    const response = await saveStream(savedFirst, videoId, await fieldsOf(videoId, { title: '後から保存' }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await streamTitle(videoId)).toEqual('先に保存');
+  });
+});
+
+describe('a 409 for a stream another screen changed', () => {
+  test('is marked changedElsewhere, so the screen says it in its own words', async () => {
+    const { videoId } = await createPerformableStream();
+    const publishedFirst = beforeNextBatch(env, () => publish(videoId));
+
+    const response = await saveStream(publishedFirst, videoId, await fieldsOf(videoId, { title: '後から保存' }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ changedElsewhere: true });
+  });
+});

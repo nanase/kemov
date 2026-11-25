@@ -233,3 +233,27 @@ describe('footprintsAnswerFor on 削除', () => {
     });
   });
 });
+
+// The worker's 502 when the row changed under the request and the JSON it
+// had written could not be built again without the change (#299).
+describe('footprintsAnswerFor for a 502 that saved nothing', () => {
+  const error = new AdminApiError(502, { error: 'footprints event 3 changed while …', saved: false });
+
+  test('says the public timeline was not mended, in place of the worker message', () => {
+    expect(footprintsAnswerFor('save', 'published', error)).toEqual({
+      kind: 'band',
+      band: { title: '保存できません', lines: [], note: '本番の年表への反映に失敗しました。' },
+      fields: [],
+      changed: true,
+    });
+  });
+
+  test('says the same for a withdraw, under its own title', () => {
+    expect(footprintsAnswerFor('withdraw', 'published', error)).toEqual({
+      kind: 'band',
+      band: { title: '非公開に戻せません', lines: [], note: '本番の年表への反映に失敗しました。' },
+      fields: [],
+      changed: true,
+    });
+  });
+});

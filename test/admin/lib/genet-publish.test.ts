@@ -268,3 +268,27 @@ describe('streamBandReasonIds and tuneBandReasonIds', () => {
     expect(STREAM_NOTE_ID).not.toEqual(TUNE_NOTE_ID);
   });
 });
+
+// The worker's 502 when the stream changed under the request and the JSON
+// it had written could not be built again without the change (#299).
+describe('streamAnswerFor for a 502 that saved nothing', () => {
+  const error = new AdminApiError(502, { error: 'stream abcdefghijk changed while …', saved: false });
+
+  test('says the public list was not mended, in place of the worker message', () => {
+    expect(streamAnswerFor('save', 'published', error)).toEqual({
+      kind: 'band',
+      band: { title: '保存できません', lines: [], note: '本番の楽曲一覧への反映に失敗しました。' },
+      fields: [],
+      changed: true,
+    });
+  });
+
+  test('says the same for a withdraw, under its own title', () => {
+    expect(streamAnswerFor('withdraw', 'published', error)).toEqual({
+      kind: 'band',
+      band: { title: '非公開に戻せません', lines: [], note: '本番の楽曲一覧への反映に失敗しました。' },
+      fields: [],
+      changed: true,
+    });
+  });
+});

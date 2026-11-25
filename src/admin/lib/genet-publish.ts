@@ -73,6 +73,9 @@ export function isChangedSincePublish(state: GenetPendingResponse | null, entity
 /** The 公開 screen's, while the worker says the JSON may be behind. */
 export const GENET_BEHIND_TEXT = '本番の楽曲一覧が記録と食い違っているかもしれません。';
 
+/** The stream editor's note for a 502 that saved nothing (lib/publishing.ts's `notMendedNote`). */
+export const GENET_NOT_MENDED_TEXT = '本番の楽曲一覧への反映に失敗しました。';
+
 export interface GenetPublishResult {
   published: boolean;
   publicationId?: number;
@@ -149,6 +152,7 @@ export function streamAnswerFor(
         performanceIndex: typeof problem.performanceIndex === 'number' ? problem.performanceIndex : null,
         sceneIndex: null,
       }),
+      notMendedNote: GENET_NOT_MENDED_TEXT,
     },
     action,
     status,

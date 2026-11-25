@@ -253,21 +253,42 @@ describe('updateStream', () => {
       performances: [{ tuneId, description: null, scenes: [] }],
     });
 
-    await env.DB.prepare(`UPDATE genet_stream SET status = 'published' WHERE video_id = ?1`).bind(videoId).run();
-
-    const response = await updateStream(env, videoId, validBody({ title: '新しい題', performances: [] }));
+    const response = await updateStream(
+      env,
+      videoId,
+      validBody({ title: '新しい題', status: 'published', performances: [] }),
+    );
 
     expect(response.status).toEqual(200);
 
     const body = (await response.json()) as { stream: { title: string; status: string; performances: unknown[] } };
 
     expect(body.stream.title).toEqual('新しい題');
-    expect(body.stream.status).toEqual('published');
+    expect(body.stream.status).toEqual('draft');
     expect(body.stream.performances).toEqual([]);
 
     const { results } = await env.DB.prepare('SELECT 1 FROM genet_performance WHERE video_id = ?1').bind(videoId).all();
 
     expect(results).toEqual([]);
+  });
+
+  // A published stream's save reaches the public JSON, and that is
+  // genet-publish.ts's saveStream: this one answers 409 and writes nothing.
+  test('answers 409 for a published stream, and leaves it and its performances as they were', async () => {
+    const tuneId = await insertTune();
+    const videoId = await createValidStream({
+      performances: [{ tuneId, description: null, scenes: [] }],
+    });
+
+    await env.DB.prepare(`UPDATE genet_stream SET status = 'published' WHERE video_id = ?1`).bind(videoId).run();
+
+    const response = await updateStream(env, videoId, validBody({ title: '新しい題', performances: [] }));
+
+    expect(response.status).toEqual(409);
+
+    const { results } = await env.DB.prepare('SELECT 1 FROM genet_performance WHERE video_id = ?1').bind(videoId).all();
+
+    expect(results).toHaveLength(1);
   });
 });
 
@@ -343,7 +364,8 @@ describe('deleteStream', () => {
 
     const response = await deleteStream({ ...env, DB: riggedDB } as typeof env, videoId);
 
-    expect(response.status).toEqual(200);
+    // Not 200: the screen would take the stream for deleted (#299).
+    expect(response.status).toEqual(409);
     expect(await env.DB.prepare('SELECT status FROM genet_stream WHERE video_id = ?1').bind(videoId).first()).toEqual({
       status: 'published',
     });

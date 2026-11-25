@@ -1041,3 +1041,25 @@ describe("checkSources for a listener's announcement", () => {
     }
   });
 });
+
+describe('a 409 for a milestone another screen changed', () => {
+  test('is marked changedElsewhere, so the screen says it in its own words', async () => {
+    const milestoneId = await create();
+    const publishedFirst = beforeNextBatch(env, () => publishMilestone(env, milestoneId, body(), NOW));
+
+    const response = await saveMilestone(publishedFirst, milestoneId, body({ subscriberCount: 21000 }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ changedElsewhere: true });
+  });
+
+  test('of a delete is marked too', async () => {
+    const milestoneId = await create();
+    const publishedFirst = beforeNextBatch(env, () => publishMilestone(env, milestoneId, body(), NOW));
+
+    const response = await deleteMilestone(publishedFirst, milestoneId);
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ changedElsewhere: true });
+  });
+});

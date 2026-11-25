@@ -110,3 +110,31 @@ describe('publishAnswerFor', () => {
     expect(answer.kind === 'band' && answer.fields).toEqual([{ section: 'performances', at: 3 }]);
   });
 });
+
+// #299: a 409 for a row another screen changed says so in the screen's own
+// words, for every data that answers through `publishAnswerFor`.
+describe('publishAnswerFor for a 409 the worker marks changedElsewhere', () => {
+  const shape = { rowKey: 'event', fieldForSaveError: () => null };
+  const error = (message: string) => new AdminApiError(409, { error: message, changedElsewhere: true });
+
+  test.each(['publish', 'save', 'withdraw'] as const)(
+    'says 保存できませんでした for %s, and reads the row again',
+    (action) => {
+      const answer = publishAnswerFor(shape, action, 'published', error('footprints event 2 changed while …'));
+
+      expect(answer.kind === 'band' && [answer.band.note, answer.changed]).toEqual([
+        '別の画面で変更されたため保存できませんでした',
+        true,
+      ]);
+    },
+  );
+
+  test('says 削除できませんでした for a delete', () => {
+    const answer = publishAnswerFor(shape, 'delete', 'draft', error('withdraw this event before deleting it'));
+
+    expect(answer.kind === 'band' && [answer.band.title, answer.band.note]).toEqual([
+      '削除できません',
+      '別の画面で変更されたため削除できませんでした',
+    ]);
+  });
+});
