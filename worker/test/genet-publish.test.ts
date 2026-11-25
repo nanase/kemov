@@ -1416,7 +1416,7 @@ describe('a draft publish that finds the stream published meanwhile', () => {
     const response = await publishStream(
       publishedFirst,
       videoId,
-      await fieldsOf(videoId, { title: '後から公開', performances: [] }),
+      await fieldsOf(videoId, { title: '後から公開' }),
       NOW,
     );
 

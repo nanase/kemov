@@ -412,8 +412,10 @@ async function saveAndPublish(
     return await notWrittenResponse(env, eventId, outcome);
   }
 
-  // A change no revision was logged for left the timeline as it was.
-  if (outcome.revisionId !== null) await republishMilestonesForEvents(env, now);
+  // Even with no revision logged for it, the rebuild may have moved the
+  // timeline on to another request's revision, which the milestones JSON
+  // names events by.
+  await republishMilestonesForEvents(env, now);
 
   return await writtenResponse(env, eventId, outcome);
 }
@@ -517,8 +519,10 @@ export async function withdrawEvent(
     return await notWrittenResponse(env, eventId, outcome);
   }
 
-  // A change no revision was logged for left the timeline as it was.
-  if (outcome.revisionId !== null) await republishMilestonesForEvents(env, now);
+  // Even with no revision logged for it, the rebuild may have moved the
+  // timeline on to another request's revision, which the milestones JSON
+  // names events by.
+  await republishMilestonesForEvents(env, now);
 
   return await writtenResponse(env, eventId, outcome);
 }
