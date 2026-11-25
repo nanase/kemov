@@ -13,7 +13,9 @@ import { wrappedFocusIndex } from '../lib/focus-trap';
  *
  * The confirmation is modal for the keyboard too: it opens on キャンセル,
  * Tab stays among its buttons, Escape closes it, and closing puts the focus
- * back on まとめて公開.
+ * back on まとめて公開 - or, when 公開 started a run and the progress took
+ * the button's place, on the progress. BulkPublishOutcome.vue takes it from
+ * there when the run ends.
  */
 const props = defineProps<{ count: number; progress: { done: number; total: number } | null; disabled?: boolean }>();
 const emit = defineEmits<{ publish: []; clear: [] }>();
@@ -22,6 +24,7 @@ const confirming = ref<number | null>(null);
 const opener = ref<HTMLButtonElement | null>(null);
 const box = ref<HTMLDivElement | null>(null);
 const cancelButton = ref<HTMLButtonElement | null>(null);
+const progressText = ref<HTMLSpanElement | null>(null);
 
 watch(
   () => [props.count, props.disabled] as const,
@@ -34,8 +37,10 @@ watch(confirming, async (count, before) => {
   await nextTick();
 
   if (count !== null) cancelButton.value?.focus();
-  // Gone when a run took the bar's place, and left alone while disabled.
-  else if (before !== null && opener.value !== null && !opener.value.disabled) opener.value.focus();
+  else if (before === null) return;
+  // Gone when a run took its place, and left alone while disabled.
+  else if (opener.value !== null && !opener.value.disabled) opener.value.focus();
+  else progressText.value?.focus();
 });
 
 function confirm(): void {
@@ -69,7 +74,9 @@ function keepFocus(event: KeyboardEvent): void {
 
 <template>
   <div v-if="count > 0 || progress" class="bulkbar">
-    <span v-if="progress" class="num">{{ BULK_TEXT.progress(progress.done, progress.total) }}</span>
+    <span v-if="progress" ref="progressText" class="num" tabindex="-1" role="status">
+      {{ BULK_TEXT.progress(progress.done, progress.total) }}
+    </span>
     <template v-else>
       <span class="num">{{ BULK_TEXT.ticked(count) }}</span>
       <button ref="opener" class="btn primary" type="button" :disabled="disabled" @click="confirming = count">

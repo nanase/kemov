@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T">
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
 import { BULK_TEXT, outcomeSummary, type BulkPublishOutcome } from '../lib/bulk-publish';
 
@@ -7,6 +7,10 @@ import { BULK_TEXT, outcomeSummary, type BulkPublishOutcome } from '../lib/bulk-
  * What the last まとめて公開 did, under the list where its bar was, until it
  * is closed (#237, #285). The table above keeps its place. `describe` names
  * a row the way the list shows it.
+ *
+ * It takes the focus when it opens on a focus that was lost - the run's
+ * progress, which BulkPublishBar.vue focused, went away with the run - and
+ * leaves it where it is otherwise.
  */
 const props = defineProps<{
   outcome: BulkPublishOutcome<T>;
@@ -15,10 +19,15 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: [] }>();
 const summary = computed(() => outcomeSummary(props.outcome));
+const root = ref<HTMLDivElement | null>(null);
+
+onMounted(() => {
+  if (document.activeElement === null || document.activeElement === document.body) root.value?.focus();
+});
 </script>
 
 <template>
-  <div class="bulk-outcome" role="status">
+  <div ref="root" class="bulk-outcome" role="status" tabindex="-1">
     <div class="bulk-outcome-head">
       <b>{{ summary.heading }}</b>
       <span class="num">{{ BULK_TEXT.published(summary.published) }}</span>
