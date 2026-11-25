@@ -4,6 +4,12 @@
 
 どのパスとメソッドを受けるかは、`worker/src/admin/index.ts` が決めます。この文書の表はその写しです。
 
+## 誤りの本文
+
+断るときも、本文は JSON です。`error` には、管理サイトの画面に出す日本語の文が入ります。
+
+値を断るときは、どの値を断ったかを英語で書いた `detail` が `error` と並んで入ります。色の 4 つの欄のように、違う欄でも `error` が同じ文になることがあるためです。画面は `detail` から誤りのある欄を見つけて赤い枠で示し、`detail` そのものは出しません。
+
 ## 保存した時点で効くデータ
 
 | メソッド | パス                                                          | 返すもの                                                                                      |
@@ -25,7 +31,7 @@
 
 上の PUT と DELETE は、どれも変える行と同じ `db.batch` で `revision` に 1 行を記録します。組のうち片方の書き込みが失敗しても、行とその履歴が食い違いません。PUT は保存した行と一緒に `revisionId` を返し、DELETE は `revisionId` だけを返します。
 
-例外は、メンバーの一覧を扱う `POST /admin/api/members` と `PUT /admin/api/members` です。この 2 つは、足した行と順番が変わった行ごとに `revision` に 1 行を、同じ `db.batch` で記録します。順番が変わらない行には何も記録しません。`revisionId` は返さず、POST は 201 で足した行を `member` に、PUT は保存した後の一覧を `members` に入れて返します。`PUT /admin/api/members` が `add` の 1 人の値を断る 400 では、その人の `channelId` が文字列のとき、本文に `error` と並べて入れます。文字列でなければ `error` だけです。画面は、`channelId` でどの行の誤りかを知ります。
+例外は、メンバーの一覧を扱う `POST /admin/api/members` と `PUT /admin/api/members` です。この 2 つは、足した行と順番が変わった行ごとに `revision` に 1 行を、同じ `db.batch` で記録します。順番が変わらない行には何も記録しません。`revisionId` は返さず、POST は 201 で足した行を `member` に、PUT は保存した後の一覧を `members` に入れて返します。`PUT /admin/api/members` が `add` の 1 人の値を断る 400 では、その人の `channelId` が文字列のとき、本文に `error`・`detail` と並べて入れます。文字列でなければ `channelId` は入れません。画面は、`channelId` でどの行の誤りかを知ります。
 
 PUT は、列を 1 つずつ直すのではなく、すべての列をまとめて置き換えます。
 
