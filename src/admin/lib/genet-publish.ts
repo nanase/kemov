@@ -70,6 +70,9 @@ export function isChangedSincePublish(state: GenetPendingResponse | null, entity
   return state?.changed.some((entry) => entry.entity === entity && entry.key === key) ?? false;
 }
 
+/** The stream editor's note for a 502 that saved nothing (lib/publishing.ts's `notMendedNote`). */
+export const GENET_NOT_MENDED_TEXT = '本番の楽曲一覧への反映に失敗しました。';
+
 export interface GenetPublishResult {
   published: boolean;
   publicationId?: number;
@@ -146,6 +149,7 @@ export function streamAnswerFor(
         performanceIndex: typeof problem.performanceIndex === 'number' ? problem.performanceIndex : null,
         sceneIndex: null,
       }),
+      notMendedNote: GENET_NOT_MENDED_TEXT,
     },
     action,
     status,

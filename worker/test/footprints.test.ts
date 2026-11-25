@@ -281,16 +281,30 @@ describe('updateEvent', () => {
   });
 
   test('never changes status', async () => {
+    const created = await createEvent(env, validBody());
+    const { event } = (await created.json()) as { event: { eventId: number } };
+
+    const response = await updateEvent(env, event.eventId, validBody({ status: 'published' }));
+    const body = (await response.json()) as { event: { status: string } };
+
+    expect(response.status).toEqual(200);
+    expect(body.event.status).toEqual('draft');
+  });
+
+  // A published event's save reaches the public timeline, and that is
+  // footprints-publish.ts's saveEvent: this one answers 409 and writes nothing.
+  test('answers 409 for a published event, and leaves it as it was', async () => {
     const inserted = await env.DB.prepare(
       `INSERT INTO footprints_event (date_precision, start_date, kind, title, status)
        VALUES ('day', '2025-01-01', 'debut', 'x', 'published')`,
     ).run();
+    const eventId = inserted.meta.last_row_id;
 
-    const response = await updateEvent(env, inserted.meta.last_row_id, validBody({ status: 'draft' }));
-    const body = (await response.json()) as { event: { status: string } };
+    const response = await updateEvent(env, eventId, validBody({ title: 'updated' }));
+    const saved = (await (await getEvent(env, eventId)).json()) as { status: string; title: string };
 
-    expect(response.status).toEqual(200);
-    expect(body.event.status).toEqual('published');
+    expect(response.status).toEqual(409);
+    expect(saved).toMatchObject({ status: 'published', title: 'x' });
   });
 });
 

@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test';
 
-import { createEvent, getEvent, updateEvent } from '../src/admin/footprints';
+import { createEvent, deleteEvent, getEvent, updateEvent } from '../src/admin/footprints';
 import {
   pendingFootprints,
   publishEvent,
@@ -822,5 +822,240 @@ describe('a whitelist change', () => {
     expect(await (await publishFootprintsNow(env, LATER)).json()).toMatchObject({ published: true, eventCount: 1 });
     expect(await pendingMarks()).toEqual([false]);
     expect(await (await pendingFootprints(env)).json()).toMatchObject({ outdated: false });
+  });
+});
+
+// #299: what #293 put right for 登録者数の節目, for あしあと - requests that
+// land between another's read and its write.
+/** `env` with an R2 that takes the first write and refuses every one after it: a rebuild that cannot be written. */
+function firstPutOnly(): Env {
+  let puts = 0;
+
+  return {
+    ...env,
+    PUBLIC_DATA: {
+      get: (key: string) => env.PUBLIC_DATA.get(key),
+      head: (key: string) => env.PUBLIC_DATA.head(key),
+      list: () => env.PUBLIC_DATA.list(),
+      put: (key: string, value: string, options?: R2PutOptions) =>
+        (puts += 1) === 1 ? env.PUBLIC_DATA.put(key, value, options) : Promise.reject(new Error('R2 is down')),
+    } as unknown as R2Bucket,
+  };
+}
+
+/**
+ * `base` whose next `DB.batch` first runs `before` - another tab's request
+ * landing between this request's read and its write.
+ */
+function beforeNextBatch(base: Env, before: () => Promise<unknown>): Env {
+  let done = false;
+
+  return {
+    ...base,
+    DB: new Proxy(base.DB, {
+      get(target, property) {
+        if (property === 'batch') {
+          return async (statements: D1PreparedStatement[]) => {
+            if (!done) {
+              done = true;
+              await before();
+            }
+
+            return await target.batch(statements);
+          };
+        }
+
+        const value = Reflect.get(target, property) as unknown;
+
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    }),
+  };
+}
+
+async function childCounts(eventId: number): Promise<{ members: number; sources: number }> {
+  const members = await env.DB.prepare('SELECT count(*) AS n FROM footprints_event_member WHERE event_id = ?1')
+    .bind(eventId)
+    .first<{ n: number }>();
+  const sources = await env.DB.prepare('SELECT count(*) AS n FROM footprints_event_source WHERE event_id = ?1')
+    .bind(eventId)
+    .first<{ n: number }>();
+
+  return { members: members!.n, sources: sources!.n };
+}
+
+async function isBehindNow(): Promise<boolean> {
+  return ((await (await pendingFootprints(env)).json()) as { behind: boolean }).behind;
+}
+
+async function readMemo(eventId: number): Promise<string | null> {
+  return ((await (await getEvent(env, eventId)).json()) as { memo: string | null }).memo;
+}
+
+describe('a published save that finds the event withdrawn meanwhile', () => {
+  test('answers 409, and neither saves the row nor puts it back on the public timeline', async () => {
+    const eventId = await createPublishedEvent();
+    const withdrawnFirst = beforeNextBatch(env, () => withdrawEvent(env, eventId, validBody(), NOW));
+
+    const response = await saveEvent(withdrawnFirst, eventId, validBody({ title: '後から保存' }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'draft', title: 'デビュー' });
+    expect((await readPublished())!.events).toEqual([]);
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish', 'withdraw']);
+  });
+
+  // The JSON this save wrote before its batch still has the event, and the
+  // rebuild that would take it out fails: 409 would hide that.
+  test('answers 502 with nothing saved, and leaves the JSON behind, when it cannot build the JSON again', async () => {
+    const eventId = await createPublishedEvent();
+    const withdrawnFirst = beforeNextBatch(firstPutOnly(), () => withdrawEvent(env, eventId, validBody(), NOW));
+
+    const response = await saveEvent(withdrawnFirst, eventId, validBody({ title: '後から保存' }), NOW);
+
+    expect(response.status).toEqual(502);
+    expect(((await response.json()) as { saved: boolean }).saved).toBe(false);
+    expect(await readRow(eventId)).toMatchObject({ status: 'draft', title: 'デビュー' });
+    expect(await isBehindNow()).toBe(true);
+  });
+});
+
+describe('a draft save that finds the event published meanwhile', () => {
+  /** `env` whose next `batch` first publishes `eventId` elsewhere, as another tab would. */
+  function publishedFirst(eventId: number): Env {
+    return beforeNextBatch(env, () => publishEvent(env, eventId, validBody({ title: '先に公開' }), NOW));
+  }
+
+  test('of a plain save answers 409 and writes nothing over it', async () => {
+    const eventId = await createValidEvent();
+
+    const response = await saveEvent(publishedFirst(eventId), eventId, validBody({ title: '後から保存' }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '先に公開' });
+    expect(await childCounts(eventId)).toEqual({ members: 0, sources: 1 });
+  });
+
+  test('of a refused publish answers 409 and writes nothing over it', async () => {
+    const eventId = await createValidEvent();
+
+    const response = await publishEvent(publishedFirst(eventId), eventId, validBody({ title: '', sources: [] }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '先に公開' });
+    expect(await childCounts(eventId)).toEqual({ members: 0, sources: 1 });
+  });
+});
+
+describe('a draft publish that finds the event published meanwhile', () => {
+  test('answers 409, and leaves the other publish on the row and the public timeline', async () => {
+    const eventId = await createValidEvent();
+    const publishedFirst = beforeNextBatch(env, () =>
+      publishEvent(env, eventId, validBody({ title: '先に公開' }), NOW),
+    );
+
+    const response = await publishEvent(publishedFirst, eventId, validBody({ title: '後から公開' }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '先に公開' });
+    expect((await readPublished())!.events).toEqual([expect.objectContaining({ title: '先に公開' })]);
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish']);
+  });
+});
+
+describe('a withdraw that finds the event changed meanwhile', () => {
+  test('answers 409, writes nothing over the draft, and records no second withdrawal', async () => {
+    const eventId = await createPublishedEvent();
+    const withdrawnFirst = beforeNextBatch(env, () =>
+      withdrawEvent(env, eventId, validBody({ memo: '先に戻した' }), NOW),
+    );
+
+    const response = await withdrawEvent(withdrawnFirst, eventId, validBody({ memo: '後から戻した' }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'draft' });
+    expect(await readMemo(eventId)).toEqual('先に戻した');
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish', 'withdraw']);
+  });
+
+  test('answers 409 for an event saved again since it was read', async () => {
+    const eventId = await createPublishedEvent();
+    const savedFirst = beforeNextBatch(env, () => saveEvent(env, eventId, validBody({ title: '先に保存' }), NOW));
+
+    expect((await withdrawEvent(savedFirst, eventId, validBody(), NOW)).status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '先に保存' });
+    expect((await readPublished())!.events).toEqual([expect.objectContaining({ title: '先に保存' })]);
+  });
+
+  test('answers 502 with nothing saved when it cannot build the JSON again either', async () => {
+    const eventId = await createPublishedEvent();
+    const savedFirst = beforeNextBatch(firstPutOnly(), () =>
+      saveEvent(env, eventId, validBody({ title: '先に保存' }), NOW),
+    );
+
+    const response = await withdrawEvent(savedFirst, eventId, validBody(), NOW);
+
+    expect(response.status).toEqual(502);
+    expect(((await response.json()) as { saved: boolean }).saved).toBe(false);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '先に保存' });
+    expect(await isBehindNow()).toBe(true);
+  });
+});
+
+describe('a save whose JSON could not be written', () => {
+  test('writes nothing over a publish recorded since it read the row, and answers 409', async () => {
+    const eventId = await createPublishedEvent();
+    const savedFirst = beforeNextBatch(R2_DOWN, () => saveEvent(env, eventId, validBody({ title: '先に保存' }), NOW));
+
+    const response = await saveEvent(savedFirst, eventId, validBody({ title: '後から保存' }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '先に保存' });
+  });
+
+  test('still saves the fields when nothing was recorded since', async () => {
+    const eventId = await createPublishedEvent();
+
+    const response = await saveEvent(R2_DOWN, eventId, validBody({ title: '後から保存' }), NOW);
+
+    expect(response.status).toEqual(502);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '後から保存' });
+  });
+});
+
+describe('a delete that finds the event published meanwhile', () => {
+  test('answers 409 and leaves the row, its members and its sources', async () => {
+    await insertChannel('UCaaa');
+
+    const fields = validBody({ channelIds: ['UCaaa'] });
+    const eventId = await createValidEvent(fields);
+    const publishedFirst = beforeNextBatch(env, () => publishEvent(env, eventId, fields, NOW));
+
+    expect((await deleteEvent(publishedFirst, eventId)).status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published' });
+    expect((await readPublished())!.events).toEqual([expect.objectContaining({ event_id: eventId })]);
+    expect(await childCounts(eventId)).toEqual({ members: 1, sources: 1 });
+  });
+});
+
+describe('a 409 for an event another screen changed', () => {
+  test('is marked changedElsewhere, so the screen says it in its own words', async () => {
+    const eventId = await createValidEvent();
+    const publishedFirst = beforeNextBatch(env, () => publishEvent(env, eventId, validBody(), NOW));
+
+    const response = await saveEvent(publishedFirst, eventId, validBody({ title: '後から保存' }), NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ changedElsewhere: true });
+  });
+
+  test('of a delete is marked too', async () => {
+    const eventId = await createValidEvent();
+    const publishedFirst = beforeNextBatch(env, () => publishEvent(env, eventId, validBody(), NOW));
+
+    const response = await deleteEvent(publishedFirst, eventId);
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ changedElsewhere: true });
   });
 });

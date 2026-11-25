@@ -1,6 +1,6 @@
 import type { Env } from '../lib/env';
 import { queryInChunks } from '../lib/d1';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { changedElsewhereResponse, errorResponse, jsonResponse } from '../lib/json';
 import {
   countedHost,
   hasTwoHosts,
@@ -402,7 +402,7 @@ async function writtenResponse(
 
 /** The answer when the row changed under a request that read it: published, withdrawn or saved elsewhere. */
 function changedMeanwhileResponse(milestoneId: number): Response {
-  return errorResponse(409, `subscriber milestone ${milestoneId} changed while this request was saving it`);
+  return changedElsewhereResponse(`subscriber milestone ${milestoneId} changed while this request was saving it`);
 }
 
 /**
@@ -602,7 +602,8 @@ export async function withdrawMilestone(
 
   if (saved === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
 
-  if (saved.milestone.status !== 'published') return errorResponse(409, 'only a published milestone can be withdrawn');
+  if (saved.milestone.status !== 'published')
+    return changedElsewhereResponse('only a published milestone can be withdrawn');
 
   // The event it is linked to already may stay, though it is no longer a
   // milestone: taking the row off the public site must not wait on あしあと.

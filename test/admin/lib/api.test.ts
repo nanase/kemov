@@ -27,3 +27,20 @@ describe('AdminApiError', () => {
     expect(error.message).toEqual('/admin/api answered 500');
   });
 });
+
+// #299: the worker's message for a row another screen changed is for logs.
+describe('AdminApiError for a 409 the worker marks changedElsewhere', () => {
+  const error = new AdminApiError(409, { error: 'footprints event 2 is no longer a draft', changedElsewhere: true });
+
+  test('says it in Japanese, not in the worker message', () => {
+    expect(error.message).toEqual('別の画面で変更されたため保存できませんでした');
+    expect(error.changedElsewhere).toBe(true);
+  });
+
+  test('keeps the worker message for any other 409', () => {
+    const other = new AdminApiError(409, { error: 'stream abcdefghijk already exists' });
+
+    expect(other.message).toEqual('stream abcdefghijk already exists');
+    expect(other.changedElsewhere).toBe(false);
+  });
+});

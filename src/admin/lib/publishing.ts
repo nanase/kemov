@@ -9,7 +9,7 @@
  * a row itself (#277's decision 1d).
  */
 
-import { AdminApiError } from './api';
+import { AdminApiError, CHANGED_ELSEWHERE_TEXT } from './api';
 import { EDITING_TEXT, SAVE_TOAST } from './editing';
 
 /** What the buttons at the bottom of the edit panel do. */
@@ -319,7 +319,12 @@ export function publishAnswerFor<F>(
     }
   }
 
-  const message = error instanceof Error ? error.message : String(error);
+  const message =
+    error instanceof AdminApiError && error.changedElsewhere && action === 'delete'
+      ? CHANGED_ELSEWHERE_TEXT.remove
+      : error instanceof Error
+        ? error.message
+        : String(error);
   const field = shape.fieldForSaveError(message);
   const answered = error instanceof AdminApiError ? error.status : 0;
 
