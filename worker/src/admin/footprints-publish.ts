@@ -295,7 +295,7 @@ async function notLoggedResponse(env: Env, eventId: number): Promise<Response> {
  * `RevisionChange.whileRow` for a batch whose row statements write only
  * while no revision was recorded since `revisionBefore`, and at the version
  * `held` names: the row was given `status`, its newest revision is still
- * that one, and it is at the version they leave it at (publishing.ts's
+ * that one, and it is at the version they leave it at (lib/edit-version.ts's
  * `writtenAt`) - subscriber-milestones-publish.ts's `leftAs` for an event.
  * All three hold exactly when those statements wrote the row.
  */

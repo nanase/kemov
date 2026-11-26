@@ -470,7 +470,7 @@ export interface SaveOptions {
   whileStatus?: MilestoneStatus;
   whileRevision?: number;
   whileVersion?: number;
-  /** A published row's save that logs no revision: adds publishing.ts's `UNLOGGED_VERSION_STEP` to `edit_version`. */
+  /** A published row's save that logs no revision: adds lib/edit-version.ts's `UNLOGGED_VERSION_STEP` to `edit_version`. */
   unlogged?: boolean;
 }
 

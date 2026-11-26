@@ -430,7 +430,7 @@ async function notLoggedResponse(env: Env, milestoneId: number): Promise<Respons
  * `RevisionChange.whileRow` for a batch whose row statements write only
  * while no revision was recorded since `revisionBefore`, and at the version
  * `held` names: the row was given `status`, its newest revision is still
- * that one, and it is at the version they leave it at (publishing.ts's
+ * that one, and it is at the version they leave it at (lib/edit-version.ts's
  * `writtenAt`). All three hold exactly when those statements wrote the row.
  */
 function leftAs(status: MilestoneStatus, revisionBefore: number, held: HeldToVersion): string {
