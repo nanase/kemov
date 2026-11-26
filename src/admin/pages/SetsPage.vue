@@ -27,7 +27,7 @@ import {
   type BulkPublishOutcome as Outcome,
 } from '../lib/bulk-publish';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, SAVE_TOAST, sameFields } from '../lib/editing';
+import { EDITING_TEXT, fieldsOnReload, SAVE_TOAST, sameFields } from '../lib/editing';
 import { insertAt, mdSnippet, clock, type MdLinkKind } from '../lib/genet-markdown';
 import { type GenetPerson } from '../lib/genet-people';
 import {
@@ -82,6 +82,7 @@ import {
   liveMarkFor,
   PUBLISH_TEXT,
   publishFootFor,
+  sentFieldsSaved,
   type PublishAction,
   type PublishBand,
 } from '../lib/publishing';
@@ -167,18 +168,34 @@ const streamFields = ref<StreamFormFields>(emptyStreamFields());
 const sending = ref(false);
 const band = ref<PublishBand | null>(null);
 const invalidFields = ref<readonly StreamFieldError[]>([]);
+/**
+ * The fields typed in that another screen changed too, found when the stream
+ * was read again (`fieldsOnReload`). Each is a whole field: the performances
+ * clash as one list, so no single performance is marked for it.
+ */
+const clashes = ref<readonly StreamFieldSection[]>([]);
+
+/** `clashes` as the field errors they mark. */
+const clashErrors = computed<StreamFieldError[]>(() =>
+  clashes.value.map((section) => ({ section, performanceIndex: null, sceneIndex: null })),
+);
 
 function invalid(section: StreamFieldSection, performanceIndex: number | null = null): boolean {
-  return invalidFields.value.some(
-    (f) => f.section === section && (performanceIndex === null || f.performanceIndex === performanceIndex),
+  return (
+    invalidFields.value.some(
+      (f) => f.section === section && (performanceIndex === null || f.performanceIndex === performanceIndex),
+    ) ||
+    (performanceIndex === null && clashes.value.includes(section))
   );
 }
 
 function reasonIds(section: StreamFieldSection, performanceIndex: number | null = null): string | undefined {
   return streamBandReasonIds(
     band.value,
-    invalidFields.value,
-    (f) => f.section === section && (performanceIndex === null || f.performanceIndex === performanceIndex),
+    [...invalidFields.value, ...clashErrors.value],
+    (f) =>
+      f.section === section &&
+      (performanceIndex === null || f.performanceIndex === performanceIndex),
   );
 }
 
@@ -190,6 +207,7 @@ const noTuneRefused = computed(() =>
 function clearBand(): void {
   band.value = null;
   invalidFields.value = [];
+  clashes.value = [];
 }
 
 /** A new stream's id while its 保存 reads the list, so that opening it keeps the tunes typed into while it was new. */
@@ -204,12 +222,22 @@ watch(selected, (stream, previous) => {
   }
 
   // The open stream read again - after a request about it, or a filter that
-  // keeps it - leaves what is typed alone. A request that saved the fields
-  // puts the saved ones back itself, once the list has been read. The band
-  // is left alone too: it is the answer to the request that read it again.
-  if (previous !== null && !sameFields(streamFields.value, toStreamFormFields(previous))) return;
+  // keeps it - keeps what is typed, and takes the rest as saved now (#304):
+  // a save another screen's change refused would otherwise lose it, and a
+  // 保存 pressed again would turn back that change. A request that saved the
+  // fields puts the saved ones back itself, once the list has been read
+  // (`reloadSaved`). The band is left alone: it is the answer to the request
+  // that read it again.
+  if (previous === null || sameFields(streamFields.value, toStreamFormFields(previous))) {
+    replaceStreamFields(toStreamFormFields(stream));
 
-  replaceStreamFields(toStreamFormFields(stream));
+    return;
+  }
+
+  const reloaded = fieldsOnReload(streamFields.value, toStreamFormFields(previous), toStreamFormFields(stream));
+
+  replaceStreamFields(reloaded.fields);
+  clashes.value = reloaded.clashes;
 });
 
 /**
@@ -490,6 +518,7 @@ async function reload(): Promise<boolean> {
 async function reloadSaved(videoId: string): Promise<void> {
   if ((await reload()) && selected.value?.videoId === videoId) {
     replaceStreamFields(toStreamFormFields(selected.value));
+    clashes.value = [];
   }
 }
 
@@ -544,7 +573,9 @@ async function act(action: PublishAction): Promise<void> {
 
     if (answer.changed) {
       void refreshSidebarDrafts();
-      await reloadSaved(videoId);
+      // Fields that were not saved stay as typed over the stream read again.
+      if (sentFieldsSaved(error)) await reloadSaved(videoId);
+      else await reload();
       void refreshTuneLive();
     }
   } finally {
@@ -1390,8 +1421,14 @@ useCrumbDetail(() =>
               />
             </div>
             <div class="md">
-              <div class="md-bar"><span class="lab">カテゴリ</span></div>
-              <div class="chipset">
+              <div class="md-bar"><span id="f-categories-label" class="lab">カテゴリ</span></div>
+              <div
+                class="chipset"
+                role="group"
+                aria-labelledby="f-categories-label"
+                :aria-invalid="invalid('categories')"
+                :aria-describedby="reasonIds('categories')"
+              >
                 <span v-for="(c, i) in streamFields.categories" :key="c" class="chip-x"
                   >{{ c
                   }}<button
@@ -1406,8 +1443,14 @@ useCrumbDetail(() =>
               </div>
             </div>
             <div class="md">
-              <div class="md-bar"><span class="lab">キーワード</span></div>
-              <div class="chipset">
+              <div class="md-bar"><span id="f-keywords-label" class="lab">キーワード</span></div>
+              <div
+                class="chipset"
+                role="group"
+                aria-labelledby="f-keywords-label"
+                :aria-invalid="invalid('keywords')"
+                :aria-describedby="reasonIds('keywords')"
+              >
                 <span v-for="(k, i) in streamFields.keywords" :key="k" class="chip-x"
                   >{{ k
                   }}<button
@@ -1461,13 +1504,21 @@ useCrumbDetail(() =>
               <textarea
                 id="f-memo"
                 :value="streamFields.memo ?? ''"
+                :aria-invalid="invalid('memo')"
+                :aria-describedby="reasonIds('memo')"
                 @input="streamFields.memo = ($event.target as HTMLTextAreaElement).value || null"
               ></textarea>
             </div>
           </div>
 
-          <div class="editor-section">
-            <h3>曲 {{ streamFields.performances.length }} 件</h3>
+          <div
+            class="editor-section"
+            role="group"
+            aria-labelledby="f-performances-title"
+            :aria-invalid="clashes.includes('performances')"
+            :aria-describedby="clashes.includes('performances') ? reasonIds('performances') : undefined"
+          >
+            <h3 id="f-performances-title">曲 {{ streamFields.performances.length }} 件</h3>
 
             <div
               v-for="(perf, pi) in streamFields.performances"
@@ -1892,6 +1943,17 @@ useCrumbDetail(() =>
   padding-left: 1.2em;
   color: var(--k-text-2);
   font-size: var(--a-small);
+}
+
+/* Chips or performances another screen changed too (`clashes`): the global rule colours a border these have none of. */
+.chipset[aria-invalid='true'],
+.editor-section[aria-invalid='true'] {
+  border: 1px solid;
+  border-radius: 6px;
+}
+
+.chipset[aria-invalid='true'] {
+  padding: 4px;
 }
 
 /* A tune, or one of its attributes, a refusal names. */

@@ -1,4 +1,4 @@
-import { sameFields } from '@/admin/lib/editing';
+import { fieldsOnReload, sameFields } from '@/admin/lib/editing';
 import { toFormFields, type FootprintsEvent } from '@/admin/lib/footprints';
 
 const EVENT: FootprintsEvent = {
@@ -65,5 +65,64 @@ describe('sameFields', () => {
 
   it('does not take an empty list for null', () => {
     expect(sameFields({ list: [] }, { list: null })).toBe(false);
+  });
+});
+
+describe('fieldsOnReload', () => {
+  const before = { title: 'もとの題', supplement: null as string | null, sources: [{ url: 'https://a', title: null }] };
+
+  it('keeps what is typed, and takes the rest as saved now', () => {
+    const current = { ...before, title: '打った題' };
+    const after = { ...before, supplement: '別の画面の補足' };
+
+    expect(fieldsOnReload(current, before, after)).toEqual({
+      fields: { title: '打った題', supplement: '別の画面の補足', sources: before.sources },
+      clashes: [],
+    });
+  });
+
+  it('names a field both screens changed, keeping what is typed', () => {
+    const current = { ...before, title: '打った題' };
+    const after = { ...before, title: '別の画面の題' };
+
+    expect(fieldsOnReload(current, before, after)).toEqual({ fields: current, clashes: ['title'] });
+  });
+
+  it('does not count a field both screens changed the same way', () => {
+    const current = { ...before, title: '同じ題' };
+    const after = { ...before, title: '同じ題' };
+
+    expect(fieldsOnReload(current, before, after).clashes).toEqual([]);
+  });
+
+  it('takes a list typed into as a whole, and copies it', () => {
+    const current = { ...before, sources: [{ url: 'https://b', title: null }] };
+    const result = fieldsOnReload(current, before, { ...before, title: '別の画面の題' });
+
+    expect(result.fields.sources).toEqual([{ url: 'https://b', title: null }]);
+    expect(result.fields.sources).not.toBe(current.sources);
+  });
+
+  it('counts a box typed in and erased again as untouched', () => {
+    const current = { ...before, supplement: '' };
+    const after = { ...before, supplement: '別の画面の補足' };
+
+    expect(fieldsOnReload(current, before, after)).toEqual({ fields: after, clashes: [] });
+  });
+
+  it('is the saved row once nothing is typed', () => {
+    const after = { ...before, title: '別の画面の題' };
+
+    expect(fieldsOnReload(before, before, after)).toEqual({ fields: after, clashes: [] });
+  });
+});
+
+describe('fieldsOnReload with the panel\'s reactive fields', () => {
+  it('copies them, though structuredClone would refuse them', async () => {
+    const { reactive } = await import('vue');
+    const before = { title: 'もとの題', sources: [{ url: 'https://a', title: null }] };
+    const current = reactive({ ...before, sources: [{ url: 'https://b', title: null }] });
+
+    expect(fieldsOnReload(current, before, before).fields).toEqual({ ...before, sources: current.sources });
   });
 });

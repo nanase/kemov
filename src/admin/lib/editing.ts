@@ -57,3 +57,40 @@ function isBlank(value: unknown): boolean {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
+
+/** What an edit panel shows once its row was read again: `fieldsOnReload`. */
+export interface ReloadedFields<T> {
+  fields: T;
+  /** The fields typed in that the row now holds something else in too: changed on both screens. */
+  clashes: (keyof T)[];
+}
+
+/**
+ * What an edit panel shows when its row was read again and `before` - the row
+ * as the panel read it - is now `after`: `after`, with the fields typed in
+ * over it (#304). So a read never writes saved values over what is typed, as
+ * the メンバー panel's own `fieldsOnReload` does (#286).
+ *
+ * Only the fields typed in are kept: the others take what is saved now, so a
+ * 保存 pressed again does not turn back another screen's change to them. A
+ * field is compared as a whole, a list of sources or performances included.
+ */
+export function fieldsOnReload<T extends object>(current: T, before: T, after: T): ReloadedFields<T> {
+  const fields = plainCopy(after);
+  const clashes: (keyof T)[] = [];
+
+  for (const key of Object.keys(before) as (keyof T)[]) {
+    if (sameFields(current[key], before[key])) continue;
+
+    fields[key] = plainCopy(current[key]);
+
+    if (!sameFields(after[key], before[key]) && !sameFields(after[key], current[key])) clashes.push(key);
+  }
+
+  return { fields, clashes };
+}
+
+/** A copy of plain form data that shares nothing with it. `structuredClone` refuses Vue's reactive proxies, which `current` usually is. */
+function plainCopy<V>(value: V): V {
+  return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as V);
+}

@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue
 
 import { deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, sameFields } from '../lib/editing';
+import { EDITING_TEXT, fieldsOnReload, sameFields } from '../lib/editing';
 import type { FootprintsEvent, FootprintsMember } from '../lib/footprints';
 import { previewOpen } from '../lib/preview';
 import { refreshSidebarDrafts } from '../lib/sidebar-drafts';
@@ -14,6 +14,7 @@ import {
   liveMarkFor,
   publishFootFor,
   PUBLISH_TEXT,
+  sentFieldsSaved,
   type AnsweredAction,
   type PublishAction,
   type PublishBand,
@@ -93,6 +94,10 @@ const saving = ref(false);
 const locked = computed(() => saving.value || props.bulkRunning);
 const band = ref<PublishBand | null>(null);
 const invalidFields = ref<readonly MilestoneFieldKey[]>([]);
+/** The fields typed in that another screen changed too, found when the row was read again (`fieldsOnReload`). */
+const clashes = ref<readonly (keyof MilestoneFormFields)[]>([]);
+/** Set when a request saved what was sent (`sentFieldsSaved`): the read after it takes the row as the worker saved it. */
+let takeSaved = false;
 
 /** Against the saved row, or a new milestone's blank fields: anything typed into a new one is unsaved. */
 const dirty = computed(() => !sameFields(fields.value, initialFields()));
@@ -104,14 +109,27 @@ useUnsavedGuard(
   },
 );
 
-// A refetch hands the same row back as a new object, and the fields follow
-// what was saved. The band is left alone: a refetch follows a refused
-// publish too, and the band is still the answer to it. Selecting another row
-// mounts a new panel (the page keys it by id), which starts clean.
+// A refetch hands the same row back as a new object. The fields follow what
+// is saved now, but keep what is typed (#304), as FootprintsInspector.vue's
+// do. After a request that saved them (`takeSaved`), they are the row as
+// saved. The band is left alone: a refetch follows a refused publish too, and
+// the band is still the answer to it. Selecting another row mounts a new
+// panel (the page keys it by id), which starts clean.
 watch(
   () => props.milestone,
-  () => {
-    fields.value = initialFields();
+  (after, before) => {
+    if (takeSaved || after === null || before === null || after.milestoneId !== before.milestoneId) {
+      takeSaved = false;
+      fields.value = initialFields();
+      clashes.value = [];
+
+      return;
+    }
+
+    const reloaded = fieldsOnReload(fields.value, toFormFields(before), toFormFields(after));
+
+    fields.value = reloaded.fields;
+    clashes.value = reloaded.clashes;
   },
 );
 
@@ -151,12 +169,12 @@ function memberName(channelId: string): string {
   return props.members.find((m) => m.channelId === channelId)?.name ?? channelId;
 }
 
-function invalid(field: MilestoneFieldKey): boolean {
-  return invalidFields.value.includes(field);
+function invalid(field: keyof MilestoneFormFields): boolean {
+  return (invalidFields.value as readonly string[]).includes(field) || clashes.value.includes(field);
 }
 
-function reasonIds(field: MilestoneFieldKey): string | undefined {
-  return bandReasonIds(band.value, invalidFields.value, field);
+function reasonIds(field: keyof MilestoneFormFields): string | undefined {
+  return bandReasonIds<keyof MilestoneFormFields>(band.value, [...invalidFields.value, ...clashes.value], field);
 }
 
 function addSource(): void {
@@ -247,6 +265,7 @@ async function run(action: AnsweredAction, request: () => Promise<unknown>, toas
   saving.value = true;
   band.value = null;
   invalidFields.value = [];
+  clashes.value = [];
 
   try {
     const write = request();
@@ -260,6 +279,8 @@ async function run(action: AnsweredAction, request: () => Promise<unknown>, toas
   }
 
   const answer = milestonesAnswerFor(action, status, error);
+
+  takeSaved = sentFieldsSaved(error);
 
   if (answer.kind === 'done') {
     emit('changed');
@@ -289,6 +310,7 @@ async function create(): Promise<void> {
   saving.value = true;
   band.value = null;
   invalidFields.value = [];
+  clashes.value = [];
 
   try {
     const write = postJson<{ milestone: { milestoneId: number } }>(
@@ -481,7 +503,12 @@ const previewEvent = computed(() => {
 
         <div class="field">
           <label for="m-memo">メモ（公開されません）</label>
-          <textarea id="m-memo" v-model="fields.memo"></textarea>
+          <textarea
+            id="m-memo"
+            v-model="fields.memo"
+            :aria-invalid="invalid('memo')"
+            :aria-describedby="reasonIds('memo')"
+          ></textarea>
         </div>
 
         <div v-if="milestone" class="field">
