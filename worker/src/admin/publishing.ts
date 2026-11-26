@@ -1,5 +1,7 @@
 import { byteLength } from '../lib/backup';
 import type { Env } from '../lib/env';
+import { changedElsewhereResponse } from '../lib/json';
+import { malformed, refuse } from '../lib/refusal';
 import type { RevisionEntity } from '../lib/revision';
 
 /**
@@ -666,4 +668,39 @@ export async function republish(
     publicationId: await settle(env, target, upToDate),
     byteLength: upToDate.written.byteLength,
   };
+}
+
+/** What `heldToVersion` holds a write to, spread into the caller's `SaveOptions`. */
+export interface HeldToVersion {
+  whileVersion?: number;
+}
+
+/**
+ * The `edit_version` a write's body says its fields were typed over (#307):
+ * the row's `version` as the screen read it. `whileVersion` holds the write
+ * to it, for the batch to write nothing over another screen's save that
+ * lands after this request's read. A row already at another version was
+ * written since the screen read it, and gets 409 straight away.
+ *
+ * A body with no `version` is held to nothing but what the caller holds it
+ * to besides. 400 for anything but a whole number from 0 up.
+ */
+export function heldToVersion(
+  body: Record<string, unknown>,
+  current: number,
+  what: string,
+): HeldToVersion | { error: Response } {
+  const { version } = body;
+
+  if (version === undefined || version === null) return {};
+
+  if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 0) {
+    return { error: refuse(400, malformed('version must be a whole number from 0 up')) };
+  }
+
+  if (version !== current) {
+    return { error: changedElsewhereResponse(`${what} was saved by another screen since version ${version}`) };
+  }
+
+  return { whileVersion: version };
 }

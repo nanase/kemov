@@ -12,11 +12,13 @@ import {
 } from '../lib/source-whitelist';
 import { formatTimestamp } from '../lib/time';
 import {
+  heldToVersion,
   isBehind,
   latestRevisions,
   liveBodies,
   publishChange,
   republish,
+  type HeldToVersion,
   type LatestRevisionRow,
   type PublishOutcome,
   type PublishTarget,
@@ -465,10 +467,11 @@ function notMendedResponse(milestoneId: number, error: string): Response {
  * what a refusal leaves: a draft's fields are saved and it stays a draft, a
  * published row is left exactly as it was.
  *
- * Either row is written only while it is still as it was read: a published
- * row still published, a draft still a draft with no revision recorded
- * since `revisionBefore` - the milestone's newest revision, read before
- * `existing` was. One that changed is neither saved nor put on the public
+ * Either row is written only while it is still as it was read: still
+ * published or still a draft, with no revision recorded since
+ * `revisionBefore` - the milestone's newest revision, read before
+ * `existing` was - and still at the version `held` names (#307), as
+ * footprints-publish.ts's `saveAndPublish` has it. One that changed is neither saved nor put on the public
  * site as this request has it, and 409 says so - or `notMendedResponse`'s
  * 502, when the JSON written before the batch could not be built again
  * without the change. The save that follows a JSON that could not be
@@ -479,6 +482,7 @@ async function saveAndPublish(
   env: Env,
   existing: SubscriberMilestone,
   revisionBefore: number,
+  held: HeldToVersion,
   fields: MilestoneFields,
   now: Date,
 ): Promise<Response> {
@@ -492,7 +496,7 @@ async function saveAndPublish(
 
     // Saved only while it is still the draft it was read as: one published
     // in between is not written over with no revision.
-    if (!savedRow(await env.DB.batch(saveStatements(env, milestoneId, fields, { whileStatus: 'draft' })))) {
+    if (!savedRow(await env.DB.batch(saveStatements(env, milestoneId, fields, { whileStatus: 'draft', ...held })))) {
       return noLongerDraftResponse(milestoneId);
     }
 
@@ -506,16 +510,14 @@ async function saveAndPublish(
       key: String(milestoneId),
       action: 'publish',
       body: publishedBodyOf(next),
-      whileRow: wasPublished ? "status = 'published'" : leftAs('published', revisionBefore),
+      whileRow: leftAs('published', revisionBefore),
     },
-    saveStatements(
-      env,
-      milestoneId,
-      fields,
-      wasPublished
-        ? { whileStatus: 'published' }
-        : { status: 'published', whileStatus: 'draft', whileRevision: revisionBefore },
-    ),
+    saveStatements(env, milestoneId, fields, {
+      status: 'published',
+      whileStatus: wasPublished ? 'published' : 'draft',
+      whileRevision: revisionBefore,
+      ...held,
+    }),
     now,
   );
 
@@ -529,6 +531,7 @@ async function saveAndPublish(
         saveStatements(env, milestoneId, fields, {
           whileStatus: wasPublished ? 'published' : 'draft',
           whileRevision: revisionBefore,
+          ...held,
         }),
       );
 
@@ -557,11 +560,15 @@ export async function publishMilestone(
 
   if (existing === null) return noMilestoneResponse(milestoneId);
 
+  const held = heldToVersion(body, existing.milestone.edit_version, `subscriber milestone ${milestoneId}`);
+
+  if ('error' in held) return held.error;
+
   const fields = await validatedFields(env, body);
 
   if ('error' in fields) return fields.error;
 
-  return await saveAndPublish(env, existing, revisionBefore, fields, now);
+  return await saveAndPublish(env, existing, revisionBefore, held, fields, now);
 }
 
 /**
@@ -584,11 +591,15 @@ export async function saveMilestone(
 
   if (existing.milestone.status !== 'published') return await updateMilestone(env, milestoneId, body);
 
+  const held = heldToVersion(body, existing.milestone.edit_version, `subscriber milestone ${milestoneId}`);
+
+  if ('error' in held) return held.error;
+
   const fields = await validatedFields(env, body);
 
   if ('error' in fields) return fields.error;
 
-  return await saveAndPublish(env, existing, revisionBefore, fields, now);
+  return await saveAndPublish(env, existing, revisionBefore, held, fields, now);
 }
 
 /**
@@ -614,6 +625,10 @@ export async function withdrawMilestone(
   if (saved.milestone.status !== 'published')
     return changedElsewhereResponse('only a published milestone can be withdrawn');
 
+  const held = heldToVersion(body, saved.milestone.edit_version, `subscriber milestone ${milestoneId}`);
+
+  if ('error' in held) return held.error;
+
   // The event it is linked to already may stay, though it is no longer a
   // milestone: taking the row off the public site must not wait on あしあと.
   const fields = await validatedFields(env, body, saved.milestone.event_id);
@@ -628,6 +643,7 @@ export async function withdrawMilestone(
       status: 'draft',
       whileStatus: 'published',
       whileRevision: revisionBefore,
+      ...held,
     }),
     now,
   );

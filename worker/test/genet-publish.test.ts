@@ -1491,3 +1491,159 @@ describe('a 409 for a stream another screen changed', () => {
     expect(await response.json()).toMatchObject({ changedElsewhere: true });
   });
 });
+
+describe('two screens that read the same published stream (#307)', () => {
+  const LATER = new Date('2026-09-19T00:00:00Z');
+
+  test('the later save, sent with the version it read, answers 409 and writes nothing over the first', async () => {
+    const { videoId } = await createPerformableStream();
+
+    expect((await publish(videoId)).status).toEqual(200);
+
+    const read = await fieldsOf(videoId);
+
+    expect((await saveStream(env, videoId, { ...read, title: '先の保存' }, NOW)).status).toEqual(200);
+
+    const response = await saveStream(env, videoId, { ...read, title: '後の保存' }, LATER);
+
+    expect(response.status).toEqual(409);
+    expect(((await response.json()) as { changedElsewhere: boolean }).changedElsewhere).toBe(true);
+    expect(await streamTitle(videoId)).toEqual('先の保存');
+    expect((await readPublished())!.streams.map((s) => s.title)).toEqual(['先の保存']);
+    expect((await revisionRows('genet_stream')).map((row) => row.action)).toEqual(['publish', 'publish']);
+  });
+
+  test('a save sent with the version read after the first goes through', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+    await saveStream(env, videoId, await fieldsOf(videoId, { title: '先の保存' }), NOW);
+
+    const response = await saveStream(env, videoId, await fieldsOf(videoId, { title: '後の保存' }), LATER);
+
+    expect(response.status).toEqual(200);
+    expect(await streamTitle(videoId)).toEqual('後の保存');
+  });
+
+  test('a withdraw sent with the version from before another save answers 409 and leaves the stream published', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const read = await fieldsOf(videoId);
+
+    await saveStream(env, videoId, { ...read, title: '先の保存' }, NOW);
+
+    const response = await withdrawStream(env, videoId, read, LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await streamStatus(videoId)).toEqual('published');
+    expect((await readPublished())!.streams.map((s) => s.title)).toEqual(['先の保存']);
+  });
+
+  test('refuses a version that is not a whole number, and saves nothing', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const response = await saveStream(
+      env,
+      videoId,
+      await fieldsOf(videoId, { title: '新しい題', version: 1.5 }),
+      LATER,
+    );
+
+    expect(response.status).toEqual(400);
+    expect(await streamTitle(videoId)).not.toEqual('新しい題');
+  });
+
+  // Both requests read the stream before either wrote it: the version each
+  // read is the same, and only the batch can tell them apart.
+  test('the later save, whose batch runs after the first, answers 409 and leaves the first in the JSON', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const read = await fieldsOf(videoId);
+    const savedFirst = beforeNextBatch(env, () => saveStream(env, videoId, { ...read, title: '先の保存' }, NOW));
+
+    const response = await saveStream(savedFirst, videoId, { ...read, title: '後の保存' }, LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await streamTitle(videoId)).toEqual('先の保存');
+    expect((await readPublished())!.streams.map((s) => s.title)).toEqual(['先の保存']);
+    expect((await revisionRows('genet_stream')).map((row) => row.action)).toEqual(['publish', 'publish']);
+  });
+});
+
+describe('two screens that read the same draft stream (#307)', () => {
+  const LATER = new Date('2026-09-19T00:00:00Z');
+
+  async function versionOf(videoId: string): Promise<number> {
+    return ((await fieldsOf(videoId)) as { version: number }).version;
+  }
+
+  async function performanceCount(videoId: string): Promise<number> {
+    const row = await env.DB.prepare('SELECT count(*) AS n FROM genet_performance WHERE video_id = ?1')
+      .bind(videoId)
+      .first<{ n: number }>();
+
+    return row!.n;
+  }
+
+  test('starts at version 0, and each save adds 1', async () => {
+    const { videoId } = await createPerformableStream();
+
+    expect(await versionOf(videoId)).toEqual(0);
+
+    await saveStream(env, videoId, await fieldsOf(videoId, { title: '一度目' }), NOW);
+
+    expect(await versionOf(videoId)).toEqual(1);
+
+    await publish(videoId, { title: '二度目' });
+
+    expect(await versionOf(videoId)).toEqual(2);
+  });
+
+  test('the later save, sent with the version it read, answers 409 and writes nothing over the first', async () => {
+    const { videoId } = await createPerformableStream();
+    const read = await fieldsOf(videoId);
+
+    expect((await saveStream(env, videoId, { ...read, title: '先の保存' }, NOW)).status).toEqual(200);
+
+    const response = await saveStream(env, videoId, { ...read, title: '後の保存', performances: [] }, LATER);
+
+    expect(response.status).toEqual(409);
+    expect(((await response.json()) as { changedElsewhere: boolean }).changedElsewhere).toBe(true);
+    expect(await streamTitle(videoId)).toEqual('先の保存');
+    expect(await streamStatus(videoId)).toEqual('draft');
+    expect(await performanceCount(videoId)).toEqual(1);
+  });
+
+  test('the later save, whose batch runs after the first, answers 409 and writes nothing over it', async () => {
+    const { videoId } = await createPerformableStream();
+    const read = await fieldsOf(videoId);
+    const savedFirst = beforeNextBatch(env, () => saveStream(env, videoId, { ...read, title: '先の保存' }, NOW));
+
+    const response = await saveStream(savedFirst, videoId, { ...read, title: '後の保存', performances: [] }, LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await streamTitle(videoId)).toEqual('先の保存');
+    expect(await performanceCount(videoId)).toEqual(1);
+  });
+
+  test('a publish sent with the version from before another save answers 409 and publishes nothing', async () => {
+    const { videoId } = await createPerformableStream();
+    const read = await fieldsOf(videoId);
+
+    await saveStream(env, videoId, { ...read, title: '先の保存' }, NOW);
+
+    const response = await publishStream(env, videoId, { ...read, title: '後の公開' }, LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await streamTitle(videoId)).toEqual('先の保存');
+    expect(await streamStatus(videoId)).toEqual('draft');
+    expect(await readPublished()).toBeNull();
+    expect(await revisionRows('genet_stream')).toEqual([]);
+  });
+});

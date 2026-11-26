@@ -1063,3 +1063,172 @@ describe('a 409 for a milestone another screen changed', () => {
     expect(await response.json()).toMatchObject({ changedElsewhere: true });
   });
 });
+
+describe('two screens that read the same published milestone (#307)', () => {
+  const LATER = new Date('2026-09-26T00:00:00Z');
+
+  async function versionOf(milestoneId: number): Promise<number> {
+    return ((await (await getMilestone(env, milestoneId)).json()) as { version: number }).version;
+  }
+
+  test('the later save, sent with the version it read, answers 409 and writes nothing over the first', async () => {
+    const milestoneId = await createPublished();
+    const read = await versionOf(milestoneId);
+
+    expect(
+      (await saveMilestone(env, milestoneId, body({ subscriberCount: 21000, version: read }), NOW)).status,
+    ).toEqual(200);
+
+    const response = await saveMilestone(env, milestoneId, body({ subscriberCount: 22000, version: read }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(((await response.json()) as { changedElsewhere: boolean }).changedElsewhere).toBe(true);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published', subscriberCount: 21000 });
+    expect((await storedMilestones()).map((m) => m.subscriber_count)).toEqual([21000]);
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish', 'publish']);
+  });
+
+  test('a save sent with the version read after the first goes through', async () => {
+    const milestoneId = await createPublished();
+
+    await saveMilestone(env, milestoneId, body({ subscriberCount: 21000, version: await versionOf(milestoneId) }), NOW);
+
+    const response = await saveMilestone(
+      env,
+      milestoneId,
+      body({ subscriberCount: 22000, version: await versionOf(milestoneId) }),
+      LATER,
+    );
+
+    expect(response.status).toEqual(200);
+    expect(await readRow(milestoneId)).toMatchObject({ subscriberCount: 22000 });
+  });
+
+  test('a withdraw sent with the version from before another save answers 409 and leaves the milestone published', async () => {
+    const milestoneId = await createPublished();
+    const read = await versionOf(milestoneId);
+
+    await saveMilestone(env, milestoneId, body({ subscriberCount: 21000, version: read }), NOW);
+
+    const response = await withdrawMilestone(env, milestoneId, body({ version: read }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published', subscriberCount: 21000 });
+    expect((await storedMilestones()).map((m) => m.subscriber_count)).toEqual([21000]);
+  });
+
+  test('refuses a version that is not a whole number, and saves nothing', async () => {
+    const milestoneId = await createPublished();
+
+    const response = await saveMilestone(env, milestoneId, body({ subscriberCount: 21000, version: -1 }), LATER);
+
+    expect(response.status).toEqual(400);
+    expect(await readRow(milestoneId)).toMatchObject({ subscriberCount: 20000 });
+  });
+
+  // Both requests read the row before either wrote it: the version each
+  // read is the same, and only the batch can tell them apart.
+  test('the later save, whose batch runs after the first, answers 409 and leaves the first on the public site', async () => {
+    const milestoneId = await createPublished();
+    const read = await versionOf(milestoneId);
+    const savedFirst = beforeNextBatch(env, () =>
+      saveMilestone(env, milestoneId, body({ subscriberCount: 21000, version: read }), NOW),
+    );
+
+    const response = await saveMilestone(
+      savedFirst,
+      milestoneId,
+      body({ subscriberCount: 22000, version: read }),
+      LATER,
+    );
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published', subscriberCount: 21000 });
+    expect((await storedMilestones()).map((m) => m.subscriber_count)).toEqual([21000]);
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish', 'publish']);
+  });
+});
+
+describe('two screens that read the same draft milestone (#307)', () => {
+  const LATER = new Date('2026-09-26T00:00:00Z');
+
+  async function versionOf(milestoneId: number): Promise<number> {
+    return ((await (await getMilestone(env, milestoneId)).json()) as { version: number }).version;
+  }
+
+  async function sourceCount(milestoneId: number): Promise<number> {
+    const row = await env.DB.prepare('SELECT count(*) AS n FROM subscriber_milestone_source WHERE milestone_id = ?1')
+      .bind(milestoneId)
+      .first<{ n: number }>();
+
+    return row!.n;
+  }
+
+  test('starts at version 0, and each save adds 1', async () => {
+    const milestoneId = await create();
+
+    expect(await versionOf(milestoneId)).toEqual(0);
+
+    await saveMilestone(env, milestoneId, body({ subscriberCount: 21000, version: 0 }), NOW);
+
+    expect(await versionOf(milestoneId)).toEqual(1);
+
+    await publishMilestone(env, milestoneId, body({ subscriberCount: 22000, version: 1 }), NOW);
+
+    expect(await versionOf(milestoneId)).toEqual(2);
+  });
+
+  test('the later save, sent with the version it read, answers 409 and writes nothing over the first', async () => {
+    const milestoneId = await create();
+    const read = await versionOf(milestoneId);
+
+    expect(
+      (await saveMilestone(env, milestoneId, body({ subscriberCount: 21000, version: read }), NOW)).status,
+    ).toEqual(200);
+
+    const response = await saveMilestone(
+      env,
+      milestoneId,
+      body({ subscriberCount: 22000, sources: [], version: read }),
+      LATER,
+    );
+
+    expect(response.status).toEqual(409);
+    expect(((await response.json()) as { changedElsewhere: boolean }).changedElsewhere).toBe(true);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 21000 });
+    expect(await sourceCount(milestoneId)).toEqual(1);
+  });
+
+  test('the later save, whose batch runs after the first, answers 409 and writes nothing over it', async () => {
+    const milestoneId = await create();
+    const read = await versionOf(milestoneId);
+    const savedFirst = beforeNextBatch(env, () =>
+      saveMilestone(env, milestoneId, body({ subscriberCount: 21000, version: read }), NOW),
+    );
+
+    const response = await saveMilestone(
+      savedFirst,
+      milestoneId,
+      body({ subscriberCount: 22000, sources: [], version: read }),
+      LATER,
+    );
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 21000 });
+    expect(await sourceCount(milestoneId)).toEqual(1);
+  });
+
+  test('a publish sent with the version from before another save answers 409 and publishes nothing', async () => {
+    const milestoneId = await create();
+    const read = await versionOf(milestoneId);
+
+    await saveMilestone(env, milestoneId, body({ subscriberCount: 21000, version: read }), NOW);
+
+    const response = await publishMilestone(env, milestoneId, body({ subscriberCount: 22000, version: read }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 21000 });
+    expect(await storedJson()).toBeNull();
+    expect(await revisionRows()).toEqual([]);
+  });
+});

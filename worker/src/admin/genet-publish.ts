@@ -34,12 +34,14 @@ import {
   type GenetTune,
 } from './genet-tunes';
 import {
+  heldToVersion,
   isBehind,
   latestRevisions,
   liveBodiesOf,
   loggedRevisions,
   publishChange,
   republish,
+  type HeldToVersion,
   type LatestRevisionRow,
   type LoggedRevision,
   type PublishOutcome,
@@ -466,9 +468,10 @@ function leftAs(status: StreamStatus, revisionBefore: number): string {
  * to date after the revisions were recorded, the stream is published all
  * the same, and 502 says that too.
  *
- * The stream is written only while it is still as it was read, as
- * subscriber-milestones-publish.ts's `saveAndPublish` writes a milestone,
- * its performances and scenes with it - and 409 says when it was not. A
+ * The stream is written only while it is still as it was read, at the
+ * version `held` names too (#307), as subscriber-milestones-publish.ts's
+ * `saveAndPublish` writes a milestone, its performances and scenes with it
+ * - and 409 says when it was not. A
  * tune or person saved since its latest revision was read keeps its newer
  * revision (publishing.ts's `whileLatest`), and the JSON is built with that.
  */
@@ -476,6 +479,7 @@ async function saveAndPublish(
   env: Env,
   existing: GenetStream,
   revisionBefore: number,
+  held: HeldToVersion,
   fields: StreamFields,
   now: Date,
 ): Promise<Response> {
@@ -492,7 +496,7 @@ async function saveAndPublish(
     // Saved only while it is still the draft it was read as: one published
     // in between is not written over with no revision, and 409 says so - or
     // 404, for one deleted in between.
-    if (!savedRow(await env.DB.batch(streamSaveStatements(env, videoId, fields, { whileStatus: 'draft' })))) {
+    if (!savedRow(await env.DB.batch(streamSaveStatements(env, videoId, fields, { whileStatus: 'draft', ...held })))) {
       return await notLoggedResponse(env, videoId);
     }
 
@@ -510,16 +514,14 @@ async function saveAndPublish(
       action: 'publish',
       body: streamPublicShapeOf(next),
       alongside,
-      whileRow: wasPublished ? "status = 'published'" : leftAs('published', revisionBefore),
+      whileRow: leftAs('published', revisionBefore),
     },
-    streamSaveStatements(
-      env,
-      videoId,
-      fields,
-      wasPublished
-        ? { whileStatus: 'published' }
-        : { status: 'published', whileStatus: 'draft', whileRevision: revisionBefore },
-    ),
+    streamSaveStatements(env, videoId, fields, {
+      status: 'published',
+      whileStatus: wasPublished ? 'published' : 'draft',
+      whileRevision: revisionBefore,
+      ...held,
+    }),
     now,
   );
 
@@ -529,6 +531,7 @@ async function saveAndPublish(
         streamSaveStatements(env, videoId, fields, {
           whileStatus: wasPublished ? 'published' : 'draft',
           whileRevision: revisionBefore,
+          ...held,
         }),
       );
 
@@ -558,11 +561,15 @@ export async function publishStream(
 
   if (existing === null) return noStreamResponse(videoId);
 
+  const held = heldToVersion(body, existing.stream.edit_version, `stream ${videoId}`);
+
+  if ('error' in held) return held.error;
+
   const fields = await validatedStreamFields(env, body);
 
   if ('error' in fields) return fields.error;
 
-  return await saveAndPublish(env, existing, revisionBefore, fields, now);
+  return await saveAndPublish(env, existing, revisionBefore, held, fields, now);
 }
 
 /**
@@ -584,11 +591,15 @@ export async function saveStream(
 
   if (existing.stream.status !== 'published') return await updateStream(env, videoId, body);
 
+  const held = heldToVersion(body, existing.stream.edit_version, `stream ${videoId}`);
+
+  if ('error' in held) return held.error;
+
   const fields = await validatedStreamFields(env, body);
 
   if ('error' in fields) return fields.error;
 
-  return await saveAndPublish(env, existing, revisionBefore, fields, now);
+  return await saveAndPublish(env, existing, revisionBefore, held, fields, now);
 }
 
 /**
@@ -619,6 +630,10 @@ export async function withdrawStream(
 
   if (saved.stream.status !== 'published') return changedElsewhereResponse('only a published stream can be withdrawn');
 
+  const held = heldToVersion(body, saved.stream.edit_version, `stream ${videoId}`);
+
+  if ('error' in held) return held.error;
+
   const fields = await validatedStreamFields(env, body);
 
   if ('error' in fields) return fields.error;
@@ -631,6 +646,7 @@ export async function withdrawStream(
       status: 'draft',
       whileStatus: 'published',
       whileRevision: revisionBefore,
+      ...held,
     }),
     now,
   );

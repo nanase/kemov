@@ -20,11 +20,13 @@ import {
   type FootprintsEvent,
 } from './footprints';
 import {
+  heldToVersion,
   latestRevisions,
   liveBodies,
   isBehind,
   publishChange,
   republish,
+  type HeldToVersion,
   type LatestRevisionRow,
   type PublishOutcome,
   type PublishTarget,
@@ -342,10 +344,14 @@ function notMendedResponse(eventId: number, error: string): Response {
  * 502 says that too.
  *
  * Either row is written only while it is still as it was read, as
- * subscriber-milestones-publish.ts's `saveAndPublish` writes a milestone: a
- * published row still published, a draft still a draft with no revision
- * recorded since `revisionBefore` - the event's newest revision, read before
- * `existing` was. One that changed is neither saved nor put on the public
+ * subscriber-milestones-publish.ts's `saveAndPublish` writes a milestone:
+ * still published or still a draft, with no revision recorded since
+ * `revisionBefore` - the event's newest revision, read before `existing`
+ * was - and still at the version `held` names, which another screen's save
+ * moves on even when it is a draft's and logs no revision (#307). Two saves
+ * of a published row that read the same version are told apart by the
+ * revision: the first logs one, and the later one's batch then writes
+ * nothing. One that changed is neither saved nor put on the public
  * timeline as this request has it, and 409 says so - or `notMendedResponse`'s
  * 502, when the JSON written before the batch could not be built again
  * without the change. The save that follows a JSON that could not be written
@@ -356,6 +362,7 @@ async function saveAndPublish(
   env: Env,
   existing: FootprintsEvent,
   revisionBefore: number,
+  held: HeldToVersion,
   fields: EventFields,
   now: Date,
 ): Promise<Response> {
@@ -370,7 +377,7 @@ async function saveAndPublish(
     // Saved only while it is still the draft it was read as: one published
     // in between is not written over with no revision, and 409 says so - or
     // 404, for one deleted in between.
-    if (!savedRow(await env.DB.batch(saveStatements(env, eventId, fields, { whileStatus: 'draft' })))) {
+    if (!savedRow(await env.DB.batch(saveStatements(env, eventId, fields, { whileStatus: 'draft', ...held })))) {
       return await notLoggedResponse(env, eventId);
     }
 
@@ -385,16 +392,14 @@ async function saveAndPublish(
       key: String(eventId),
       action: 'publish',
       body: publicShapeOf(next, whitelist),
-      whileRow: wasPublished ? "status = 'published'" : leftAs('published', revisionBefore),
+      whileRow: leftAs('published', revisionBefore),
     },
-    saveStatements(
-      env,
-      eventId,
-      fields,
-      wasPublished
-        ? { whileStatus: 'published' }
-        : { status: 'published', whileStatus: 'draft', whileRevision: revisionBefore },
-    ),
+    saveStatements(env, eventId, fields, {
+      status: 'published',
+      whileStatus: wasPublished ? 'published' : 'draft',
+      whileRevision: revisionBefore,
+      ...held,
+    }),
     now,
   );
 
@@ -410,6 +415,7 @@ async function saveAndPublish(
         saveStatements(env, eventId, fields, {
           whileStatus: wasPublished ? 'published' : 'draft',
           whileRevision: revisionBefore,
+          ...held,
         }),
       );
 
@@ -444,11 +450,15 @@ export async function publishEvent(
 
   if (existing === null) return noEventResponse(eventId);
 
+  const held = heldToVersion(body, existing.event.edit_version, `footprints event ${eventId}`);
+
+  if ('error' in held) return held.error;
+
   const fields = await validatedFields(env, body);
 
   if ('error' in fields) return fields.error;
 
-  return await saveAndPublish(env, existing, revisionBefore, fields, now);
+  return await saveAndPublish(env, existing, revisionBefore, held, fields, now);
 }
 
 /**
@@ -470,11 +480,15 @@ export async function saveEvent(
 
   if (existing.event.status !== 'published') return await updateEvent(env, eventId, body);
 
+  const held = heldToVersion(body, existing.event.edit_version, `footprints event ${eventId}`);
+
+  if ('error' in held) return held.error;
+
   const fields = await validatedFields(env, body);
 
   if ('error' in fields) return fields.error;
 
-  return await saveAndPublish(env, existing, revisionBefore, fields, now);
+  return await saveAndPublish(env, existing, revisionBefore, held, fields, now);
 }
 
 /**
@@ -505,6 +519,10 @@ export async function withdrawEvent(
 
   if (saved.event.status !== 'published') return changedElsewhereResponse('only a published event can be withdrawn');
 
+  const held = heldToVersion(body, saved.event.edit_version, `footprints event ${eventId}`);
+
+  if ('error' in held) return held.error;
+
   const fields = await validatedFields(env, body);
 
   if ('error' in fields) return fields.error;
@@ -513,7 +531,12 @@ export async function withdrawEvent(
     env,
     footprintsTarget(await readSourceWhitelist(env)),
     { key: String(eventId), action: 'withdraw', body: null, whileRow: leftAs('draft', revisionBefore) },
-    saveStatements(env, eventId, fields, { status: 'draft', whileStatus: 'published', whileRevision: revisionBefore }),
+    saveStatements(env, eventId, fields, {
+      status: 'draft',
+      whileStatus: 'published',
+      whileRevision: revisionBefore,
+      ...held,
+    }),
     now,
   );
 
