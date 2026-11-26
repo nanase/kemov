@@ -13,7 +13,7 @@ import {
 } from '../lib/footprints';
 import { deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, fieldsOnReload, sameFields } from '../lib/editing';
+import { EDITING_TEXT, fieldsOnReload, sameFields, writeBody } from '../lib/editing';
 import { footprintsAnswerFor, isChangedSincePublish, type FootprintsPending } from '../lib/footprints-publish';
 import {
   BAND_NOTE_ID,
@@ -200,10 +200,11 @@ function removeSource(index: number): void {
 /** The request behind each button. Each sends the fields as they stand; the worker saves them in the same request. */
 function send(action: PublishAction): Promise<unknown> {
   const path = `/footprints/events/${eventId.value}`;
+  const body = writeBody(fields.value, props.event!);
 
-  if (action === 'save') return putJson(path, fields.value);
+  if (action === 'save') return putJson(path, body);
 
-  return postJson(`${path}/${action}`, fields.value);
+  return postJson(`${path}/${action}`, body);
 }
 
 /**

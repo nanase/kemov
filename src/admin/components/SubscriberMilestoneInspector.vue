@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue
 
 import { deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, fieldsOnReload, sameFields } from '../lib/editing';
+import { EDITING_TEXT, fieldsOnReload, sameFields, writeBody } from '../lib/editing';
 import type { FootprintsEvent, FootprintsMember } from '../lib/footprints';
 import { previewOpen } from '../lib/preview';
 import { refreshSidebarDrafts } from '../lib/sidebar-drafts';
@@ -243,7 +243,7 @@ const chips = computed(() =>
 /** The request behind each button. Each sends the fields as they stand; the worker saves them in the same request. */
 function send(action: PublishAction): Promise<unknown> {
   const path = `/subscribers/milestones/${milestoneId.value}`;
-  const body = toRequestBody(fields.value);
+  const body = writeBody(toRequestBody(fields.value), props.milestone!);
 
   if (action === 'save') return putJson(path, body);
 

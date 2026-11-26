@@ -125,6 +125,8 @@ export interface FootprintsEvent {
   memo: string | null;
   createdAt: string;
   updatedAt: string;
+  /** The row's version as read, sent back with every write so that one another screen changed meanwhile is refused (#307, lib/editing.ts's `writeBody`). */
+  version: number;
   channelIds: string[];
   /** The members among `channelIds` the event is about: a debut's own member, not its guests. */
   leadChannelIds: string[];

@@ -94,3 +94,14 @@ export function fieldsOnReload<T extends object>(current: T, before: T, after: T
 function plainCopy<V>(value: V): V {
   return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as V);
 }
+
+/**
+ * The body of a 保存, 公開 or 非公開に戻す: `fields`, with the version of the
+ * row they were typed over (#307). The worker writes only while the row is
+ * still at that version, and answers 409 otherwise, so a write never lands
+ * silently over another screen's. After `fieldsOnReload`, the row is the one
+ * read again, and a 保存 pressed then writes over it on purpose.
+ */
+export function writeBody<T extends object>(fields: T, row: { version: number }): T & { version: number } {
+  return { ...fields, version: row.version };
+}

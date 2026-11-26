@@ -27,7 +27,7 @@ import {
   type BulkPublishOutcome as Outcome,
 } from '../lib/bulk-publish';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, fieldsOnReload, SAVE_TOAST, sameFields } from '../lib/editing';
+import { EDITING_TEXT, fieldsOnReload, SAVE_TOAST, sameFields, writeBody } from '../lib/editing';
 import { insertAt, mdSnippet, clock, type MdLinkKind } from '../lib/genet-markdown';
 import { type GenetPerson } from '../lib/genet-people';
 import {
@@ -193,9 +193,7 @@ function reasonIds(section: StreamFieldSection, performanceIndex: number | null 
   return streamBandReasonIds(
     band.value,
     [...invalidFields.value, ...clashErrors.value],
-    (f) =>
-      f.section === section &&
-      (performanceIndex === null || f.performanceIndex === performanceIndex),
+    (f) => f.section === section && (performanceIndex === null || f.performanceIndex === performanceIndex),
   );
 }
 
@@ -475,7 +473,10 @@ async function publishTicked(): Promise<void> {
 
         if (saved.status !== 'draft') return ALREADY_PUBLISHED;
 
-        await postJson(`/genet/streams/${encodeURIComponent(videoId)}/publish`, toStreamFormFields(saved));
+        await postJson(
+          `/genet/streams/${encodeURIComponent(videoId)}/publish`,
+          writeBody(toStreamFormFields(saved), saved),
+        );
       },
       (done) => {
         bulkProgress.value = { done, total: targets.length };
@@ -550,8 +551,10 @@ async function act(action: PublishAction): Promise<void> {
   clearBand();
 
   try {
-    if (action === 'save') await putJson(path, streamFields.value);
-    else await postJson(`${path}/${action}`, streamFields.value);
+    const body = writeBody(streamFields.value, selected.value);
+
+    if (action === 'save') await putJson(path, body);
+    else await postJson(`${path}/${action}`, body);
   } catch (caught) {
     error = caught;
   }

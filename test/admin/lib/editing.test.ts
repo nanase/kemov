@@ -1,4 +1,4 @@
-import { fieldsOnReload, sameFields } from '@/admin/lib/editing';
+import { fieldsOnReload, sameFields, writeBody } from '@/admin/lib/editing';
 import { toFormFields, type FootprintsEvent } from '@/admin/lib/footprints';
 
 const EVENT: FootprintsEvent = {
@@ -17,6 +17,7 @@ const EVENT: FootprintsEvent = {
   status: 'draft',
   createdAt: '2026-11-01T00:00:00Z',
   updatedAt: '2026-11-01T00:00:00Z',
+  version: 1,
   channelIds: ['UCEcMIuGR8WO2TwL9XIpjKtw'],
   leadChannelIds: ['UCEcMIuGR8WO2TwL9XIpjKtw'],
   sources: [{ url: 'https://example.com/a', title: null }],
@@ -117,12 +118,26 @@ describe('fieldsOnReload', () => {
   });
 });
 
-describe('fieldsOnReload with the panel\'s reactive fields', () => {
+describe("fieldsOnReload with the panel's reactive fields", () => {
   it('copies them, though structuredClone would refuse them', async () => {
     const { reactive } = await import('vue');
     const before = { title: 'もとの題', sources: [{ url: 'https://a', title: null }] };
     const current = reactive({ ...before, sources: [{ url: 'https://b', title: null }] });
 
     expect(fieldsOnReload(current, before, before).fields).toEqual({ ...before, sources: current.sources });
+  });
+});
+
+describe('writeBody', () => {
+  it('sends the fields with the version of the row they were typed over', () => {
+    expect(writeBody({ title: '打った題' }, { version: 7 })).toEqual({ title: '打った題', version: 7 });
+  });
+
+  it('leaves the fields as they were', () => {
+    const fields = { title: '打った題' };
+
+    writeBody(fields, { version: 7 });
+
+    expect(fields).toEqual({ title: '打った題' });
   });
 });

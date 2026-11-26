@@ -26,6 +26,7 @@ const STREAM: GenetStream = {
   memo: null,
   createdAt: '2026-09-01T00:00:00Z',
   updatedAt: '2026-09-01T00:00:00Z',
+  version: 1,
   performances: [
     { tuneId: 1, description: null, scenes: [{ style: 'sing', videoId: 'abcdefghijk', startSeconds: 90 }] },
   ],
