@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import HelpLink from '../components/HelpLink.vue';
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, shallowRef, toRaw, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { unescapeHtml } from '@nanase/alnilam/string';
@@ -9,6 +8,7 @@ import { markdownHtml } from '@/lib/genet/musicSong';
 import BulkPublishBar from '../components/BulkPublishBar.vue';
 import BulkPublishOutcome from '../components/BulkPublishOutcome.vue';
 import DeleteButton from '../components/DeleteButton.vue';
+import HelpLink from '../components/HelpLink.vue';
 import PreviewButton from '../components/PreviewButton.vue';
 import PreviewPane from '../components/PreviewPane.vue';
 import RepublishBand from '../components/RepublishBand.vue';

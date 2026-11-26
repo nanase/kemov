@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import HelpLink from '../components/HelpLink.vue';
 import { onMounted, ref } from 'vue';
 
+import HelpLink from '../components/HelpLink.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import { kindLabel, targetLabel, type CollectTask } from '../lib/collect-tasks';
 import { jstClock } from '../lib/snapshots';

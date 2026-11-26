@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import HelpLink from '../components/HelpLink.vue';
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import MemberAvatar from '@/parts/MemberAvatar.vue';
 
+import HelpLink from '../components/HelpLink.vue';
 import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, errorDetail, getJson, putJson } from '../lib/api';
 import {

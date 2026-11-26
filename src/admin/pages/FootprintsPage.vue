@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import HelpLink from '../components/HelpLink.vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import BulkPublishBar from '../components/BulkPublishBar.vue';
 import BulkPublishOutcome from '../components/BulkPublishOutcome.vue';
 import FootprintsInspector from '../components/FootprintsInspector.vue';
+import HelpLink from '../components/HelpLink.vue';
 import RepublishBand from '../components/RepublishBand.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import {
