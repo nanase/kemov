@@ -1,5 +1,6 @@
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { jsonResponse } from '../lib/json';
+import { refusal, refuse, REQUEST_FAILED } from '../lib/refusal';
 import { LAST_AVAILABLE_AT_ON_UNAVAILABLE } from '../lib/retention';
 import { formatTimestamp } from '../lib/time';
 
@@ -83,10 +84,20 @@ export async function listCollectTasks(env: Env): Promise<Response> {
   ).all<ListedTaskRow>();
 
   if (results.length > TASK_ROW_LIMIT) {
-    return errorResponse(400, `more than ${TASK_ROW_LIMIT} failing tasks - collection itself needs attention`);
+    return refuse(
+      400,
+      refusal(
+        '失敗している収集が多すぎるため読み込めませんでした',
+        `more than ${TASK_ROW_LIMIT} failing tasks - collection itself needs attention`,
+      ),
+    );
   }
 
   return jsonResponse({ collectTasks: results.map(presentListed), count: results.length });
+}
+
+function noTaskResponse(kind: string, targetId: string): Response {
+  return refuse(404, refusal('この収集の失敗が見つかりません', `no collect_task ${kind} ${targetId}`));
 }
 
 /**
@@ -111,7 +122,7 @@ export async function retryCollectTask(env: Env, kind: string, targetId: string,
     .bind(kind, targetId, timestamp)
     .first<TaskRow>();
 
-  if (row === null) return errorResponse(404, `no collect_task ${kind} ${targetId}`);
+  if (row === null) return noTaskResponse(kind, targetId);
 
   return jsonResponse({ collectTask: presentTask(row) });
 }
@@ -129,7 +140,7 @@ export async function ackCollectTask(env: Env, kind: string, targetId: string, n
     .bind(kind, targetId, timestamp)
     .first<TaskRow>();
 
-  if (row === null) return errorResponse(404, `no collect_task ${kind} ${targetId}`);
+  if (row === null) return noTaskResponse(kind, targetId);
 
   return jsonResponse({ collectTask: presentTask(row) });
 }
@@ -159,13 +170,15 @@ export async function markCollectTaskUnavailable(
     .bind(kind, targetId)
     .first<{ kind: string; is_channel: number | null; is_video: number | null }>();
 
-  if (lookup === null) return errorResponse(404, `no collect_task ${kind} ${targetId}`);
+  if (lookup === null) return noTaskResponse(kind, targetId);
 
   if (isChannelFailure(lookup.kind, lookup.is_channel !== null)) {
-    return errorResponse(400, 'unavailable only applies to a video, not a channel');
+    return refuse(400, refusal(REQUEST_FAILED, 'unavailable only applies to a video, not a channel'));
   }
 
-  if (lookup.is_video === null) return errorResponse(404, `no video row for ${targetId} to mark unavailable`);
+  if (lookup.is_video === null) {
+    return refuse(404, refusal('この動画が見つかりません', `no video row for ${targetId} to mark unavailable`));
+  }
 
   const timestamp = formatTimestamp(now);
 

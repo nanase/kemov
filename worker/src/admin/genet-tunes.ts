@@ -1,6 +1,7 @@
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { jsonResponse } from '../lib/json';
+import { malformed, refusal, refuse, type Refusal } from '../lib/refusal';
 
 /**
  * Reading, saving and deleting `genet_tune` (#141, #139): one tune's own
@@ -325,6 +326,11 @@ export async function isPerformedLive(env: Env, tuneId: number): Promise<boolean
   return row !== null;
 }
 
+/** The 404 for a tune that is not there - gone, or never was. */
+export function noTuneResponse(tuneId: number | string): Response {
+  return refuse(404, refusal('この曲が見つかりません', `no tune ${tuneId}`));
+}
+
 /**
  * GET /admin/api/genet/tunes/:tuneId. 404 when there is no such tune.
  * `live` says whether a published stream performs it, so that its 保存
@@ -333,7 +339,7 @@ export async function isPerformedLive(env: Env, tuneId: number): Promise<boolean
 export async function getTune(env: Env, tuneId: number): Promise<Response> {
   const saved = await readTune(env, tuneId);
 
-  if (saved === null) return errorResponse(404, `no tune ${tuneId}`);
+  if (saved === null) return noTuneResponse(tuneId);
 
   return jsonResponse({ tune: present(saved), live: await isPerformedLive(env, tuneId) });
 }
@@ -370,19 +376,19 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
-function readAttributeFields(value: unknown): AttributeFields | { error: string } {
-  if (typeof value !== 'object' || value === null) return { error: 'each attribute must be an object' };
+function readAttributeFields(value: unknown): AttributeFields | { error: Refusal } {
+  if (typeof value !== 'object' || value === null) return { error: malformed('each attribute must be an object') };
 
   const { name, text, people } = value as Record<string, unknown>;
 
   if (name !== undefined && name !== null && typeof name !== 'string')
-    return { error: 'attribute name must be a string or null' };
+    return { error: malformed('attribute name must be a string or null') };
   if (text !== undefined && text !== null && typeof text !== 'string')
-    return { error: 'attribute text must be a string or null' };
+    return { error: malformed('attribute text must be a string or null') };
 
   const peopleValue = people ?? [];
 
-  if (!Array.isArray(peopleValue)) return { error: 'attribute people must be an array' };
+  if (!Array.isArray(peopleValue)) return { error: malformed('attribute people must be an array') };
 
   const readPeople: AttributeFields['people'] = [];
 
@@ -398,7 +404,7 @@ function readAttributeFields(value: unknown): AttributeFields | { error: string 
         (p as Record<string, unknown>).note !== null &&
         typeof (p as Record<string, unknown>).note !== 'string')
     ) {
-      return { error: 'each attribute person must be { personId: number, creditedAs?, note? }' };
+      return { error: malformed('each attribute person must be { personId: number, creditedAs?, note? }') };
     }
 
     const rec = p as Record<string, unknown>;
@@ -417,18 +423,18 @@ function readAttributeFields(value: unknown): AttributeFields | { error: string 
   };
 }
 
-function readVideoFields(value: unknown): VideoFields | { error: string } {
-  if (typeof value !== 'object' || value === null) return { error: 'each video must be an object' };
+function readVideoFields(value: unknown): VideoFields | { error: Refusal } {
+  if (typeof value !== 'object' || value === null) return { error: malformed('each video must be an object') };
 
   const { videoId, title, startSeconds, description } = value as Record<string, unknown>;
 
-  if (typeof videoId !== 'string') return { error: 'video videoId must be a string' };
-  if (typeof title !== 'string') return { error: 'video title must be a string' };
+  if (typeof videoId !== 'string') return { error: malformed('video videoId must be a string') };
+  if (typeof title !== 'string') return { error: malformed('video title must be a string') };
   if (startSeconds !== undefined && startSeconds !== null && typeof startSeconds !== 'number') {
-    return { error: 'video startSeconds must be a number or null' };
+    return { error: malformed('video startSeconds must be a number or null') };
   }
   if (description !== undefined && description !== null && typeof description !== 'string') {
-    return { error: 'video description must be a string or null' };
+    return { error: malformed('video description must be a string or null') };
   }
 
   return {
@@ -439,13 +445,13 @@ function readVideoFields(value: unknown): VideoFields | { error: string } {
   };
 }
 
-function readScoreFields(value: unknown): ScoreFields | { error: string } {
-  if (typeof value !== 'object' || value === null) return { error: 'each score must be an object' };
+function readScoreFields(value: unknown): ScoreFields | { error: Refusal } {
+  if (typeof value !== 'object' || value === null) return { error: malformed('each score must be an object') };
 
   const { url, title } = value as Record<string, unknown>;
 
-  if (typeof url !== 'string') return { error: 'score url must be a string' };
-  if (typeof title !== 'string') return { error: 'score title must be a string' };
+  if (typeof url !== 'string') return { error: malformed('score url must be a string') };
+  if (typeof title !== 'string') return { error: malformed('score title must be a string') };
 
   return { url, title };
 }
@@ -454,14 +460,14 @@ function readScoreFields(value: unknown): ScoreFields | { error: string } {
  * Reads the fields a POST or PUT body carries, the same full-replace shape
  * `readEventFields` gives `footprints_event`.
  */
-function readTuneFields(body: Record<string, unknown>): TuneFields | { error: string } {
+function readTuneFields(body: Record<string, unknown>): TuneFields | { error: Refusal } {
   const subtunes = body.subtunes ?? [];
 
-  if (!isStringArray(subtunes)) return { error: 'subtunes must be an array of strings' };
+  if (!isStringArray(subtunes)) return { error: malformed('subtunes must be an array of strings') };
 
   const attributesValue = body.attributes ?? [];
 
-  if (!Array.isArray(attributesValue)) return { error: 'attributes must be an array' };
+  if (!Array.isArray(attributesValue)) return { error: malformed('attributes must be an array') };
 
   const attributes: AttributeFields[] = [];
 
@@ -475,7 +481,7 @@ function readTuneFields(body: Record<string, unknown>): TuneFields | { error: st
 
   const videosValue = body.videos ?? [];
 
-  if (!Array.isArray(videosValue)) return { error: 'videos must be an array' };
+  if (!Array.isArray(videosValue)) return { error: malformed('videos must be an array') };
 
   const videos: VideoFields[] = [];
 
@@ -489,7 +495,7 @@ function readTuneFields(body: Record<string, unknown>): TuneFields | { error: st
 
   const scoresValue = body.scores ?? [];
 
-  if (!Array.isArray(scoresValue)) return { error: 'scores must be an array' };
+  if (!Array.isArray(scoresValue)) return { error: malformed('scores must be an array') };
 
   const scores: ScoreFields[] = [];
 
@@ -501,14 +507,14 @@ function readTuneFields(body: Record<string, unknown>): TuneFields | { error: st
     scores.push(read);
   }
 
-  if (typeof body.title !== 'string') return { error: 'title must be a string' };
+  if (typeof body.title !== 'string') return { error: malformed('title must be a string') };
 
   if (body.originalTitle !== undefined && body.originalTitle !== null && typeof body.originalTitle !== 'string') {
-    return { error: 'originalTitle must be a string or null' };
+    return { error: malformed('originalTitle must be a string or null') };
   }
 
   if (body.memo !== undefined && body.memo !== null && typeof body.memo !== 'string') {
-    return { error: 'memo must be a string or null' };
+    return { error: malformed('memo must be a string or null') };
   }
 
   return {
@@ -528,26 +534,54 @@ function readTuneFields(body: Record<string, unknown>): TuneFields | { error: st
  * allows it at save time and only refuses it when the stream that performs
  * this tune is published (genet-publish.ts).
  */
-function tuneFieldsProblem(fields: TuneFields): string | null {
-  if (fields.title === '') return 'title must not be empty';
+function tuneFieldsProblem(fields: TuneFields): Refusal | null {
+  if (fields.title === '') return refusal('曲名を書いてください', 'title must not be empty');
 
+  // Counted from 1 in the sentences, as the publish refusals in
+  // genet-publish.ts count them.
   for (const [index, a] of fields.attributes.entries()) {
-    if (a.name === null && a.text === null) return `attributes[${index}] needs a name or a text`;
-    if (a.name === '') return `attributes[${index}].name must not be empty`;
-    if (a.text === '') return `attributes[${index}].text must not be empty`;
+    const attribute = `作曲・作詞などの ${index + 1} 番目`;
+
+    if (a.name === null && a.text === null) {
+      return refusal(`${attribute}に、項目の名前か中身を書いてください`, `attributes[${index}] needs a name or a text`);
+    }
+
+    if (a.name === '') {
+      return refusal(`${attribute}の項目の名前が空になっています`, `attributes[${index}].name must not be empty`);
+    }
+
+    if (a.text === '')
+      return refusal(`${attribute}の中身が空になっています`, `attributes[${index}].text must not be empty`);
 
     for (const [personIndex, p] of a.people.entries()) {
-      if (p.creditedAs === '') return `attributes[${index}].people[${personIndex}].creditedAs must not be empty`;
-      if (p.note === '') return `attributes[${index}].people[${personIndex}].note must not be empty`;
+      if (p.creditedAs === '') {
+        return refusal(
+          `${attribute}の ${personIndex + 1} 人目の表示名が空になっています`,
+          `attributes[${index}].people[${personIndex}].creditedAs must not be empty`,
+        );
+      }
+
+      // The screen has no field for a credit's note.
+      if (p.note === '') return malformed(`attributes[${index}].people[${personIndex}].note must not be empty`);
     }
   }
 
   for (const [index, s] of fields.scores.entries()) {
-    if (!s.url.startsWith('https://')) return `scores[${index}].url must start with https://`;
+    if (!s.url.startsWith('https://')) {
+      return refusal(
+        `外部の資料の ${index + 1} 番目のリンクが https:// で始まっていません`,
+        `scores[${index}].url must start with https://`,
+      );
+    }
   }
 
   for (const [index, v] of fields.videos.entries()) {
-    if (v.startSeconds !== null && v.startSeconds < 0) return `videos[${index}].startSeconds must be 0 or more`;
+    if (v.startSeconds !== null && v.startSeconds < 0) {
+      return refusal(
+        `参考の動画の ${index + 1} 番目の秒は 0 以上にしてください`,
+        `videos[${index}].startSeconds must be 0 or more`,
+      );
+    }
   }
 
   return null;
@@ -579,18 +613,22 @@ export async function validatedTuneFields(
 ): Promise<TuneFields | { error: Response }> {
   const fields = readTuneFields(body);
 
-  if ('error' in fields) return { error: errorResponse(400, fields.error) };
+  if ('error' in fields) return { error: refuse(400, fields.error) };
 
   const problem = tuneFieldsProblem(fields);
 
-  if (problem !== null) return { error: errorResponse(400, problem) };
+  if (problem !== null) return { error: refuse(400, problem) };
 
   const unknown = await unknownPersonIds(
     env,
     fields.attributes.flatMap((a) => a.people.map((p) => p.personId)),
   );
 
-  if (unknown.length > 0) return { error: errorResponse(400, `unknown personIds: ${unknown.join(', ')}`) };
+  if (unknown.length > 0) {
+    return {
+      error: refuse(400, refusal('見つからない人物が含まれています', `unknown personIds: ${unknown.join(', ')}`)),
+    };
+  }
 
   return fields;
 }
@@ -768,7 +806,7 @@ export function withFields(saved: GenetTune, fields: TuneFields): GenetTune {
 export async function updateTune(env: Env, tuneId: number, body: Record<string, unknown>): Promise<Response> {
   const existing = await readTune(env, tuneId);
 
-  if (existing === null) return errorResponse(404, `no tune ${tuneId}`);
+  if (existing === null) return noTuneResponse(tuneId);
 
   const fields = await validatedTuneFields(env, body);
 
@@ -789,11 +827,19 @@ export async function updateTune(env: Env, tuneId: number, body: Record<string, 
 export async function deleteTune(env: Env, tuneId: number): Promise<Response> {
   const existing = await env.DB.prepare('SELECT 1 FROM genet_tune WHERE tune_id = ?1').bind(tuneId).first();
 
-  if (existing === null) return errorResponse(404, `no tune ${tuneId}`);
+  if (existing === null) return noTuneResponse(tuneId);
 
   const referenced = await env.DB.prepare('SELECT 1 FROM genet_performance WHERE tune_id = ?1').bind(tuneId).first();
 
-  if (referenced !== null) return errorResponse(409, 'this tune is performed by a stream; remove it there first');
+  if (referenced !== null) {
+    return refuse(
+      409,
+      refusal(
+        'この曲を演奏している配信があるため削除できませんでした',
+        'this tune is performed by a stream; remove it there first',
+      ),
+    );
+  }
 
   await env.DB.batch([
     env.DB.prepare('DELETE FROM genet_tune_attribute_person WHERE tune_id = ?1').bind(tuneId),

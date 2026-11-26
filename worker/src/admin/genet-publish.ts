@@ -1,11 +1,13 @@
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
-import { changedElsewhereResponse, errorResponse, jsonResponse } from '../lib/json';
+import { changedElsewhereResponse, jsonResponse } from '../lib/json';
+import { refusal, refuse } from '../lib/refusal';
 import type { RevisionEntity } from '../lib/revision';
 import { formatTimestamp } from '../lib/time';
 import { publicShapeOf as personPublicShapeOf, readPeople, type PersonRow } from './genet-people';
 import {
   newestRevisionOf as newestStreamRevisionOf,
+  noStreamResponse,
   present as presentStream,
   publicShapeOf as streamPublicShapeOf,
   readStream,
@@ -21,6 +23,7 @@ import {
 } from './genet-streams';
 import {
   isPerformedLive,
+  noTuneResponse,
   present as presentTune,
   publicShapeOf as tunePublicShapeOf,
   readTune,
@@ -60,6 +63,9 @@ import {
 const VIDEO_ID_LENGTH = 11;
 
 const GENET_MUSIC_OBJECT_KEY = 'genet/music.json';
+
+/** What the screen says when the public JSON could not be written; which step failed, and why, stays in `detail`. */
+const NOT_WRITTEN_TEXT = '本番の楽曲一覧への反映に失敗しました';
 
 /**
  * One way a stream falls short of publishing: the part of the form it is
@@ -370,7 +376,8 @@ async function notWrittenResponse(env: Env, videoId: string, outcome: Extract<Pu
   if (outcome.recorded && outcome.revisionId === null) {
     return jsonResponse(
       {
-        error: `stream ${videoId} changed while this request was saving it, and ${GENET_MUSIC_OBJECT_KEY} could not be built again without the change: ${outcome.error}`,
+        error: NOT_WRITTEN_TEXT,
+        detail: `stream ${videoId} changed while this request was saving it, and ${GENET_MUSIC_OBJECT_KEY} could not be built again without the change: ${outcome.error}`,
         saved: false,
       },
       { status: 502 },
@@ -381,7 +388,8 @@ async function notWrittenResponse(env: Env, videoId: string, outcome: Extract<Pu
 
   return jsonResponse(
     {
-      error: `saved, but ${GENET_MUSIC_OBJECT_KEY} could not be written: ${outcome.error}`,
+      error: NOT_WRITTEN_TEXT,
+      detail: `saved, but ${GENET_MUSIC_OBJECT_KEY} could not be written: ${outcome.error}`,
       saved: true,
       stream: saved === null ? null : presentStream(saved),
     },
@@ -415,7 +423,7 @@ async function writtenResponse(env: Env, videoId: string, outcome: Extract<Publi
  * it - published, withdrawn or saved elsewhere.
  */
 async function notLoggedResponse(env: Env, videoId: string): Promise<Response> {
-  if ((await readStream(env, videoId)) === null) return errorResponse(404, `no stream ${videoId}`);
+  if ((await readStream(env, videoId)) === null) return noStreamResponse(videoId);
 
   return changedMeanwhileResponse(videoId);
 }
@@ -548,7 +556,7 @@ export async function publishStream(
   const revisionBefore = await newestStreamRevisionOf(env, videoId);
   const existing = await readStream(env, videoId);
 
-  if (existing === null) return errorResponse(404, `no stream ${videoId}`);
+  if (existing === null) return noStreamResponse(videoId);
 
   const fields = await validatedStreamFields(env, body);
 
@@ -572,7 +580,7 @@ export async function saveStream(
   const revisionBefore = await newestStreamRevisionOf(env, videoId);
   const existing = await readStream(env, videoId);
 
-  if (existing === null) return errorResponse(404, `no stream ${videoId}`);
+  if (existing === null) return noStreamResponse(videoId);
 
   if (existing.stream.status !== 'published') return await updateStream(env, videoId, body);
 
@@ -607,7 +615,7 @@ export async function withdrawStream(
   const revisionBefore = await newestStreamRevisionOf(env, videoId);
   const saved = await readStream(env, videoId);
 
-  if (saved === null) return errorResponse(404, `no stream ${videoId}`);
+  if (saved === null) return noStreamResponse(videoId);
 
   if (saved.stream.status !== 'published') return changedElsewhereResponse('only a published stream can be withdrawn');
 
@@ -630,7 +638,7 @@ export async function withdrawStream(
   if (!outcome.written) {
     if (outcome.recorded) return await notWrittenResponse(env, videoId, outcome);
 
-    return errorResponse(502, `${GENET_MUSIC_OBJECT_KEY} could not be written: ${outcome.error}`);
+    return refuse(502, refusal(NOT_WRITTEN_TEXT, `${GENET_MUSIC_OBJECT_KEY} could not be written: ${outcome.error}`));
   }
 
   return await writtenResponse(env, videoId, outcome);
@@ -652,7 +660,7 @@ export async function withdrawStream(
 export async function saveTune(env: Env, tuneId: number, body: Record<string, unknown>, now: Date): Promise<Response> {
   const existing = await readTune(env, tuneId);
 
-  if (existing === null) return errorResponse(404, `no tune ${tuneId}`);
+  if (existing === null) return noTuneResponse(tuneId);
 
   const fields = await validatedTuneFields(env, body);
 
@@ -688,12 +696,16 @@ export async function saveTune(env: Env, tuneId: number, body: Record<string, un
       env,
       tuneId,
       true,
-      { error: `saved, but ${GENET_MUSIC_OBJECT_KEY} could not be written: ${outcome.error}`, saved: true },
+      {
+        error: NOT_WRITTEN_TEXT,
+        detail: `saved, but ${GENET_MUSIC_OBJECT_KEY} could not be written: ${outcome.error}`,
+        saved: true,
+      },
       502,
     );
   }
 
-  if (outcome.revisionId === null) return errorResponse(404, `no tune ${tuneId}`);
+  if (outcome.revisionId === null) return noTuneResponse(tuneId);
 
   return await tuneResponse(env, tuneId, true, {
     revisionId: outcome.revisionId,
@@ -711,7 +723,7 @@ async function tuneResponse(
 ): Promise<Response> {
   const saved = await readTune(env, tuneId);
 
-  if (saved === null) return errorResponse(404, `no tune ${tuneId}`);
+  if (saved === null) return noTuneResponse(tuneId);
 
   return jsonResponse({ tune: presentTune(saved), live, ...extra }, { status });
 }
@@ -1029,7 +1041,10 @@ export async function publishGenetMusicNow(env: Env, now: Date): Promise<Respons
   const outcome = await republish(env, GENET_STREAM_TARGET, now);
 
   if (!outcome.current) {
-    return errorResponse(502, `${GENET_MUSIC_OBJECT_KEY} could not be brought up to date: ${outcome.error}`);
+    return refuse(
+      502,
+      refusal(NOT_WRITTEN_TEXT, `${GENET_MUSIC_OBJECT_KEY} could not be brought up to date: ${outcome.error}`),
+    );
   }
 
   const data = musicData(outcome.latest, []);

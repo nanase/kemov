@@ -80,7 +80,10 @@ describe('listSnapshots', () => {
     const response = await listSnapshots(env, 'UCnope', null, null, NOW);
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ error: 'unknown channelId: UCnope' });
+    expect(await response.json()).toEqual({
+      error: 'このメンバーが見つかりません',
+      detail: 'unknown channelId: UCnope',
+    });
   });
 
   test('refuses from after to', async () => {

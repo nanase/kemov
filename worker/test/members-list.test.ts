@@ -5,6 +5,7 @@ import { revisionStatement } from '../src/lib/revision';
 import { listChannels } from '../src/api/channels';
 import { runChannelStats } from '../src/collector/channel-stats';
 import { clearEverything } from './reset-db';
+import { SAVE_FAILED } from '../src/lib/refusal';
 
 // Adding, ordering and deleting (#211). members.test.ts has the read and the
 // single-member save.
@@ -182,7 +183,10 @@ describe('addMember', () => {
     const refused = await addMember(env, withoutEnd);
 
     expect(refused.status).toEqual(400);
-    expect(((await refused.json()) as { error: string }).error).toMatch(/^activityEndDate must be given/);
+    expect(await refused.json()).toEqual({
+      error: SAVE_FAILED,
+      detail: expect.stringMatching(/^activityEndDate must be given/),
+    });
     expect(await publicOrder()).toEqual([]);
     expect((await addMember(env, newMember({ activityEndDate: null }))).status).toEqual(201);
   });
@@ -214,7 +218,7 @@ describe('addMember', () => {
     const response = await addMember(env, newMember({ displayOrder: 0 }));
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ error: 'displayOrder cannot be saved' });
+    expect(await response.json()).toEqual({ error: SAVE_FAILED, detail: 'displayOrder cannot be saved' });
   });
 
   // #211: what the collector reads is `SELECT channel_id FROM channel`
@@ -355,7 +359,11 @@ describe('saveMembers', () => {
     });
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ error: 'colorBack must be #RRGGBB', channelId: second });
+    expect(await response.json()).toEqual({
+      error: '色の形式が正しくありません',
+      detail: 'colorBack must be #RRGGBB',
+      channelId: second,
+    });
   });
 
   test('refuses an add for a member that already exists', async () => {
@@ -512,10 +520,11 @@ describe('deleteMember', () => {
 
     expect(response.status).toEqual(409);
 
-    const { error } = (await response.json()) as { error: string };
+    const { error, detail } = (await response.json()) as { error: string; detail: string };
 
-    expect(error).toContain(table);
-    expect(error).toContain('activityEndDate');
+    expect(error).toEqual('記録があるため削除できませんでした');
+    expect(detail).toContain(table);
+    expect(detail).toContain('activityEndDate');
     expect(await publicOrder()).toEqual([A, B, C]);
     expect(await revisions()).toEqual([]);
   });
@@ -531,11 +540,11 @@ describe('deleteMember', () => {
        VALUES ('vid1', '${B}', 't', '2026-09-01T00:00:00Z', 'public', 'none', '2026-09-01T00:00:00Z')`,
     ).run();
 
-    const { error } = (await (await deleteMember(env, B)).json()) as { error: string };
+    const { detail } = (await (await deleteMember(env, B)).json()) as { detail: string };
 
-    expect(error).toContain('channel_snapshot: 1');
-    expect(error).toContain('video: 1');
-    expect(error).not.toContain('footprints_event_member');
+    expect(detail).toContain('channel_snapshot: 1');
+    expect(detail).toContain('video: 1');
+    expect(detail).not.toContain('footprints_event_member');
   });
 
   // collect_task has no foreign key: a member whose first fetch failed has a
@@ -590,5 +599,45 @@ describe('deleteMember', () => {
 
     expect((await deleteMember(env, NEW)).status).toEqual(200);
     expect(await publicOrder()).toEqual([A, B, C]);
+  });
+});
+
+// #291: `error` is the sentence the screen shows; `detail` is the English for
+// the log.
+describe('what a refused list save says', () => {
+  test('says the channel is already a member', async () => {
+    await seedThree();
+
+    expect(await (await addMember(env, newMember({ channelId: B }))).json()).toEqual({
+      error: 'このチャンネルは既にメンバーの一覧に存在します',
+      detail: `member ${B} already exists`,
+    });
+  });
+
+  test('says the channel id is not one', async () => {
+    expect(await (await addMember(env, newMember({ channelId: 'UCshort' }))).json()).toEqual({
+      error: 'チャンネル ID の形式が正しくありません',
+      detail: 'channelId must be a YouTube channel id',
+    });
+  });
+
+  test('says the same channel is added twice', async () => {
+    await seedThree();
+
+    const response = await saveMembers(env, { add: [newMember(), newMember()], order: [NEW, NEW, A, B, C] });
+
+    expect(await response.json()).toMatchObject({
+      error: '同じチャンネルを 2 回足しています',
+      detail: 'add names the same member twice',
+    });
+  });
+
+  test('says another screen changed the list, in the words of #305', async () => {
+    await seedThree();
+
+    expect(await (await saveMembers(env, { order: [A, B] })).json()).toEqual({
+      error: '別の画面で変更されたため保存できませんでした',
+      detail: 'order does not list exactly the current members; reload and try again',
+    });
   });
 });

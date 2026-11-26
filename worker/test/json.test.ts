@@ -1,4 +1,4 @@
-import { errorResponse, jsonResponse } from '../src/lib/json';
+import { changedElsewhereResponse, errorResponse, jsonResponse } from '../src/lib/json';
 
 describe('jsonResponse', () => {
   test('serialises the body', async () => {
@@ -39,5 +39,34 @@ describe('errorResponse', () => {
 
   test('carries the message as JSON', async () => {
     expect(await errorResponse(404, 'nope').json()).toEqual({ error: 'nope' });
+  });
+
+  // #291: `error` is what the admin screen shows; `detail` says in English
+  // which value was refused, for the screen to mark the field and for logs.
+  test('carries the detail beside the message when one is given', async () => {
+    expect(await errorResponse(400, '保存に失敗しました', 'order must be a list of channel ids').json()).toEqual({
+      error: '保存に失敗しました',
+      detail: 'order must be a list of channel ids',
+    });
+  });
+});
+
+describe('changedElsewhereResponse', () => {
+  // #305's words, which the screen shows for any 409 marked changedElsewhere.
+  test('says a save could not be made, and keeps what changed as the detail', async () => {
+    const response = changedElsewhereResponse('footprints event 2 is no longer a draft');
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toEqual({
+      error: '別の画面で変更されたため保存できませんでした',
+      detail: 'footprints event 2 is no longer a draft',
+      changedElsewhere: true,
+    });
+  });
+
+  test('says a delete could not be made', async () => {
+    expect(await changedElsewhereResponse('withdraw this event before deleting it', 'remove').json()).toMatchObject({
+      error: '別の画面で変更されたため削除できませんでした',
+    });
   });
 });

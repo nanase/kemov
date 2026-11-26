@@ -2,6 +2,7 @@ import { env } from 'cloudflare:test';
 
 import { deleteVideoOverride, listVideoOverrides, saveVideoOverride } from '../src/admin/video-overrides';
 import { clearEverything } from './reset-db';
+import { SAVE_FAILED } from '../src/lib/refusal';
 
 beforeEach(clearEverything);
 
@@ -135,7 +136,7 @@ describe('saveVideoOverride', () => {
     const response = await saveVideoOverride(env, 'vid1', { title: 'x', videoId: 'vid2' }, NOW);
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ error: 'videoId cannot be saved' });
+    expect(await response.json()).toEqual({ error: SAVE_FAILED, detail: 'videoId cannot be saved' });
     expect(await revisionRows()).toEqual([]);
   });
 
@@ -202,5 +203,41 @@ describe('deleteVideoOverride', () => {
     ]);
 
     expect(await revisionRows()).toHaveLength(1);
+  });
+});
+
+// #291: `error` is the sentence the screen shows; `detail` is the English for
+// the log.
+describe('what a refused save says', () => {
+  test('says the title is blank', async () => {
+    await insertVideo('vid1');
+
+    expect(await (await saveVideoOverride(env, 'vid1', { title: '' }, NOW)).json()).toEqual({
+      error: 'タイトルを書いてください',
+      detail: 'title must be a non-empty string or null',
+    });
+  });
+
+  test('says nothing is overridden', async () => {
+    await insertVideo('vid1');
+
+    expect(await (await saveVideoOverride(env, 'vid1', { memo: 'm' }, NOW)).json()).toEqual({
+      error: '上書きする欄がありません',
+      detail: 'at least one of title, type and availability must not be null',
+    });
+  });
+
+  test('says the video is gone', async () => {
+    expect(await (await saveVideoOverride(env, 'nope', { title: 'x' }, NOW)).json()).toEqual({
+      error: 'この動画が見つかりません',
+      detail: 'no video nope',
+    });
+  });
+
+  test('says the override is gone', async () => {
+    expect(await (await deleteVideoOverride(env, 'nope')).json()).toEqual({
+      error: 'この動画の上書きが見つかりません',
+      detail: 'no override for video nope',
+    });
   });
 });

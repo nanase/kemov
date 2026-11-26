@@ -1,6 +1,8 @@
 import { readEditableBody } from '../lib/editable-body';
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { CHANGED_ELSEWHERE_TEXT } from '../../../src/admin/lib/changed-elsewhere';
+import { jsonResponse } from '../lib/json';
+import { malformed, MEMBER_NOT_FOUND_TEXT, refusal, refuse, type Refusal } from '../lib/refusal';
 import { revisionStatement } from '../lib/revision';
 import { isSchemaDate } from '../lib/time';
 
@@ -126,41 +128,59 @@ const COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 const TWITTER_PATTERN = /^\w{1,15}$/;
 const TWITCH_PATTERN = /^\w{4,25}$/;
 
+function noMember(channelId: string): Refusal {
+  return refusal(MEMBER_NOT_FOUND_TEXT, `no member ${channelId}`);
+}
+
+// Which tables hold the records, and how many, stay in the detail: what the
+// screen can do about it is not this sentence's to say (#300).
+const HAS_RECORDS_TEXT = '記録があるため削除できませんでした';
+
 function isFilledString(value: unknown): value is string {
   return typeof value === 'string' && value.trim() !== '';
 }
 
 /** What is wrong with one field's value, or null when it is fine. */
-function memberFieldProblem(key: NewMemberKey, value: unknown): string | null {
+function memberFieldProblem(key: NewMemberKey, value: unknown): Refusal | null {
   switch (key) {
     case 'channelId':
       return typeof value === 'string' && CHANNEL_ID_PATTERN.test(value)
         ? null
-        : 'channelId must be a YouTube channel id';
+        : refusal('チャンネル ID の形式が正しくありません', 'channelId must be a YouTube channel id');
     case 'name':
+      return isFilledString(value) ? null : refusal('名前を書いてください', 'name must be a non-empty string');
     case 'fullname':
-      return isFilledString(value) ? null : `${key} must be a non-empty string`;
+      return isFilledString(value)
+        ? null
+        : refusal('日本語と英語の名前を書いてください', 'fullname must be a non-empty string');
     case 'globalname':
-      return value === null || isFilledString(value) ? null : 'globalname must be a non-empty string or null';
+      return value === null || isFilledString(value)
+        ? null
+        : refusal('英語の名前が空白だけになっています', 'globalname must be a non-empty string or null');
     case 'twitter':
       return value === null || (typeof value === 'string' && TWITTER_PATTERN.test(value))
         ? null
-        : 'twitter must be a handle without the @, or null';
+        : refusal('X の名前の形式が正しくありません', 'twitter must be a handle without the @, or null');
     case 'twitch':
       return value === null || (typeof value === 'string' && TWITCH_PATTERN.test(value))
         ? null
-        : 'twitch must be a Twitch login, or null';
+        : refusal('Twitch のログイン名の形式が正しくありません', 'twitch must be a Twitch login, or null');
     case 'colorKey':
     case 'colorSub':
     case 'colorLight':
     case 'colorBack':
-      return typeof value === 'string' && COLOR_PATTERN.test(value) ? null : `${key} must be #RRGGBB`;
+      // One sentence for all four: the field the screen marks says which.
+      return typeof value === 'string' && COLOR_PATTERN.test(value)
+        ? null
+        : refusal('色の形式が正しくありません', `${key} must be #RRGGBB`);
     case 'activityStartDate':
-      return typeof value === 'string' && isSchemaDate(value) ? null : 'activityStartDate must be YYYY-MM-DD';
+      return typeof value === 'string' && isSchemaDate(value)
+        ? null
+        : refusal('活動開始の形式が正しくありません', 'activityStartDate must be YYYY-MM-DD');
     case 'activityEndDate':
       return value === null || (typeof value === 'string' && isSchemaDate(value))
         ? null
-        : 'activityEndDate must be YYYY-MM-DD or null';
+        : refusal('活動終了の形式が正しくありません', 'activityEndDate must be YYYY-MM-DD or null');
   }
 }
 
@@ -179,7 +199,7 @@ function readMemberBody(
   // be said. (readEditableBody treats a left-out key as null.)
   if (!('activityEndDate' in body)) {
     return {
-      error: errorResponse(400, 'activityEndDate must be given: YYYY-MM-DD, or null while the member is active'),
+      error: refuse(400, malformed('activityEndDate must be given: YYYY-MM-DD, or null while the member is active')),
     };
   }
 
@@ -190,7 +210,12 @@ function readMemberBody(
   const { activityStartDate, activityEndDate } = read.values;
 
   if (activityEndDate !== null && (activityEndDate as string) < (activityStartDate as string)) {
-    return { error: errorResponse(400, 'activityEndDate is before activityStartDate') };
+    return {
+      error: refuse(
+        400,
+        refusal('活動終了が活動開始より前になっています', 'activityEndDate is before activityStartDate'),
+      ),
+    };
   }
 
   return read;
@@ -232,7 +257,7 @@ function revisionBodyOf(row: MemberRow) {
 export async function updateMember(env: Env, channelId: string, body: Record<string, unknown>): Promise<Response> {
   const existing = await env.DB.prepare(`${SELECT_MEMBERS} WHERE channel_id = ?1`).bind(channelId).first<MemberRow>();
 
-  if (existing === null) return errorResponse(404, `no member ${channelId}`);
+  if (existing === null) return refuse(404, noMember(channelId));
 
   const read = readMemberBody(body, EDITABLE_MEMBER_KEYS);
 
@@ -354,10 +379,14 @@ async function saveMemberList(env: Env, added: NewMemberValues[], order: string[
   const addedIds = added.map((values) => values.channelId as string);
 
   for (const id of addedIds) {
-    if (known.has(id)) return errorResponse(409, `member ${id} already exists`);
+    if (known.has(id)) {
+      return refuse(409, refusal('このチャンネルは既にメンバーの一覧に存在します', `member ${id} already exists`));
+    }
   }
 
-  if (new Set(addedIds).size !== addedIds.length) return errorResponse(400, 'add names the same member twice');
+  if (new Set(addedIds).size !== addedIds.length) {
+    return refuse(400, refusal('同じチャンネルを 2 回足しています', 'add names the same member twice'));
+  }
 
   const finalOrder = order ?? [...existing.map((row) => row.channel_id), ...addedIds];
   const expected = new Set([...known, ...addedIds]);
@@ -367,7 +396,10 @@ async function saveMemberList(env: Env, added: NewMemberValues[], order: string[
     new Set(finalOrder).size !== expected.size ||
     !finalOrder.every((id) => expected.has(id))
   ) {
-    return errorResponse(409, 'order does not list exactly the current members; reload and try again');
+    return refuse(
+      409,
+      refusal(CHANGED_ELSEWHERE_TEXT.save, 'order does not list exactly the current members; reload and try again'),
+    );
   }
 
   const placeOf = new Map(finalOrder.map((id, index) => [id, index]));
@@ -428,7 +460,10 @@ async function saveMemberList(env: Env, added: NewMemberValues[], order: string[
     // The guard, or a member added between the read above and here whose id's
     // PRIMARY KEY refuses the INSERT: both mean the list is not the one this
     // save was built from, and nothing was written.
-    return errorResponse(409, 'the member list changed while saving; reload and try again');
+    return refuse(
+      409,
+      refusal(CHANGED_ELSEWHERE_TEXT.save, 'the member list changed while saving; reload and try again'),
+    );
   }
 
   const byId = new Map([...existing, ...rows].map((row) => [row.channel_id, row]));
@@ -458,16 +493,16 @@ export async function addMember(env: Env, body: Record<string, unknown>): Promis
 }
 
 /**
- * `refusal` with the member it is about added to its body as `channelId`. A
- * save names many members at once, so a bare "colorKey must be #RRGGBB" does
- * not say whose; the editor reads `channelId` to show the message beside that
- * member. `error` is left as it was.
+ * `answer` with the member it is about added to its body as `channelId`. A
+ * save names many members at once, so a bare 「色の形式が正しくありません」
+ * does not say whose; the editor reads `channelId` to show the message beside
+ * that member. `error` and `detail` are left as they were.
  */
-async function namingMember(refusal: Response, member: Record<string, unknown>): Promise<Response> {
-  const { error } = (await refusal.json()) as { error: string };
+async function namingMember(answer: Response, member: Record<string, unknown>): Promise<Response> {
+  const refused = (await answer.json()) as { error: string; detail?: string };
 
-  return jsonResponse(typeof member.channelId === 'string' ? { error, channelId: member.channelId } : { error }, {
-    status: refusal.status,
+  return jsonResponse(typeof member.channelId === 'string' ? { ...refused, channelId: member.channelId } : refused, {
+    status: answer.status,
   });
 }
 
@@ -479,21 +514,21 @@ async function namingMember(refusal: Response, member: Record<string, unknown>):
 export async function saveMembers(env: Env, body: Record<string, unknown>): Promise<Response> {
   const unknownKey = Object.keys(body).find((key) => key !== 'add' && key !== 'order');
 
-  if (unknownKey !== undefined) return errorResponse(400, `${unknownKey} cannot be saved`);
+  if (unknownKey !== undefined) return refuse(400, malformed(`${unknownKey} cannot be saved`));
 
   const { add = [], order } = body;
 
   if (!Array.isArray(order) || !order.every((id) => typeof id === 'string')) {
-    return errorResponse(400, 'order must be a list of channel ids');
+    return refuse(400, malformed('order must be a list of channel ids'));
   }
 
-  if (!Array.isArray(add)) return errorResponse(400, 'add must be a list of members');
+  if (!Array.isArray(add)) return refuse(400, malformed('add must be a list of members'));
 
   const added: NewMemberValues[] = [];
 
   for (const member of add) {
     if (typeof member !== 'object' || member === null || Array.isArray(member)) {
-      return errorResponse(400, 'add must be a list of members');
+      return refuse(400, malformed('add must be a list of members'));
     }
 
     const read = readMemberBody(member as Record<string, unknown>, NEW_MEMBER_KEYS);
@@ -527,7 +562,7 @@ const HAS_NO_RECORDS = RECORD_TABLES.map((table) => `NOT EXISTS (SELECT 1 FROM $
 export async function deleteMember(env: Env, channelId: string): Promise<Response> {
   const existing = await env.DB.prepare(`${SELECT_MEMBERS} WHERE channel_id = ?1`).bind(channelId).first<MemberRow>();
 
-  if (existing === null) return errorResponse(404, `no member ${channelId}`);
+  if (existing === null) return refuse(404, noMember(channelId));
 
   const counts = await env.DB.prepare(
     `SELECT ${RECORD_TABLES.map((table) => `(SELECT count(*) FROM ${table} WHERE channel_id = ?1) AS ${table}`).join(', ')}`,
@@ -540,9 +575,12 @@ export async function deleteMember(env: Env, channelId: string): Promise<Respons
   );
 
   if (recorded.length > 0) {
-    return errorResponse(
+    return refuse(
       409,
-      `member ${channelId} has records (${recorded.join(', ')}) and cannot be deleted; set activityEndDate instead`,
+      refusal(
+        HAS_RECORDS_TEXT,
+        `member ${channelId} has records (${recorded.join(', ')}) and cannot be deleted; set activityEndDate instead`,
+      ),
     );
   }
 
@@ -570,7 +608,13 @@ export async function deleteMember(env: Env, channelId: string): Promise<Respons
   ]);
 
   if (results[2].meta.changes === 0) {
-    return errorResponse(409, `member ${channelId} gained records and cannot be deleted; set activityEndDate instead`);
+    return refuse(
+      409,
+      refusal(
+        HAS_RECORDS_TEXT,
+        `member ${channelId} gained records and cannot be deleted; set activityEndDate instead`,
+      ),
+    );
   }
 
   return jsonResponse({ revisionId: results[0].meta.last_row_id });

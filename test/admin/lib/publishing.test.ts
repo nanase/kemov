@@ -109,6 +109,30 @@ describe('publishAnswerFor', () => {
 
     expect(answer.kind === 'band' && answer.fields).toEqual([{ section: 'performances', at: 3 }]);
   });
+
+  // #291: the note is the worker's Japanese; the field is found from the
+  // English detail, so two fields that share one sentence stay apart.
+  test("finds the field from the worker's detail and shows its message", () => {
+    const seen: string[] = [];
+    const answer = publishAnswerFor(
+      {
+        rowKey: 'event',
+        fieldForSaveError: (detail) => {
+          seen.push(detail);
+          return detail.startsWith('startDate') ? 'startDate' : null;
+        },
+      },
+      'save',
+      'draft',
+      new AdminApiError(400, { error: '日付の形式が正しくありません', detail: 'startDate must be YYYY-MM-DD' }),
+    );
+
+    expect(seen).toEqual(['startDate must be YYYY-MM-DD']);
+    expect(answer.kind === 'band' && [answer.band.note, answer.fields]).toEqual([
+      '日付の形式が正しくありません',
+      ['startDate'],
+    ]);
+  });
 });
 
 // #299: a 409 for a row another screen changed says so in the screen's own

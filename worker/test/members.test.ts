@@ -4,6 +4,7 @@ import { listMembers, updateMember } from '../src/admin/members';
 import { runBackup } from '../src/collector/backup';
 import { backupKey, dayOf } from '../src/lib/backup';
 import { clearEverything } from './reset-db';
+import { SAVE_FAILED } from '../src/lib/refusal';
 
 beforeEach(clearEverything);
 
@@ -235,7 +236,7 @@ describe('updateMember', () => {
     const response = await updateMember(env, 'UCaaa', withoutName);
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ error: 'name must be a non-empty string' });
+    expect(await response.json()).toEqual({ error: '名前を書いてください', detail: 'name must be a non-empty string' });
     expect(await revisionRows()).toEqual([]);
   });
 
@@ -249,7 +250,10 @@ describe('updateMember', () => {
     const response = await updateMember(env, 'UCaaa', withoutEnd);
 
     expect(response.status).toEqual(400);
-    expect(((await response.json()) as { error: string }).error).toMatch(/^activityEndDate must be given/);
+    expect(await response.json()).toEqual({
+      error: SAVE_FAILED,
+      detail: expect.stringMatching(/^activityEndDate must be given/),
+    });
     expect(await revisionRows()).toEqual([]);
   });
 
@@ -275,7 +279,7 @@ describe('updateMember', () => {
     const response = await updateMember(env, 'UCaaa', validBody({ channelId: 'UCbbb' }));
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ error: 'channelId cannot be saved' });
+    expect(await response.json()).toEqual({ error: SAVE_FAILED, detail: 'channelId cannot be saved' });
     expect(await revisionRows()).toEqual([]);
   });
 
@@ -287,7 +291,7 @@ describe('updateMember', () => {
     const response = await updateMember(env, 'UCaaa', validBody({ displayOrder: 0 }));
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ error: 'displayOrder cannot be saved' });
+    expect(await response.json()).toEqual({ error: SAVE_FAILED, detail: 'displayOrder cannot be saved' });
     expect(await orderOf()).toEqual([['UCaaa', 3]]);
   });
 
@@ -316,5 +320,44 @@ describe('updateMember', () => {
 
     expect(response.status).toEqual(400);
     expect(await revisionRows()).toEqual([]);
+  });
+});
+
+// #291: `error` is the sentence the screen shows; `detail` is the English it
+// marks the field by. The four colours share one sentence and differ only in
+// the detail.
+describe('what a refused save says', () => {
+  test.each([
+    [{ fullname: '' }, '日本語と英語の名前を書いてください', 'fullname must be a non-empty string'],
+    [{ globalname: ' ' }, '英語の名前が空白だけになっています', 'globalname must be a non-empty string or null'],
+    [{ twitter: '@tsubaki' }, 'X の名前の形式が正しくありません', 'twitter must be a handle without the @, or null'],
+    [{ twitch: 'abc' }, 'Twitch のログイン名の形式が正しくありません', 'twitch must be a Twitch login, or null'],
+    [{ colorKey: 'red' }, '色の形式が正しくありません', 'colorKey must be #RRGGBB'],
+    [{ colorBack: '#12345' }, '色の形式が正しくありません', 'colorBack must be #RRGGBB'],
+    [{ activityStartDate: '2021-4-1' }, '活動開始の形式が正しくありません', 'activityStartDate must be YYYY-MM-DD'],
+    [
+      { activityEndDate: '2021/05/01' },
+      '活動終了の形式が正しくありません',
+      'activityEndDate must be YYYY-MM-DD or null',
+    ],
+    [
+      { activityEndDate: '2021-03-31' },
+      '活動終了が活動開始より前になっています',
+      'activityEndDate is before activityStartDate',
+    ],
+  ])('%j', async (overrides, error, detail) => {
+    await insertChannel('UCaaa');
+
+    const response = await updateMember(env, 'UCaaa', validBody(overrides));
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ error, detail });
+  });
+
+  test('says the member is gone', async () => {
+    expect(await (await updateMember(env, 'UCnope', validBody())).json()).toEqual({
+      error: 'このメンバーが見つかりません',
+      detail: 'no member UCnope',
+    });
   });
 });

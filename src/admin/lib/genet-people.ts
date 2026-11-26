@@ -23,10 +23,10 @@ const FIELD_MARKERS: [RegExp, PersonFieldKey][] = [
   [/^memo /, 'memo'],
 ];
 
-/** Which field a save's 400 message is about, or null when it names none this screen tracks. */
-export function fieldForSaveError(message: string): PersonFieldKey | null {
+/** Which field a save's 400 is about, read from its detail (`errorDetail`), or null when it names none this screen tracks. */
+export function fieldForSaveError(detail: string): PersonFieldKey | null {
   for (const [pattern, field] of FIELD_MARKERS) {
-    if (pattern.test(message)) return field;
+    if (pattern.test(detail)) return field;
   }
 
   return null;

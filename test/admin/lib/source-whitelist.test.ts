@@ -66,16 +66,14 @@ describe('noteChanged', () => {
 });
 
 describe('addErrorMessage', () => {
-  test('words a prefix already on the list in Japanese', () => {
-    expect(addErrorMessage(new AdminApiError(409, { error: 'https://x.com/ is already on the list' }))).toEqual(
-      'この URL はすでに一覧にあります。',
-    );
-  });
+  // #291: the worker's `error` is the sentence to show, a prefix already on the list included.
+  test("shows the worker's own sentence", () => {
+    const error = new AdminApiError(409, {
+      error: 'この URL の先頭は既に一覧に存在します',
+      detail: 'https://x.com/ is already on the list',
+    });
 
-  test("shows the worker's own message for any other failure", () => {
-    expect(addErrorMessage(new AdminApiError(400, { error: 'prefix must start with https://' }))).toEqual(
-      'prefix must start with https://',
-    );
+    expect(addErrorMessage(error)).toEqual('この URL の先頭は既に一覧に存在します');
   });
 
   test('shows a failure that is not an API answer as text', () => {

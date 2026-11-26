@@ -4,6 +4,7 @@ import type { CertsCache } from '../src/lib/access';
 import { handleAdminRequest } from '../src/admin';
 import { accessToken, certsFetch, signedAccessToken } from './access-token';
 import { clearEverything } from './reset-db';
+import { SAVE_FAILED } from '../src/lib/refusal';
 
 /** Routing and the Access and ADMIN_EMAILS checks in front of it; what an authorized caller can do is #144's own scope. */
 
@@ -98,6 +99,8 @@ describe('handleAdminRequest', () => {
 
     expect(response.status).toEqual(405);
     expect(response.headers.get('Allow')).toEqual('GET');
+    // #291: nothing the screen does asks this, so the sentence is a general one.
+    expect(await response.json()).toEqual({ error: '処理に失敗しました', detail: 'POST is not allowed here' });
   });
 
   test('refuses a request with no Access token', async () => {
@@ -129,7 +132,10 @@ describe('handleAdminRequest', () => {
   test('answers 404 for an /admin/api path that does not exist', async () => {
     const { token, certs } = await signedAccessToken(validPayload());
 
-    expect((await request('/admin/api/nothing', token, AUD, TEAM, certsFetch(certs))).status).toEqual(404);
+    const response = await request('/admin/api/nothing', token, AUD, TEAM, certsFetch(certs));
+
+    expect(response.status).toEqual(404);
+    expect(await response.json()).toEqual({ error: '処理に失敗しました', detail: 'no endpoint at /admin/api/nothing' });
   });
 
   // Not part of /admin/api, so there is nothing to authorize - these answer
@@ -189,7 +195,10 @@ describe('ADMIN_EMAILS', () => {
     const response = await me('stranger@example.com', 'admin@example.com');
 
     expect(response.status).toEqual(401);
-    expect(await response.json()).toEqual({ error: 'not authorized by Cloudflare Access' });
+    expect(await response.json()).toEqual({
+      error: 'ログインを確認できませんでした',
+      detail: 'not authorized by Cloudflare Access',
+    });
   });
 
   test('does not take a longer address that merely contains a listed one', async () => {
@@ -552,7 +561,7 @@ describe("handleAdminRequest routing to task 12's resources", () => {
     });
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ error: 'body must be valid JSON' });
+    expect(await response.json()).toEqual({ error: SAVE_FAILED, detail: 'body must be valid JSON' });
   });
 
   test('refuses a PUT body that is not a JSON object', async () => {
@@ -561,7 +570,7 @@ describe("handleAdminRequest routing to task 12's resources", () => {
     const response = await put('/admin/api/members/UCaaa', [1, 2, 3]);
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ error: 'body must be a JSON object' });
+    expect(await response.json()).toEqual({ error: SAVE_FAILED, detail: 'body must be a JSON object' });
   });
 
   test('routes GET /admin/api/video-overrides and PUT/DELETE .../:videoId', async () => {

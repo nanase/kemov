@@ -234,3 +234,14 @@ describe('markCollectTaskUnavailable', () => {
     expect(response.status).toEqual(404);
   });
 });
+
+// #291: `error` is the sentence the screen shows; `detail` is the English for
+// the log.
+describe('what a refused request says', () => {
+  test('says the failure is gone', async () => {
+    expect(await (await retryCollectTask(env, 'channel_stats', 'UCaaa', NOW)).json()).toEqual({
+      error: 'この収集の失敗が見つかりません',
+      detail: 'no collect_task channel_stats UCaaa',
+    });
+  });
+});

@@ -1,13 +1,14 @@
 import type { CertsCache } from '../lib/access';
 import { isAdminEmail, verifyAccess } from '../lib/access';
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { jsonResponse } from '../lib/json';
+import { malformed, refusal, refuse, REQUEST_FAILED } from '../lib/refusal';
 import { lookupChannel } from './channel-lookup';
 import { ackCollectTask, listCollectTasks, markCollectTaskUnavailable, retryCollectTask } from './collect-tasks';
 import { listDrafts } from './drafts';
-import { createEvent, deleteEvent, getEvent, listEvents } from './footprints';
+import { createEvent, deleteEvent, getEvent, listEvents, noEventResponse } from './footprints';
 import { pendingFootprints, publishEvent, publishFootprintsNow, saveEvent, withdrawEvent } from './footprints-publish';
-import { createPerson, deletePerson, getPerson, listPeople, updatePerson } from './genet-people';
+import { createPerson, deletePerson, getPerson, listPeople, noPersonResponse, updatePerson } from './genet-people';
 import {
   pendingGenetMusic,
   publishGenetMusicNow,
@@ -17,12 +18,18 @@ import {
   withdrawStream,
 } from './genet-publish';
 import { createStream, deleteStream, getStream, listStreams } from './genet-streams';
-import { createTune, deleteTune, getTune, listTunes } from './genet-tunes';
+import { createTune, deleteTune, getTune, listTunes, noTuneResponse } from './genet-tunes';
 import { addMember, deleteMember, listMembers, saveMembers, updateMember } from './members';
 import { listPublications } from './publications';
-import { getRevision, listRevisions, readRevisionId } from './revisions';
+import { getRevision, listRevisions, noRevisionResponse, readRevisionId } from './revisions';
 import { listSnapshots } from './snapshots';
-import { createMilestone, deleteMilestone, getMilestone, listMilestones } from './subscriber-milestones';
+import {
+  createMilestone,
+  deleteMilestone,
+  getMilestone,
+  listMilestones,
+  noMilestoneResponse,
+} from './subscriber-milestones';
 import {
   checkSources,
   pendingSubscriberMilestones,
@@ -108,12 +115,14 @@ export async function handleAdminRequest(
   // also be on ADMIN_EMAILS, so a policy widened by mistake does not admit
   // everyone it lets sign in. Refused the same way as a token that fails.
   if (identity === null || !isAdminEmail(identity.email, env.ADMIN_EMAILS)) {
-    return errorResponse(401, 'not authorized by Cloudflare Access');
+    return refuse(401, refusal('ログインを確認できませんでした', 'not authorized by Cloudflare Access'));
   }
 
   // Checked here once, ahead of every route, so a writer added later is
   // covered without having to remember to ask.
-  if (!isSameOriginWrite(request)) return errorResponse(403, 'writes must come from the admin site itself');
+  if (!isSameOriginWrite(request)) {
+    return refuse(403, refusal(REQUEST_FAILED, 'writes must come from the admin site itself'));
+  }
 
   // Not routed through cachedJson/errorWithCacheHeaders: those exist to serve
   // a stale answer when D1 cannot be reached (see cache.ts), which nothing
@@ -142,7 +151,7 @@ export async function handleAdminRequest(
   if (segments.length === 5 && name === 'footprints' && sub === 'events' && id2 !== undefined) {
     const eventId = readEventId(id2);
 
-    if (eventId === null) return errorResponse(404, `no footprints event ${id2}`);
+    if (eventId === null) return noEventResponse(id2);
 
     if (request.method === 'GET') return await getEvent(env, eventId);
 
@@ -158,7 +167,7 @@ export async function handleAdminRequest(
   if (segments.length === 6 && name === 'footprints' && sub === 'events' && id2 !== undefined) {
     const eventId = readEventId(id2);
 
-    if (eventId === null) return errorResponse(404, `no footprints event ${id2}`);
+    if (eventId === null) return noEventResponse(id2);
 
     if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
 
@@ -174,7 +183,7 @@ export async function handleAdminRequest(
       return 'error' in body ? body.error : await withdrawEvent(env, eventId, body.value, instant);
     }
 
-    return errorResponse(404, `no endpoint at ${pathname}`);
+    return noEndpointResponse(pathname);
   }
 
   if (segments.length === 4 && name === 'footprints' && sub === 'pending') {
@@ -208,7 +217,7 @@ export async function handleAdminRequest(
   if (segments.length === 5 && name === 'subscribers' && sub === 'milestones' && id2 !== undefined) {
     const milestoneId = readPositiveInt(id2);
 
-    if (milestoneId === null) return errorResponse(404, `no subscriber milestone ${id2}`);
+    if (milestoneId === null) return noMilestoneResponse(id2);
 
     if (request.method === 'GET') return await getMilestone(env, milestoneId);
 
@@ -224,7 +233,7 @@ export async function handleAdminRequest(
   if (segments.length === 6 && name === 'subscribers' && sub === 'milestones' && id2 !== undefined) {
     const milestoneId = readPositiveInt(id2);
 
-    if (milestoneId === null) return errorResponse(404, `no subscriber milestone ${id2}`);
+    if (milestoneId === null) return noMilestoneResponse(id2);
 
     if (request.method !== 'POST') return methodNotAllowed(request, 'POST');
 
@@ -240,7 +249,7 @@ export async function handleAdminRequest(
       return 'error' in body ? body.error : await withdrawMilestone(env, milestoneId, body.value, instant);
     }
 
-    return errorResponse(404, `no endpoint at ${pathname}`);
+    return noEndpointResponse(pathname);
   }
 
   if (segments.length === 4 && name === 'subscribers' && sub === 'source-check') {
@@ -304,7 +313,7 @@ export async function handleAdminRequest(
       return 'error' in body ? body.error : await withdrawStream(env, id2, body.value, instant);
     }
 
-    return errorResponse(404, `no endpoint at ${pathname}`);
+    return noEndpointResponse(pathname);
   }
 
   if (segments.length === 4 && name === 'genet' && sub === 'tunes') {
@@ -324,7 +333,7 @@ export async function handleAdminRequest(
   if (segments.length === 5 && name === 'genet' && sub === 'tunes' && id2 !== undefined) {
     const tuneId = readPositiveInt(id2);
 
-    if (tuneId === null) return errorResponse(404, `no tune ${id2}`);
+    if (tuneId === null) return noTuneResponse(id2);
 
     if (request.method === 'GET') return await getTune(env, tuneId);
 
@@ -352,7 +361,7 @@ export async function handleAdminRequest(
   if (segments.length === 5 && name === 'genet' && sub === 'people' && id2 !== undefined) {
     const personId = readPositiveInt(id2);
 
-    if (personId === null) return errorResponse(404, `no person ${id2}`);
+    if (personId === null) return noPersonResponse(id2);
 
     if (request.method === 'GET') return await getPerson(env, personId);
 
@@ -511,7 +520,7 @@ export async function handleAdminRequest(
     if (action === 'ack') return await ackCollectTask(env, id, id2, instant);
     if (action === 'unavailable') return await markCollectTaskUnavailable(env, id, id2, instant);
 
-    return errorResponse(404, `no endpoint at ${pathname}`);
+    return noEndpointResponse(pathname);
   }
 
   if (segments.length === 3 && name === 'revisions') {
@@ -534,7 +543,7 @@ export async function handleAdminRequest(
 
     const revisionId = readRevisionId(id);
 
-    if (revisionId === null) return errorResponse(404, `no revision ${id}`);
+    if (revisionId === null) return noRevisionResponse(id);
 
     return await getRevision(env, revisionId);
   }
@@ -545,7 +554,7 @@ export async function handleAdminRequest(
     return await listPublications(env);
   }
 
-  return errorResponse(404, `no endpoint at ${pathname}`);
+  return noEndpointResponse(pathname);
 }
 
 /**
@@ -605,8 +614,15 @@ function decodeSegment(segment: string | undefined): string | undefined {
 // exists to read and refuses anything else before it does, but /admin is the
 // write side (#141) and different routes here need different methods. Each
 // route checks its own instead, through methodNotAllowed below.
+function noEndpointResponse(pathname: string): Response {
+  return refuse(404, refusal(REQUEST_FAILED, `no endpoint at ${pathname}`));
+}
+
 function methodNotAllowed(request: Request, allow: string): Response {
-  return jsonResponse({ error: `${request.method} is not allowed here` }, { status: 405, headers: { Allow: allow } });
+  return jsonResponse(
+    { error: REQUEST_FAILED, detail: `${request.method} is not allowed here` },
+    { status: 405, headers: { Allow: allow } },
+  );
 }
 
 /**
@@ -622,22 +638,24 @@ function methodNotAllowed(request: Request, allow: string): Response {
 async function readJsonObject(request: Request): Promise<{ value: Record<string, unknown> } | { error: Response }> {
   const mediaType = (request.headers.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
 
-  if (mediaType !== 'application/json') return { error: errorResponse(415, 'Content-Type must be application/json') };
+  if (mediaType !== 'application/json') {
+    return { error: refuse(415, malformed('Content-Type must be application/json')) };
+  }
 
   const text = await readBodyText(request);
 
-  if (text === null) return { error: errorResponse(413, `body must be at most ${MAX_BODY_BYTES} bytes`) };
+  if (text === null) return { error: refuse(413, malformed(`body must be at most ${MAX_BODY_BYTES} bytes`)) };
 
   let parsed: unknown;
 
   try {
     parsed = JSON.parse(text);
   } catch {
-    return { error: errorResponse(400, 'body must be valid JSON') };
+    return { error: refuse(400, malformed('body must be valid JSON')) };
   }
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return { error: errorResponse(400, 'body must be a JSON object') };
+    return { error: refuse(400, malformed('body must be a JSON object')) };
   }
 
   return { value: parsed as Record<string, unknown> };

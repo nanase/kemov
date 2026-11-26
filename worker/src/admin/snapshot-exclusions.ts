@@ -1,5 +1,6 @@
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { jsonResponse } from '../lib/json';
+import { malformed, refusal, refuse } from '../lib/refusal';
 import { revisionStatement } from '../lib/revision';
 
 /**
@@ -58,16 +59,20 @@ export async function saveSnapshotExclusion(
     .bind(channelId, fetchedAt)
     .first();
 
-  if (tick === null) return errorResponse(404, `no snapshot tick ${channelId} ${fetchedAt}`);
+  if (tick === null) {
+    return refuse(404, refusal('この取得の記録が見つかりません', `no snapshot tick ${channelId} ${fetchedAt}`));
+  }
 
   const keys = Object.keys(body);
   const unknownKey = keys.find((key) => key !== 'reason');
 
-  if (unknownKey !== undefined) return errorResponse(400, `${unknownKey} cannot be saved`);
+  if (unknownKey !== undefined) return refuse(400, malformed(`${unknownKey} cannot be saved`));
 
   const reason = body.reason ?? null;
 
-  if (typeof reason !== 'string' || reason === '') return errorResponse(400, 'reason must be a non-empty string');
+  if (typeof reason !== 'string' || reason === '') {
+    return refuse(400, refusal('除外理由を書いてください', 'reason must be a non-empty string'));
+  }
 
   // created_at is not set here on purpose, on either branch of the upsert: a
   // save that only changes reason must not move when the exclusion is
@@ -102,7 +107,9 @@ export async function deleteSnapshotExclusion(env: Env, channelId: string, fetch
     .bind(channelId, fetchedAt)
     .first();
 
-  if (existing === null) return errorResponse(404, `no exclusion for ${channelId} ${fetchedAt}`);
+  if (existing === null) {
+    return refuse(404, refusal('この除外が見つかりません', `no exclusion for ${channelId} ${fetchedAt}`));
+  }
 
   // Same trade-off as video-overrides.ts's deleteVideoOverride: the
   // existence check above can go stale between it and this batch running, so

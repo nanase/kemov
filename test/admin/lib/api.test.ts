@@ -1,16 +1,18 @@
-import { AdminApiError } from '@/admin/lib/api';
+import { AdminApiError, errorDetail } from '@/admin/lib/api';
 
 describe('AdminApiError', () => {
-  test('keeps a plain string body as the message', () => {
+  // #291: `call` passes its own English description when fetch itself fails.
+  test('says the server could not be reached, and keeps the description as the detail', () => {
     const error = new AdminApiError(0, '/genet/streams could not be reached: TypeError: Failed to fetch');
 
-    expect(error.message).toEqual('/genet/streams could not be reached: TypeError: Failed to fetch');
+    expect(error.message).toEqual('サーバーに接続できませんでした');
+    expect(error.detail).toEqual('/genet/streams could not be reached: TypeError: Failed to fetch');
   });
 
   test('reads a single error field', () => {
-    const error = new AdminApiError(400, { error: 'videoId must be a non-empty string' });
+    const error = new AdminApiError(400, { error: '動画 ID を書いてください' });
 
-    expect(error.message).toEqual('videoId must be a non-empty string');
+    expect(error.message).toEqual('動画 ID を書いてください');
   });
 
   test('joins multiple errors', () => {
@@ -21,10 +23,18 @@ describe('AdminApiError', () => {
     expect(error.message).toEqual('title must not be empty / publishedAt must be YYYY-MM-DDTHH:MM:SSZ');
   });
 
-  test('falls back to the status when the body names nothing', () => {
+  test('does not take an answer whose body is a string for a failed connection', () => {
+    const error = new AdminApiError(502, 'Bad Gateway');
+
+    expect(error.message).toEqual('処理に失敗しました');
+    expect(error.detail).toEqual('Bad Gateway');
+  });
+
+  test('says the request failed when the body names nothing', () => {
     const error = new AdminApiError(500, null);
 
-    expect(error.message).toEqual('/admin/api answered 500');
+    expect(error.message).toEqual('処理に失敗しました');
+    expect(error.status).toEqual(500);
   });
 });
 
@@ -38,9 +48,40 @@ describe('AdminApiError for a 409 the worker marks changedElsewhere', () => {
   });
 
   test('keeps the worker message for any other 409', () => {
-    const other = new AdminApiError(409, { error: 'stream abcdefghijk already exists' });
+    const other = new AdminApiError(409, { error: 'この動画 ID の配信は既に存在します' });
 
-    expect(other.message).toEqual('stream abcdefghijk already exists');
+    expect(other.message).toEqual('この動画 ID の配信は既に存在します');
     expect(other.changedElsewhere).toBe(false);
+  });
+});
+
+// #291: the worker's `error` is in Japanese for the screen; `detail` keeps the
+// English that says which value was refused.
+describe('AdminApiError detail', () => {
+  test('reads the detail beside the error', () => {
+    const error = new AdminApiError(400, { error: '色の形式が正しくありません', detail: 'colorBack must be #RRGGBB' });
+
+    expect([error.message, error.detail]).toEqual(['色の形式が正しくありません', 'colorBack must be #RRGGBB']);
+  });
+
+  test('answers null when the body has none', () => {
+    expect(new AdminApiError(404, { error: 'nope' }).detail).toBeNull();
+    expect(new AdminApiError(400, { error: 'nope', detail: 3 }).detail).toBeNull();
+  });
+});
+
+describe('errorDetail', () => {
+  test('is the detail when the worker gave one', () => {
+    expect(
+      errorDetail(new AdminApiError(400, { error: '日付の形式が正しくありません', detail: 'from must be YYYY-MM-DD' })),
+    ).toEqual('from must be YYYY-MM-DD');
+  });
+
+  test('is the message otherwise', () => {
+    expect(errorDetail(new AdminApiError(400, { error: 'name must be a non-empty string' }))).toEqual(
+      'name must be a non-empty string',
+    );
+    expect(errorDetail(new Error('boom'))).toEqual('boom');
+    expect(errorDetail('plain')).toEqual('plain');
   });
 });

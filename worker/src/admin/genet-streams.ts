@@ -1,6 +1,7 @@
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
-import { changedElsewhereResponse, errorResponse, jsonResponse } from '../lib/json';
+import { changedElsewhereResponse, jsonResponse } from '../lib/json';
+import { LOAD_FAILED, malformed, refusal, refuse, type Refusal } from '../lib/refusal';
 import { isSchemaTimestamp } from '../lib/time';
 
 /**
@@ -245,7 +246,7 @@ export async function readStreams(env: Env, videoIds: readonly string[]): Promis
 /** GET /admin/api/genet/streams - optionally narrowed by status and by a substring of title. */
 export async function listStreams(env: Env, status: string | null, q: string | null): Promise<Response> {
   if (status !== null && !isStatus(status)) {
-    return errorResponse(400, `status must be one of draft, published`);
+    return refuse(400, refusal(LOAD_FAILED, 'status must be one of draft, published'));
   }
 
   const conditions: string[] = [];
@@ -275,11 +276,16 @@ export async function listStreams(env: Env, status: string | null, q: string | n
   return jsonResponse({ streams: results.map((row) => present(byId.get(row.video_id)!)) });
 }
 
+/** The 404 for a stream that is not there - gone, or never was. */
+export function noStreamResponse(videoId: string): Response {
+  return refuse(404, refusal('この配信が見つかりません', `no stream ${videoId}`));
+}
+
 /** GET /admin/api/genet/streams/:videoId. 404 when there is no such stream. */
 export async function getStream(env: Env, videoId: string): Promise<Response> {
   const saved = await readStream(env, videoId);
 
-  if (saved === null) return errorResponse(404, `no stream ${videoId}`);
+  if (saved === null) return noStreamResponse(videoId);
 
   return jsonResponse({ stream: present(saved) });
 }
@@ -317,33 +323,33 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
-function readSceneFields(value: unknown): SceneFields | { error: string } {
-  if (typeof value !== 'object' || value === null) return { error: 'each scene must be an object' };
+function readSceneFields(value: unknown): SceneFields | { error: Refusal } {
+  if (typeof value !== 'object' || value === null) return { error: malformed('each scene must be an object') };
 
   const { style, videoId, startSeconds } = value as Record<string, unknown>;
 
-  if (typeof style !== 'string') return { error: 'scene style must be a string' };
-  if (typeof videoId !== 'string') return { error: 'scene videoId must be a string' };
+  if (typeof style !== 'string') return { error: malformed('scene style must be a string') };
+  if (typeof videoId !== 'string') return { error: malformed('scene videoId must be a string') };
   if (startSeconds !== undefined && startSeconds !== null && typeof startSeconds !== 'number') {
-    return { error: 'scene startSeconds must be a number or null' };
+    return { error: malformed('scene startSeconds must be a number or null') };
   }
 
   return { style, videoId, startSeconds: (startSeconds as number | null) ?? null };
 }
 
-function readPerformanceFields(value: unknown): PerformanceFields | { error: string } {
-  if (typeof value !== 'object' || value === null) return { error: 'each performance must be an object' };
+function readPerformanceFields(value: unknown): PerformanceFields | { error: Refusal } {
+  if (typeof value !== 'object' || value === null) return { error: malformed('each performance must be an object') };
 
   const { tuneId, description, scenes } = value as Record<string, unknown>;
 
-  if (typeof tuneId !== 'number') return { error: 'performance tuneId must be a number' };
+  if (typeof tuneId !== 'number') return { error: malformed('performance tuneId must be a number') };
   if (description !== undefined && description !== null && typeof description !== 'string') {
-    return { error: 'performance description must be a string or null' };
+    return { error: malformed('performance description must be a string or null') };
   }
 
   const scenesValue = scenes ?? [];
 
-  if (!Array.isArray(scenesValue)) return { error: 'performance scenes must be an array' };
+  if (!Array.isArray(scenesValue)) return { error: malformed('performance scenes must be an array') };
 
   const readScenes: SceneFields[] = [];
 
@@ -359,16 +365,16 @@ function readPerformanceFields(value: unknown): PerformanceFields | { error: str
 }
 
 /** Reads the fields a POST or PUT body carries - the same full-replace shape `readTuneFields` gives `genet_tune`. `status` is never read here: creating always starts a stream in `draft`, and updating never moves it. */
-function readStreamFields(body: Record<string, unknown>): StreamFields | { error: string } {
+function readStreamFields(body: Record<string, unknown>): StreamFields | { error: Refusal } {
   const categories = body.categories ?? [];
   const keywords = body.keywords ?? [];
 
-  if (!isStringArray(categories)) return { error: 'categories must be an array of strings' };
-  if (!isStringArray(keywords)) return { error: 'keywords must be an array of strings' };
+  if (!isStringArray(categories)) return { error: malformed('categories must be an array of strings') };
+  if (!isStringArray(keywords)) return { error: malformed('keywords must be an array of strings') };
 
   const performancesValue = body.performances ?? [];
 
-  if (!Array.isArray(performancesValue)) return { error: 'performances must be an array' };
+  if (!Array.isArray(performancesValue)) return { error: malformed('performances must be an array') };
 
   const performances: PerformanceFields[] = [];
 
@@ -380,18 +386,19 @@ function readStreamFields(body: Record<string, unknown>): StreamFields | { error
     performances.push(read);
   }
 
-  if (typeof body.platform !== 'string' && body.platform !== undefined) return { error: 'platform must be a string' };
-  if (typeof body.videoType !== 'string') return { error: 'videoType must be a string' };
-  if (typeof body.title !== 'string') return { error: 'title must be a string' };
+  if (typeof body.platform !== 'string' && body.platform !== undefined)
+    return { error: malformed('platform must be a string') };
+  if (typeof body.videoType !== 'string') return { error: malformed('videoType must be a string') };
+  if (typeof body.title !== 'string') return { error: malformed('title must be a string') };
   if (body.shortTitle !== undefined && body.shortTitle !== null && typeof body.shortTitle !== 'string') {
-    return { error: 'shortTitle must be a string or null' };
+    return { error: malformed('shortTitle must be a string or null') };
   }
-  if (typeof body.publishedAt !== 'string') return { error: 'publishedAt must be a string' };
+  if (typeof body.publishedAt !== 'string') return { error: malformed('publishedAt must be a string') };
   if (body.url !== undefined && body.url !== null && typeof body.url !== 'string') {
-    return { error: 'url must be a string or null' };
+    return { error: malformed('url must be a string or null') };
   }
   if (body.memo !== undefined && body.memo !== null && typeof body.memo !== 'string') {
-    return { error: 'memo must be a string or null' };
+    return { error: malformed('memo must be a string or null') };
   }
 
   return {
@@ -415,32 +422,42 @@ function readStreamFields(body: Record<string, unknown>): StreamFields | { error
  * published, the same as footprints_event defers its own `videoId` length
  * check to publishProblems.
  */
-function streamFieldsProblem(fields: StreamFields): string | null {
+function streamFieldsProblem(fields: StreamFields): Refusal | null {
   if (!(PLATFORMS as readonly string[]).includes(fields.platform)) {
-    return `platform must be one of ${PLATFORMS.join(', ')}`;
+    return malformed(`platform must be one of ${PLATFORMS.join(', ')}`);
   }
 
   if ((fields.platform === 'youtube') !== (fields.url === null)) {
     return fields.platform === 'youtube'
-      ? 'url must be null when platform is youtube'
-      : 'url is required when platform is not youtube';
+      ? refusal('YouTube の配信には URL を書けません', 'url must be null when platform is youtube')
+      : refusal('URL を書いてください', 'url is required when platform is not youtube');
   }
 
-  if (fields.url !== null && !fields.url.startsWith('https://')) return 'url must start with https://';
+  if (fields.url !== null && !fields.url.startsWith('https://')) {
+    return refusal('URL が https:// で始まっていません', 'url must start with https://');
+  }
 
   if (!(VIDEO_TYPES as readonly string[]).includes(fields.videoType)) {
-    return `videoType must be one of ${VIDEO_TYPES.join(', ')}`;
+    return malformed(`videoType must be one of ${VIDEO_TYPES.join(', ')}`);
   }
 
-  if (!isSchemaTimestamp(fields.publishedAt)) return 'publishedAt must be YYYY-MM-DDTHH:MM:SSZ';
+  if (!isSchemaTimestamp(fields.publishedAt)) {
+    return refusal('公開日時の形式が正しくありません', 'publishedAt must be YYYY-MM-DDTHH:MM:SSZ');
+  }
 
   for (const [index, p] of fields.performances.entries()) {
     for (const [sceneIndex, s] of p.scenes.entries()) {
       if (!(SCENE_STYLES as readonly string[]).includes(s.style)) {
-        return `performances[${index}].scenes[${sceneIndex}].style must be one of ${SCENE_STYLES.join(', ')}`;
+        return malformed(
+          `performances[${index}].scenes[${sceneIndex}].style must be one of ${SCENE_STYLES.join(', ')}`,
+        );
       }
       if (s.startSeconds !== null && s.startSeconds < 0) {
-        return `performances[${index}].scenes[${sceneIndex}].startSeconds must be 0 or more`;
+        // Counted from 1, as the publish refusals in genet-publish.ts count them.
+        return refusal(
+          `${index + 1} 曲目の場面 ${sceneIndex + 1} の秒は 0 以上にしてください`,
+          `performances[${index}].scenes[${sceneIndex}].startSeconds must be 0 or more`,
+        );
       }
     }
   }
@@ -474,18 +491,22 @@ export async function validatedStreamFields(
 ): Promise<StreamFields | { error: Response }> {
   const fields = readStreamFields(body);
 
-  if ('error' in fields) return { error: errorResponse(400, fields.error) };
+  if ('error' in fields) return { error: refuse(400, fields.error) };
 
   const problem = streamFieldsProblem(fields);
 
-  if (problem !== null) return { error: errorResponse(400, problem) };
+  if (problem !== null) return { error: refuse(400, problem) };
 
   const unknown = await unknownTuneIds(
     env,
     fields.performances.map((p) => p.tuneId),
   );
 
-  if (unknown.length > 0) return { error: errorResponse(400, `unknown tuneIds: ${unknown.join(', ')}`) };
+  if (unknown.length > 0) {
+    return {
+      error: refuse(400, refusal('見つからない曲が含まれています', `unknown tuneIds: ${unknown.join(', ')}`)),
+    };
+  }
 
   return fields;
 }
@@ -544,14 +565,15 @@ function childStatements(
  */
 export async function createStream(env: Env, body: Record<string, unknown>): Promise<Response> {
   if (typeof body.videoId !== 'string' || body.videoId === '') {
-    return errorResponse(400, 'videoId must be a non-empty string');
+    return refuse(400, refusal('動画 ID を書いてください', 'videoId must be a non-empty string'));
   }
 
   const videoId = body.videoId;
 
   const existing = await env.DB.prepare('SELECT 1 FROM genet_stream WHERE video_id = ?1').bind(videoId).first();
 
-  if (existing !== null) return errorResponse(409, `stream ${videoId} already exists`);
+  if (existing !== null)
+    return refuse(409, refusal('この動画 ID の配信は既に存在します', `stream ${videoId} already exists`));
 
   const fields = await validatedStreamFields(env, body);
 
@@ -585,7 +607,7 @@ export async function createStream(env: Env, body: Record<string, unknown>): Pro
     ]);
   } catch (error) {
     if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) {
-      return errorResponse(409, `stream ${videoId} already exists`);
+      return refuse(409, refusal('この動画 ID の配信は既に存在します', `stream ${videoId} already exists`));
     }
 
     throw error;
@@ -740,7 +762,7 @@ export function withFields(saved: GenetStream, fields: StreamFields, status: 'dr
 export async function updateStream(env: Env, videoId: string, body: Record<string, unknown>): Promise<Response> {
   const existing = await readStream(env, videoId);
 
-  if (existing === null) return errorResponse(404, `no stream ${videoId}`);
+  if (existing === null) return noStreamResponse(videoId);
 
   const fields = await validatedStreamFields(env, body);
 
@@ -752,7 +774,7 @@ export async function updateStream(env: Env, videoId: string, body: Record<strin
   const saved = await readStream(env, videoId);
 
   // Deleted between the read and the batch, whose writes then found no row.
-  if (saved === null) return errorResponse(404, `no stream ${videoId}`);
+  if (saved === null) return noStreamResponse(videoId);
   if (!savedRow(results)) return noLongerDraftResponse(videoId);
 
   return jsonResponse({ stream: present(saved) });
@@ -767,10 +789,10 @@ export async function updateStream(env: Env, videoId: string, body: Record<strin
 export async function deleteStream(env: Env, videoId: string): Promise<Response> {
   const existing = await readStream(env, videoId);
 
-  if (existing === null) return errorResponse(404, `no stream ${videoId}`);
+  if (existing === null) return noStreamResponse(videoId);
 
   if (existing.stream.status === 'published') {
-    return changedElsewhereResponse('withdraw this stream before deleting it');
+    return changedElsewhereResponse('withdraw this stream before deleting it', 'remove');
   }
 
   // The check above and this batch are two round trips, not one, so a
@@ -796,9 +818,9 @@ export async function deleteStream(env: Env, videoId: string): Promise<Response>
   ]);
 
   if (results[2]!.meta.changes === 0) {
-    if ((await readStream(env, videoId)) === null) return errorResponse(404, `no stream ${videoId}`);
+    if ((await readStream(env, videoId)) === null) return noStreamResponse(videoId);
 
-    return changedElsewhereResponse('withdraw this stream before deleting it');
+    return changedElsewhereResponse('withdraw this stream before deleting it', 'remove');
   }
 
   return jsonResponse({});

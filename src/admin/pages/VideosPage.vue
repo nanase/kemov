@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 
 import SplitHandle from '../components/SplitHandle.vue';
-import { AdminApiError, deleteJson, getJson, putJson } from '../lib/api';
+import { AdminApiError, deleteJson, errorDetail, getJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
 import {
   AVAILABILITIES,
@@ -154,7 +154,7 @@ async function save(): Promise<void> {
   } catch (error) {
     if (error instanceof AdminApiError) {
       errorMessage.value = error.message;
-      errorField.value = fieldForSaveError(error.message);
+      errorField.value = fieldForSaveError(errorDetail(error));
     } else {
       errorMessage.value = String(error);
     }

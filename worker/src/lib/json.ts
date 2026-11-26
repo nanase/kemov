@@ -1,3 +1,5 @@
+import { CHANGED_ELSEWHERE_TEXT } from '../../../src/admin/lib/changed-elsewhere';
+
 /**
  * Every API response is JSON, so the content type is decided here once rather
  * than at each endpoint.
@@ -13,16 +15,22 @@ export function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 /**
  * Failures carry a JSON body too. A caller that always parses JSON then needs
  * no second path for the error case.
+ *
+ * `detail` is for the admin API (#291): `message` is the Japanese sentence
+ * the admin screen shows, and `detail` says in English which value was
+ * refused - what the screen reads to mark the field, and what a log keeps
+ * when `message` is a general one.
  */
-export function errorResponse(status: number, message: string): Response {
-  return jsonResponse({ error: message }, { status });
+export function errorResponse(status: number, message: string, detail?: string): Response {
+  return jsonResponse(detail === undefined ? { error: message } : { error: message, detail }, { status });
 }
 
 /**
  * The 409 for a row another request changed between this one's read and its
  * write (#299). `changedElsewhere` lets the admin screen put its own words in
- * place of `message`, which stays for logs and tests.
+ * place of `error`; `detail` says in English what changed, for logs and tests.
+ * `action` is what the request was doing, for the words in `error`.
  */
-export function changedElsewhereResponse(message: string): Response {
-  return jsonResponse({ error: message, changedElsewhere: true }, { status: 409 });
+export function changedElsewhereResponse(detail: string, action: 'save' | 'remove' = 'save'): Response {
+  return jsonResponse({ error: CHANGED_ELSEWHERE_TEXT[action], detail, changedElsewhere: true }, { status: 409 });
 }

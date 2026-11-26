@@ -1,7 +1,7 @@
-import { errorResponse } from './json';
+import { malformed, refuse, type Refusal } from './refusal';
 
 /** What is wrong with one field's value, or null when it is fine. */
-export type FieldProblem<K extends string> = (key: K, value: unknown) => string | null;
+export type FieldProblem<K extends string> = (key: K, value: unknown) => Refusal | null;
 
 /**
  * A PUT body checked against an allow-list of editable keys, shared by
@@ -26,7 +26,7 @@ export function readEditableBody<K extends string>(
   const allowed: ReadonlySet<string> = new Set(keys);
   const unknownKey = Object.keys(body).find((key) => !allowed.has(key));
 
-  if (unknownKey !== undefined) return { error: errorResponse(400, `${unknownKey} cannot be saved`) };
+  if (unknownKey !== undefined) return { error: refuse(400, malformed(`${unknownKey} cannot be saved`)) };
 
   const values = {} as Record<K, unknown>;
 
@@ -35,7 +35,7 @@ export function readEditableBody<K extends string>(
   for (const key of keys) {
     const problem = fieldProblem(key, values[key]);
 
-    if (problem !== null) return { error: errorResponse(400, problem) };
+    if (problem !== null) return { error: refuse(400, problem) };
   }
 
   return { values };

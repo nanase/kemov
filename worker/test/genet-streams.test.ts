@@ -387,3 +387,67 @@ describe('deleteStream', () => {
     expect(await env.DB.prepare('SELECT 1 FROM genet_stream WHERE video_id = ?1').bind(videoId).first()).not.toBeNull();
   });
 });
+
+// #291: `error` is the sentence the screen shows; `detail` is the English it
+// marks the field by.
+describe('what a refused save says', () => {
+  test.each([
+    [{ videoId: '' }, '動画 ID を書いてください', 'videoId must be a non-empty string'],
+    [{ platform: 'tiktok', url: null }, 'URL を書いてください', 'url is required when platform is not youtube'],
+    [
+      { url: 'https://example.com/v' },
+      'YouTube の配信には URL を書けません',
+      'url must be null when platform is youtube',
+    ],
+    [
+      { platform: 'tiktok', url: 'http://example.com/v' },
+      'URL が https:// で始まっていません',
+      'url must start with https://',
+    ],
+    [{ publishedAt: '2026-01-01' }, '公開日時の形式が正しくありません', 'publishedAt must be YYYY-MM-DDTHH:MM:SSZ'],
+    [{ title: 3 }, '保存に失敗しました', 'title must be a string'],
+  ])('%o', async (overrides, error, detail) => {
+    const response = await createStream(env, validBody(overrides));
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ error, detail });
+  });
+
+  test('counts the performance and the scene from 1', async () => {
+    const tuneId = await insertTune();
+    const scene = { style: 'play', videoId: 'abcdefghijk', startSeconds: 0 };
+    const performances = [
+      { tuneId, scenes: [scene] },
+      { tuneId, scenes: [scene, { ...scene, startSeconds: -1 }] },
+    ];
+
+    const response = await createStream(env, validBody({ performances }));
+
+    expect(await response.json()).toEqual({
+      error: '2 曲目の場面 2 の秒は 0 以上にしてください',
+      detail: 'performances[1].scenes[1].startSeconds must be 0 or more',
+    });
+  });
+
+  test('says a tune is gone', async () => {
+    const response = await createStream(env, validBody({ performances: [{ tuneId: 999, scenes: [] }] }));
+
+    expect(await response.json()).toEqual({ error: '見つからない曲が含まれています', detail: 'unknown tuneIds: 999' });
+  });
+
+  test('says the video ID is taken', async () => {
+    await createValidStream();
+
+    expect(await (await createStream(env, validBody())).json()).toEqual({
+      error: 'この動画 ID の配信は既に存在します',
+      detail: 'stream abcdefghijk already exists',
+    });
+  });
+
+  test('says the stream is gone', async () => {
+    expect(await (await getStream(env, 'nopenopenop')).json()).toEqual({
+      error: 'この配信が見つかりません',
+      detail: 'no stream nopenopenop',
+    });
+  });
+});

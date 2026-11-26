@@ -160,7 +160,7 @@ export type MemberFieldKey =
 
 // activityEndDate before activityStartDate: "activityEndDate is before
 // activityStartDate" names both, and activityEndDate is the one actually out
-// of range - the message's own subject, the same reasoning
+// of range - the detail's own subject, the same reasoning
 // lib/footprints.ts's own FIELD_MARKERS gives endDate/startDate.
 const FIELD_MARKERS: readonly [RegExp, MemberFieldKey][] = [
   [/^activityEndDate\b/, 'activityEndDate'],
@@ -176,10 +176,10 @@ const FIELD_MARKERS: readonly [RegExp, MemberFieldKey][] = [
   [/^name\b/, 'name'],
 ];
 
-/** Which field a save's 400 message is about - null when it names none of them. */
-export function fieldForSaveError(message: string): MemberFieldKey | null {
+/** Which field a save's 400 is about, read from its detail (`errorDetail`) - null when it names none of them. */
+export function fieldForSaveError(detail: string): MemberFieldKey | null {
   for (const [pattern, field] of FIELD_MARKERS) {
-    if (pattern.test(message)) return field;
+    if (pattern.test(detail)) return field;
   }
 
   return null;

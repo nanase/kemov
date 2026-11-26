@@ -1,6 +1,7 @@
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
-import { changedElsewhereResponse, errorResponse, jsonResponse } from '../lib/json';
+import { changedElsewhereResponse, jsonResponse } from '../lib/json';
+import { LOAD_FAILED, malformed, MEMBER_NOT_FOUND_TEXT, refusal, refuse, type Refusal } from '../lib/refusal';
 import { sourceUrlProblem } from '../lib/source-whitelist';
 import { isSchemaDate, isSchemaMonth } from '../lib/time';
 
@@ -155,7 +156,7 @@ function isStatus(value: unknown): value is 'draft' | 'published' {
 /** GET /admin/api/subscribers/milestones - optionally narrowed by channel and by status. Oldest first. */
 export async function listMilestones(env: Env, channelId: string | null, status: string | null): Promise<Response> {
   if (status !== null && !isStatus(status)) {
-    return errorResponse(400, 'status must be one of draft, published');
+    return refuse(400, refusal(LOAD_FAILED, 'status must be one of draft, published'));
   }
 
   const conditions: string[] = [];
@@ -195,11 +196,16 @@ export async function listMilestones(env: Env, channelId: string | null, status:
   });
 }
 
+/** The 404 for a milestone that is not there - gone, or never was. */
+export function noMilestoneResponse(milestoneId: number | string): Response {
+  return refuse(404, refusal('この節目が見つかりません', `no subscriber milestone ${milestoneId}`));
+}
+
 /** GET /admin/api/subscribers/milestones/:milestoneId. 404 when there is no such milestone. */
 export async function getMilestone(env: Env, milestoneId: number): Promise<Response> {
   const saved = await readMilestone(env, milestoneId);
 
-  if (saved === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+  if (saved === null) return noMilestoneResponse(milestoneId);
 
   return jsonResponse(present(saved));
 }
@@ -221,7 +227,7 @@ export interface MilestoneFields {
  * is null (or `[]` for `sources`), and the checks below then refuse it where
  * the column cannot be null.
  */
-function readMilestoneFields(body: Record<string, unknown>): MilestoneFields | { error: string } {
+function readMilestoneFields(body: Record<string, unknown>): MilestoneFields | { error: Refusal } {
   const sources = body.sources ?? [];
 
   if (
@@ -234,28 +240,29 @@ function readMilestoneFields(body: Record<string, unknown>): MilestoneFields | {
         (source.title !== undefined && source.title !== null && typeof source.title !== 'string'),
     )
   ) {
-    return { error: 'sources must be an array of { url, title }' };
+    return { error: malformed('sources must be an array of { url, title }') };
   }
 
-  if (typeof body.channelId !== 'string') return { error: 'channelId must be a string' };
-  if (typeof body.datePrecision !== 'string') return { error: 'datePrecision must be day or month' };
-  if (typeof body.reachedDate !== 'string') return { error: 'reachedDate must be a string' };
+  if (typeof body.channelId !== 'string') return { error: malformed('channelId must be a string') };
+  if (typeof body.datePrecision !== 'string') return { error: malformed('datePrecision must be day or month') };
+  if (typeof body.reachedDate !== 'string') return { error: malformed('reachedDate must be a string') };
 
   if (typeof body.subscriberCount !== 'number' || !Number.isSafeInteger(body.subscriberCount)) {
-    return { error: 'subscriberCount must be an integer' };
+    return { error: refusal('人数の形式が正しくありません', 'subscriberCount must be an integer') };
   }
 
-  if (typeof body.announcedBy !== 'string') return { error: `announcedBy must be one of ${ANNOUNCERS.join(', ')}` };
+  if (typeof body.announcedBy !== 'string')
+    return { error: malformed(`announcedBy must be one of ${ANNOUNCERS.join(', ')}`) };
 
   const eventId = body.eventId ?? null;
 
   if (eventId !== null && (typeof eventId !== 'number' || !Number.isSafeInteger(eventId))) {
-    return { error: 'eventId must be an integer or null' };
+    return { error: malformed('eventId must be an integer or null') };
   }
 
   const memo = body.memo ?? null;
 
-  if (memo !== null && typeof memo !== 'string') return { error: 'memo must be a string or null' };
+  if (memo !== null && typeof memo !== 'string') return { error: malformed('memo must be a string or null') };
 
   return {
     channelId: body.channelId,
@@ -279,20 +286,27 @@ function readMilestoneFields(body: Record<string, unknown>): MilestoneFields | {
  * source that is enough) is subscriber-milestones-publish.ts's to check: a
  * draft still being worked out may lack it.
  */
-function milestoneFieldsProblem(fields: MilestoneFields): string | null {
+function milestoneFieldsProblem(fields: MilestoneFields): Refusal | null {
   if (!(DATE_PRECISIONS as readonly string[]).includes(fields.datePrecision)) {
-    return 'datePrecision must be day or month';
+    return malformed('datePrecision must be day or month');
   }
 
   const reachedOk =
     fields.datePrecision === 'day' ? isSchemaDate(fields.reachedDate) : isSchemaMonth(fields.reachedDate);
 
-  if (!reachedOk) return `reachedDate must be ${fields.datePrecision === 'day' ? 'YYYY-MM-DD' : 'YYYY-MM'}`;
+  if (!reachedOk) {
+    return refusal(
+      '達成の日の形式が正しくありません',
+      `reachedDate must be ${fields.datePrecision === 'day' ? 'YYYY-MM-DD' : 'YYYY-MM'}`,
+    );
+  }
 
-  if (fields.subscriberCount <= 0) return 'subscriberCount must be greater than 0';
+  if (fields.subscriberCount <= 0) {
+    return refusal('人数は 1 以上にしてください', 'subscriberCount must be greater than 0');
+  }
 
   if (!(ANNOUNCERS as readonly string[]).includes(fields.announcedBy)) {
-    return `announcedBy must be one of ${ANNOUNCERS.join(', ')}`;
+    return malformed(`announcedBy must be one of ${ANNOUNCERS.join(', ')}`);
   }
 
   for (const source of fields.sources) {
@@ -309,15 +323,22 @@ function milestoneFieldsProblem(fields: MilestoneFields): string | null {
  * footprints event of kind `milestone` - the celebration of the number - is
  * one a milestone may point at (#225's design).
  */
-async function eventLinkProblem(env: Env, eventId: number | null): Promise<string | null> {
+async function eventLinkProblem(env: Env, eventId: number | null): Promise<Refusal | null> {
   if (eventId === null) return null;
 
   const event = await env.DB.prepare('SELECT kind FROM footprints_event WHERE event_id = ?1')
     .bind(eventId)
     .first<{ kind: string }>();
 
-  if (event === null) return `no footprints event ${eventId}`;
-  if (event.kind !== 'milestone') return `footprints event ${eventId} is not a milestone`;
+  if (event === null)
+    return refusal('つなぐ出来事が見つかりません。選び直してください', `no footprints event ${eventId}`);
+
+  if (event.kind !== 'milestone') {
+    return refusal(
+      'つなぐ出来事はあしあとの「節目」の出来事から選んでください',
+      `footprints event ${eventId} is not a milestone`,
+    );
+  }
 
   return null;
 }
@@ -337,22 +358,24 @@ export async function validatedFields(
 ): Promise<MilestoneFields | { error: Response }> {
   const fields = readMilestoneFields(body);
 
-  if ('error' in fields) return { error: errorResponse(400, fields.error) };
+  if ('error' in fields) return { error: refuse(400, fields.error) };
 
   const problem = milestoneFieldsProblem(fields);
 
-  if (problem !== null) return { error: errorResponse(400, problem) };
+  if (problem !== null) return { error: refuse(400, problem) };
 
   const channel = await env.DB.prepare('SELECT 1 AS found FROM channel WHERE channel_id = ?1')
     .bind(fields.channelId)
     .first<{ found: number }>();
 
-  if (channel === null) return { error: errorResponse(400, `unknown channelId: ${fields.channelId}`) };
+  if (channel === null) {
+    return { error: refuse(400, refusal(MEMBER_NOT_FOUND_TEXT, `unknown channelId: ${fields.channelId}`)) };
+  }
 
   const linkProblem =
     keptEventId !== undefined && fields.eventId === keptEventId ? null : await eventLinkProblem(env, fields.eventId);
 
-  if (linkProblem !== null) return { error: errorResponse(400, linkProblem) };
+  if (linkProblem !== null) return { error: refuse(400, linkProblem) };
 
   return fields;
 }
@@ -566,7 +589,7 @@ export function withFields(
 export async function updateMilestone(env: Env, milestoneId: number, body: Record<string, unknown>): Promise<Response> {
   const existing = await readMilestone(env, milestoneId);
 
-  if (existing === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+  if (existing === null) return noMilestoneResponse(milestoneId);
 
   const fields = await validatedFields(env, body);
 
@@ -577,7 +600,7 @@ export async function updateMilestone(env: Env, milestoneId: number, body: Recor
   const results = await env.DB.batch(saveStatements(env, milestoneId, fields, { whileStatus: 'draft' }));
   const saved = await readMilestone(env, milestoneId);
 
-  if (saved === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+  if (saved === null) return noMilestoneResponse(milestoneId);
   if (!savedRow(results)) return noLongerDraftResponse(milestoneId);
 
   return jsonResponse({ milestone: present(saved) });
@@ -596,10 +619,10 @@ export async function updateMilestone(env: Env, milestoneId: number, body: Recor
 export async function deleteMilestone(env: Env, milestoneId: number): Promise<Response> {
   const existing = await readMilestone(env, milestoneId);
 
-  if (existing === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+  if (existing === null) return noMilestoneResponse(milestoneId);
 
   if (existing.milestone.status === 'published') {
-    return changedElsewhereResponse('withdraw this milestone before deleting it');
+    return changedElsewhereResponse('withdraw this milestone before deleting it', 'remove');
   }
 
   const results = await env.DB.batch([
@@ -612,10 +635,9 @@ export async function deleteMilestone(env: Env, milestoneId: number): Promise<Re
   ]);
 
   if (results[1]!.meta.changes === 0) {
-    if ((await readMilestone(env, milestoneId)) === null)
-      return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+    if ((await readMilestone(env, milestoneId)) === null) return noMilestoneResponse(milestoneId);
 
-    return changedElsewhereResponse('withdraw this milestone before deleting it');
+    return changedElsewhereResponse('withdraw this milestone before deleting it', 'remove');
   }
 
   return jsonResponse({});

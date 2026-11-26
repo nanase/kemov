@@ -108,16 +108,16 @@ const BARE_MARKERS: [RegExp, TuneFieldSection][] = [
   [/^each score /, 'scores'],
 ];
 
-/** Which field (and which row within it, if any) a save's 400 message is about, or null when it names none this screen tracks. */
-export function fieldForSaveError(message: string): TuneFieldError | null {
+/** Which field (and which row within it, if any) a save's 400 is about, read from its detail (`errorDetail`), or null when it names none this screen tracks. */
+export function fieldForSaveError(detail: string): TuneFieldError | null {
   for (const [pattern, section] of INDEXED_MARKERS) {
-    const match = pattern.exec(message);
+    const match = pattern.exec(detail);
 
     if (match !== null) return { section, index: Number(match[1]) };
   }
 
   for (const [pattern, section] of BARE_MARKERS) {
-    if (pattern.test(message)) return { section, index: null };
+    if (pattern.test(detail)) return { section, index: null };
   }
 
   return null;

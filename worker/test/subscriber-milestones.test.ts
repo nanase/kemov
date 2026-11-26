@@ -9,6 +9,7 @@ import {
   updateMilestone,
 } from '../src/admin/subscriber-milestones';
 import { clearEverything } from './reset-db';
+import { SAVE_FAILED } from '../src/lib/refusal';
 
 beforeEach(async () => {
   await clearEverything();
@@ -77,8 +78,9 @@ async function create(overrides: Record<string, unknown> = {}): Promise<Presente
   return ((await response.json()) as { milestone: Presented }).milestone;
 }
 
-async function errorOf(response: Response): Promise<string> {
-  return ((await response.json()) as { error: string }).error;
+/** The refusal's sentence and its English detail (#291). */
+async function errorOf(response: Response): Promise<{ error: string; detail?: string }> {
+  return (await response.json()) as { error: string; detail?: string };
 }
 
 describe('createMilestone', () => {
@@ -109,32 +111,53 @@ describe('createMilestone', () => {
   });
 
   test.each([
-    [{ channelId: undefined }, 'channelId must be a string'],
-    [{ channelId: 'UCnope' }, 'unknown channelId: UCnope'],
-    [{ datePrecision: 'year' }, 'datePrecision must be day or month'],
-    [{ reachedDate: '2024-02-30' }, 'reachedDate must be YYYY-MM-DD'],
-    [{ datePrecision: 'month', reachedDate: '2024-02-01' }, 'reachedDate must be YYYY-MM'],
-    [{ subscriberCount: 0 }, 'subscriberCount must be greater than 0'],
-    [{ subscriberCount: 1.5 }, 'subscriberCount must be an integer'],
-    [{ subscriberCount: '20000' }, 'subscriberCount must be an integer'],
-    [{ announcedBy: 'fan' }, 'announcedBy must be one of member, official, listener'],
-    [{ eventId: '1' }, 'eventId must be an integer or null'],
-    [{ eventId: 999 }, 'no footprints event 999'],
-    [{ memo: 1 }, 'memo must be a string or null'],
-    [{ sources: [{ url: 'http://example.com' }] }, 'every source url must start with https://'],
-    [{ sources: [{ url: 'https://' }] }, 'every source url must be a valid https URL'],
-    [{ sources: [{ url: 'https:// example.com' }] }, 'every source url must be a valid https URL'],
+    [{ channelId: undefined }, SAVE_FAILED, 'channelId must be a string'],
+    [{ channelId: 'UCnope' }, 'このメンバーが見つかりません', 'unknown channelId: UCnope'],
+    [{ datePrecision: 'year' }, SAVE_FAILED, 'datePrecision must be day or month'],
+    [{ reachedDate: '2024-02-30' }, '達成の日の形式が正しくありません', 'reachedDate must be YYYY-MM-DD'],
+    [
+      { datePrecision: 'month', reachedDate: '2024-02-01' },
+      '達成の日の形式が正しくありません',
+      'reachedDate must be YYYY-MM',
+    ],
+    [{ subscriberCount: 0 }, '人数は 1 以上にしてください', 'subscriberCount must be greater than 0'],
+    [{ subscriberCount: 1.5 }, '人数の形式が正しくありません', 'subscriberCount must be an integer'],
+    [{ subscriberCount: '20000' }, '人数の形式が正しくありません', 'subscriberCount must be an integer'],
+    [{ announcedBy: 'fan' }, SAVE_FAILED, 'announcedBy must be one of member, official, listener'],
+    [{ eventId: '1' }, SAVE_FAILED, 'eventId must be an integer or null'],
+    [{ eventId: 999 }, 'つなぐ出来事が見つかりません。選び直してください', 'no footprints event 999'],
+    [{ memo: 1 }, SAVE_FAILED, 'memo must be a string or null'],
+    [
+      { sources: [{ url: 'http://example.com' }] },
+      '出典の URL が https:// で始まっていません',
+      'every source url must start with https://',
+    ],
+    [
+      { sources: [{ url: 'https://' }] },
+      '出典の URL の形式が正しくありません',
+      'every source url must be a valid https URL',
+    ],
+    [
+      { sources: [{ url: 'https:// example.com' }] },
+      '出典の URL の形式が正しくありません',
+      'every source url must be a valid https URL',
+    ],
     [
       { sources: [{ url: 'https://user:secret@example.com/a' }] },
+      '出典の URL にユーザー名かパスワードが含まれています',
       'every source url must not carry a user name or password',
     ],
-    [{ sources: [{ url: 'https://user@example.com/a' }] }, 'every source url must not carry a user name or password'],
-    [{ sources: 'https://example.com' }, 'sources must be an array of { url, title }'],
-  ])('refuses %o with 400', async (overrides, message) => {
+    [
+      { sources: [{ url: 'https://user@example.com/a' }] },
+      '出典の URL にユーザー名かパスワードが含まれています',
+      'every source url must not carry a user name or password',
+    ],
+    [{ sources: 'https://example.com' }, SAVE_FAILED, 'sources must be an array of { url, title }'],
+  ])('refuses %o with 400', async (overrides, error, detail) => {
     const response = await createMilestone(env, validBody(overrides));
 
     expect(response.status).toEqual(400);
-    expect(await errorOf(response)).toEqual(message);
+    expect(await errorOf(response)).toEqual({ error, detail });
   });
 
   test('refuses to link an event that is not a milestone', async () => {
@@ -142,7 +165,10 @@ describe('createMilestone', () => {
     const response = await createMilestone(env, validBody({ eventId }));
 
     expect(response.status).toEqual(400);
-    expect(await errorOf(response)).toEqual(`footprints event ${eventId} is not a milestone`);
+    expect(await errorOf(response)).toEqual({
+      error: 'つなぐ出来事はあしあとの「節目」の出来事から選んでください',
+      detail: `footprints event ${eventId} is not a milestone`,
+    });
   });
 });
 
@@ -255,9 +281,10 @@ describe('deleteEvent with a linked milestone', () => {
     const response = await deleteEvent(env, eventId);
 
     expect(response.status).toEqual(409);
-    expect(await errorOf(response)).toEqual(
-      `subscriber milestone ${milestone.milestoneId} links to this event; unlink it there first`,
-    );
+    expect(await errorOf(response)).toEqual({
+      error: '登録者数の節目とつながっているため削除できませんでした',
+      detail: `subscriber milestone ${milestone.milestoneId} links to this event; unlink it there first`,
+    });
 
     await updateMilestone(env, milestone.milestoneId, validBody({ eventId: null }));
 

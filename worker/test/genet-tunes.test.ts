@@ -240,3 +240,99 @@ describe('deleteTune', () => {
     expect(response.status).toEqual(409);
   });
 });
+
+// #291: `error` is the sentence the screen shows, counted from 1 where the
+// form lists rows; `detail` is the English it marks the field by.
+describe('what a refused save says', () => {
+  test.each([
+    [{ title: '' }, '曲名を書いてください', 'title must not be empty'],
+    [
+      {
+        attributes: [
+          { name: '作曲', text: 'a' },
+          { name: null, text: null },
+        ],
+      },
+      '作曲・作詞などの 2 番目に、項目の名前か中身を書いてください',
+      'attributes[1] needs a name or a text',
+    ],
+    [
+      { attributes: [{ name: '', text: 'a' }] },
+      '作曲・作詞などの 1 番目の項目の名前が空になっています',
+      'attributes[0].name must not be empty',
+    ],
+    [
+      { attributes: [{ name: '作曲', text: '' }] },
+      '作曲・作詞などの 1 番目の中身が空になっています',
+      'attributes[0].text must not be empty',
+    ],
+    [
+      {
+        scores: [
+          { url: 'https://example.com/a', title: 'a' },
+          { url: 'http://example.com/b', title: 'b' },
+        ],
+      },
+      '外部の資料の 2 番目のリンクが https:// で始まっていません',
+      'scores[1].url must start with https://',
+    ],
+    [
+      { videos: [{ videoId: 'abcdefghijk', title: 'a', startSeconds: -1 }] },
+      '参考の動画の 1 番目の秒は 0 以上にしてください',
+      'videos[0].startSeconds must be 0 or more',
+    ],
+    [{ subtunes: 'a' }, '保存に失敗しました', 'subtunes must be an array of strings'],
+  ])('%j', async (overrides, error, detail) => {
+    const response = await createTune(env, validBody(overrides));
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ error, detail });
+  });
+
+  test('says which person a credit leaves without a shown name', async () => {
+    const first = await insertPerson('一人目');
+    const second = await insertPerson('二人目');
+    const people = [
+      { personId: first, creditedAs: null, note: null },
+      { personId: second, creditedAs: '', note: null },
+    ];
+
+    const response = await createTune(env, validBody({ attributes: [{ name: '作曲', text: null, people }] }));
+
+    expect(await response.json()).toEqual({
+      error: '作曲・作詞などの 1 番目の 2 人目の表示名が空になっています',
+      detail: 'attributes[0].people[1].creditedAs must not be empty',
+    });
+  });
+
+  test('says a person is gone', async () => {
+    const people = [{ personId: 999, creditedAs: null, note: null }];
+
+    const response = await createTune(env, validBody({ attributes: [{ name: '作曲', text: null, people }] }));
+
+    expect(await response.json()).toEqual({
+      error: '見つからない人物が含まれています',
+      detail: 'unknown personIds: 999',
+    });
+  });
+
+  test('says the tune is gone', async () => {
+    expect(await (await getTune(env, 999)).json()).toEqual({ error: 'この曲が見つかりません', detail: 'no tune 999' });
+  });
+
+  test('says a stream still performs the tune', async () => {
+    const tuneId = await createValidTune();
+
+    await env.DB.prepare(
+      `INSERT INTO genet_stream (video_id, video_type, title, published_at) VALUES ('abcdefghijk', 'live', 't', '2026-01-01T00:00:00Z')`,
+    ).run();
+    await env.DB.prepare('INSERT INTO genet_performance (video_id, position, tune_id) VALUES (?1, 1, ?2)')
+      .bind('abcdefghijk', tuneId)
+      .run();
+
+    expect(await (await deleteTune(env, tuneId)).json()).toEqual({
+      error: 'この曲を演奏している配信があるため削除できませんでした',
+      detail: 'this tune is performed by a stream; remove it there first',
+    });
+  });
+});

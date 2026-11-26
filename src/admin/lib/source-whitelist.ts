@@ -42,14 +42,8 @@ export function noteChanged(entry: SourceWhitelistEntry, draft: string): boolean
   return noteFromInput(draft) !== entry.note;
 }
 
-/**
- * The line shown above the add form when an add fails. Only the one failure a
- * person can cause by ordinary use gets its own wording; a malformed prefix
- * shows the worker's own message, as every other screen's save errors do.
- */
+/** The line shown above the add form when an add fails: the worker's own sentence, as every other screen's save errors show (#291). */
 export function addErrorMessage(error: unknown): string {
-  if (error instanceof AdminApiError && error.status === 409) return 'この URL はすでに一覧にあります。';
-
   return error instanceof AdminApiError ? error.message : String(error);
 }
 

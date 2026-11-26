@@ -1,6 +1,7 @@
 import { readEditableBody } from '../lib/editable-body';
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { jsonResponse } from '../lib/json';
+import { malformed, refusal, refuse, type Refusal } from '../lib/refusal';
 import { rejudgeFootprints } from './footprints-publish';
 
 /**
@@ -49,32 +50,43 @@ export async function listSourceWhitelist(env: Env): Promise<Response> {
  * uppercase host - none of which a source URL is compared against - and an
  * entry that is `https://` followed by only a path.
  */
-function prefixProblem(value: unknown): string | null {
-  if (typeof value !== 'string') return 'prefix must be a string';
+function prefixProblem(value: unknown): Refusal | null {
+  if (typeof value !== 'string') return malformed('prefix must be a string');
 
-  if (!value.startsWith('https://')) return 'prefix must start with https://';
+  if (!value.startsWith('https://')) {
+    return refusal('URL の先頭が https:// で始まっていません', 'prefix must start with https://');
+  }
 
-  if (/[\s\p{Cc}]/u.test(value)) return 'prefix must not contain whitespace or control characters';
+  if (/[\s\p{Cc}]/u.test(value)) {
+    return refusal('URL の先頭に空白が含まれています', 'prefix must not contain whitespace or control characters');
+  }
 
   let host: string;
 
   try {
     host = new URL(value).hostname;
   } catch {
-    return 'prefix must be a URL';
+    return refusal('URL の先頭の形式が正しくありません', 'prefix must be a URL');
   }
 
   if (host === '' || value.slice('https://'.length).split(/[/?#]/, 1)[0] !== host) {
-    return 'prefix must start with a lowercase host name, without a port or a user name';
+    return refusal(
+      'URL の先頭のホスト名に、大文字・ポート番号・ユーザー名のどれかが含まれています',
+      'prefix must start with a lowercase host name, without a port or a user name',
+    );
   }
 
   return null;
 }
 
-function noteProblem(value: unknown): string | null {
+function noteProblem(value: unknown): Refusal | null {
   return value === null || (typeof value === 'string' && value !== '')
     ? null
-    : 'note must be a non-empty string or null';
+    : malformed('note must be a non-empty string or null');
+}
+
+function notOnListResponse(prefix: string): Response {
+  return refuse(404, refusal('この URL の先頭は一覧にありません', `${prefix} is not on the list`));
 }
 
 /**
@@ -94,7 +106,9 @@ export async function addSourceWhitelist(env: Env, body: Record<string, unknown>
 
   const existing = await env.DB.prepare('SELECT 1 FROM source_whitelist WHERE prefix = ?1').bind(prefix).first();
 
-  if (existing !== null) return errorResponse(409, `${prefix} is already on the list`);
+  if (existing !== null) {
+    return refuse(409, refusal('この URL の先頭は既に一覧に存在します', `${prefix} is already on the list`));
+  }
 
   const saved = await env.DB.prepare(`INSERT INTO source_whitelist (prefix, note) VALUES (?1, ?2) RETURNING ${COLUMNS}`)
     .bind(prefix, read.values.note as string | null)
@@ -118,7 +132,7 @@ export async function updateSourceWhitelist(
 ): Promise<Response> {
   const existing = await env.DB.prepare('SELECT 1 FROM source_whitelist WHERE prefix = ?1').bind(prefix).first();
 
-  if (existing === null) return errorResponse(404, `${prefix} is not on the list`);
+  if (existing === null) return notOnListResponse(prefix);
 
   const read = readEditableBody(body, ['note'] as const, (_key, value) => noteProblem(value));
 
@@ -134,7 +148,7 @@ export async function updateSourceWhitelist(
     .first<WhitelistRow>();
 
   // Null only when a delete landed between the check above and this UPDATE.
-  if (saved === null) return errorResponse(404, `${prefix} is not on the list`);
+  if (saved === null) return notOnListResponse(prefix);
 
   return jsonResponse({ sourceWhitelist: present(saved) });
 }
@@ -147,7 +161,7 @@ export async function updateSourceWhitelist(
 export async function deleteSourceWhitelist(env: Env, prefix: string, now: Date): Promise<Response> {
   const existing = await env.DB.prepare('SELECT 1 FROM source_whitelist WHERE prefix = ?1').bind(prefix).first();
 
-  if (existing === null) return errorResponse(404, `${prefix} is not on the list`);
+  if (existing === null) return notOnListResponse(prefix);
 
   await env.DB.prepare('DELETE FROM source_whitelist WHERE prefix = ?1').bind(prefix).run();
 
