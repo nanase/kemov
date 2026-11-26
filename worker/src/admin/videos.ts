@@ -1,6 +1,7 @@
 import { byteLength } from '../lib/backup';
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { jsonResponse } from '../lib/json';
+import { LOAD_FAILED, MEMBER_NOT_FOUND_TEXT, QUERY_TOO_LONG_TEXT, refusal, refuse } from '../lib/refusal';
 
 /**
  * Reading `video` for the 配信・動画 screen to pick one from (#144's data
@@ -61,7 +62,9 @@ export async function listVideos(
   if (channelId !== null) {
     const known = await env.DB.prepare('SELECT 1 FROM channel WHERE channel_id = ?1').bind(channelId).first();
 
-    if (known === null) return errorResponse(400, `unknown channelId: ${channelId}`);
+    if (known === null) {
+      return refuse(400, refusal(MEMBER_NOT_FOUND_TEXT, `unknown channelId: ${channelId}`));
+    }
   }
 
   let limit = DEFAULT_LIMIT;
@@ -70,7 +73,7 @@ export async function listVideos(
     const parsed = Number(limitParam);
 
     if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > MAX_LIMIT) {
-      return errorResponse(400, `limit must be an integer from 1 to ${MAX_LIMIT}`);
+      return refuse(400, refusal(LOAD_FAILED, `limit must be an integer from 1 to ${MAX_LIMIT}`));
     }
 
     limit = parsed;
@@ -87,7 +90,9 @@ export async function listVideos(
   if (q !== null) {
     const pattern = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
 
-    if (byteLength(pattern) > D1_LIKE_PATTERN_BYTE_LIMIT) return errorResponse(400, 'q is too long to search by');
+    if (byteLength(pattern) > D1_LIKE_PATTERN_BYTE_LIMIT) {
+      return refuse(400, refusal(QUERY_TOO_LONG_TEXT, 'q is too long to search by'));
+    }
 
     params.push(pattern);
     conditions.push(`title LIKE ?${params.length} ESCAPE '\\'`);

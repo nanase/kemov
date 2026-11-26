@@ -1,7 +1,16 @@
 import { byteLength } from '../lib/backup';
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
-import { changedElsewhereResponse, errorResponse, jsonResponse } from '../lib/json';
+import { changedElsewhereResponse, jsonResponse } from '../lib/json';
+import {
+  DATE_SHAPE_TEXT,
+  LOAD_FAILED,
+  malformed,
+  QUERY_TOO_LONG_TEXT,
+  refusal,
+  refuse,
+  type Refusal,
+} from '../lib/refusal';
 import { sourcesEnough } from '../lib/source-whitelist';
 import { isSchemaDate, isSchemaMonth, isSchemaTimestamp, japanDateOf } from '../lib/time';
 
@@ -235,7 +244,7 @@ const D1_LIKE_PATTERN_BYTE_LIMIT = 50;
 /** GET /admin/api/footprints/events - optionally narrowed by status and by a substring of title. */
 export async function listEvents(env: Env, status: string | null, q: string | null): Promise<Response> {
   if (status !== null && !isStatus(status)) {
-    return errorResponse(400, `status must be one of draft, published`);
+    return refuse(400, refusal(LOAD_FAILED, 'status must be one of draft, published'));
   }
 
   let pattern: string | null = null;
@@ -243,7 +252,9 @@ export async function listEvents(env: Env, status: string | null, q: string | nu
   if (q !== null) {
     pattern = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
 
-    if (byteLength(pattern) > D1_LIKE_PATTERN_BYTE_LIMIT) return errorResponse(400, 'q is too long to search by');
+    if (byteLength(pattern) > D1_LIKE_PATTERN_BYTE_LIMIT) {
+      return refuse(400, refusal(QUERY_TOO_LONG_TEXT, 'q is too long to search by'));
+    }
   }
 
   const conditions: string[] = [];
@@ -289,11 +300,16 @@ export async function listEvents(env: Env, status: string | null, q: string | nu
   });
 }
 
+/** The 404 for an event that is not there - gone, or never was. */
+export function noEventResponse(eventId: number | string): Response {
+  return refuse(404, refusal('この出来事が見つかりません', `no footprints event ${eventId}`));
+}
+
 /** GET /admin/api/footprints/events/:eventId. 404 when there is no such event. */
 export async function getEvent(env: Env, eventId: number): Promise<Response> {
   const saved = await readEvent(env, eventId);
 
-  if (saved === null) return errorResponse(404, `no footprints event ${eventId}`);
+  if (saved === null) return noEventResponse(eventId);
 
   return jsonResponse(present(saved));
 }
@@ -315,44 +331,59 @@ function isStatus(value: unknown): value is 'draft' | 'published' {
  * checked again here so a mistake is a 400 with a reason, not a raw
  * constraint failure.
  */
-function eventFieldsProblem(fields: EventFields): string | null {
+function eventFieldsProblem(fields: EventFields): Refusal | null {
   if (!(DATE_PRECISIONS as readonly string[]).includes(fields.datePrecision)) {
-    return 'datePrecision must be day or month';
+    return malformed('datePrecision must be day or month');
   }
 
   const startOk = fields.datePrecision === 'day' ? isSchemaDate(fields.startDate) : isSchemaMonth(fields.startDate);
 
-  if (!startOk) return `startDate must be ${fields.datePrecision === 'day' ? 'YYYY-MM-DD' : 'YYYY-MM'}`;
+  if (!startOk) {
+    return refusal(DATE_SHAPE_TEXT, `startDate must be ${fields.datePrecision === 'day' ? 'YYYY-MM-DD' : 'YYYY-MM'}`);
+  }
 
   if (fields.startsAt !== null) {
-    if (!isSchemaTimestamp(fields.startsAt)) return 'startsAt must be YYYY-MM-DDTHH:MM:SSZ or null';
-    if (fields.datePrecision !== 'day') return 'startsAt requires datePrecision to be day';
-    if (japanDateOf(fields.startsAt) !== fields.startDate) return 'startsAt is not on startDate in Japan time';
+    if (!isSchemaTimestamp(fields.startsAt)) return malformed('startsAt must be YYYY-MM-DDTHH:MM:SSZ or null');
+
+    if (fields.datePrecision !== 'day') {
+      return refusal(
+        '開始の時刻がある出来事は日付の細かさを「月まで」にできません',
+        'startsAt requires datePrecision to be day',
+      );
+    }
+
+    if (japanDateOf(fields.startsAt) !== fields.startDate) {
+      return refusal('日付が開始の時刻と合っていません', 'startsAt is not on startDate in Japan time');
+    }
   }
 
   if (fields.endDate !== null) {
     const endOk = isSchemaDate(fields.endDate) || isSchemaMonth(fields.endDate);
 
-    if (!endOk) return 'endDate must be YYYY-MM-DD, YYYY-MM, or null';
-    if (fields.endDate < fields.startDate) return 'endDate is before startDate';
+    if (!endOk) return malformed('endDate must be YYYY-MM-DD, YYYY-MM, or null');
+    if (fields.endDate < fields.startDate)
+      return refusal('日付が終わりの日より後になっています', 'endDate is before startDate');
   }
 
-  if (!(KINDS as readonly string[]).includes(fields.kind)) return `kind must be one of ${KINDS.join(', ')}`;
+  if (!(KINDS as readonly string[]).includes(fields.kind)) return malformed(`kind must be one of ${KINDS.join(', ')}`);
   // Not "title must not be empty": that is one of the stricter rules
   // footprints-publish.ts checks before letting an event publish, not a
   // schema CHECK - title has none - so a draft may leave it blank while
   // still being worked out.
 
-  if (fields.videoId !== null && typeof fields.videoId !== 'string') return 'videoId must be a string or null';
+  if (fields.videoId !== null && typeof fields.videoId !== 'string')
+    return malformed('videoId must be a string or null');
 
   // A lead is a member, marked: the column lives on footprints_event_member,
   // so a lead who is not among the members has no row to be marked on.
   if (fields.leadChannelIds.some((id) => !fields.channelIds.includes(id))) {
-    return 'every leadChannelIds entry must also be in channelIds';
+    return refusal('主役は関わったメンバーから選んでください', 'every leadChannelIds entry must also be in channelIds');
   }
 
   for (const source of fields.sources) {
-    if (!source.url.startsWith('https://')) return 'every source url must start with https://';
+    if (!source.url.startsWith('https://')) {
+      return refusal('出典の URL が https:// で始まっていません', 'every source url must start with https://');
+    }
   }
 
   return null;
@@ -391,17 +422,17 @@ export interface EventFields {
  * already says as much: it exists for the shape of the check members.ts and
  * video-overrides.ts share, not to force every resource through it.
  */
-function readEventFields(body: Record<string, unknown>): EventFields | { error: string } {
+function readEventFields(body: Record<string, unknown>): EventFields | { error: Refusal } {
   const channelIds = body.channelIds ?? [];
   const leadChannelIds = body.leadChannelIds ?? [];
   const sources = body.sources ?? [];
 
   if (!Array.isArray(channelIds) || channelIds.some((id) => typeof id !== 'string')) {
-    return { error: 'channelIds must be an array of strings' };
+    return { error: malformed('channelIds must be an array of strings') };
   }
 
   if (!Array.isArray(leadChannelIds) || leadChannelIds.some((id) => typeof id !== 'string')) {
-    return { error: 'leadChannelIds must be an array of strings' };
+    return { error: malformed('leadChannelIds must be an array of strings') };
   }
 
   if (
@@ -414,7 +445,7 @@ function readEventFields(body: Record<string, unknown>): EventFields | { error: 
         (source.title !== undefined && source.title !== null && typeof source.title !== 'string'),
     )
   ) {
-    return { error: 'sources must be an array of { url, title }' };
+    return { error: malformed('sources must be an array of { url, title }') };
   }
 
   // Checked rather than coerced (body.emphasized === true / !== false, as an
@@ -422,14 +453,14 @@ function readEventFields(body: Record<string, unknown>): EventFields | { error: 
   // string "true" would otherwise silently save as the opposite of what its
   // own type suggests instead of failing loudly.
   if (body.emphasized !== undefined && typeof body.emphasized !== 'boolean') {
-    return { error: 'emphasized must be a boolean' };
+    return { error: malformed('emphasized must be a boolean') };
   }
 
   // No CHECK and no format rule stands behind these, so a number sent for a
   // title would otherwise be saved, and published, as it was sent.
   for (const field of ['title', 'place', 'supplement', 'memo'] as const) {
     if (body[field] !== undefined && body[field] !== null && typeof body[field] !== 'string') {
-      return { error: `${field} must be a string or null` };
+      return { error: malformed(`${field} must be a string or null`) };
     }
   }
 
@@ -487,15 +518,22 @@ export async function validatedFields(
 ): Promise<EventFields | { error: Response }> {
   const fields = readEventFields(body);
 
-  if ('error' in fields) return { error: errorResponse(400, fields.error) };
+  if ('error' in fields) return { error: refuse(400, fields.error) };
 
   const problem = eventFieldsProblem(fields);
 
-  if (problem !== null) return { error: errorResponse(400, problem) };
+  if (problem !== null) return { error: refuse(400, problem) };
 
   const unknown = await unknownChannelIds(env, fields.channelIds);
 
-  if (unknown.length > 0) return { error: errorResponse(400, `unknown channelIds: ${unknown.join(', ')}`) };
+  if (unknown.length > 0) {
+    return {
+      error: refuse(
+        400,
+        refusal('関わったメンバーに一覧にないメンバーが含まれています', `unknown channelIds: ${unknown.join(', ')}`),
+      ),
+    };
+  }
 
   return fields;
 }
@@ -770,7 +808,7 @@ export function withFields(
 export async function updateEvent(env: Env, eventId: number, body: Record<string, unknown>): Promise<Response> {
   const existing = await readEvent(env, eventId);
 
-  if (existing === null) return errorResponse(404, `no footprints event ${eventId}`);
+  if (existing === null) return noEventResponse(eventId);
 
   const fields = await validatedFields(env, body);
 
@@ -781,7 +819,7 @@ export async function updateEvent(env: Env, eventId: number, body: Record<string
   const results = await env.DB.batch(saveStatements(env, eventId, fields, { whileStatus: 'draft' }));
   const saved = await readEvent(env, eventId);
 
-  if (saved === null) return errorResponse(404, `no footprints event ${eventId}`);
+  if (saved === null) return noEventResponse(eventId);
   if (!savedRow(results)) return noLongerDraftResponse(eventId);
 
   return jsonResponse({ event: present(saved) });
@@ -807,10 +845,10 @@ export async function updateEvent(env: Env, eventId: number, body: Record<string
 export async function deleteEvent(env: Env, eventId: number): Promise<Response> {
   const existing = await readEvent(env, eventId);
 
-  if (existing === null) return errorResponse(404, `no footprints event ${eventId}`);
+  if (existing === null) return noEventResponse(eventId);
 
   if (existing.event.status === 'published') {
-    return changedElsewhereResponse('withdraw this event before deleting it');
+    return changedElsewhereResponse('withdraw this event before deleting it', 'remove');
   }
 
   // subscriber_milestone.event_id is a foreign key to this row, so the
@@ -821,7 +859,13 @@ export async function deleteEvent(env: Env, eventId: number): Promise<Response> 
     .first<{ milestone_id: number }>();
 
   if (linked !== null) {
-    return errorResponse(409, `subscriber milestone ${linked.milestone_id} links to this event; unlink it there first`);
+    return refuse(
+      409,
+      refusal(
+        '登録者数の節目とつながっているため削除できませんでした',
+        `subscriber milestone ${linked.milestone_id} links to this event; unlink it there first`,
+      ),
+    );
   }
 
   const results = await env.DB.batch([
@@ -839,9 +883,9 @@ export async function deleteEvent(env: Env, eventId: number): Promise<Response> 
   ]);
 
   if (results[2]!.meta.changes === 0) {
-    if ((await readEvent(env, eventId)) === null) return errorResponse(404, `no footprints event ${eventId}`);
+    if ((await readEvent(env, eventId)) === null) return noEventResponse(eventId);
 
-    return changedElsewhereResponse('withdraw this event before deleting it');
+    return changedElsewhereResponse('withdraw this event before deleting it', 'remove');
   }
 
   // {} rather than 204: every other answer in this API is JSON, and this one

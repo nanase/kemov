@@ -1,6 +1,7 @@
 import type { Env } from '../lib/env';
 import { queryInChunks } from '../lib/d1';
-import { changedElsewhereResponse, errorResponse, jsonResponse } from '../lib/json';
+import { changedElsewhereResponse, jsonResponse } from '../lib/json';
+import { refusal, refuse, REQUEST_FAILED } from '../lib/refusal';
 import {
   countedHost,
   hasTwoHosts,
@@ -28,6 +29,7 @@ import {
   readMilestones,
   newestRevisionOf,
   noLongerDraftResponse,
+  noMilestoneResponse,
   savedRow,
   saveStatements,
   sourceUrlProblem,
@@ -57,6 +59,9 @@ import {
  */
 
 const OBJECT_KEY = 'subscribers/milestones.json';
+
+/** What the screen says when the public JSON could not be written; which step failed, and why, stays in `detail`. */
+const NOT_WRITTEN_TEXT = '本番の登録者数の節目への反映に失敗しました';
 
 /**
  * The sentence the edit panel lists under 「公開できません」 when the sources
@@ -171,15 +176,17 @@ const SOURCE_CHECK_LIMIT = 50;
 export async function checkSources(env: Env, body: Record<string, unknown>): Promise<Response> {
   const { channelId, announcedBy, urls } = body;
 
-  if (typeof channelId !== 'string') return errorResponse(400, 'channelId must be a string');
-  if (typeof announcedBy !== 'string') return errorResponse(400, 'announcedBy must be a string');
+  if (typeof channelId !== 'string') return refuse(400, refusal(REQUEST_FAILED, 'channelId must be a string'));
+  if (typeof announcedBy !== 'string') {
+    return refuse(400, refusal(REQUEST_FAILED, 'announcedBy must be a string'));
+  }
 
   if (!Array.isArray(urls) || urls.some((url) => typeof url !== 'string')) {
-    return errorResponse(400, 'urls must be an array of strings');
+    return refuse(400, refusal(REQUEST_FAILED, 'urls must be an array of strings'));
   }
 
   if (urls.length > SOURCE_CHECK_LIMIT) {
-    return errorResponse(400, `urls must have at most ${SOURCE_CHECK_LIMIT} entries`);
+    return refuse(400, refusal(REQUEST_FAILED, `urls must have at most ${SOURCE_CHECK_LIMIT} entries`));
   }
 
   return jsonResponse(
@@ -371,7 +378,8 @@ async function notWrittenResponse(
 
   return jsonResponse(
     {
-      error: `saved, but ${OBJECT_KEY} could not be written: ${outcome.error}`,
+      error: NOT_WRITTEN_TEXT,
+      detail: `saved, but ${OBJECT_KEY} could not be written: ${outcome.error}`,
       saved: true,
       milestone: saved === null ? null : present(saved),
     },
@@ -412,7 +420,7 @@ function changedMeanwhileResponse(milestoneId: number): Response {
  */
 async function notLoggedResponse(env: Env, milestoneId: number): Promise<Response> {
   if ((await readMilestone(env, milestoneId)) === null) {
-    return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+    return noMilestoneResponse(milestoneId);
   }
 
   return changedMeanwhileResponse(milestoneId);
@@ -443,7 +451,8 @@ function leftAs(status: MilestoneStatus, revisionBefore: number): string {
 function notMendedResponse(milestoneId: number, error: string): Response {
   return jsonResponse(
     {
-      error: `subscriber milestone ${milestoneId} changed while this request was saving it, and ${OBJECT_KEY} could not be built again without the change: ${error}`,
+      error: NOT_WRITTEN_TEXT,
+      detail: `subscriber milestone ${milestoneId} changed while this request was saving it, and ${OBJECT_KEY} could not be built again without the change: ${error}`,
       saved: false,
     },
     { status: 502 },
@@ -546,7 +555,7 @@ export async function publishMilestone(
   const revisionBefore = await newestRevisionOf(env, milestoneId);
   const existing = await readMilestone(env, milestoneId);
 
-  if (existing === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+  if (existing === null) return noMilestoneResponse(milestoneId);
 
   const fields = await validatedFields(env, body);
 
@@ -571,7 +580,7 @@ export async function saveMilestone(
   const revisionBefore = await newestRevisionOf(env, milestoneId);
   const existing = await readMilestone(env, milestoneId);
 
-  if (existing === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+  if (existing === null) return noMilestoneResponse(milestoneId);
 
   if (existing.milestone.status !== 'published') return await updateMilestone(env, milestoneId, body);
 
@@ -600,7 +609,7 @@ export async function withdrawMilestone(
   const revisionBefore = await newestRevisionOf(env, milestoneId);
   const saved = await readMilestone(env, milestoneId);
 
-  if (saved === null) return errorResponse(404, `no subscriber milestone ${milestoneId}`);
+  if (saved === null) return noMilestoneResponse(milestoneId);
 
   if (saved.milestone.status !== 'published')
     return changedElsewhereResponse('only a published milestone can be withdrawn');
@@ -627,7 +636,7 @@ export async function withdrawMilestone(
     if (outcome.recorded && outcome.revisionId === null) return notMendedResponse(milestoneId, outcome.error);
     if (outcome.recorded) return await notWrittenResponse(env, milestoneId, outcome);
 
-    return errorResponse(502, `${OBJECT_KEY} could not be written: ${outcome.error}`);
+    return refuse(502, refusal(NOT_WRITTEN_TEXT, `${OBJECT_KEY} could not be written: ${outcome.error}`));
   }
 
   return await writtenResponse(env, milestoneId, outcome);
@@ -815,7 +824,9 @@ export async function publishSubscriberMilestonesNow(env: Env, now: Date): Promi
 
   const outcome = await republish(env, MILESTONES_TARGET, now);
 
-  if (!outcome.current) return errorResponse(502, `${OBJECT_KEY} could not be brought up to date: ${outcome.error}`);
+  if (!outcome.current) {
+    return refuse(502, refusal(NOT_WRITTEN_TEXT, `${OBJECT_KEY} could not be brought up to date: ${outcome.error}`));
+  }
 
   return jsonResponse({
     published: true,

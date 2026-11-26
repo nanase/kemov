@@ -123,17 +123,30 @@ export function countedHost(url: string): string | null {
  * Why a save refuses `url` as a source's URL, or null when it accepts it.
  * Only a URL a save accepts counts towards a judgement, so the screen never
  * calls enough what a save then refuses.
+ *
+ * `message` is the sentence the screen shows when the worker refuses the save
+ * for it, and `detail` the same in English for marking the field (#291).
  */
-export function sourceUrlProblem(url: string): string | null {
-  if (!url.startsWith('https://')) return 'every source url must start with https://';
+export function sourceUrlProblem(url: string): { message: string; detail: string } | null {
+  if (!url.startsWith('https://')) {
+    return {
+      message: '出典の URL が https:// で始まっていません',
+      detail: 'every source url must start with https://',
+    };
+  }
   // The schema's CHECK looks at the prefix alone, so `https://` by itself
   // would save, and count towards nothing but still reach the public JSON.
   const parsed = parseUrl(url);
 
-  if (parsed === null || parsed.hostname === '') return 'every source url must be a valid https URL';
+  if (parsed === null || parsed.hostname === '') {
+    return { message: '出典の URL の形式が正しくありません', detail: 'every source url must be a valid https URL' };
+  }
   // A source's URL reaches the public JSON as written.
   if (parsed.username !== '' || parsed.password !== '') {
-    return 'every source url must not carry a user name or password';
+    return {
+      message: '出典の URL にユーザー名かパスワードが含まれています',
+      detail: 'every source url must not carry a user name or password',
+    };
   }
 
   return null;

@@ -1,6 +1,7 @@
 import { readEditableBody } from '../lib/editable-body';
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { jsonResponse } from '../lib/json';
+import { malformed, refusal, refuse, type Refusal } from '../lib/refusal';
 import { revisionStatement } from '../lib/revision';
 import { formatTimestamp } from '../lib/time';
 
@@ -55,22 +56,22 @@ const TYPES = ['video', 'streaming', 'shorts'];
 const AVAILABILITIES = ['public', 'membership', 'private', 'unavailable'];
 
 /** What is wrong with one field's value, or null when it is fine - the same rules the CHECKs in migrations/0004 enforce. */
-function overrideFieldProblem(key: EditableOverrideKey, value: unknown): string | null {
+function overrideFieldProblem(key: EditableOverrideKey, value: unknown): Refusal | null {
   switch (key) {
     case 'title':
       return value === null || (typeof value === 'string' && value !== '')
         ? null
-        : 'title must be a non-empty string or null';
+        : refusal('タイトルを書いてください', 'title must be a non-empty string or null');
     case 'type':
       return value === null || (typeof value === 'string' && TYPES.includes(value))
         ? null
-        : `type must be one of ${TYPES.join(', ')}, or null`;
+        : malformed(`type must be one of ${TYPES.join(', ')}, or null`);
     case 'availability':
       return value === null || (typeof value === 'string' && AVAILABILITIES.includes(value))
         ? null
-        : `availability must be one of ${AVAILABILITIES.join(', ')}, or null`;
+        : malformed(`availability must be one of ${AVAILABILITIES.join(', ')}, or null`);
     case 'memo':
-      return value === null || typeof value === 'string' ? null : 'memo must be a string or null';
+      return value === null || typeof value === 'string' ? null : malformed('memo must be a string or null');
   }
 }
 
@@ -83,7 +84,7 @@ export async function saveVideoOverride(
 ): Promise<Response> {
   const video = await env.DB.prepare('SELECT 1 FROM video WHERE video_id = ?1').bind(videoId).first();
 
-  if (video === null) return errorResponse(404, `no video ${videoId}`);
+  if (video === null) return refuse(404, refusal('この動画が見つかりません', `no video ${videoId}`));
 
   const read = readEditableBody(body, EDITABLE_OVERRIDE_KEYS, overrideFieldProblem);
 
@@ -99,7 +100,10 @@ export async function saveVideoOverride(
   // The same CHECK migrations/0004 puts on the row: an override that
   // overrides nothing is refused here rather than left to reach D1's own.
   if (title === null && type === null && availability === null) {
-    return errorResponse(400, 'at least one of title, type and availability must not be null');
+    return refuse(
+      400,
+      refusal('上書きする欄がありません', 'at least one of title, type and availability must not be null'),
+    );
   }
 
   // Set explicitly on both the insert and the update branch: ON CONFLICT DO
@@ -131,7 +135,9 @@ export async function saveVideoOverride(
 export async function deleteVideoOverride(env: Env, videoId: string): Promise<Response> {
   const existing = await env.DB.prepare('SELECT 1 FROM video_override WHERE video_id = ?1').bind(videoId).first();
 
-  if (existing === null) return errorResponse(404, `no override for video ${videoId}`);
+  if (existing === null) {
+    return refuse(404, refusal('この動画の上書きが見つかりません', `no override for video ${videoId}`));
+  }
 
   // The existence check above answers 404 for a row already gone when the
   // request arrived, but a second request can still delete the same row

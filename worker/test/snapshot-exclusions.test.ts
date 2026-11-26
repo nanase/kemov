@@ -6,6 +6,7 @@ import {
   saveSnapshotExclusion,
 } from '../src/admin/snapshot-exclusions';
 import { clearEverything } from './reset-db';
+import { SAVE_FAILED } from '../src/lib/refusal';
 
 beforeEach(clearEverything);
 
@@ -146,7 +147,7 @@ describe('saveSnapshotExclusion', () => {
     });
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ error: 'createdAt cannot be saved' });
+    expect(await response.json()).toEqual({ error: SAVE_FAILED, detail: 'createdAt cannot be saved' });
     expect(await revisionRows()).toEqual([]);
   });
 });
@@ -210,5 +211,32 @@ describe('deleteSnapshotExclusion', () => {
     ]);
 
     expect(await revisionRows()).toHaveLength(1);
+  });
+});
+
+// #291: `error` is the sentence the screen shows; `detail` is the English for
+// the log.
+describe('what a refused save says', () => {
+  test('says the reason is blank', async () => {
+    await insertTick('UCaaa', TICK);
+
+    expect(await (await saveSnapshotExclusion(env, 'UCaaa', TICK, { reason: '' })).json()).toEqual({
+      error: '除外理由を書いてください',
+      detail: 'reason must be a non-empty string',
+    });
+  });
+
+  test('says the tick is gone', async () => {
+    expect(await (await saveSnapshotExclusion(env, 'UCaaa', TICK, { reason: 'a' })).json()).toEqual({
+      error: 'この取得の記録が見つかりません',
+      detail: `no snapshot tick UCaaa ${TICK}`,
+    });
+  });
+
+  test('says the exclusion is gone', async () => {
+    expect(await (await deleteSnapshotExclusion(env, 'UCaaa', TICK)).json()).toEqual({
+      error: 'この除外が見つかりません',
+      detail: `no exclusion for UCaaa ${TICK}`,
+    });
   });
 });

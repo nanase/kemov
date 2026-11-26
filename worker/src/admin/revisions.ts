@@ -1,5 +1,6 @@
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { jsonResponse } from '../lib/json';
+import { DATE_SHAPE_TEXT, LOAD_FAILED, refusal, refuse } from '../lib/refusal';
 import { REVISION_ACTIONS, REVISION_ENTITIES } from '../lib/revision';
 import { isSchemaDate, japanDateEndUtc, japanDateStartUtc } from '../lib/time';
 
@@ -52,11 +53,11 @@ export async function listRevisions(
   limitParam: string | null,
 ): Promise<Response> {
   if (entity !== null && !(REVISION_ENTITIES as readonly string[]).includes(entity)) {
-    return errorResponse(400, `entity must be one of ${REVISION_ENTITIES.join(', ')}`);
+    return refuse(400, refusal(LOAD_FAILED, `entity must be one of ${REVISION_ENTITIES.join(', ')}`));
   }
 
   if (action !== null && !(REVISION_ACTIONS as readonly string[]).includes(action)) {
-    return errorResponse(400, `action must be one of ${REVISION_ACTIONS.join(', ')}`);
+    return refuse(400, refusal(LOAD_FAILED, `action must be one of ${REVISION_ACTIONS.join(', ')}`));
   }
 
   let limit = DEFAULT_LIMIT;
@@ -65,7 +66,7 @@ export async function listRevisions(
     const parsed = Number(limitParam);
 
     if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > MAX_LIMIT) {
-      return errorResponse(400, `limit must be an integer from 1 to ${MAX_LIMIT}`);
+      return refuse(400, refusal(LOAD_FAILED, `limit must be an integer from 1 to ${MAX_LIMIT}`));
     }
 
     limit = parsed;
@@ -85,14 +86,14 @@ export async function listRevisions(
   }
 
   if (fromParam !== null) {
-    if (!isSchemaDate(fromParam)) return errorResponse(400, 'from must be YYYY-MM-DD');
+    if (!isSchemaDate(fromParam)) return refuse(400, refusal(DATE_SHAPE_TEXT, 'from must be YYYY-MM-DD'));
 
     params.push(japanDateStartUtc(fromParam));
     conditions.push(`created_at >= ?${params.length}`);
   }
 
   if (toParam !== null) {
-    if (!isSchemaDate(toParam)) return errorResponse(400, 'to must be YYYY-MM-DD');
+    if (!isSchemaDate(toParam)) return refuse(400, refusal(DATE_SHAPE_TEXT, 'to must be YYYY-MM-DD'));
 
     params.push(japanDateEndUtc(toParam));
     conditions.push(`created_at < ?${params.length}`);
@@ -144,7 +145,7 @@ export async function getRevision(env: Env, revisionId: number): Promise<Respons
     .bind(revisionId)
     .first<RevisionRow>();
 
-  if (row === null) return errorResponse(404, `no revision ${revisionId}`);
+  if (row === null) return noRevisionResponse(revisionId);
 
   return jsonResponse({
     revision: {
@@ -152,4 +153,9 @@ export async function getRevision(env: Env, revisionId: number): Promise<Respons
       body: row.body === null ? null : (JSON.parse(row.body) as Record<string, unknown>),
     },
   });
+}
+
+/** The 404 for a revision that is not there. */
+export function noRevisionResponse(revisionId: number | string): Response {
+  return refuse(404, refusal('この版が見つかりません', `no revision ${revisionId}`));
 }

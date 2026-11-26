@@ -92,7 +92,10 @@ describe('the worker entry', () => {
     await waitOnExecutionContext(ctx);
 
     expect(response.status).toEqual(401);
-    expect(await response.json()).toEqual({ error: 'not authorized by Cloudflare Access' });
+    expect(await response.json()).toEqual({
+      error: 'ログインを確認できませんでした',
+      detail: 'not authorized by Cloudflare Access',
+    });
   });
 
   // The admin site (#144) has no built dist/admin/index.html in this test

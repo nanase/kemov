@@ -1,6 +1,7 @@
 import { isAllowedChannelIconHost, resizeChannelIconUrl } from '../api/image';
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { jsonResponse } from '../lib/json';
+import { refusal, refuse, REQUEST_FAILED } from '../lib/refusal';
 import { callYouTubeApi, YouTubeApiError } from '../lib/youtube';
 import { CHANNEL_ID_PATTERN } from './members';
 
@@ -83,7 +84,10 @@ async function iconDataUrl(url: string | undefined, fetchImpl: typeof fetch): Pr
 
 export async function lookupChannel(env: Env, channelId: string, fetchImpl: typeof fetch = fetch): Promise<Response> {
   if (!CHANNEL_ID_PATTERN.test(channelId)) {
-    return errorResponse(400, 'channel id must be UC followed by 22 characters');
+    return refuse(
+      400,
+      refusal('チャンネル ID の形式が正しくありません', 'channel id must be UC followed by 22 characters'),
+    );
   }
 
   let item: NonNullable<ChannelsListSnippet['items']>[number] | undefined;
@@ -102,7 +106,7 @@ export async function lookupChannel(env: Env, channelId: string, fetchImpl: type
     // forbidden key and the like say nothing about the id, so they stay 502.
     if (!(error instanceof YouTubeApiError && error.status === 404 && error.reason === 'channelNotFound')) {
       console.error('channel-lookup: Channels.list failed', error);
-      return errorResponse(502, 'YouTube could not be asked about the channel');
+      return refuse(502, refusal(REQUEST_FAILED, 'YouTube could not be asked about the channel'));
     }
   }
 
@@ -111,7 +115,11 @@ export async function lookupChannel(env: Env, channelId: string, fetchImpl: type
   // worker. The screen blocks adding on this one alone.
   if (item === undefined) {
     return jsonResponse(
-      { error: `channel ${channelId} was not found on YouTube`, code: NOT_FOUND_CODE },
+      {
+        error: 'チャンネルが見つかりません',
+        detail: `channel ${channelId} was not found on YouTube`,
+        code: NOT_FOUND_CODE,
+      },
       { status: 404 },
     );
   }
@@ -119,7 +127,7 @@ export async function lookupChannel(env: Env, channelId: string, fetchImpl: type
   const title = item.snippet?.title;
 
   if (typeof title !== 'string' || title === '') {
-    return errorResponse(502, 'YouTube answered without a title for the channel');
+    return refuse(502, refusal(REQUEST_FAILED, 'YouTube answered without a title for the channel'));
   }
 
   return jsonResponse({

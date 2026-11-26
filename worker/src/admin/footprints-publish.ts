@@ -1,9 +1,11 @@
 import type { Env } from '../lib/env';
-import { changedElsewhereResponse, errorResponse, jsonResponse } from '../lib/json';
+import { changedElsewhereResponse, jsonResponse } from '../lib/json';
+import { refusal, refuse } from '../lib/refusal';
 import { readSourceWhitelist, sourcesEnough } from '../lib/source-whitelist';
 import { formatTimestamp } from '../lib/time';
 import {
   newestRevisionOf,
+  noEventResponse,
   present,
   publicShapeOf,
   readEvent,
@@ -44,6 +46,9 @@ import { republishMilestonesForEvents } from './subscriber-milestones-publish';
 const VIDEO_ID_LENGTH = 11;
 
 const OBJECT_KEY = 'footprints/events.json';
+
+/** What the screen says when the public JSON could not be written; which step failed, and why, stays in `detail`. */
+const NOT_WRITTEN_TEXT = '本番の年表への反映に失敗しました';
 
 /**
  * One way an event falls short of publishing: the field of the form it is
@@ -243,7 +248,8 @@ async function notWrittenResponse(env: Env, eventId: number, outcome: Extract<Pu
 
   return jsonResponse(
     {
-      error: `saved, but ${OBJECT_KEY} could not be written: ${outcome.error}`,
+      error: NOT_WRITTEN_TEXT,
+      detail: `saved, but ${OBJECT_KEY} could not be written: ${outcome.error}`,
       saved: true,
       event: saved === null ? null : present(saved),
     },
@@ -279,7 +285,7 @@ function changedMeanwhileResponse(eventId: number): Response {
  * deleted, 409 when it was still there but no longer as the request read it.
  */
 async function notLoggedResponse(env: Env, eventId: number): Promise<Response> {
-  if ((await readEvent(env, eventId)) === null) return errorResponse(404, `no footprints event ${eventId}`);
+  if ((await readEvent(env, eventId)) === null) return noEventResponse(eventId);
 
   return changedMeanwhileResponse(eventId);
 }
@@ -311,7 +317,8 @@ function leftAs(status: EventStatus, revisionBefore: number): string {
 function notMendedResponse(eventId: number, error: string): Response {
   return jsonResponse(
     {
-      error: `footprints event ${eventId} changed while this request was saving it, and ${OBJECT_KEY} could not be built again without the change: ${error}`,
+      error: NOT_WRITTEN_TEXT,
+      detail: `footprints event ${eventId} changed while this request was saving it, and ${OBJECT_KEY} could not be built again without the change: ${error}`,
       saved: false,
     },
     { status: 502 },
@@ -435,7 +442,7 @@ export async function publishEvent(
   const revisionBefore = await newestRevisionOf(env, eventId);
   const existing = await readEvent(env, eventId);
 
-  if (existing === null) return errorResponse(404, `no footprints event ${eventId}`);
+  if (existing === null) return noEventResponse(eventId);
 
   const fields = await validatedFields(env, body);
 
@@ -459,7 +466,7 @@ export async function saveEvent(
   const revisionBefore = await newestRevisionOf(env, eventId);
   const existing = await readEvent(env, eventId);
 
-  if (existing === null) return errorResponse(404, `no footprints event ${eventId}`);
+  if (existing === null) return noEventResponse(eventId);
 
   if (existing.event.status !== 'published') return await updateEvent(env, eventId, body);
 
@@ -494,7 +501,7 @@ export async function withdrawEvent(
   const revisionBefore = await newestRevisionOf(env, eventId);
   const saved = await readEvent(env, eventId);
 
-  if (saved === null) return errorResponse(404, `no footprints event ${eventId}`);
+  if (saved === null) return noEventResponse(eventId);
 
   if (saved.event.status !== 'published') return changedElsewhereResponse('only a published event can be withdrawn');
 
@@ -512,7 +519,9 @@ export async function withdrawEvent(
 
   if (!outcome.written) {
     if (outcome.recorded && outcome.revisionId === null) return notMendedResponse(eventId, outcome.error);
-    if (!outcome.recorded) return errorResponse(502, `${OBJECT_KEY} could not be written: ${outcome.error}`);
+    if (!outcome.recorded) {
+      return refuse(502, refusal(NOT_WRITTEN_TEXT, `${OBJECT_KEY} could not be written: ${outcome.error}`));
+    }
 
     await republishMilestonesForEvents(env, now);
 
@@ -689,7 +698,9 @@ export async function publishFootprintsNow(env: Env, now: Date): Promise<Respons
 
   await republishMilestonesForEvents(env, now);
 
-  if (!outcome.current) return errorResponse(502, `${OBJECT_KEY} could not be brought up to date: ${outcome.error}`);
+  if (!outcome.current) {
+    return refuse(502, refusal(NOT_WRITTEN_TEXT, `${OBJECT_KEY} could not be brought up to date: ${outcome.error}`));
+  }
 
   return jsonResponse({
     published: true,

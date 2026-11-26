@@ -1,4 +1,4 @@
-import { judgeSources, sourcesEnough } from '@/admin/lib/source-check';
+import { judgeSources, sourcesEnough, sourceUrlProblem } from '@/admin/lib/source-check';
 
 const WHITELIST = ['https://x.com/KEMOVP_staff', 'https://kemov-project.com/'];
 
@@ -90,5 +90,25 @@ describe('judgeSources', () => {
     ];
 
     for (const urls of cases) expect(judgeSources(urls, WHITELIST).enough).toEqual(sourcesEnough(urls, WHITELIST));
+  });
+});
+
+// #291: the sentence the screen shows when a save refuses the URL, and the
+// English the screen marks the field by.
+describe('sourceUrlProblem', () => {
+  test.each([
+    ['http://example.com/a', '出典の URL が https:// で始まっていません', 'every source url must start with https://'],
+    ['https://', '出典の URL の形式が正しくありません', 'every source url must be a valid https URL'],
+    [
+      'https://user:secret@example.com/a',
+      '出典の URL にユーザー名かパスワードが含まれています',
+      'every source url must not carry a user name or password',
+    ],
+  ])('refuses %s', (url, message, detail) => {
+    expect(sourceUrlProblem(url)).toEqual({ message, detail });
+  });
+
+  test('accepts an https URL with a host', () => {
+    expect(sourceUrlProblem('https://example.com/a')).toBeNull();
   });
 });

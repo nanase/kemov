@@ -8,31 +8,38 @@
  * worker, typed the same way on both sides.
  */
 
+import { CHANGED_ELSEWHERE_TEXT } from './changed-elsewhere';
+
+export { CHANGED_ELSEWHERE_TEXT };
+
+/** What the screen says when the worker could not be reached at all. */
+export const UNREACHABLE_TEXT = 'サーバーに接続できませんでした';
+
 /**
- * What the screen says for a 409 the worker marks `changedElsewhere`: another
- * screen changed the row between this one's read and its write (#299). The
- * worker's own message is for logs, and is not shown.
+ * What the screen says for an answer with no `error` of the worker's own to
+ * show - a 500 from the platform in front of it, say. `status` still says
+ * which.
  */
-export const CHANGED_ELSEWHERE_TEXT = {
-  save: '別の画面で変更されたため保存できませんでした',
-  remove: '別の画面で変更されたため削除できませんでした',
-} as const;
+export const FAILED_TEXT = '処理に失敗しました';
 
 export class AdminApiError extends Error {
   constructor(
     readonly status: number,
     readonly body: unknown,
   ) {
-    super(AdminApiError.messageFor(status, body));
+    super(AdminApiError.messageFor(body));
     this.name = 'AdminApiError';
   }
 
   /**
-   * The worker's English for which value it refused (#291), or null when it
-   * gave none. Not for the screen to show: `message` is that.
+   * The worker's English for which value it refused (#291) - or, for a
+   * request that got no answer, what `call` says about the failure - and null
+   * when there is none. Not for the screen to show: `message` is that.
    */
   get detail(): string | null {
     const { body } = this;
+
+    if (typeof body === 'string') return body;
 
     return typeof body === 'object' && body !== null && 'detail' in body && typeof body.detail === 'string'
       ? body.detail
@@ -48,12 +55,11 @@ export class AdminApiError extends Error {
     return typeof body === 'object' && body !== null && 'changedElsewhere' in body && body.changedElsewhere === true;
   }
 
-  private static messageFor(status: number, body: unknown): string {
+  private static messageFor(body: unknown): string {
     // `call`'s own catch passes a plain description string here (status 0,
-    // the fetch itself failed) rather than a parsed JSON error body - without
-    // this, that string fails every check below and the network failure's
-    // own message is lost behind "/admin/api answered 0".
-    if (typeof body === 'string') return body;
+    // the fetch itself failed) rather than a parsed JSON error body. It is
+    // English for the log, kept as `detail`.
+    if (typeof body === 'string') return UNREACHABLE_TEXT;
 
     // A delete's words are put in by `publishAnswerFor`, which knows the action.
     if (AdminApiError.isChangedElsewhere(body)) return CHANGED_ELSEWHERE_TEXT.save;
@@ -66,7 +72,7 @@ export class AdminApiError extends Error {
       return body.errors.join(' / ');
     }
 
-    return `/admin/api answered ${status}`;
+    return FAILED_TEXT;
   }
 }
 

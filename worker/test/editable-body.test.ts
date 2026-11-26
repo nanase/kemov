@@ -1,4 +1,5 @@
 import { readEditableBody } from '../src/lib/editable-body';
+import { refusal, SAVE_FAILED } from '../src/lib/refusal';
 
 const KEYS = ['a', 'b'] as const;
 
@@ -9,7 +10,7 @@ describe('readEditableBody', () => {
     expect('error' in result).toEqual(true);
     if ('error' in result) {
       expect(result.error.status).toEqual(400);
-      expect(await result.error.json()).toEqual({ error: 'c cannot be saved' });
+      expect(await result.error.json()).toEqual({ error: SAVE_FAILED, detail: 'c cannot be saved' });
     }
   });
 
@@ -19,15 +20,15 @@ describe('readEditableBody', () => {
     expect('values' in result && result.values).toEqual({ a: '1', b: null });
   });
 
-  test('refuses the first field a validator objects to, without checking the rest', () => {
+  test('refuses the first field a validator objects to, without checking the rest', async () => {
     const seen: string[] = [];
     const result = readEditableBody({ a: '1', b: '2' }, KEYS, (key) => {
       seen.push(key);
 
-      return key === 'a' ? 'a is wrong' : null;
+      return key === 'a' ? refusal('a の誤り', 'a is wrong') : null;
     });
 
-    expect('error' in result).toEqual(true);
+    expect('error' in result && (await result.error.json())).toEqual({ error: 'a の誤り', detail: 'a is wrong' });
     expect(seen).toEqual(['a']);
   });
 });

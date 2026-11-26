@@ -72,7 +72,10 @@ describe('listVideos', () => {
     const response = await listVideos(env, null, 'UCnope', null);
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ error: 'unknown channelId: UCnope' });
+    expect(await response.json()).toEqual({
+      error: 'このメンバーが見つかりません',
+      detail: 'unknown channelId: UCnope',
+    });
   });
 
   test('marks a video that has an override', async () => {

@@ -1,5 +1,6 @@
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { jsonResponse } from '../lib/json';
+import { DATE_SHAPE_TEXT, LOAD_FAILED, MEMBER_NOT_FOUND_TEXT, refusal, refuse } from '../lib/refusal';
 import { isSchemaDate, japanDateEndUtc, japanDateOf, japanDateStartUtc } from '../lib/time';
 
 /**
@@ -72,15 +73,17 @@ export async function listSnapshots(
   if (channelId !== null) {
     const known = await env.DB.prepare('SELECT 1 FROM channel WHERE channel_id = ?1').bind(channelId).first();
 
-    if (known === null) return errorResponse(400, `unknown channelId: ${channelId}`);
+    if (known === null) {
+      return refuse(400, refusal(MEMBER_NOT_FOUND_TEXT, `unknown channelId: ${channelId}`));
+    }
   }
 
   const to = toParam ?? japanDateOf(now.toISOString());
   const from = fromParam ?? to;
 
-  if (!isSchemaDate(from)) return errorResponse(400, 'from must be YYYY-MM-DD');
-  if (!isSchemaDate(to)) return errorResponse(400, 'to must be YYYY-MM-DD');
-  if (from > to) return errorResponse(400, 'from is after to');
+  if (!isSchemaDate(from)) return refuse(400, refusal(DATE_SHAPE_TEXT, 'from must be YYYY-MM-DD'));
+  if (!isSchemaDate(to)) return refuse(400, refusal(DATE_SHAPE_TEXT, 'to must be YYYY-MM-DD'));
+  if (from > to) return refuse(400, refusal(LOAD_FAILED, 'from is after to'));
 
   const startUtc = japanDateStartUtc(from);
   const endUtc = japanDateEndUtc(to);
@@ -100,7 +103,13 @@ export async function listSnapshots(
     .all<SnapshotRow>();
 
   if (rows.length > TICK_ROW_LIMIT) {
-    return errorResponse(400, `more than ${TICK_ROW_LIMIT} ticks in range - narrow channelId or from/to`);
+    return refuse(
+      400,
+      refusal(
+        '件数が多すぎるため読み込めませんでした',
+        `more than ${TICK_ROW_LIMIT} ticks in range - narrow channelId or from/to`,
+      ),
+    );
   }
 
   const { results: exclusionRows } = await env.DB.prepare(

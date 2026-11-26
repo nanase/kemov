@@ -161,3 +161,50 @@ describe('deletePerson', () => {
     expect(stored).not.toBeNull();
   });
 });
+
+// #291: `error` is the sentence the screen shows; `detail` is the English it
+// marks the field by.
+describe('what a refused save says', () => {
+  test.each([
+    [{ name: '' }, '名前を書いてください', 'name must be a non-empty string'],
+    [
+      { link: 'ftp://example.com' },
+      'リンクの形式が正しくありません',
+      'link must start with one of wiki:, wikien:, https://, or be null',
+    ],
+    [{ memo: 3 }, '保存に失敗しました', 'memo must be a string or null'],
+  ])('%j', async (overrides, error, detail) => {
+    const response = await createPerson(env, { name: 'a', link: null, memo: null, ...overrides });
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ error, detail });
+  });
+
+  test('says the person is gone', async () => {
+    expect(await (await getPerson(env, 999)).json()).toEqual({
+      error: 'この人が見つかりません',
+      detail: 'no person 999',
+    });
+  });
+
+  test('says a tune still credits the person', async () => {
+    const personId = await createValidPerson();
+
+    const tune = await env.DB.prepare(`INSERT INTO genet_tune (title) VALUES ('曲')`).run();
+    const tuneId = tune.meta.last_row_id;
+
+    await env.DB.prepare(`INSERT INTO genet_tune_attribute (tune_id, position, name) VALUES (?1, 1, '作曲')`)
+      .bind(tuneId)
+      .run();
+    await env.DB.prepare(
+      `INSERT INTO genet_tune_attribute_person (tune_id, attribute_position, position, person_id) VALUES (?1, 1, 1, ?2)`,
+    )
+      .bind(tuneId, personId)
+      .run();
+
+    expect(await (await deletePerson(env, personId)).json()).toEqual({
+      error: 'この人をクレジットしている曲があるため削除できませんでした',
+      detail: 'this person is credited on a tune; remove them there first',
+    });
+  });
+});

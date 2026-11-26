@@ -1,7 +1,8 @@
 import { queryInChunks } from '../lib/d1';
 import { readEditableBody } from '../lib/editable-body';
 import type { Env } from '../lib/env';
-import { errorResponse, jsonResponse } from '../lib/json';
+import { jsonResponse } from '../lib/json';
+import { malformed, refusal, refuse, type Refusal } from '../lib/refusal';
 
 /**
  * Reading, saving and deleting `genet_person` (#141, #139): one composer,
@@ -59,13 +60,18 @@ export async function readPeople(env: Env, personIds: readonly number[]): Promis
   return new Map(rows.map((row) => [row.person_id, row]));
 }
 
+/** The 404 for a person who is not there - gone, or never was. */
+export function noPersonResponse(personId: number | string): Response {
+  return refuse(404, refusal('この人が見つかりません', `no person ${personId}`));
+}
+
 /** GET /admin/api/genet/people/:personId. 404 when there is no such person. */
 export async function getPerson(env: Env, personId: number): Promise<Response> {
   const row = await env.DB.prepare('SELECT person_id, name, link, memo FROM genet_person WHERE person_id = ?1')
     .bind(personId)
     .first<PersonRow>();
 
-  if (row === null) return errorResponse(404, `no person ${personId}`);
+  if (row === null) return noPersonResponse(personId);
 
   return jsonResponse({ person: present(row) });
 }
@@ -87,16 +93,21 @@ const EDITABLE_PERSON_KEYS = ['name', 'link', 'memo'] as const;
 type EditablePersonKey = (typeof EDITABLE_PERSON_KEYS)[number];
 
 /** The schema's own CHECKs on `genet_person`, mirrored here for a 400 with a reason instead of a raw constraint error. */
-function personFieldProblem(key: EditablePersonKey, value: unknown): string | null {
+function personFieldProblem(key: EditablePersonKey, value: unknown): Refusal | null {
   switch (key) {
     case 'name':
-      return typeof value === 'string' && value !== '' ? null : 'name must be a non-empty string';
+      return typeof value === 'string' && value !== ''
+        ? null
+        : refusal('名前を書いてください', 'name must be a non-empty string');
     case 'link':
       return value === null || (typeof value === 'string' && LINK_PREFIXES.some((prefix) => value.startsWith(prefix)))
         ? null
-        : `link must start with one of ${LINK_PREFIXES.join(', ')}, or be null`;
+        : refusal(
+            'リンクの形式が正しくありません',
+            `link must start with one of ${LINK_PREFIXES.join(', ')}, or be null`,
+          );
     case 'memo':
-      return value === null || typeof value === 'string' ? null : 'memo must be a string or null';
+      return value === null || typeof value === 'string' ? null : malformed('memo must be a string or null');
   }
 }
 
@@ -129,7 +140,7 @@ export async function createPerson(env: Env, body: Record<string, unknown>): Pro
 export async function updatePerson(env: Env, personId: number, body: Record<string, unknown>): Promise<Response> {
   const existing = await env.DB.prepare('SELECT 1 FROM genet_person WHERE person_id = ?1').bind(personId).first();
 
-  if (existing === null) return errorResponse(404, `no person ${personId}`);
+  if (existing === null) return noPersonResponse(personId);
 
   const fields = validatedPersonFields(body);
 
@@ -151,13 +162,21 @@ export async function updatePerson(env: Env, personId: number, body: Record<stri
 export async function deletePerson(env: Env, personId: number): Promise<Response> {
   const existing = await env.DB.prepare('SELECT 1 FROM genet_person WHERE person_id = ?1').bind(personId).first();
 
-  if (existing === null) return errorResponse(404, `no person ${personId}`);
+  if (existing === null) return noPersonResponse(personId);
 
   const referenced = await env.DB.prepare('SELECT 1 FROM genet_tune_attribute_person WHERE person_id = ?1')
     .bind(personId)
     .first();
 
-  if (referenced !== null) return errorResponse(409, 'this person is credited on a tune; remove them there first');
+  if (referenced !== null) {
+    return refuse(
+      409,
+      refusal(
+        'この人をクレジットしている曲があるため削除できませんでした',
+        'this person is credited on a tune; remove them there first',
+      ),
+    );
+  }
 
   await env.DB.prepare('DELETE FROM genet_person WHERE person_id = ?1').bind(personId).run();
 

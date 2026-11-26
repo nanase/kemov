@@ -2,6 +2,7 @@ import { env } from 'cloudflare:test';
 
 import { createEvent, deleteEvent, getEvent, listEvents, readEvents, updateEvent } from '../src/admin/footprints';
 import { clearEverything } from './reset-db';
+import { SAVE_FAILED } from '../src/lib/refusal';
 
 beforeEach(clearEverything);
 
@@ -132,7 +133,7 @@ describe('createEvent', () => {
     const response = await createEvent(env, validBody({ [key]: value }));
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ error: `${key} must be a string or null` });
+    expect(await response.json()).toEqual({ error: SAVE_FAILED, detail: `${key} must be a string or null` });
     expect((await listEvents(env, null, null).then((r) => r.json())) as { events: unknown[] }).toEqual({ events: [] });
   });
 
@@ -169,7 +170,10 @@ describe('createEvent', () => {
     const response = await createEvent(env, validBody({ channelIds: ['UCnope'] }));
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ error: 'unknown channelIds: UCnope' });
+    expect(await response.json()).toEqual({
+      error: '関わったメンバーに一覧にないメンバーが含まれています',
+      detail: 'unknown channelIds: UCnope',
+    });
   });
 
   // channel's own D1 IN (...) query would otherwise be bound with more than
@@ -220,7 +224,10 @@ describe('createEvent', () => {
     const response = await createEvent(env, validBody({ channelIds: ['UCaaa'], leadChannelIds: ['UCbbb'] }));
 
     expect(response.status).toEqual(400);
-    expect(await response.json()).toEqual({ error: 'every leadChannelIds entry must also be in channelIds' });
+    expect(await response.json()).toEqual({
+      error: '主役は関わったメンバーから選んでください',
+      detail: 'every leadChannelIds entry must also be in channelIds',
+    });
   });
 
   test('refuses leadChannelIds that is not an array of strings', async () => {
@@ -479,4 +486,42 @@ describe('readEvents', () => {
 
     expect(body.events).toHaveLength(count);
   }, 20000);
+});
+
+// #291: `error` is the sentence the screen shows; `detail` is the English it
+// marks the field by.
+describe('what a refused save says', () => {
+  test.each([
+    [{ startDate: '2025-02-30' }, '日付の形式が正しくありません', 'startDate must be YYYY-MM-DD'],
+    [{ datePrecision: 'month', startDate: '2025-02-01' }, '日付の形式が正しくありません', 'startDate must be YYYY-MM'],
+    [
+      { datePrecision: 'month', startDate: '2025-01', startsAt: '2025-01-01T03:00:00Z' },
+      '開始の時刻がある出来事は日付の細かさを「月まで」にできません',
+      'startsAt requires datePrecision to be day',
+    ],
+    [
+      { startsAt: '2025-01-01T16:00:00Z' },
+      '日付が開始の時刻と合っていません',
+      'startsAt is not on startDate in Japan time',
+    ],
+    [{ endDate: '2024-12-31' }, '日付が終わりの日より後になっています', 'endDate is before startDate'],
+    [
+      { sources: [{ url: 'http://example.com', title: null }] },
+      '出典の URL が https:// で始まっていません',
+      'every source url must start with https://',
+    ],
+    [{ kind: 'party' }, SAVE_FAILED, expect.stringMatching(/^kind must be one of /)],
+  ])('%j', async (overrides, error, detail) => {
+    const response = await createEvent(env, validBody(overrides));
+
+    expect(response.status).toEqual(400);
+    expect(await response.json()).toEqual({ error, detail });
+  });
+
+  test('says the event is gone', async () => {
+    expect(await (await getEvent(env, 999)).json()).toEqual({
+      error: 'この出来事が見つかりません',
+      detail: 'no footprints event 999',
+    });
+  });
 });
