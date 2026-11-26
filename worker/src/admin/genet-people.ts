@@ -62,7 +62,7 @@ export async function readPeople(env: Env, personIds: readonly number[]): Promis
 
 /** The 404 for a person who is not there - gone, or never was. */
 export function noPersonResponse(personId: number | string): Response {
-  return refuse(404, refusal('この人が見つかりません', `no person ${personId}`));
+  return refuse(404, refusal('この人物が見つかりません', `no person ${personId}`));
 }
 
 /** GET /admin/api/genet/people/:personId. 404 when there is no such person. */

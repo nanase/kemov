@@ -182,7 +182,7 @@ describe('what a refused save says', () => {
 
   test('says the person is gone', async () => {
     expect(await (await getPerson(env, 999)).json()).toEqual({
-      error: 'この人が見つかりません',
+      error: 'この人物が見つかりません',
       detail: 'no person 999',
     });
   });
