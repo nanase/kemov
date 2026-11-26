@@ -5,10 +5,10 @@ import { EDITING_TEXT } from '../lib/editing';
 
 /**
  * 削除 in the two steps #277's 6-11 decided: 「削除」 turns into
- * 「削除する」 and 「やめる」, and only 「削除する」 emits `remove`. It goes back
+ * 「削除を確定」 and 「キャンセル」, and only 「削除を確定」 emits `remove`. It goes back
  * to the first step once pressed, so a refused delete does not leave the
  * second one waiting, and whenever it is disabled, so a 保存 pressed meanwhile
- * does not leave 「削除する」 one click away once it is done.
+ * does not leave 「削除を確定」 one click away once it is done.
  */
 const props = defineProps<{ disabled?: boolean }>();
 

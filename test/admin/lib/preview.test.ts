@@ -12,10 +12,10 @@ describe('forgetPublicData', () => {
 
 describe('unreadableField', () => {
   test('names a field the way the edit panel does', () => {
-    expect(unreadableField('start_date')).toBe('「日付」が、公開ページで読めない形です');
+    expect(unreadableField('start_date')).toBe('「日付」の形式が正しくありません');
   });
 
   test('a field with no name of its own is named as it is', () => {
-    expect(unreadableField('something')).toBe('「something」が、公開ページで読めない形です');
+    expect(unreadableField('something')).toBe('「something」の形式が正しくありません');
   });
 });

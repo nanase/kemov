@@ -46,7 +46,6 @@ import {
 import {
   attrNameOptions,
   emptyFormFields as emptyTuneFields,
-  latestPerKey,
   learnName,
   toFormFields as toTuneFormFields,
   type Attribute,
@@ -144,7 +143,7 @@ const statusFilter = ref('all');
 const q = ref('');
 const selectedVideoId = ref<string | null>(null);
 const detail = ref(false);
-// ＋ 足す: the editor holds a new stream, not yet created (#277's 6-4).
+// ＋ 追加: the editor holds a new stream, not yet created (#277's 6-4).
 const adding = ref(false);
 const newVideoId = ref('');
 
@@ -380,7 +379,7 @@ function selectStream(videoId: string): void {
   detail.value = true;
 }
 
-/** ＋ 足す: the editor holds a blank stream, created only when it is saved. */
+/** ＋ 追加: the editor holds a blank stream, created only when it is saved. */
 function startAdding(): void {
   if (locked.value) return;
   // A new stream being typed is unsaved too, and starting again would clear it.
@@ -396,7 +395,7 @@ function startAdding(): void {
   detail.value = true;
 }
 
-/** A new stream's やめる. */
+/** A new stream's キャンセル. */
 function stopAdding(): void {
   if (!confirmDiscard()) return;
 
@@ -535,7 +534,6 @@ async function act(action: PublishAction): Promise<void> {
       void refreshSidebarDrafts();
       showToast(answer.toast);
       await reloadSaved(videoId);
-      void refreshTuneLive();
 
       return;
     }
@@ -546,7 +544,6 @@ async function act(action: PublishAction): Promise<void> {
     if (answer.changed) {
       void refreshSidebarDrafts();
       await reloadSaved(videoId);
-      void refreshTuneLive();
     }
   } finally {
     sending.value = false;
@@ -617,7 +614,7 @@ async function create(): Promise<void> {
       showToast(SAVE_TOAST.saveDraft);
     } else {
       detail.value = false;
-      showToast(`${SAVE_TOAST.saveDraft}（いまの絞り込みには出ません）`);
+      showToast(`${SAVE_TOAST.saveDraft}（現在の絞り込みでは非表示）`);
     }
   } finally {
     sending.value = false;
@@ -662,7 +659,7 @@ async function remove(): Promise<void> {
 }
 
 function addChip(list: string[], label: string): void {
-  const value = window.prompt(`${label}を書いてください`);
+  const value = window.prompt(`${label}を入力してください`);
 
   if (value === null || value.trim() === '') return;
 
@@ -683,7 +680,7 @@ const tuneSavedByIndex = shallowRef<Map<number, TuneFormFields>>(new Map());
 const latestTuneRead = new Map<number, number>();
 let tuneReadCount = 0;
 /** The open tune's band when it could not be read: the words the list uses when it cannot be. */
-const TUNE_READ_FAILED = '読み込めません';
+const TUNE_READ_FAILED = '読み込みに失敗しました';
 
 function rememberSavedTune(index: number, tune: GenetTune): void {
   tuneFieldsByIndex.value.set(index, toTuneFormFields(tune));
@@ -737,28 +734,6 @@ function stillAt(index: number, videoId: string, tuneId: number): boolean {
 const tuneSaving = ref(false);
 const tuneBand = ref<PublishBand | null>(null);
 const tuneInvalid = ref<readonly TuneFieldError[]>([]);
-/**
- * Whether a published stream performs each tune read, by tune id: its 保存
- * then reaches the public JSON (#284's 6-5), and the panel says so beside the
- * button. A tune's own, not a performance's, so it needs no moving when the
- * performances do.
- */
-const tuneLive = ref<Map<number, boolean>>(new Map());
-// Several requests can ask about one tune at once; only the latest one's answer is kept.
-const tuneLiveRequests = latestPerKey<number>();
-
-/**
- * Starts a request that answers whether a published stream performs
- * `tuneId`: the returned function records its answer, unless a request
- * started later has asked about the same tune since.
- */
-function askTuneLive(tuneId: number): (live: boolean) => void {
-  const isLatest = tuneLiveRequests.start(tuneId);
-
-  return (live) => {
-    if (isLatest()) tuneLive.value = new Map(tuneLive.value).set(tuneId, live);
-  };
-}
 const tuneQuery = ref('');
 const tuneSearchResults = ref<{ tuneId: number; title: string }[]>([]);
 const tuneSearchError = ref<string | null>(null);
@@ -810,26 +785,6 @@ function savedAnyway(error: unknown): boolean {
   return typeof body === 'object' && body !== null && 'saved' in body && body.saved === true;
 }
 
-/**
- * Reads again whether a published stream performs each open tune, keeping
- * what is typed into them: a stream's 「公開」, 「保存」 or 「非公開に戻す」 can
- * change it. A read that fails keeps the last answer.
- */
-async function refreshTuneLive(): Promise<void> {
-  const tuneIds = new Set(
-    [...tuneFieldsByIndex.value.keys()].flatMap((i) => streamFields.value.performances[i]?.tuneId ?? []),
-  );
-
-  await Promise.all(
-    [...tuneIds].map(async (tuneId) => {
-      const record = askTuneLive(tuneId);
-      const body = await getJson<TuneAnswer>(`/genet/tunes/${tuneId}`).catch(() => null);
-
-      if (body !== null) record(body.live === true);
-    }),
-  );
-}
-
 async function readTune(index: number): Promise<void> {
   const performance = streamFields.value.performances[index];
 
@@ -840,13 +795,8 @@ async function readTune(index: number): Promise<void> {
 
   latestTuneRead.set(index, read);
 
-  const recordLive = askTuneLive(performance.tuneId);
-
   try {
     const body = await getJson<TuneAnswer>(`/genet/tunes/${performance.tuneId}`);
-
-    // About the tune, wherever it is performed now: kept even when the fields go nowhere.
-    recordLive(body.live === true);
 
     // A newer read for the same index, or performances that moved since,
     // which sent a read of their own if one was needed.
@@ -904,7 +854,6 @@ async function saveTune(index: number): Promise<void> {
 
   const videoId = currentVideoId.value;
   const sent = structuredClone(toRaw(fields));
-  const recordLive = askTuneLive(performance.tuneId);
   let answered: TuneAnswer | null = null;
   let error: unknown = null;
 
@@ -929,9 +878,6 @@ async function saveTune(index: number): Promise<void> {
       void refreshSidebarDrafts();
       void loadPending();
     }
-
-    // About the tune, wherever it is performed now.
-    recordLive(live);
 
     if (answered !== null && stillAt(index, videoId, performance.tuneId)) rememberSavedTune(index, answered.tune);
 
@@ -1060,7 +1006,7 @@ function firstAvailablePerson(): GenetPerson | null {
 
   if (person !== undefined) return person;
 
-  showToast('人がいません。先に「＋ 新しい人物を登録」で登録してください');
+  showToast('人物が登録されていません');
 
   return null;
 }
@@ -1089,7 +1035,7 @@ function addAttributePerson(attr: Attribute): void {
 
 function onAttributeNameChange(attr: Attribute, value: string): void {
   if (value === 'その他…') {
-    const name = window.prompt('項目の名前を書いてください');
+    const name = window.prompt('項目名を入力してください');
 
     if (name === null || name.trim() === '') return;
 
@@ -1103,7 +1049,7 @@ function onAttributeNameChange(attr: Attribute, value: string): void {
 }
 
 async function addNewPerson(): Promise<void> {
-  const name = window.prompt('新しく登録する人の名前を書いてください');
+  const name = window.prompt('新しい人物の名前を入力してください');
 
   if (name === null || name.trim() === '') return;
 
@@ -1115,7 +1061,7 @@ async function addNewPerson(): Promise<void> {
     });
 
     people.value.push(body.person);
-    showToast('人を登録しました');
+    showToast('人物を登録しました');
   } catch (error) {
     showToast(error instanceof AdminApiError ? error.message : String(error));
   }
@@ -1235,7 +1181,7 @@ useCrumbDetail(() =>
         <HelpLink section="common" />
         <span class="grow"></span>
         <span class="sub num">{{ countText(streams.length, listTotal.total.value, filtered) }}</span>
-        <button class="btn" type="button" @click="startAdding">＋ 足す</button>
+        <button class="btn" type="button" @click="startAdding">＋ 追加</button>
       </div>
       <div class="setlist-filter">
         <input
@@ -1245,7 +1191,7 @@ useCrumbDetail(() =>
           :aria-label="BULK_TEXT.selectAll"
           @change="ticked = toggleAll(ticked, streams, keyOf)"
         />
-        <div class="seg" role="group" aria-label="状態で絞る">
+        <div class="seg" role="group" aria-label="状態で絞り込み">
           <button
             v-for="opt in STATUS_OPTIONS"
             :key="opt.value"
@@ -1260,15 +1206,15 @@ useCrumbDetail(() =>
           :value="q"
           type="text"
           class="btn"
-          placeholder="題で絞り込み"
-          aria-label="題で絞り込み"
+          placeholder="タイトルで絞り込み"
+          aria-label="タイトルで絞り込み"
           @input="setQuery"
         />
       </div>
       <div class="setlist-items">
         <RepublishBand target="genet" :text="bandText" :held="pendingHeld" :reload="reloadPending" />
         <div v-if="loadError" class="empty-note">
-          <b>読み込めません</b>
+          <b>読み込みに失敗しました</b>
           <div class="sub">{{ loadError }}</div>
           <button class="btn quiet" type="button" :disabled="loading" @click="confirmDiscard() && load()">
             再読み込み
@@ -1352,7 +1298,6 @@ useCrumbDetail(() =>
           <div v-if="selectedChanged" class="editor-notice">
             <div class="panel flag">
               <h4>{{ PUBLISH_TEXT.changedTitle }}</h4>
-              <div class="hint">{{ PUBLISH_TEXT.changedBody }}</div>
             </div>
           </div>
 
@@ -1386,7 +1331,7 @@ useCrumbDetail(() =>
                 id="f-short"
                 type="text"
                 :value="streamFields.shortTitle ?? ''"
-                placeholder="省くと上のタイトルを使います"
+                placeholder="省略時はタイトル"
                 :aria-invalid="invalid('shortTitle')"
                 @input="streamFields.shortTitle = ($event.target as HTMLInputElement).value || null"
               />
@@ -1398,7 +1343,7 @@ useCrumbDetail(() =>
                   >{{ c
                   }}<button
                     type="button"
-                    :aria-label="`${c} を外す`"
+                    :aria-label="`${c} を削除`"
                     @click="streamFields.categories = withoutItem(streamFields.categories, i)"
                   >
                     &times;
@@ -1414,7 +1359,7 @@ useCrumbDetail(() =>
                   >{{ k
                   }}<button
                     type="button"
-                    :aria-label="`${k} を外す`"
+                    :aria-label="`${k} を削除`"
                     @click="streamFields.keywords = withoutItem(streamFields.keywords, i)"
                   >
                     &times;
@@ -1459,7 +1404,7 @@ useCrumbDetail(() =>
               </div>
             </div>
             <div class="field">
-              <label for="f-memo">メモ（公開されません）</label>
+              <label for="f-memo">メモ（非公開）</label>
               <textarea
                 id="f-memo"
                 :value="streamFields.memo ?? ''"
@@ -1503,7 +1448,7 @@ useCrumbDetail(() =>
 
                 <div class="md">
                   <div class="md-bar">
-                    <span class="lab">演奏のしかたと時刻</span>
+                    <span class="lab">演奏方法と時刻</span>
                     <button class="md-ins" type="button" @click="openPicker('wiki', $event)">Wikipedia</button>
                     <button class="md-ins" type="button" @click="openPicker('wikien', $event)">英語版</button>
                     <button class="md-ins" type="button" @click="openPicker('yt', $event)">配信の時刻</button>
@@ -1523,7 +1468,7 @@ useCrumbDetail(() =>
                 <div class="md">
                   <div class="md-bar">
                     <span class="lab">場面</span
-                    ><button class="md-ins" type="button" @click="addScene(pi)">＋ 足す</button>
+                    ><button class="md-ins" type="button" @click="addScene(pi)">＋ 追加</button>
                   </div>
                   <div class="rows">
                     <span v-if="perf.scenes.length === 0" class="sub">なし</span>
@@ -1543,7 +1488,7 @@ useCrumbDetail(() =>
                               : Number(($event.target as HTMLInputElement).value)
                         "
                       />
-                      <button class="row-del" type="button" aria-label="場面を消す" @click="perf.scenes.splice(si, 1)">
+                      <button class="row-del" type="button" aria-label="場面を削除" @click="perf.scenes.splice(si, 1)">
                         &times;
                       </button>
                     </div>
@@ -1596,7 +1541,7 @@ useCrumbDetail(() =>
                     <div class="md-bar">
                       <span class="lab">小曲</span
                       ><button class="md-ins" type="button" @click="addSubtune(tuneFieldsByIndex.get(pi)!)">
-                        ＋ 足す
+                        ＋ 追加
                       </button>
                     </div>
                     <div class="rows">
@@ -1606,7 +1551,7 @@ useCrumbDetail(() =>
                         <button
                           class="row-del"
                           type="button"
-                          aria-label="小曲を消す"
+                          aria-label="小曲を削除"
                           @click="tuneFieldsByIndex.get(pi)!.subtunes.splice(si, 1)"
                         >
                           &times;
@@ -1619,7 +1564,7 @@ useCrumbDetail(() =>
                     <div class="md-bar">
                       <span class="lab">作曲・作詞など</span
                       ><button class="md-ins" type="button" @click="addAttribute(tuneFieldsByIndex.get(pi)!)">
-                        ＋ 足す
+                        ＋ 追加
                       </button>
                     </div>
                     <div class="rows">
@@ -1645,7 +1590,7 @@ useCrumbDetail(() =>
                           <button
                             class="row-del"
                             type="button"
-                            aria-label="項目を消す"
+                            aria-label="項目を削除"
                             @click="tuneFieldsByIndex.get(pi)!.attributes.splice(ai, 1)"
                           >
                             &times;
@@ -1656,11 +1601,11 @@ useCrumbDetail(() =>
                             class="toggle"
                             type="button"
                             :aria-pressed="attributeMode(attr) === 'people'"
-                            aria-label="人物を選んで書く"
+                            aria-label="人物から選択"
                             @click="toggleAttributeMode(attr)"
                           ></button>
                           <span class="sub">{{
-                            attributeMode(attr) === 'people' ? '人物を選んで書く' : '文章で書く'
+                            attributeMode(attr) === 'people' ? '人物から選択' : 'テキストで入力'
                           }}</span>
                         </div>
                         <input
@@ -1672,9 +1617,9 @@ useCrumbDetail(() =>
                         />
                         <template v-else>
                           <div v-if="peopleLoadError" class="panel flag">
-                            <h4>人の一覧を取得できません</h4>
+                            <h4>人物の一覧の読み込みに失敗しました</h4>
                             <div class="hint">{{ peopleLoadError }}</div>
-                            <button class="btn" type="button" @click="loadPeople">読み直す</button>
+                            <button class="btn" type="button" @click="loadPeople">再読み込み</button>
                           </div>
                           <div v-for="(person, pj) in attr.people" :key="pj" class="row-item two">
                             <select v-model="person.personId" aria-label="人">
@@ -1683,14 +1628,14 @@ useCrumbDetail(() =>
                             <input
                               type="text"
                               :value="person.creditedAs ?? ''"
-                              placeholder="表示名（省くと人の名前）"
+                              placeholder="表示名（省略時は人物名）"
                               aria-label="表示名"
                               @input="person.creditedAs = ($event.target as HTMLInputElement).value || null"
                             />
                             <button
                               class="row-del"
                               type="button"
-                              aria-label="人を消す"
+                              aria-label="人物を削除"
                               @click="attr.people.splice(pj, 1)"
                             >
                               &times;
@@ -1698,7 +1643,9 @@ useCrumbDetail(() =>
                             <span class="sub num full">person_id {{ person.personId }}</span>
                           </div>
                           <div class="row-actions">
-                            <button class="md-ins" type="button" @click="addAttributePerson(attr)">＋ 人を足す</button>
+                            <button class="md-ins" type="button" @click="addAttributePerson(attr)">
+                              ＋ 人物を追加
+                            </button>
                             <button class="md-ins" type="button" @click="addNewPerson">＋ 新しい人物を登録</button>
                           </div>
                         </template>
@@ -1708,9 +1655,9 @@ useCrumbDetail(() =>
 
                   <div class="md">
                     <div class="md-bar">
-                      <span class="lab">参考の動画</span
+                      <span class="lab">参考動画</span
                       ><button class="md-ins" type="button" @click="addVideo(tuneFieldsByIndex.get(pi)!)">
-                        ＋ 足す
+                        ＋ 追加
                       </button>
                     </div>
                     <div class="rows">
@@ -1721,7 +1668,7 @@ useCrumbDetail(() =>
                         <button
                           class="row-del"
                           type="button"
-                          aria-label="動画を消す"
+                          aria-label="動画を削除"
                           @click="tuneFieldsByIndex.get(pi)!.videos.splice(vi, 1)"
                         >
                           &times;
@@ -1732,9 +1679,9 @@ useCrumbDetail(() =>
 
                   <div class="md">
                     <div class="md-bar">
-                      <span class="lab">外部の資料</span
+                      <span class="lab">外部資料</span
                       ><button class="md-ins" type="button" @click="addScore(tuneFieldsByIndex.get(pi)!)">
-                        ＋ 足す
+                        ＋ 追加
                       </button>
                     </div>
                     <div class="rows">
@@ -1745,7 +1692,7 @@ useCrumbDetail(() =>
                         <button
                           class="row-del"
                           type="button"
-                          aria-label="資料を消す"
+                          aria-label="資料を削除"
                           @click="tuneFieldsByIndex.get(pi)!.scores.splice(si, 1)"
                         >
                           &times;
@@ -1758,18 +1705,15 @@ useCrumbDetail(() =>
                     <button class="btn primary" type="button" :disabled="busy" @click="saveTune(pi)">
                       この曲を保存
                     </button>
-                    <span v-if="tuneLive.get(perf.tuneId)" class="hint">{{ FOOT_TEXT.liveNote }}</span>
                     <span class="grow"></span>
-                    <button class="btn danger" type="button" @click="removePerformance(pi)">
-                      この配信からこの曲を外す
-                    </button>
+                    <button class="btn danger" type="button" @click="removePerformance(pi)">この配信から除外</button>
                   </div>
                 </template>
               </div>
             </div>
 
             <div class="field">
-              <label for="f-tune-q">曲を探す、または曲名を書いて新しく作る</label>
+              <label for="f-tune-q">曲の検索・新規作成</label>
               <input
                 id="f-tune-q"
                 v-model="tuneQuery"
@@ -1780,9 +1724,9 @@ useCrumbDetail(() =>
               />
             </div>
             <div v-if="tuneSearchError" class="panel flag">
-              <h4>曲を探せません</h4>
+              <h4>曲の検索に失敗しました</h4>
               <div class="hint">{{ tuneSearchError }}</div>
-              <button class="btn" type="button" @click="searchTunes">読み直す</button>
+              <button class="btn" type="button" @click="searchTunes">再読み込み</button>
             </div>
             <div v-else-if="tuneSearchResults.length > 0" class="rows">
               <button
@@ -1796,7 +1740,7 @@ useCrumbDetail(() =>
               </button>
             </div>
             <div v-else-if="tuneQuery.trim() !== ''">
-              <button class="btn" type="button" @click="addNewTune">「{{ tuneQuery }}」という曲名で新しく作る</button>
+              <button class="btn" type="button" @click="addNewTune">「{{ tuneQuery }}」を新規作成</button>
             </div>
           </div>
         </div>
@@ -1810,16 +1754,16 @@ useCrumbDetail(() =>
             :people="people"
           />
           <p v-else-if="openIndex !== null" class="preview-label">
-            {{ tuneBand ? '曲を読み込めないので、描けません' : '曲を読み込んでいます' }}
+            {{ tuneBand ? '曲の読み込みに失敗しました' : '読み込み中…' }}
           </p>
-          <p v-else class="preview-label">曲を開くと、公開ページの「楽曲」の欄をここに描きます</p>
+          <p v-else class="preview-label">曲が選択されていません</p>
         </PreviewPane>
       </div>
 
       <div v-if="adding" class="inspector-foot">
         <button class="btn primary" type="button" :disabled="footBusy" @click="create">{{ FOOT_TEXT.save }}</button>
         <span class="grow"></span>
-        <button class="btn quiet" type="button" :disabled="busy" @click="stopAdding">やめる</button>
+        <button class="btn quiet" type="button" :disabled="busy" @click="stopAdding">キャンセル</button>
       </div>
       <div v-else class="inspector-foot">
         <button
@@ -1833,7 +1777,6 @@ useCrumbDetail(() =>
         >
           {{ button.label }}
         </button>
-        <span v-if="foot.note" class="hint">{{ foot.note }}</span>
         <button class="btn back quiet" type="button" @click="back">← 一覧</button>
         <span class="grow"></span>
         <span class="foot-sep" aria-hidden="true"></span>
@@ -1849,7 +1792,7 @@ useCrumbDetail(() =>
       <div class="picker-body">
         <template v-if="picker.kind === 'yt'">
           <div class="field">
-            <label for="p-play">演奏のしかた</label>
+            <label for="p-play">演奏方法</label>
             <select id="p-play" v-model="picker.playLabel">
               <option v-for="l in PLAY_LABELS" :key="l">{{ l }}</option>
             </select>
@@ -1861,7 +1804,7 @@ useCrumbDetail(() =>
         </template>
         <template v-else>
           <div class="field">
-            <label for="p-label">画面に出す文字</label>
+            <label for="p-label">表示テキスト</label>
             <input id="p-label" v-model="picker.label" type="text" />
           </div>
           <div class="field">
@@ -1881,7 +1824,7 @@ useCrumbDetail(() =>
       </div>
       <div class="picker-foot">
         <button class="btn primary" type="button" @click="confirmPicker">挿入</button>
-        <button class="btn quiet" type="button" @click="closePicker">やめる</button>
+        <button class="btn quiet" type="button" @click="closePicker">キャンセル</button>
       </div>
     </div>
   </div>

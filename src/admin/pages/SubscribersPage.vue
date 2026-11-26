@@ -285,7 +285,7 @@ async function created(milestoneId: number): Promise<void> {
   } else {
     selectedId.value = milestones.value[0]?.milestoneId ?? null;
     detail.value = false;
-    showToast(`${SAVE_TOAST.saveDraft}（いまの絞り込みには出ません）`);
+    showToast(`${SAVE_TOAST.saveDraft}（現在の絞り込みでは非表示）`);
   }
 }
 
@@ -371,7 +371,7 @@ onMounted(() => {
           <option value="all">すべてのメンバー</option>
           <option v-for="m in members" :key="m.channelId" :value="m.channelId">{{ m.name }}</option>
         </select>
-        <div class="seg" role="group" aria-label="状態で絞る">
+        <div class="seg" role="group" aria-label="状態で絞り込み">
           <button
             v-for="opt in STATUS_OPTIONS"
             :key="opt.value"
@@ -385,12 +385,12 @@ onMounted(() => {
         </div>
         <span class="grow"></span>
         <span class="sub num">{{ countText(milestones.length, listTotal.total.value, filtered) }}</span>
-        <button class="btn" type="button" :disabled="members.length === 0" @click="startAdding">＋ 足す</button>
+        <button class="btn" type="button" :disabled="members.length === 0" @click="startAdding">＋ 追加</button>
       </div>
       <div class="scroller">
         <RepublishBand target="milestones" :text="bandText" :held="pendingHeld" :reload="reloadPending" />
         <div v-if="loadError" class="empty-note">
-          <b>読み込めません</b>
+          <b>読み込みに失敗しました</b>
           <div class="sub">{{ loadError }}</div>
           <button
             class="btn quiet"
@@ -414,12 +414,12 @@ onMounted(() => {
                 />
               </th>
               <th>状態</th>
-              <th>達成の日</th>
+              <th>達成日</th>
               <th>メンバー</th>
-              <th>人数</th>
-              <th>誰の公表か</th>
+              <th>登録者数</th>
+              <th>公表者</th>
               <th>出典</th>
-              <th>つないだ出来事</th>
+              <th>関連する出来事</th>
               <th>milestone_id</th>
             </tr>
           </thead>

@@ -75,9 +75,9 @@ async function act(task: CollectTask, action: 'retry' | 'ack' | 'unavailable', d
   }
 }
 
-const retry = (task: CollectTask) => act(task, 'retry', 'いま取り直します');
+const retry = (task: CollectTask) => act(task, 'retry', '再取得を予約しました');
 const ack = (task: CollectTask) => act(task, 'ack', '確認済みにしました');
-const markUnavailable = (task: CollectTask) => act(task, 'unavailable', '動画が消えているとして決着しました');
+const markUnavailable = (task: CollectTask) => act(task, 'unavailable', '「削除・不明」として処理しました');
 
 onMounted(load);
 </script>
@@ -93,7 +93,7 @@ onMounted(load);
       </div>
       <div class="scroller">
         <div v-if="loadError" class="empty-note">
-          <b>読み込めません</b>
+          <b>読み込みに失敗しました</b>
           <div class="sub">{{ loadError }}</div>
           <button class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
         </div>
@@ -124,7 +124,7 @@ onMounted(load);
               <td>
                 <div class="stack">
                   <button class="btn quiet" type="button" :disabled="busyKeys.has(rowKey(task))" @click="retry(task)">
-                    いま取り直す
+                    再取得
                   </button>
                   <button class="btn quiet" type="button" :disabled="busyKeys.has(rowKey(task))" @click="ack(task)">
                     確認済みにする
@@ -136,7 +136,7 @@ onMounted(load);
                     :disabled="busyKeys.has(rowKey(task))"
                     @click="markUnavailable(task)"
                   >
-                    動画が消えている
+                    「削除・不明」として処理
                   </button>
                 </div>
               </td>

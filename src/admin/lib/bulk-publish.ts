@@ -207,12 +207,12 @@ export function outcomeSummary<T>(outcome: BulkPublishOutcome<T>): OutcomeSummar
 
 /** The words the owner chose for the bar under the list, its confirmation and the panel a run leaves (#285). */
 export const BULK_TEXT = {
-  selectAll: 'すべて選ぶ',
-  select: '選ぶ',
+  selectAll: 'すべて選択',
+  select: '選択',
   ticked: (count: number) => `${count} 件を選択中`,
   publish: 'まとめて公開',
   clear: '選択を解除',
-  progress: (done: number, total: number) => `公開しています… ${done} / ${total} 件`,
+  progress: (done: number, total: number) => `公開処理中… ${done} / ${total} 件`,
   confirmHead: (count: number) => `${count} 件を公開しますか`,
   confirm: '公開',
   cancel: 'キャンセル',
@@ -221,6 +221,6 @@ export const BULK_TEXT = {
   failed: (count: number) => `失敗 ${count} 件`,
   alreadyPublished: (count: number) => `公開済み ${count} 件`,
   untried: (count: number) => `未処理 ${count} 件`,
-  failedRows: '公開できなかった行',
+  failedRows: '公開に失敗した行',
   close: '閉じる',
 } as const;

@@ -69,9 +69,7 @@ watch(
 <template>
   <p v-if="!readout.ok" class="preview-problem">{{ unreadableField(readout.field) }}</p>
   <template v-else>
-    <p v-if="publishedFailed" class="preview-problem">
-      公開中の一覧を読めないので、演奏した回数はこの配信だけで数えています
-    </p>
+    <p v-if="publishedFailed" class="preview-problem">演奏回数はこの配信のみの集計</p>
     <div class="gm">
       <div class="panel">
         <div class="ph">

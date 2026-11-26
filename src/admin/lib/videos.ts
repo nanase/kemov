@@ -52,7 +52,7 @@ export function overridesNothing(fields: OverrideFormFields): boolean {
 export const TYPE_LABEL: Readonly<Record<string, string>> = { video: '動画', streaming: '配信', shorts: 'ショート' };
 export const AVAILABILITY_LABEL: Readonly<Record<string, string>> = {
   public: '公開',
-  membership: 'メン限',
+  membership: 'メンバー限定',
   private: '非公開',
   unavailable: '削除・不明',
 };

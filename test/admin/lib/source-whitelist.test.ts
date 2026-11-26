@@ -92,10 +92,10 @@ describe('the sidebar', () => {
 
 describe('savedToast', () => {
   test('says what was done when the timeline was brought up to date', () => {
-    expect(savedToast('足しました', true)).toEqual('足しました');
+    expect(savedToast('追加しました', true)).toEqual('追加しました');
   });
 
   test('says the timeline was not, when it could not be written', () => {
-    expect(savedToast('削除しました', false)).toEqual('本番の年表への反映に失敗しました。');
+    expect(savedToast('削除しました', false)).toEqual('本番の年表への反映に失敗しました');
   });
 });

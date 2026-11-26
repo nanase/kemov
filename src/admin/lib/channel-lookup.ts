@@ -57,7 +57,7 @@ const NOT_FOUND_CODE = 'channel_not_found';
 
 /**
  * What a failed call means. Only the worker's own "YouTube has no such
- * channel" answer is `notFound`, because that is what stops 一覧に足す. A 404
+ * channel" answer is `notFound`, because that is what stops 一覧に追加. A 404
  * without the code - a route the worker lacks, a gateway in front of it -
  * says nothing about the id, and so is `failed` like every other failure.
  */
@@ -77,7 +77,7 @@ export function lookupFound(body: ChannelLookupBody): ChannelLookup {
   return { status: 'found', channelId: body.channelId, title: body.title, iconDataUrl: body.iconDataUrl };
 }
 
-/** Whether 一覧に足す is refused. Only a channel YouTube does not know: a failed check says nothing, so adding stays possible. */
+/** Whether 一覧に追加 is refused. Only a channel YouTube does not know: a failed check says nothing, so adding stays possible. */
 export function blocksAdding(view: LookupView): boolean {
   return view === 'notFound';
 }
@@ -104,11 +104,8 @@ export function createRequestGate(): {
 }
 
 export const LOOKUP_TEXT = {
-  loading: 'チャンネルを確かめています…',
-  found: 'このチャンネルで合っているか確かめてください。',
+  loading: 'チャンネルを確認中…',
   notFoundHeading: 'チャンネルが見つかりません',
-  notFoundBody: 'channel_id を確かめてください。',
-  failedHeading: 'チャンネルを確かめられません',
-  failedBody: 'YouTube に問い合わせできませんでした。',
-  retry: 'もう一度確かめる',
+  failedHeading: 'チャンネルの確認に失敗しました',
+  retry: '再試行',
 } as const;

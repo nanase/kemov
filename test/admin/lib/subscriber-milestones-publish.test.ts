@@ -76,7 +76,7 @@ describe('milestonesAnswerFor', () => {
 
     expect(milestonesAnswerFor('publish', 'draft', error)).toEqual({
       kind: 'band',
-      band: { title: '公開できません', lines: [SOURCES_PROBLEM], note: '入力した内容は下書きとして保存しました。' },
+      band: { title: '公開できません', lines: [SOURCES_PROBLEM], note: '下書きとして保存しました' },
       fields: ['sources'],
       changed: true,
     });
@@ -87,7 +87,7 @@ describe('milestonesAnswerFor', () => {
     const error = new AdminApiError(502, { error: 'saved, but …', saved: true, milestone: { status: 'published' } });
 
     expect(milestonesAnswerFor('publish', 'draft', error)).toMatchObject({
-      band: { title: '保存しましたが、本番に出せませんでした。もう一度「保存」を押してください。' },
+      band: { title: '保存しましたが本番への反映に失敗しました' },
     });
   });
 
@@ -98,7 +98,7 @@ describe('milestonesAnswerFor', () => {
 
     expect(milestonesAnswerFor('save', 'published', error)).toEqual({
       kind: 'band',
-      band: { title: '保存できません', lines: [], note: '本番の登録者数の節目への反映に失敗しました。' },
+      band: { title: '保存できません', lines: [], note: '本番の登録者数の節目への反映に失敗しました' },
       fields: [],
       changed: true,
     });
@@ -109,7 +109,7 @@ describe('milestonesAnswerFor', () => {
 
     expect(milestonesAnswerFor('withdraw', 'published', error)).toEqual({
       kind: 'band',
-      band: { title: '非公開に戻せません', lines: [], note: '本番の登録者数の節目への反映に失敗しました。' },
+      band: { title: '非公開に戻せません', lines: [], note: '本番の登録者数の節目への反映に失敗しました' },
       fields: [],
       changed: true,
     });
@@ -125,10 +125,10 @@ describe('milestonesAnswerFor', () => {
   });
 
   test.each([
-    ['publish', 'draft', '公開しました。本番に出ています'],
-    ['save', 'published', '保存しました。本番に出ています'],
+    ['publish', 'draft', '公開しました'],
+    ['save', 'published', '保存して本番に反映しました'],
     ['save', 'draft', '下書きを保存しました'],
-    ['withdraw', 'published', '非公開に戻しました。本番から外れています'],
+    ['withdraw', 'published', '非公開に戻しました'],
   ] as const)('a %s that went through on a %s row says so in a toast', (action, status, toast) => {
     expect(milestonesAnswerFor(action, status, null)).toEqual({ kind: 'done', toast });
   });

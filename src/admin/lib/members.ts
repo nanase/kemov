@@ -89,23 +89,23 @@ export function blankNewMember(): NewMemberFields {
 
 /** The words this screen adds for adding, ordering and deleting (#211). */
 export const MEMBER_TEXT = {
-  moveUp: (name: string) => `${name}を上へ`,
-  moveDown: (name: string) => `${name}を下へ`,
+  moveUp: (name: string) => `${name}を上へ移動`,
+  moveDown: (name: string) => `${name}を下へ移動`,
   discard: '元に戻す',
-  addHeading: 'メンバーを足す',
-  addToList: '一覧に足す',
-  channelIdEmpty: 'channel_id を書いてください',
-  channelIdTaken: 'この channel_id はすでに一覧にあります',
+  addHeading: '新しいメンバー',
+  addToList: '一覧に追加',
+  channelIdEmpty: 'channel_id を入力してください',
+  channelIdTaken: 'この channel_id は既に存在します',
   removeAdded: '削除',
   remove: '削除',
-  removeConfirm: '削除する',
-  removeCancel: 'やめる',
+  removeConfirm: '削除を確定',
+  removeCancel: 'キャンセル',
   hasRecords: '記録があるため削除できません',
   removed: '削除しました',
-  listChanged: 'メンバー情報に変更がありました。再読み込みしてください',
-  pickColor: (label: string) => `${label} の色を選ぶ`,
+  listChanged: '別の画面で変更されたため保存できませんでした',
+  pickColor: (label: string) => `${label} の色を選択`,
   rowErrorLead: (name: string, channelId: string) =>
-    `足した行「${name || '名前なし'}」（${channelId}）に誤りがあります。`,
+    `追加した行「${name || '名前なし'}」（${channelId}）に誤りがあります`,
   openErrorRow: '該当の行を表示',
 } as const;
 
@@ -187,7 +187,7 @@ export function fieldForSaveError(detail: string): MemberFieldKey | null {
 
 /**
  * Whether showing a different member in the edit panel would throw away what
- * is typed in it: a 「メンバーを足す」 form that is not blank, or a saved
+ * is typed in it: a 「新しいメンバー」 form that is not blank, or a saved
  * member's fields that differ from the saved ones.
  *
  * Fields are compared with `sameFields`, so a nullable box typed in and erased

@@ -40,7 +40,7 @@ import {
   type NewMemberFields,
 } from '../lib/members';
 import { clearDraft, draft } from '../lib/members-draft';
-import { forgetPublicData, PREVIEW_NOTES, previewOpen } from '../lib/preview';
+import { forgetPublicData, previewOpen } from '../lib/preview';
 import { showToast } from '../lib/toast';
 import { EDITING_TEXT } from '../lib/editing';
 import { confirmDiscard, useUnsavedGuard } from '../lib/unsaved-guard';
@@ -61,7 +61,7 @@ const loadError = ref<string | null>(null);
 const selectedId = ref<string | null>(null);
 const detail = ref(false);
 
-/** The blank form 「＋ メンバーを足す」 opens; it joins the list only through 一覧に足す. */
+/** The blank form 「＋ メンバーを追加」 opens; it joins the list only through 一覧に追加. */
 const newForm = ref<NewMemberFields | null>(null);
 const fields = ref<MemberFormFields | null>(null);
 const saving = ref(false);
@@ -114,7 +114,7 @@ const foundLookup = computed(() =>
   lookupShown.value === 'found' && lookup.value?.status === 'found' ? lookup.value : null,
 );
 
-/** The id of the box that asks, for the 一覧に足す button to point at while it is refused. */
+/** The id of the box that asks, for the 一覧に追加 button to point at while it is refused. */
 const LOOKUP_ID = 'members-channel-lookup';
 
 async function checkChannel(channelId: string): Promise<void> {
@@ -177,7 +177,7 @@ const activeName = computed(() =>
 const activeEnded = computed(() => (selected.value ?? selectedAdded.value)?.activityEndDate);
 
 /**
- * What is typed in the edit panel and not yet kept (#286): a 「メンバーを足す」
+ * What is typed in the edit panel and not yet kept (#286): a 「新しいメンバー」
  * form that is not blank, or a saved member's fields that differ from the saved
  * ones. An added member's own fields are not it: they are the draft's, and
  * `dirty` covers the draft.
@@ -241,7 +241,7 @@ async function load(): Promise<void> {
       draft.order = reconcileOrder(draft.order, [...savedIds.value, ...draft.added.map((a) => a.channelId)]);
     }
 
-    // Not while 「メンバーを足す」 is open: that form is what the panel shows, and no row is chosen.
+    // Not while 「新しいメンバー」 is open: that form is what the panel shows, and no row is chosen.
     if (selectedId.value === null && newForm.value === null && rows.value.length > 0) {
       selectedId.value = rows.value[0]!.channelId;
     }
@@ -264,7 +264,7 @@ function selectRow(channelId: string): void {
   }
 
   // Another row replaces what the edit panel shows; unsaved typing goes only if the user says so (#286).
-  // The open 「メンバーを足す」 form goes too, even for the row that looks selected: 元に戻す
+  // The open 「新しいメンバー」 form goes too, even for the row that looks selected: 元に戻す
   // and a reload select the first row while the form is still open.
   if ((channelId !== selectedId.value || newForm.value !== null) && !confirmDiscard()) return;
 
@@ -568,11 +568,11 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
           </button>
           <button class="btn primary" type="button" :disabled="busy" @click="saveList">保存</button>
         </template>
-        <button class="btn" type="button" :disabled="busy" @click="addMember">＋ メンバーを足す</button>
+        <button class="btn" type="button" :disabled="busy" @click="addMember">＋ メンバーを追加</button>
       </div>
       <div class="scroller">
         <div v-if="loadError" class="empty-note">
-          <b>読み込めません</b>
+          <b>読み込みに失敗しました</b>
           <div class="sub">{{ loadError }}</div>
         </div>
         <div v-if="listError" class="panel flag">
@@ -697,16 +697,13 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
                 />
                 <div>
                   <div class="lookup-title">{{ foundLookup.title }}</div>
-                  <div class="hint">{{ LOOKUP_TEXT.found }}</div>
                 </div>
               </div>
               <div v-else-if="lookupShown === 'notFound'" class="panel flag">
                 <h4>{{ LOOKUP_TEXT.notFoundHeading }}</h4>
-                <div class="hint">{{ LOOKUP_TEXT.notFoundBody }}</div>
               </div>
               <div v-else-if="lookupShown === 'failed'" class="panel">
                 <h4>{{ LOOKUP_TEXT.failedHeading }}</h4>
-                <div class="hint">{{ LOOKUP_TEXT.failedBody }}</div>
                 <div class="stack">
                   <button class="btn" type="button" @click="checkChannel(newForm.channelId.trim())">
                     {{ LOOKUP_TEXT.retry }}
@@ -841,7 +838,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
             </div>
           </div>
         </div>
-        <PreviewPane v-if="previewOpen" :note="PREVIEW_NOTES.live">
+        <PreviewPane v-if="previewOpen">
           <MemberPreview
             :fields="activeFields"
             :channel-id="newForm ? newForm.channelId : (selectedId ?? '')"

@@ -61,7 +61,7 @@ onMounted(async () => {
 <template>
   <p v-if="!readout.ok" class="preview-problem">{{ unreadableField(readout.field) }}</p>
   <template v-else-if="item && place">
-    <p v-if="channelsFailed" class="preview-problem">メンバーの一覧を読めないので、顔と名前を省いています</p>
+    <p v-if="channelsFailed" class="preview-problem">メンバーの一覧の読み込みに失敗しました</p>
     <div class="preview-month">{{ place.heading }}</div>
     <div class="preview-road">
       <span class="preview-day">{{ place.day }}</span>

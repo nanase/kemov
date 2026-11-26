@@ -170,7 +170,7 @@ export function toFormFields(event: FootprintsEvent): EventFormFields {
   };
 }
 
-/** A new event's starting fields - what `＋ 足す` opens the edit panel with. Nothing is created until it is saved (#277's 6-12). */
+/** A new event's starting fields - what `＋ 追加` opens the edit panel with. Nothing is created until it is saved (#277's 6-12). */
 export function emptyFormFields(today: string): EventFormFields {
   return {
     datePrecision: 'day',

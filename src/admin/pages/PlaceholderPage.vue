@@ -17,7 +17,7 @@ const name = computed(() => pageTitle(props.page));
       </div>
       <div class="empty-note">
         <b>{{ name }}</b>
-        <div class="sub">後続のタスクで作成</div>
+        <div class="sub">ページが見つかりません</div>
       </div>
     </div>
   </div>

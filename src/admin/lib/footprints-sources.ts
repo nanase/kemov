@@ -11,11 +11,12 @@ import type { SourceWhitelistEntry } from './source-whitelist';
 
 export const SOURCE_TEXT = {
   whitelist: 'ホワイトリスト',
-  enough: '出典は足りています',
-  shortTitle: '出典が足りません',
+  enough: '出典の条件を満たしています',
+  shortTitle: '出典不足',
+  shortBody: 'ホワイトリストの出典か別のサイトの出典が必要です',
   shortChip: '出典不足',
-  shortOnly: '出典不足だけ',
-  whitelistUnreadable: '出典ホワイトリストを読み込めません。',
+  shortOnly: '出典不足のみ',
+  whitelistUnreadable: '出典ホワイトリストの読み込みに失敗しました',
 } as const;
 
 /** The chip beside one source, or null for a URL that names no host. */
@@ -24,13 +25,6 @@ export function markLabel(mark: SourceMark): string | null {
   if (mark.kind === 'none') return null;
 
   return mark.sameSite ? `${mark.host}（同じサイト）` : mark.host;
-}
-
-/** What the sources panel says when they are not enough. `onlyHost` is `SourcesJudgement`'s. */
-export function shortfallMessage(onlyHost: string | null): string {
-  const now = onlyHost === null ? 'いまは出典がありません。' : `いまは ${onlyHost} の出典しかありません。`;
-
-  return `ホワイトリストに載った出典を 1 つ足すか、別のサイトの出典を足してください。${now}足りないまま公開すると、年表に「出典の確認待ち」と出ます。`;
 }
 
 /** `judgeSources` for an event's or a form's sources. */

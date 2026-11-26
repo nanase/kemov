@@ -80,7 +80,7 @@ async function add(): Promise<void> {
     drafts[body.sourceWhitelist.prefix] = body.sourceWhitelist.note ?? '';
     newPrefix.value = '';
     newNote.value = '';
-    showToast(savedToast('足しました', body.timelineCurrent));
+    showToast(savedToast('追加しました', body.timelineCurrent));
   } catch (error) {
     addError.value = addErrorMessage(error);
   } finally {
@@ -139,15 +139,8 @@ onMounted(load);
       </div>
       <div class="scroller">
         <div class="content">
-          <div class="hint">
-            <p>
-              この一覧にある URL で始まる出典は 1 つだけでも認められます。ほかの出典は別のサイトのものが 2
-              つ以上あれば認められます。
-            </p>
-          </div>
-
           <form class="panel" @submit.prevent="add">
-            <h4>URL を足す</h4>
+            <h4>URL の追加</h4>
             <div v-if="addError" class="panel flag" role="alert">
               <div class="hint">{{ addError }}</div>
             </div>
@@ -176,24 +169,20 @@ onMounted(load);
                 />
               </div>
             </div>
-            <div class="hint">
-              https:// から書いてください。サイト全体なら末尾を /
-              にし、単一のページや記事だけならフルパスで書いてください。
-            </div>
             <div>
               <button class="btn primary" type="submit" :disabled="loading || adding || newPrefix.trim() === ''">
-                足す
+                追加
               </button>
             </div>
           </form>
 
           <div v-if="loadError" class="empty-note">
-            <b>読み込めません</b>
+            <b>読み込みに失敗しました</b>
             <div class="sub">{{ loadError }}</div>
             <button class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
           </div>
           <div v-else-if="!loading && entries.length === 0" class="empty-note">
-            <b>登録されている URL はありません。</b>
+            <b>登録されている URL はありません</b>
           </div>
           <div v-if="entries.length > 0" class="table-wrap">
             <table class="grid">
@@ -201,7 +190,7 @@ onMounted(load);
                 <tr>
                   <th>URL の先頭</th>
                   <th>メモ</th>
-                  <th>足した日 (JST)</th>
+                  <th>追加日 (JST)</th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -231,16 +220,16 @@ onMounted(load);
                         メモを保存
                       </button>
                       <template v-if="confirming === entry.prefix">
-                        <span class="hint">公開済みのできごとはそのまま公開されます。</span>
+                        <span class="hint">公開中の出来事は公開中のままです</span>
                         <button
                           class="btn danger"
                           type="button"
                           :disabled="busyPrefixes.has(entry.prefix)"
                           @click="remove(entry)"
                         >
-                          削除する
+                          削除を確定
                         </button>
-                        <button class="btn quiet" type="button" @click="confirming = null">やめる</button>
+                        <button class="btn quiet" type="button" @click="confirming = null">キャンセル</button>
                       </template>
                       <button
                         v-else

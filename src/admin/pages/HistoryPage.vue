@@ -141,11 +141,11 @@ useCrumbDetail(() => (selectedId.value === null ? null : `版 #${selectedId.valu
       <div class="toolbar">
         <h2>版の履歴</h2>
         <select v-model="entityFilter" aria-label="entity">
-          <option value="">entity すべて</option>
+          <option value="">すべての entity</option>
           <option v-for="e in ENTITIES" :key="e" :value="e">{{ entityLabel(e) }}</option>
         </select>
         <select v-model="actionFilter" aria-label="action">
-          <option value="">action すべて</option>
+          <option value="">すべての action</option>
           <option v-for="a in ACTIONS" :key="a" :value="a">{{ actionLabel(a) }}</option>
         </select>
         <input v-model="fromFilter" type="text" class="btn" placeholder="from (YYYY-MM-DD)" aria-label="from" />
@@ -155,7 +155,7 @@ useCrumbDetail(() => (selectedId.value === null ? null : `版 #${selectedId.valu
       </div>
       <div class="scroller">
         <div v-if="loadError" class="empty-note">
-          <b>読み込めません</b>
+          <b>読み込みに失敗しました</b>
           <div class="sub">{{ loadError }}</div>
         </div>
         <table class="grid">
@@ -198,9 +198,9 @@ useCrumbDetail(() => (selectedId.value === null ? null : `版 #${selectedId.valu
           <span v-if="!publicationsLoadError" class="sub num">{{ publications.length }} 件</span>
         </div>
         <div v-if="publicationsLoadError" class="panel flag">
-          <h4>公開の記録を取得できません</h4>
+          <h4>公開の記録の読み込みに失敗しました</h4>
           <div class="hint">{{ publicationsLoadError }}</div>
-          <button class="btn" type="button" @click="loadPublications">読み直す</button>
+          <button class="btn" type="button" @click="loadPublications">再読み込み</button>
         </div>
         <table v-else class="grid">
           <thead>
@@ -208,7 +208,7 @@ useCrumbDetail(() => (selectedId.value === null ? null : `版 #${selectedId.valu
               <th>公開日時 (JST)</th>
               <th>対象</th>
               <th>object_key</th>
-              <th>大きさ</th>
+              <th>サイズ</th>
             </tr>
           </thead>
           <tbody>
@@ -237,7 +237,7 @@ useCrumbDetail(() => (selectedId.value === null ? null : `版 #${selectedId.valu
 
       <div class="inspector-body">
         <div v-if="detailError" class="panel flag">
-          <h4>読み込めません</h4>
+          <h4>読み込みに失敗しました</h4>
           <div class="hint">{{ detailError }}</div>
         </div>
 
@@ -253,7 +253,7 @@ useCrumbDetail(() => (selectedId.value === null ? null : `版 #${selectedId.valu
               <dd>{{ detail.entityKey }}</dd>
               <dt>action</dt>
               <dd>{{ actionLabel(detail.action) }}</dd>
-              <dt>作った経路</dt>
+              <dt>経路</dt>
               <dd>{{ detail.createdVia }}</dd>
             </dl>
           </div>

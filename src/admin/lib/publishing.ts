@@ -34,15 +34,12 @@ export function liveMarkFor(status: string): PublishMark {
 }
 
 /**
- * The edit panel's buttons, left to right, the first being the primary one,
- * and what is said beside them (#277's decision 1a, 6-9). The worker refuses
- * to delete a published row (409), so 削除 is shown but cannot be pressed,
- * with the reason beside it.
+ * The edit panel's buttons, left to right, the first being the primary one
+ * (#277's decision 1a, 6-9). The worker refuses to delete a published row
+ * (409), so 削除 is shown but cannot be pressed, with the reason beside it.
  */
 export interface PublishFoot {
   actions: readonly { action: PublishAction; label: string }[];
-  /** Beside the buttons, or null. */
-  note: string | null;
   deleteDisabled: boolean;
   /** Why 削除 cannot be pressed, or null when it can. */
   deleteReason: string | null;
@@ -52,11 +49,10 @@ export const FOOT_TEXT = {
   publish: '公開',
   save: '保存',
   withdraw: '非公開に戻す',
-  liveNote: '保存するとすぐ本番に出ます',
-  deleteReason: '公開中は削除できません。先に「非公開に戻す」を押してください。',
+  deleteReason: '公開中は削除できません',
 } as const;
 
-/** The buttons for a saved row whose `status` is `status`. A row not yet saved has its own (保存 and やめる). */
+/** The buttons for a saved row whose `status` is `status`. A row not yet saved has its own (保存 and キャンセル). */
 export function publishFootFor(status: string): PublishFoot {
   if (status === 'published') {
     return {
@@ -64,7 +60,6 @@ export function publishFootFor(status: string): PublishFoot {
         { action: 'save', label: FOOT_TEXT.save },
         { action: 'withdraw', label: FOOT_TEXT.withdraw },
       ],
-      note: FOOT_TEXT.liveNote,
       deleteDisabled: true,
       deleteReason: FOOT_TEXT.deleteReason,
     };
@@ -75,7 +70,6 @@ export function publishFootFor(status: string): PublishFoot {
       { action: 'publish', label: FOOT_TEXT.publish },
       { action: 'save', label: FOOT_TEXT.save },
     ],
-    note: null,
     deleteDisabled: false,
     deleteReason: null,
   };
@@ -84,20 +78,17 @@ export function publishFootFor(status: string): PublishFoot {
 /** The words #277's decisions 1c and 1d give what the edit panel says. */
 export const PUBLISH_TEXT = {
   refusedPublish: '公開できません',
-  refusedPublishNote: '入力した内容は下書きとして保存しました。',
+  refusedPublishNote: '下書きとして保存しました',
   refusedSave: '保存できません',
-  refusedSaveNote: '公開中の行は、公開の条件を満たさないと保存できません。本番は前の内容のままです。',
-  notWrittenPublish: '保存しましたが、本番に出せませんでした。もう一度「公開」を押してください。',
-  notWrittenSave: '保存しましたが、本番に出せませんでした。もう一度「保存」を押してください。',
+  refusedSaveNote: '本番は変更前の内容のままです',
+  notWrittenPublish: '保存しましたが本番への反映に失敗しました',
+  notWrittenSave: '保存しましたが本番への反映に失敗しました',
   notWithdrawn: '非公開に戻せません',
-  notWithdrawnNote:
-    '本番を書き直せませんでした。行は公開中のまま、本番も前の内容のままです。もう一度「非公開に戻す」を押してください。',
+  notWithdrawnNote: '行は公開中のままです',
   withdrawnBehind: '本番への反映に失敗しました',
-  withdrawnBehindNote: '一覧の上の［本番に反映］を押してください',
   failed: '保存できません',
   removeFailed: '削除できません',
-  changedTitle: '本番は前の内容のままです',
-  changedBody: '「保存」を押すと、いまの内容が本番に出ます。',
+  changedTitle: '本番に反映されていない変更があります',
 } as const;
 
 /** The band above the fields. */
@@ -287,7 +278,7 @@ export function publishAnswerFor<F>(
     if (action === 'withdraw' && savedAnyway(error.body)) {
       return {
         kind: 'band',
-        band: { title: PUBLISH_TEXT.withdrawnBehind, lines: [], note: PUBLISH_TEXT.withdrawnBehindNote },
+        band: { title: PUBLISH_TEXT.withdrawnBehind, lines: [], note: null },
         fields: [],
         changed: true,
       };
