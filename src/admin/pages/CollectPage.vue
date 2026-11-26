@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HelpLink from '../components/HelpLink.vue';
 import { onMounted, ref } from 'vue';
 
 import { AdminApiError, getJson, postJson } from '../lib/api';
@@ -86,6 +87,7 @@ onMounted(load);
     <div class="pane">
       <div class="toolbar">
         <h2>収集の失敗</h2>
+        <HelpLink section="collect" />
         <span class="grow"></span>
         <span class="sub num">{{ tasks.length }} 件</span>
       </div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HelpLink from '../components/HelpLink.vue';
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, shallowRef, toRaw, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { unescapeHtml } from '@nanase/alnilam/string';
@@ -1231,6 +1232,7 @@ useCrumbDetail(() =>
     <div class="setlist">
       <div class="toolbar">
         <h2>配信</h2>
+        <HelpLink section="common" />
         <span class="grow"></span>
         <span class="sub num">{{ countText(streams.length, listTotal.total.value, filtered) }}</span>
         <button class="btn" type="button" @click="startAdding">＋ 足す</button>

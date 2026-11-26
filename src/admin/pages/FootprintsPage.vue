@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HelpLink from '../components/HelpLink.vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
@@ -457,6 +458,7 @@ onMounted(() => {
     <div class="pane">
       <div class="toolbar">
         <h2>あしあと</h2>
+        <HelpLink section="footprints" />
         <div class="seg" role="group" aria-label="状態で絞る">
           <button
             v-for="opt in STATUS_OPTIONS"

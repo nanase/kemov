@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HelpLink from '../components/HelpLink.vue';
 import { computed, onMounted, ref, watch } from 'vue';
 
 import SplitHandle from '../components/SplitHandle.vue';
@@ -207,6 +208,7 @@ const selectedIsNewest = computed(
     <div v-if="openDay === null" class="pane">
       <div class="toolbar">
         <h2>統計</h2>
+        <HelpLink section="snaps" />
         <select v-model="channelId" aria-label="チャンネル">
           <option v-for="m in members" :key="m.channelId" :value="m.channelId">{{ m.name }}</option>
         </select>

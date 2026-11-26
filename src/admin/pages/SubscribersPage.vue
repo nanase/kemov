@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HelpLink from '../components/HelpLink.vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
@@ -365,6 +366,7 @@ onMounted(() => {
     <div class="pane">
       <div class="toolbar">
         <h2>登録者数の節目</h2>
+        <HelpLink section="subscribers" />
         <select :value="channelId" aria-label="メンバーで絞る" :disabled="bulkProgress !== null" @change="setChannel">
           <option value="all">すべてのメンバー</option>
           <option v-for="m in members" :key="m.channelId" :value="m.channelId">{{ m.name }}</option>

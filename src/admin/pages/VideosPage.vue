@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HelpLink from '../components/HelpLink.vue';
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 
 import SplitHandle from '../components/SplitHandle.vue';
@@ -201,6 +202,7 @@ const VideoPreview = defineAsyncComponent(() => import('../components/previews/V
     <div class="pane">
       <div class="toolbar">
         <h2>配信・動画</h2>
+        <HelpLink section="videos" />
         <span class="chip">収集した記録</span>
         <input v-model="q" type="text" class="btn" placeholder="題で絞り込み" aria-label="題で絞り込み" />
         <span class="grow"></span>

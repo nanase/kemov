@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HelpLink from '../components/HelpLink.vue';
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import MemberAvatar from '@/parts/MemberAvatar.vue';
@@ -553,6 +554,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
     <div class="pane">
       <div class="toolbar">
         <h2>メンバー</h2>
+        <HelpLink section="members" />
         <span v-if="dirty" class="chip waiting">{{ EDITING_TEXT.unsaved }}</span>
         <span class="grow"></span>
         <span class="sub num">{{ rows.length }} 人</span>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HelpLink from '../components/HelpLink.vue';
 import { computed, onMounted, reactive, ref } from 'vue';
 
 import { AdminApiError, deleteJson, getJson, postJson, putJson } from '../lib/api';
@@ -132,6 +133,7 @@ onMounted(load);
     <div class="pane">
       <div class="toolbar">
         <h2>出典ホワイトリスト</h2>
+        <HelpLink section="sourceWhitelist" />
         <span class="grow"></span>
         <span class="sub num">{{ count }} 件</span>
       </div>
