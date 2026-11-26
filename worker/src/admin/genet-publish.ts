@@ -4,6 +4,7 @@ import { changedElsewhereResponse, jsonResponse } from '../lib/json';
 import { refusal, refuse } from '../lib/refusal';
 import type { RevisionEntity } from '../lib/revision';
 import { formatTimestamp } from '../lib/time';
+import { heldToVersion, writtenAt, type HeldToVersion } from '../lib/edit-version';
 import { publicShapeOf as personPublicShapeOf, readPeople, type PersonRow } from './genet-people';
 import {
   newestRevisionOf as newestStreamRevisionOf,
@@ -34,19 +35,16 @@ import {
   type GenetTune,
 } from './genet-tunes';
 import {
-  heldToVersion,
   isBehind,
   latestRevisions,
   liveBodiesOf,
   loggedRevisions,
   publishChange,
   republish,
-  type HeldToVersion,
   type LatestRevisionRow,
   type LoggedRevision,
   type PublishOutcome,
   type PublishTarget,
-  writtenAt,
 } from './publishing';
 
 /**

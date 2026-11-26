@@ -10,6 +10,6 @@
 -- A draft's save logs no `revision`, so the newest revision cannot tell two
 -- drafts' saves apart, which is why this is a column of its own. Rows that
 -- exist start at 0, as a new row does.
-ALTER TABLE footprints_event ADD COLUMN edit_version INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE subscriber_milestone ADD COLUMN edit_version INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE genet_stream ADD COLUMN edit_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE footprints_event ADD COLUMN edit_version INTEGER NOT NULL DEFAULT 0 CHECK (edit_version >= 0);
+ALTER TABLE subscriber_milestone ADD COLUMN edit_version INTEGER NOT NULL DEFAULT 0 CHECK (edit_version >= 0);
+ALTER TABLE genet_stream ADD COLUMN edit_version INTEGER NOT NULL DEFAULT 0 CHECK (edit_version >= 0);

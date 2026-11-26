@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, ref, toRaw, watch } from 'vue';
 
 import {
   emptyFormFields,
@@ -13,7 +13,7 @@ import {
 } from '../lib/footprints';
 import { deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, fieldsAfterSave, plainCopy, sameFields, writeBody } from '../lib/editing';
+import { EDITING_TEXT, fieldsAfterSave, sameFields, writeBody } from '../lib/editing';
 import { footprintsAnswerFor, isChangedSincePublish, type FootprintsPending } from '../lib/footprints-publish';
 import {
   BAND_NOTE_ID,
@@ -219,7 +219,7 @@ async function run(action: AnsweredAction, request: () => Promise<unknown>): Pro
   if (saving.value) return;
 
   const status = props.event?.status ?? null;
-  const sent = plainCopy(fields.value);
+  const sent = structuredClone(toRaw(fields.value));
   let error: unknown = null;
 
   saving.value = true;

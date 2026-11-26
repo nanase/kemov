@@ -13,7 +13,7 @@ import {
 } from '../lib/refusal';
 import { sourcesEnough } from '../lib/source-whitelist';
 import { isSchemaDate, isSchemaMonth, isSchemaTimestamp, japanDateOf } from '../lib/time';
-import { heldToVersion, UNLOGGED_VERSION_STEP } from './publishing';
+import { heldToVersion, UNLOGGED_VERSION_STEP } from '../lib/edit-version';
 
 /**
  * Reading, saving and deleting `footprints_event` (#141, #140): the
@@ -773,6 +773,11 @@ export function noLongerDraftResponse(eventId: number): Response {
   return changedElsewhereResponse(`footprints event ${eventId} is no longer a draft`);
 }
 
+/** The answer when a draft's save found it saved by another screen since the version it was read at (#307). */
+export function savedElsewhereResponse(eventId: number): Response {
+  return changedElsewhereResponse(`footprints event ${eventId} was saved by another screen meanwhile`);
+}
+
 /**
  * `saved` as it would read with `fields` saved over it and `status` set -
  * what publishing checks and logs before anything is written, so a live row
@@ -835,9 +840,7 @@ export async function updateEvent(env: Env, eventId: number, body: Record<string
 
   if (saved === null) return noEventResponse(eventId);
   if (!savedRow(results)) {
-    if (saved.event.status !== 'draft') return noLongerDraftResponse(eventId);
-
-    return changedElsewhereResponse(`footprints event ${eventId} was saved by another screen meanwhile`);
+    return saved.event.status === 'draft' ? savedElsewhereResponse(eventId) : noLongerDraftResponse(eventId);
   }
 
   return jsonResponse({ event: present(saved) });

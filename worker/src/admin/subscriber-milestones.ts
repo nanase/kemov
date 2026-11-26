@@ -4,7 +4,7 @@ import { changedElsewhereResponse, jsonResponse } from '../lib/json';
 import { LOAD_FAILED, malformed, MEMBER_NOT_FOUND_TEXT, refusal, refuse, type Refusal } from '../lib/refusal';
 import { sourceUrlProblem } from '../lib/source-whitelist';
 import { isSchemaDate, isSchemaMonth } from '../lib/time';
-import { heldToVersion, UNLOGGED_VERSION_STEP } from './publishing';
+import { heldToVersion, UNLOGGED_VERSION_STEP } from '../lib/edit-version';
 
 /**
  * Reading, saving and deleting `subscriber_milestone` (#225): a subscriber
@@ -568,6 +568,11 @@ export function noLongerDraftResponse(milestoneId: number): Response {
   return changedElsewhereResponse(`subscriber milestone ${milestoneId} is no longer a draft`);
 }
 
+/** The answer when a draft's save found it saved by another screen since the version it was read at (#307). */
+export function savedElsewhereResponse(milestoneId: number): Response {
+  return changedElsewhereResponse(`subscriber milestone ${milestoneId} was saved by another screen meanwhile`);
+}
+
 /**
  * `saved` as it would read with `fields` saved over it and `status` set -
  * what publishing checks and logs before anything is written, as
@@ -623,9 +628,9 @@ export async function updateMilestone(env: Env, milestoneId: number, body: Recor
   if (saved === null) return noMilestoneResponse(milestoneId);
 
   if (!savedRow(results)) {
-    if (saved.milestone.status !== 'draft') return noLongerDraftResponse(milestoneId);
-
-    return changedElsewhereResponse(`subscriber milestone ${milestoneId} was saved by another screen meanwhile`);
+    return saved.milestone.status === 'draft'
+      ? savedElsewhereResponse(milestoneId)
+      : noLongerDraftResponse(milestoneId);
   }
 
   return jsonResponse({ milestone: present(saved) });

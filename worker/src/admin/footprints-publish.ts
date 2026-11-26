@@ -3,6 +3,7 @@ import { changedElsewhereResponse, jsonResponse } from '../lib/json';
 import { refusal, refuse } from '../lib/refusal';
 import { readSourceWhitelist, sourcesEnough } from '../lib/source-whitelist';
 import { formatTimestamp } from '../lib/time';
+import { heldToVersion, writtenAt, type HeldToVersion } from '../lib/edit-version';
 import {
   newestRevisionOf,
   noEventResponse,
@@ -20,18 +21,15 @@ import {
   type FootprintsEvent,
 } from './footprints';
 import {
-  heldToVersion,
   latestRevisions,
   liveBodies,
   isBehind,
   publishChange,
   republish,
-  type HeldToVersion,
   type LatestRevisionRow,
   type PublishOutcome,
   type PublishTarget,
   type RevisionChange,
-  writtenAt,
 } from './publishing';
 import { republishMilestonesForEvents } from './subscriber-milestones-publish';
 

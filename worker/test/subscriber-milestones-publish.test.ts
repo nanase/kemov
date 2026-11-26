@@ -178,6 +178,11 @@ async function publicationCount(): Promise<number> {
   return row!.n;
 }
 
+/** The milestone's `version` as GET answers it: what a screen sends back with its writes (#307). */
+async function versionOf(milestoneId: number): Promise<number> {
+  return ((await (await getMilestone(env, milestoneId)).json()) as { version: number }).version;
+}
+
 async function readRow(
   milestoneId: number,
 ): Promise<{ status: string; subscriberCount: number; eventId: number | null }> {
@@ -1067,10 +1072,6 @@ describe('a 409 for a milestone another screen changed', () => {
 describe('two screens that read the same published milestone (#307)', () => {
   const LATER = new Date('2026-09-26T00:00:00Z');
 
-  async function versionOf(milestoneId: number): Promise<number> {
-    return ((await (await getMilestone(env, milestoneId)).json()) as { version: number }).version;
-  }
-
   test('the later save, sent with the version it read, answers 409 and writes nothing over the first', async () => {
     const milestoneId = await createPublished();
     const read = await versionOf(milestoneId);
@@ -1174,10 +1175,6 @@ describe('two screens that read the same published milestone (#307)', () => {
 
 describe('two screens that read the same draft milestone (#307)', () => {
   const LATER = new Date('2026-09-26T00:00:00Z');
-
-  async function versionOf(milestoneId: number): Promise<number> {
-    return ((await (await getMilestone(env, milestoneId)).json()) as { version: number }).version;
-  }
 
   async function sourceCount(milestoneId: number): Promise<number> {
     const row = await env.DB.prepare('SELECT count(*) AS n FROM subscriber_milestone_source WHERE milestone_id = ?1')

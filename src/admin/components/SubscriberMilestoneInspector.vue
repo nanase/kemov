@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, ref, toRaw, watch } from 'vue';
 
 import { deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, fieldsAfterSave, plainCopy, sameFields, writeBody } from '../lib/editing';
+import { EDITING_TEXT, fieldsAfterSave, sameFields, writeBody } from '../lib/editing';
 import type { FootprintsEvent, FootprintsMember } from '../lib/footprints';
 import { previewOpen } from '../lib/preview';
 import { refreshSidebarDrafts } from '../lib/sidebar-drafts';
@@ -262,7 +262,7 @@ async function run(action: AnsweredAction, request: () => Promise<unknown>, toas
   if (locked.value) return;
 
   const status = props.milestone?.status ?? null;
-  const sent = plainCopy(fields.value);
+  const sent = structuredClone(toRaw(fields.value));
   let error: unknown = null;
 
   saving.value = true;

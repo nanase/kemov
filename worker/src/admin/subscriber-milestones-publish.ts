@@ -11,19 +11,17 @@ import {
   youtubeVideoIdOf,
 } from '../lib/source-whitelist';
 import { formatTimestamp } from '../lib/time';
+import { heldToVersion, writtenAt, type HeldToVersion } from '../lib/edit-version';
 import {
-  heldToVersion,
   isBehind,
   latestRevisions,
   liveBodies,
   publishChange,
   republish,
-  type HeldToVersion,
   type LatestRevisionRow,
   type PublishOutcome,
   type PublishTarget,
   type RevisionChange,
-  writtenAt,
 } from './publishing';
 import {
   present,

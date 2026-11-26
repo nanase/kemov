@@ -3,7 +3,7 @@ import type { Env } from '../lib/env';
 import { changedElsewhereResponse, jsonResponse } from '../lib/json';
 import { LOAD_FAILED, malformed, refusal, refuse, type Refusal } from '../lib/refusal';
 import { isSchemaTimestamp } from '../lib/time';
-import { heldToVersion, UNLOGGED_VERSION_STEP } from './publishing';
+import { heldToVersion, UNLOGGED_VERSION_STEP } from '../lib/edit-version';
 
 /**
  * Reading, saving and deleting `genet_stream` (#141, #139): one stream, the
@@ -744,6 +744,11 @@ export function noLongerDraftResponse(videoId: string): Response {
   return changedElsewhereResponse(`stream ${videoId} is no longer a draft`);
 }
 
+/** The answer when a draft's save found it saved by another screen since the version it was read at (#307). */
+export function savedElsewhereResponse(videoId: string): Response {
+  return changedElsewhereResponse(`stream ${videoId} was saved by another screen meanwhile`);
+}
+
 /** `saved` as it reads once `fields` are saved over it with `status`, without reading it back. */
 export function withFields(saved: GenetStream, fields: StreamFields, status: 'draft' | 'published'): GenetStream {
   return {
@@ -796,9 +801,7 @@ export async function updateStream(env: Env, videoId: string, body: Record<strin
   if (saved === null) return noStreamResponse(videoId);
 
   if (!savedRow(results)) {
-    if (saved.stream.status !== 'draft') return noLongerDraftResponse(videoId);
-
-    return changedElsewhereResponse(`stream ${videoId} was saved by another screen meanwhile`);
+    return saved.stream.status === 'draft' ? savedElsewhereResponse(videoId) : noLongerDraftResponse(videoId);
   }
 
   return jsonResponse({ stream: present(saved) });

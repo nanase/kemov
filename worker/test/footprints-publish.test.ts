@@ -135,6 +135,11 @@ async function readPublished(): Promise<PublishedJson | null> {
   return JSON.parse(await object.text()) as PublishedJson;
 }
 
+/** The event's `version` as GET answers it: what a screen sends back with its writes (#307). */
+async function versionOf(eventId: number): Promise<number> {
+  return ((await (await getEvent(env, eventId)).json()) as { version: number }).version;
+}
+
 async function readRow(eventId: number): Promise<{ status: string; title: string }> {
   return (await (await getEvent(env, eventId)).json()) as { status: string; title: string };
 }
@@ -1061,10 +1066,6 @@ describe('a 409 for an event another screen changed', () => {
 });
 
 describe('two screens that read the same published event (#307)', () => {
-  async function versionOf(eventId: number): Promise<number> {
-    return ((await (await getEvent(env, eventId)).json()) as { version: number }).version;
-  }
-
   test('the later save, sent with the version it read, answers 409 and writes nothing over the first', async () => {
     const eventId = await createPublishedEvent({ title: '前の題' });
     const read = await versionOf(eventId);
@@ -1155,10 +1156,6 @@ describe('two screens that read the same published event (#307)', () => {
 });
 
 describe('two screens that read the same draft event (#307)', () => {
-  async function versionOf(eventId: number): Promise<number> {
-    return ((await (await getEvent(env, eventId)).json()) as { version: number }).version;
-  }
-
   test('starts at version 0, and each save adds 1', async () => {
     const eventId = await createValidEvent();
 

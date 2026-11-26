@@ -1,8 +1,10 @@
 /**
  * What the three edit panels (あしあと・登録者数の節目・ジェネット楽曲一覧)
  * share about unsaved changes, deleting and the toast after a save (#280,
- * #277's decision 1b・1c・6-10・6-11・6-13). The Vue half - the guard that
- * asks before the changes are thrown away - is `unsaved-guard.ts`.
+ * #277's decision 1b・1c・6-10・6-11・6-13), about the fields when their row
+ * is read again (#304), and about the version a write sends back (#307).
+ * The Vue half - the guard that asks before the changes are thrown away -
+ * is `unsaved-guard.ts`.
  */
 
 export const EDITING_TEXT = {
@@ -108,7 +110,7 @@ export function fieldsAfterSave<T extends object>(current: T, before: T, after: 
 }
 
 /** A copy of plain form data that shares nothing with it. `structuredClone` refuses Vue's reactive proxies, which `current` usually is. */
-export function plainCopy<V>(value: V): V {
+function plainCopy<V>(value: V): V {
   return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as V);
 }
 
