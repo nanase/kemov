@@ -13,7 +13,7 @@ import {
 } from '../lib/footprints';
 import { deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, fieldsOnReload, sameFields, writeBody } from '../lib/editing';
+import { EDITING_TEXT, fieldsAfterSave, plainCopy, sameFields, writeBody } from '../lib/editing';
 import { footprintsAnswerFor, isChangedSincePublish, type FootprintsPending } from '../lib/footprints-publish';
 import {
   BAND_NOTE_ID,
@@ -93,8 +93,8 @@ const band = ref<PublishBand | null>(null);
 const invalidFields = ref<readonly EventFieldKey[]>([]);
 /** The fields typed in that another screen changed too, found when the row was read again (`fieldsOnReload`). */
 const clashes = ref<readonly (keyof EventFormFields)[]>([]);
-/** Set when a request saved what was sent (`sentFieldsSaved`): the read after it takes the row as the worker saved it. */
-let takeSaved = false;
+/** What the last request sent, when it saved it (`sentFieldsSaved`): the read after it follows the row as the worker saved it (`fieldsAfterSave`). */
+let savedSent: EventFormFields | null = null;
 const memberPickerOpen = ref(false);
 
 /** Against the saved row, or a new row's blank fields: the 未保存 chip, and what asks before they are thrown away. */
@@ -110,22 +110,24 @@ useUnsavedGuard(
 // A refetch hands the same row back as a new object. The fields follow what
 // is saved now, but keep what is typed (#304): a save another screen's
 // change refused would otherwise lose it. After a request that saved them
-// (`takeSaved`), they are the row as saved. The band is left alone: a refetch
+// (`savedSent`), they are the row as saved, but for what was typed since. The band is left alone: a refetch
 // follows a refused publish too, and the band is still the answer to it.
 // Selecting another row mounts a new panel (the page keys it by id), which
 // starts clean.
 watch(
   () => props.event,
   (after, before) => {
-    if (takeSaved || after === null || before === null || after.eventId !== before.eventId) {
-      takeSaved = false;
+    if (after === null || before === null || after.eventId !== before.eventId) {
+      savedSent = null;
       fields.value = initialFields();
       clashes.value = [];
 
       return;
     }
 
-    const reloaded = fieldsOnReload(fields.value, toFormFields(before), toFormFields(after));
+    const reloaded = fieldsAfterSave(fields.value, toFormFields(before), toFormFields(after), savedSent);
+
+    savedSent = null;
 
     fields.value = reloaded.fields;
     clashes.value = reloaded.clashes;
@@ -217,6 +219,7 @@ async function run(action: AnsweredAction, request: () => Promise<unknown>): Pro
   if (saving.value) return;
 
   const status = props.event?.status ?? null;
+  const sent = plainCopy(fields.value);
   let error: unknown = null;
 
   saving.value = true;
@@ -234,7 +237,7 @@ async function run(action: AnsweredAction, request: () => Promise<unknown>): Pro
 
   const answer = footprintsAnswerFor(action, status, error);
 
-  takeSaved = sentFieldsSaved(error);
+  savedSent = sentFieldsSaved(error) ? sent : null;
 
   if (answer.kind === 'done') {
     emit('changed');

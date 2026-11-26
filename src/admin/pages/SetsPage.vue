@@ -228,6 +228,7 @@ watch(selected, (stream, previous) => {
   // that read it again.
   if (previous === null || sameFields(streamFields.value, toStreamFormFields(previous))) {
     replaceStreamFields(toStreamFormFields(stream));
+    clashes.value = [];
 
     return;
   }

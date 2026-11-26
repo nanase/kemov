@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue
 
 import { deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, fieldsOnReload, sameFields, writeBody } from '../lib/editing';
+import { EDITING_TEXT, fieldsAfterSave, plainCopy, sameFields, writeBody } from '../lib/editing';
 import type { FootprintsEvent, FootprintsMember } from '../lib/footprints';
 import { previewOpen } from '../lib/preview';
 import { refreshSidebarDrafts } from '../lib/sidebar-drafts';
@@ -96,8 +96,8 @@ const band = ref<PublishBand | null>(null);
 const invalidFields = ref<readonly MilestoneFieldKey[]>([]);
 /** The fields typed in that another screen changed too, found when the row was read again (`fieldsOnReload`). */
 const clashes = ref<readonly (keyof MilestoneFormFields)[]>([]);
-/** Set when a request saved what was sent (`sentFieldsSaved`): the read after it takes the row as the worker saved it. */
-let takeSaved = false;
+/** What the last request sent, when it saved it (`sentFieldsSaved`): the read after it follows the row as the worker saved it (`fieldsAfterSave`). */
+let savedSent: MilestoneFormFields | null = null;
 
 /** Against the saved row, or a new milestone's blank fields: anything typed into a new one is unsaved. */
 const dirty = computed(() => !sameFields(fields.value, initialFields()));
@@ -111,22 +111,24 @@ useUnsavedGuard(
 
 // A refetch hands the same row back as a new object. The fields follow what
 // is saved now, but keep what is typed (#304), as FootprintsInspector.vue's
-// do. After a request that saved them (`takeSaved`), they are the row as
-// saved. The band is left alone: a refetch follows a refused publish too, and
+// do. After a request that saved them (`savedSent`), they are the row as
+// saved, but for what was typed since. The band is left alone: a refetch follows a refused publish too, and
 // the band is still the answer to it. Selecting another row mounts a new
 // panel (the page keys it by id), which starts clean.
 watch(
   () => props.milestone,
   (after, before) => {
-    if (takeSaved || after === null || before === null || after.milestoneId !== before.milestoneId) {
-      takeSaved = false;
+    if (after === null || before === null || after.milestoneId !== before.milestoneId) {
+      savedSent = null;
       fields.value = initialFields();
       clashes.value = [];
 
       return;
     }
 
-    const reloaded = fieldsOnReload(fields.value, toFormFields(before), toFormFields(after));
+    const reloaded = fieldsAfterSave(fields.value, toFormFields(before), toFormFields(after), savedSent);
+
+    savedSent = null;
 
     fields.value = reloaded.fields;
     clashes.value = reloaded.clashes;
@@ -260,6 +262,7 @@ async function run(action: AnsweredAction, request: () => Promise<unknown>, toas
   if (locked.value) return;
 
   const status = props.milestone?.status ?? null;
+  const sent = plainCopy(fields.value);
   let error: unknown = null;
 
   saving.value = true;
@@ -280,7 +283,7 @@ async function run(action: AnsweredAction, request: () => Promise<unknown>, toas
 
   const answer = milestonesAnswerFor(action, status, error);
 
-  takeSaved = sentFieldsSaved(error);
+  savedSent = sentFieldsSaved(error) ? sent : null;
 
   if (answer.kind === 'done') {
     emit('changed');

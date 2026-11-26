@@ -1,4 +1,4 @@
-import { fieldsOnReload, sameFields, writeBody } from '@/admin/lib/editing';
+import { fieldsAfterSave, fieldsOnReload, sameFields, writeBody } from '@/admin/lib/editing';
 import { toFormFields, type FootprintsEvent } from '@/admin/lib/footprints';
 
 const EVENT: FootprintsEvent = {
@@ -139,5 +139,41 @@ describe('writeBody', () => {
     writeBody(fields, { version: 7 });
 
     expect(fields).toEqual({ title: '打った題' });
+  });
+});
+
+describe('fieldsAfterSave', () => {
+  const before = { title: 'もとの題', supplement: null as string | null };
+  const sent = { title: '送った題', supplement: null as string | null };
+
+  it('takes the row as saved when nothing was typed since it was sent', () => {
+    const after = { title: '送った題', supplement: null };
+
+    expect(fieldsAfterSave(sent, before, after, sent)).toEqual({ fields: after, clashes: [] });
+  });
+
+  it('keeps what was typed after it was sent, with no clash named', () => {
+    const current = { title: '送った題', supplement: '後から打った補足' };
+    const after = { title: '送った題（整えた）', supplement: null };
+
+    expect(fieldsAfterSave(current, before, after, sent)).toEqual({
+      fields: { title: '送った題（整えた）', supplement: '後から打った補足' },
+      clashes: [],
+    });
+  });
+
+  // A read after the save failed: the next one is measured against what was sent, not the row before it.
+  it('still answers the save when the row arrives a read later', () => {
+    const current = { title: '後から打った題', supplement: null };
+    const after = { title: '送った題', supplement: null };
+
+    expect(fieldsAfterSave(current, before, after, sent).fields).toEqual(current);
+  });
+
+  it('is fieldsOnReload when nothing was saved', () => {
+    const current = { title: '打った題', supplement: null };
+    const after = { title: '別の画面の題', supplement: null };
+
+    expect(fieldsAfterSave(current, before, after, null)).toEqual(fieldsOnReload(current, before, after));
   });
 });
