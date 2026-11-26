@@ -27,14 +27,15 @@ export class AdminApiError extends Error {
     readonly status: number,
     readonly body: unknown,
   ) {
-    super(AdminApiError.messageFor(body));
+    super(AdminApiError.messageFor(status, body));
     this.name = 'AdminApiError';
   }
 
   /**
-   * The worker's English for which value it refused (#291) - or, for a
-   * request that got no answer, what `call` says about the failure - and null
-   * when there is none. Not for the screen to show: `message` is that.
+   * The worker's English for which value it refused (#291) - or a body that
+   * is a string, such as what `call` says about a request that got no answer
+   * - and null when there is none. Not for the screen to show: `message` is
+   * that.
    */
   get detail(): string | null {
     const { body } = this;
@@ -55,11 +56,11 @@ export class AdminApiError extends Error {
     return typeof body === 'object' && body !== null && 'changedElsewhere' in body && body.changedElsewhere === true;
   }
 
-  private static messageFor(body: unknown): string {
-    // `call`'s own catch passes a plain description string here (status 0,
-    // the fetch itself failed) rather than a parsed JSON error body. It is
-    // English for the log, kept as `detail`.
-    if (typeof body === 'string') return UNREACHABLE_TEXT;
+  private static messageFor(status: number, body: unknown): string {
+    // Status 0 is `call`'s own: the fetch itself failed, and `body` is its
+    // English description for the log, kept as `detail`. A string body with
+    // any other status was an answer, so it falls through to FAILED_TEXT.
+    if (status === 0) return UNREACHABLE_TEXT;
 
     // A delete's words are put in by `publishAnswerFor`, which knows the action.
     if (AdminApiError.isChangedElsewhere(body)) return CHANGED_ELSEWHERE_TEXT.save;

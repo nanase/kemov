@@ -23,6 +23,13 @@ describe('AdminApiError', () => {
     expect(error.message).toEqual('title must not be empty / publishedAt must be YYYY-MM-DDTHH:MM:SSZ');
   });
 
+  test('does not take an answer whose body is a string for a failed connection', () => {
+    const error = new AdminApiError(502, 'Bad Gateway');
+
+    expect(error.message).toEqual('処理に失敗しました');
+    expect(error.detail).toEqual('Bad Gateway');
+  });
+
   test('says the request failed when the body names nothing', () => {
     const error = new AdminApiError(500, null);
 
