@@ -23,6 +23,7 @@ import {
   type PublishOutcome,
   type PublishTarget,
   type RevisionChange,
+  writtenAt,
 } from './publishing';
 import {
   present,
@@ -30,7 +31,6 @@ import {
   readMilestone,
   readMilestones,
   newestRevisionOf,
-  noLongerDraftResponse,
   noMilestoneResponse,
   savedRow,
   saveStatements,
@@ -430,18 +430,19 @@ async function notLoggedResponse(env: Env, milestoneId: number): Promise<Respons
 
 /**
  * `RevisionChange.whileRow` for a batch whose row statements write only
- * while no revision was recorded since `revisionBefore`: the row was given
- * `status`, and its newest revision is still that one. Both hold exactly
- * when those statements wrote the row.
+ * while no revision was recorded since `revisionBefore`, and at the version
+ * `held` names: the row was given `status`, its newest revision is still
+ * that one, and it is at the version they leave it at (publishing.ts's
+ * `writtenAt`). All three hold exactly when those statements wrote the row.
  */
-function leftAs(status: MilestoneStatus, revisionBefore: number): string {
+function leftAs(status: MilestoneStatus, revisionBefore: number, held: HeldToVersion): string {
   // Written into the SQL, so never anything but an integer from D1.
   if (!Number.isSafeInteger(revisionBefore)) throw new Error(`not a revision id: ${revisionBefore}`);
 
   return `status = '${status}'
           AND (SELECT COALESCE(MAX(revision_id), 0) FROM revision
                 WHERE entity = 'subscriber_milestone'
-                  AND entity_key = CAST(subscriber_milestone.milestone_id AS TEXT)) = ${revisionBefore}`;
+                  AND entity_key = CAST(subscriber_milestone.milestone_id AS TEXT)) = ${revisionBefore}${writtenAt(held)}`;
 }
 
 /**
@@ -495,9 +496,10 @@ async function saveAndPublish(
     if (wasPublished) return refusalResponse(problems, false);
 
     // Saved only while it is still the draft it was read as: one published
-    // in between is not written over with no revision.
+    // or saved elsewhere in between is not written over, and 409 says so -
+    // or 404, for one deleted in between.
     if (!savedRow(await env.DB.batch(saveStatements(env, milestoneId, fields, { whileStatus: 'draft', ...held })))) {
-      return noLongerDraftResponse(milestoneId);
+      return await notLoggedResponse(env, milestoneId);
     }
 
     return refusalResponse(problems, true);
@@ -510,7 +512,7 @@ async function saveAndPublish(
       key: String(milestoneId),
       action: 'publish',
       body: publishedBodyOf(next),
-      whileRow: leftAs('published', revisionBefore),
+      whileRow: leftAs('published', revisionBefore, held),
     },
     saveStatements(env, milestoneId, fields, {
       status: 'published',
@@ -532,6 +534,7 @@ async function saveAndPublish(
           whileStatus: wasPublished ? 'published' : 'draft',
           whileRevision: revisionBefore,
           ...held,
+          unlogged: wasPublished,
         }),
       );
 
@@ -622,12 +625,12 @@ export async function withdrawMilestone(
 
   if (saved === null) return noMilestoneResponse(milestoneId);
 
-  if (saved.milestone.status !== 'published')
-    return changedElsewhereResponse('only a published milestone can be withdrawn');
-
   const held = heldToVersion(body, saved.milestone.edit_version, `subscriber milestone ${milestoneId}`);
 
   if ('error' in held) return held.error;
+
+  if (saved.milestone.status !== 'published')
+    return changedElsewhereResponse('only a published milestone can be withdrawn');
 
   // The event it is linked to already may stay, though it is no longer a
   // milestone: taking the row off the public site must not wait on あしあと.
@@ -638,7 +641,7 @@ export async function withdrawMilestone(
   const outcome = await publishChange(
     env,
     MILESTONES_TARGET,
-    { key: String(milestoneId), action: 'withdraw', body: null, whileRow: leftAs('draft', revisionBefore) },
+    { key: String(milestoneId), action: 'withdraw', body: null, whileRow: leftAs('draft', revisionBefore, held) },
     saveStatements(env, milestoneId, fields, {
       status: 'draft',
       whileStatus: 'published',

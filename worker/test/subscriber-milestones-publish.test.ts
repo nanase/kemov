@@ -1147,6 +1147,29 @@ describe('two screens that read the same published milestone (#307)', () => {
     expect((await storedMilestones()).map((m) => m.subscriber_count)).toEqual([21000]);
     expect((await revisionRows()).map((row) => row.action)).toEqual(['publish', 'publish']);
   });
+
+  // The first save could not write the JSON, so it saved the fields alone
+  // and logged no revision: the revision cannot tell the two saves apart.
+  test('the later save, after the first saved its fields alone, answers 409 and logs nothing', async () => {
+    const milestoneId = await createPublished();
+    const read = await versionOf(milestoneId);
+    const savedUnlogged = beforeNextBatch(env, () =>
+      saveMilestone(R2_DOWN, milestoneId, body({ subscriberCount: 21000, version: read }), NOW),
+    );
+
+    const response = await saveMilestone(
+      savedUnlogged,
+      milestoneId,
+      body({ subscriberCount: 22000, version: read }),
+      LATER,
+    );
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'published', subscriberCount: 21000 });
+    expect(await versionOf(milestoneId)).toEqual(read + 2);
+    expect((await storedMilestones()).map((m) => m.subscriber_count)).toEqual([20000]);
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish']);
+  });
 });
 
 describe('two screens that read the same draft milestone (#307)', () => {
@@ -1230,5 +1253,21 @@ describe('two screens that read the same draft milestone (#307)', () => {
     expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 21000 });
     expect(await storedJson()).toBeNull();
     expect(await revisionRows()).toEqual([]);
+  });
+
+  // The fields it would save anyway find the row saved elsewhere: it is a draft still, not published.
+  test('a refused publish whose batch runs after another save answers 409 without calling the draft published', async () => {
+    const milestoneId = await create();
+    const read = await versionOf(milestoneId);
+    const savedFirst = beforeNextBatch(env, () =>
+      saveMilestone(env, milestoneId, body({ subscriberCount: 21000, version: read }), NOW),
+    );
+
+    const response = await publishMilestone(savedFirst, milestoneId, body({ sources: [], version: read }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(((await response.json()) as { detail: string }).detail).not.toContain('no longer a draft');
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 21000 });
+    expect(await sourceCount(milestoneId)).toEqual(1);
   });
 });

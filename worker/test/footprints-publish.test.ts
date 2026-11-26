@@ -1134,6 +1134,24 @@ describe('two screens that read the same published event (#307)', () => {
     expect((await readPublished())!.events.map((e) => e.title)).toEqual(['先の保存']);
     expect((await revisionRows()).map((row) => row.action)).toEqual(['publish', 'publish']);
   });
+
+  // The first save could not write the JSON, so it saved the fields alone
+  // and logged no revision: the revision cannot tell the two saves apart.
+  test('the later save, after the first saved its fields alone, answers 409 and logs nothing', async () => {
+    const eventId = await createPublishedEvent({ title: '前の題' });
+    const read = await versionOf(eventId);
+    const savedUnlogged = beforeNextBatch(env, () =>
+      saveEvent(R2_DOWN, eventId, validBody({ title: '先の保存', version: read }), NOW),
+    );
+
+    const response = await saveEvent(savedUnlogged, eventId, validBody({ title: '後の保存', version: read }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '先の保存' });
+    expect(await versionOf(eventId)).toEqual(read + 2);
+    expect((await readPublished())!.events.map((e) => e.title)).toEqual(['前の題']);
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish']);
+  });
 });
 
 describe('two screens that read the same draft event (#307)', () => {
@@ -1200,5 +1218,20 @@ describe('two screens that read the same draft event (#307)', () => {
     expect(await readRow(eventId)).toMatchObject({ status: 'draft', title: '先の保存' });
     expect(await readPublished()).toBeNull();
     expect(await revisionRows()).toEqual([]);
+  });
+
+  test('refuses a null version, and saves nothing', async () => {
+    const eventId = await createValidEvent({ title: '前の題' });
+
+    const response = await saveEvent(env, eventId, validBody({ title: '新しい題', version: null }), NOW);
+
+    expect(response.status).toEqual(400);
+    expect(await readRow(eventId)).toMatchObject({ title: '前の題' });
+  });
+
+  test('refuses a malformed version with 400 before it looks at whether the event is published', async () => {
+    const eventId = await createValidEvent();
+
+    expect((await withdrawEvent(env, eventId, validBody({ version: -1 }), NOW)).status).toEqual(400);
   });
 });

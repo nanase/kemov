@@ -3,7 +3,7 @@ import type { Env } from '../lib/env';
 import { changedElsewhereResponse, jsonResponse } from '../lib/json';
 import { LOAD_FAILED, malformed, refusal, refuse, type Refusal } from '../lib/refusal';
 import { isSchemaTimestamp } from '../lib/time';
-import { heldToVersion } from './publishing';
+import { heldToVersion, UNLOGGED_VERSION_STEP } from './publishing';
 
 /**
  * Reading, saving and deleting `genet_stream` (#141, #139): one stream, the
@@ -643,6 +643,8 @@ export interface SaveOptions {
   whileStatus?: StreamStatus;
   whileRevision?: number;
   whileVersion?: number;
+  /** A published row's save that logs no revision: adds publishing.ts's `UNLOGGED_VERSION_STEP` to `edit_version`. */
+  unlogged?: boolean;
 }
 
 /** `SaveOptions`' conditions as `stillAsRead` binds them: status, revision and version, each null for none. */
@@ -710,7 +712,7 @@ export function saveStatements(
       `UPDATE genet_stream
           SET platform = ?1, url = ?2, video_type = ?3, title = ?4, short_title = ?5, published_at = ?6,
               categories = ?7, keywords = ?8, memo = ?9, status = COALESCE(?10, status),
-              edit_version = edit_version + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+              edit_version = edit_version + ${options.unlogged === true ? UNLOGGED_VERSION_STEP : 1}, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         WHERE video_id = ?11 AND ${stillAsRead(12)}`,
     ).bind(
       fields.platform,

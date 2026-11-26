@@ -13,7 +13,7 @@ import {
 } from '../lib/refusal';
 import { sourcesEnough } from '../lib/source-whitelist';
 import { isSchemaDate, isSchemaMonth, isSchemaTimestamp, japanDateOf } from '../lib/time';
-import { heldToVersion } from './publishing';
+import { heldToVersion, UNLOGGED_VERSION_STEP } from './publishing';
 
 /**
  * Reading, saving and deleting `footprints_event` (#141, #140): the
@@ -665,6 +665,8 @@ export interface SaveOptions {
   whileStatus?: EventStatus;
   whileRevision?: number;
   whileVersion?: number;
+  /** A published row's save that logs no revision: adds publishing.ts's `UNLOGGED_VERSION_STEP` to `edit_version`. */
+  unlogged?: boolean;
 }
 
 export type EventStatus = 'draft' | 'published';
@@ -736,7 +738,7 @@ export function saveStatements(
       `UPDATE footprints_event
           SET date_precision = ?1, start_date = ?2, starts_at = ?3, end_date = ?4, kind = ?5, emphasized = ?6,
               title = ?7, place = ?8, supplement = ?9, video_id = ?10, memo = ?11,
-              status = COALESCE(?12, status), edit_version = edit_version + 1,
+              status = COALESCE(?12, status), edit_version = edit_version + ${options.unlogged === true ? UNLOGGED_VERSION_STEP : 1},
               updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         WHERE event_id = ?13 AND ${stillAsRead(14)}`,
     ).bind(

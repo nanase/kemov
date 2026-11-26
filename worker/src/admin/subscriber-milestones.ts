@@ -4,7 +4,7 @@ import { changedElsewhereResponse, jsonResponse } from '../lib/json';
 import { LOAD_FAILED, malformed, MEMBER_NOT_FOUND_TEXT, refusal, refuse, type Refusal } from '../lib/refusal';
 import { sourceUrlProblem } from '../lib/source-whitelist';
 import { isSchemaDate, isSchemaMonth } from '../lib/time';
-import { heldToVersion } from './publishing';
+import { heldToVersion, UNLOGGED_VERSION_STEP } from './publishing';
 
 /**
  * Reading, saving and deleting `subscriber_milestone` (#225): a subscriber
@@ -470,6 +470,8 @@ export interface SaveOptions {
   whileStatus?: MilestoneStatus;
   whileRevision?: number;
   whileVersion?: number;
+  /** A published row's save that logs no revision: adds publishing.ts's `UNLOGGED_VERSION_STEP` to `edit_version`. */
+  unlogged?: boolean;
 }
 
 /** `SaveOptions`' conditions as `stillAsRead` binds them: status, revision and version, each null for none. */
@@ -535,7 +537,7 @@ export function saveStatements(
     env.DB.prepare(
       `UPDATE subscriber_milestone
           SET channel_id = ?1, date_precision = ?2, reached_date = ?3, subscriber_count = ?4, announced_by = ?5,
-              event_id = ?6, memo = ?7, status = COALESCE(?8, status), edit_version = edit_version + 1,
+              event_id = ?6, memo = ?7, status = COALESCE(?8, status), edit_version = edit_version + ${options.unlogged === true ? UNLOGGED_VERSION_STEP : 1},
               updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         WHERE milestone_id = ?9 AND ${stillAsRead(10)}`,
     ).bind(

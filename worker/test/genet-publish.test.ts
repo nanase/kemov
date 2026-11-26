@@ -1574,6 +1574,28 @@ describe('two screens that read the same published stream (#307)', () => {
     expect((await readPublished())!.streams.map((s) => s.title)).toEqual(['先の保存']);
     expect((await revisionRows('genet_stream')).map((row) => row.action)).toEqual(['publish', 'publish']);
   });
+
+  // The first save could not write the JSON, so it saved the fields alone
+  // and logged no revision: the revision cannot tell the two saves apart.
+  test('the later save, after the first saved its fields alone, answers 409 and logs nothing', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const read = await fieldsOf(videoId);
+    const savedUnlogged = beforeNextBatch(env, () =>
+      saveStream(failingPutEnv(), videoId, { ...read, title: '先の保存' }, NOW),
+    );
+
+    const response = await saveStream(savedUnlogged, videoId, { ...read, title: '後の保存' }, LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await streamTitle(videoId)).toEqual('先の保存');
+    expect(((await fieldsOf(videoId)) as { version: number }).version).toEqual((read.version as number) + 2);
+    expect((await readPublished())!.streams.map((s) => s.title)).toEqual([read.title]);
+    expect((await revisionRows('genet_stream')).map((row) => row.action)).toEqual(['publish']);
+    expect((await revisionRows('genet_tune')).map((row) => row.action)).toEqual(['publish']);
+  });
 });
 
 describe('two screens that read the same draft stream (#307)', () => {

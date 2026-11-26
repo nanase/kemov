@@ -31,6 +31,7 @@ import {
   type PublishOutcome,
   type PublishTarget,
   type RevisionChange,
+  writtenAt,
 } from './publishing';
 import { republishMilestonesForEvents } from './subscriber-milestones-publish';
 
@@ -294,19 +295,20 @@ async function notLoggedResponse(env: Env, eventId: number): Promise<Response> {
 
 /**
  * `RevisionChange.whileRow` for a batch whose row statements write only
- * while no revision was recorded since `revisionBefore`: the row was given
- * `status`, and its newest revision is still that one - subscriber-milestones-
- * publish.ts's `leftAs` for an event. Both hold exactly when those statements
- * wrote the row.
+ * while no revision was recorded since `revisionBefore`, and at the version
+ * `held` names: the row was given `status`, its newest revision is still
+ * that one, and it is at the version they leave it at (publishing.ts's
+ * `writtenAt`) - subscriber-milestones-publish.ts's `leftAs` for an event.
+ * All three hold exactly when those statements wrote the row.
  */
-function leftAs(status: EventStatus, revisionBefore: number): string {
+function leftAs(status: EventStatus, revisionBefore: number, held: HeldToVersion): string {
   // Written into the SQL, so never anything but an integer from D1.
   if (!Number.isSafeInteger(revisionBefore)) throw new Error(`not a revision id: ${revisionBefore}`);
 
   return `status = '${status}'
           AND (SELECT COALESCE(MAX(revision_id), 0) FROM revision
                 WHERE entity = 'footprints_event'
-                  AND entity_key = CAST(footprints_event.event_id AS TEXT)) = ${revisionBefore}`;
+                  AND entity_key = CAST(footprints_event.event_id AS TEXT)) = ${revisionBefore}${writtenAt(held)}`;
 }
 
 /**
@@ -348,10 +350,10 @@ function notMendedResponse(eventId: number, error: string): Response {
  * still published or still a draft, with no revision recorded since
  * `revisionBefore` - the event's newest revision, read before `existing`
  * was - and still at the version `held` names, which another screen's save
- * moves on even when it is a draft's and logs no revision (#307). Two saves
- * of a published row that read the same version are told apart by the
- * revision: the first logs one, and the later one's batch then writes
- * nothing. One that changed is neither saved nor put on the public
+ * moves on even when it is a draft's and logs no revision (#307). The
+ * revision is logged only while the row is at the version these statements
+ * leave it at (`leftAs`), so a later save that read the same version as
+ * another logs none either. One that changed is neither saved nor put on the public
  * timeline as this request has it, and 409 says so - or `notMendedResponse`'s
  * 502, when the JSON written before the batch could not be built again
  * without the change. The save that follows a JSON that could not be written
@@ -392,7 +394,7 @@ async function saveAndPublish(
       key: String(eventId),
       action: 'publish',
       body: publicShapeOf(next, whitelist),
-      whileRow: leftAs('published', revisionBefore),
+      whileRow: leftAs('published', revisionBefore, held),
     },
     saveStatements(env, eventId, fields, {
       status: 'published',
@@ -416,6 +418,7 @@ async function saveAndPublish(
           whileStatus: wasPublished ? 'published' : 'draft',
           whileRevision: revisionBefore,
           ...held,
+          unlogged: wasPublished,
         }),
       );
 
@@ -517,11 +520,11 @@ export async function withdrawEvent(
 
   if (saved === null) return noEventResponse(eventId);
 
-  if (saved.event.status !== 'published') return changedElsewhereResponse('only a published event can be withdrawn');
-
   const held = heldToVersion(body, saved.event.edit_version, `footprints event ${eventId}`);
 
   if ('error' in held) return held.error;
+
+  if (saved.event.status !== 'published') return changedElsewhereResponse('only a published event can be withdrawn');
 
   const fields = await validatedFields(env, body);
 
@@ -530,7 +533,7 @@ export async function withdrawEvent(
   const outcome = await publishChange(
     env,
     footprintsTarget(await readSourceWhitelist(env)),
-    { key: String(eventId), action: 'withdraw', body: null, whileRow: leftAs('draft', revisionBefore) },
+    { key: String(eventId), action: 'withdraw', body: null, whileRow: leftAs('draft', revisionBefore, held) },
     saveStatements(env, eventId, fields, {
       status: 'draft',
       whileStatus: 'published',
