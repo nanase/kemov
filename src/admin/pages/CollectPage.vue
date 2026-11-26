@@ -127,7 +127,7 @@ onMounted(load);
                     再取得
                   </button>
                   <button class="btn quiet" type="button" :disabled="busyKeys.has(rowKey(task))" @click="ack(task)">
-                    確認済みにする
+                    確認済み
                   </button>
                   <button
                     v-if="!task.isChannelFailure"

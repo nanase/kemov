@@ -279,7 +279,7 @@ JSON は `shape_version` と `channel_id` も持ちます。
 
 | メソッド | パス                                                   | 返すもの                                                                                  |
 | -------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| GET      | `/admin/api/subscribers/milestones`                    | `subscriber_milestone` の全行と、それぞれの出典。達成の日の古い順                         |
+| GET      | `/admin/api/subscribers/milestones`                    | `subscriber_milestone` の全行と、それぞれの出典。達成日の古い順                           |
 | GET      | `/admin/api/subscribers/milestones/<節目 ID>`          | 1 行と、その出典                                                                          |
 | POST     | `/admin/api/subscribers/milestones`                    | `draft` で作成した後の行                                                                  |
 | PUT      | `/admin/api/subscribers/milestones/<節目 ID>`          | 「保存」。下書きなら保存した後の行。公開中なら、保存して JSON を書き直した後の行          |

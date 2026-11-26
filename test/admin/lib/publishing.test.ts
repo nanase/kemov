@@ -54,7 +54,7 @@ describe('publishFootFor', () => {
 describe('bandReasonIds', () => {
   const refusal = {
     title: '公開できません',
-    lines: ['題を書いてください。', '出典が足りません。', '別の理由'],
+    lines: ['タイトルを書いてください。', '出典が足りません。', '別の理由'],
     note: null,
   };
 

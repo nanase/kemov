@@ -203,7 +203,7 @@ describe('what a refused save says', () => {
       .run();
 
     expect(await (await deletePerson(env, personId)).json()).toEqual({
-      error: 'この人をクレジットしている曲があるため削除できませんでした',
+      error: 'この人物をクレジットしている曲があるため削除できませんでした',
       detail: 'this person is credited on a tune; remove them there first',
     });
   });
