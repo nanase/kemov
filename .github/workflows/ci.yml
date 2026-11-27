@@ -46,7 +46,7 @@ jobs:
         run: bun run eslint .
 
       - name: Lint styles
-        run: bun run lint:style --formatter verbose
+        run: bun run lint:style
 
       - name: Type check
         run: bun run type-check
