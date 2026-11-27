@@ -652,12 +652,21 @@ export async function updateMilestone(env: Env, milestoneId: number, body: Recor
  *
  * Deleted only while it is still a draft when the batch runs: a 「公開」 that
  * lands between the read and the delete would otherwise leave its revision
- * and its public entry with no row to withdraw them from.
+ * and its public entry with no row to withdraw them from. And only while it
+ * is at the version `body` names (#309), as footprints.ts's deleteEvent is.
  */
-export async function deleteMilestone(env: Env, milestoneId: number): Promise<Response> {
+export async function deleteMilestone(
+  env: Env,
+  milestoneId: number,
+  body: Record<string, unknown> = {},
+): Promise<Response> {
   const existing = await readMilestone(env, milestoneId);
 
   if (existing === null) return noMilestoneResponse(milestoneId);
+
+  const held = heldToVersion(body, existing.milestone.edit_version, `subscriber milestone ${milestoneId}`, 'remove');
+
+  if ('error' in held) return held.error;
 
   if (existing.milestone.status === 'published') {
     return changedElsewhereResponse('withdraw this milestone before deleting it', 'remove');
@@ -667,15 +676,27 @@ export async function deleteMilestone(env: Env, milestoneId: number): Promise<Re
     env.DB.prepare(
       `DELETE FROM subscriber_milestone_source
         WHERE milestone_id = ?1
-          AND EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1 AND status = 'draft')`,
-    ).bind(milestoneId),
-    env.DB.prepare(`DELETE FROM subscriber_milestone WHERE milestone_id = ?1 AND status = 'draft'`).bind(milestoneId),
+          AND EXISTS (SELECT 1 FROM subscriber_milestone
+                       WHERE milestone_id = ?1 AND status = 'draft' AND edit_version = ?2)`,
+    ).bind(milestoneId, held.whileVersion),
+    env.DB.prepare(
+      `DELETE FROM subscriber_milestone WHERE milestone_id = ?1 AND status = 'draft' AND edit_version = ?2`,
+    ).bind(milestoneId, held.whileVersion),
   ]);
 
   if (results[1]!.meta.changes === 0) {
-    if ((await readMilestone(env, milestoneId)) === null) return noMilestoneResponse(milestoneId);
+    const now = await readMilestone(env, milestoneId);
 
-    return changedElsewhereResponse('withdraw this milestone before deleting it', 'remove');
+    if (now === null) return noMilestoneResponse(milestoneId);
+
+    if (now.milestone.status === 'published') {
+      return changedElsewhereResponse('withdraw this milestone before deleting it', 'remove');
+    }
+
+    return changedElsewhereResponse(
+      `subscriber milestone ${milestoneId} was saved by another screen meanwhile`,
+      'remove',
+    );
   }
 
   return jsonResponse({});

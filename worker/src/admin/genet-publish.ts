@@ -24,12 +24,16 @@ import {
 } from './genet-streams';
 import {
   isPerformedLive,
+  NEWEST_TUNE_REVISION,
+  newestRevisionOf as newestTuneRevisionOf,
   noTuneResponse,
   present as presentTune,
   publicShapeOf as tunePublicShapeOf,
   readTune,
   readTunes,
+  savedTuneRow,
   saveStatements as tuneSaveStatements,
+  tuneSavedElsewhereResponse,
   validatedTuneFields,
   withFields as tuneWithFields,
   type GenetTune,
@@ -470,9 +474,12 @@ function leftAs(status: StreamStatus, revisionBefore: number, held: HeldToVersio
  * The stream is written only while it is still as it was read, at the
  * version `held` names too (#307), as subscriber-milestones-publish.ts's
  * `saveAndPublish` writes a milestone, its performances and scenes with it
- * - and 409 says when it was not. A
- * tune or person saved since its latest revision was read keeps its newer
- * revision (publishing.ts's `whileLatest`), and the JSON is built with that.
+ * - and 409 says when it was not. So is a publish that finds a tune it
+ * performs saved since it read the tune (#303): the JSON written before the
+ * batch has the tune as it was read, and a save that logged no revision
+ * would be left out of it. A person saved since its latest revision was
+ * read keeps its newer revision (publishing.ts's `whileLatest`), and the
+ * JSON is built with that.
  */
 async function saveAndPublish(
   env: Env,
@@ -520,6 +527,7 @@ async function saveAndPublish(
       whileStatus: wasPublished ? 'published' : 'draft',
       whileRevision: revisionBefore,
       ...held,
+      whileTunes: new Map([...tunes.values()].map((t) => [t.tune.tune_id, t.tune.edit_version])),
     }),
     now,
   );
@@ -672,20 +680,44 @@ export async function withdrawStream(
  * written, the fields are saved, the tune keeps its last revision, and 502
  * says so with `saved: true`; when it was written but could not be brought
  * up to date, the revisions are recorded all the same, and 502 says that too.
+ *
+ * Written only at the version the screen read the tune at, and 409 when it
+ * was saved since (#303), as a stream's save is. A tune no published stream
+ * performed when it was read is written only while that is still so: one
+ * published in between has put the tune in the JSON as it was, so the save
+ * goes on to reach the JSON as a live tune's does.
  */
 export async function saveTune(env: Env, tuneId: number, body: Record<string, unknown>, now: Date): Promise<Response> {
+  let revisionBefore = await newestTuneRevisionOf(env, tuneId);
   const existing = await readTune(env, tuneId);
 
   if (existing === null) return noTuneResponse(tuneId);
+
+  const held = heldToVersion(body, existing.tune.edit_version, `tune ${tuneId}`);
+
+  if ('error' in held) return held.error;
 
   const fields = await validatedTuneFields(env, body);
 
   if ('error' in fields) return fields.error;
 
   if (!(await isPerformedLive(env, tuneId))) {
-    await env.DB.batch(tuneSaveStatements(env, tuneId, fields));
+    // Written only while no published stream performs it yet (#303): one
+    // published in between put the tune in the JSON as it was read, and the
+    // save goes on below to reach the JSON too.
+    const results = await env.DB.batch(
+      tuneSaveStatements(env, tuneId, fields, { ...held, whileUnperformed: true, unlogged: true }),
+    );
 
-    return await tuneResponse(env, tuneId, false, {});
+    if (savedTuneRow(results)) return await tuneResponse(env, tuneId, false, {});
+
+    // Read before the row, as above: the publish in between logged the tune.
+    revisionBefore = await newestTuneRevisionOf(env, tuneId);
+
+    const after = await readTune(env, tuneId);
+
+    if (after === null) return noTuneResponse(tuneId);
+    if (after.tune.edit_version !== held.whileVersion) return tuneSavedElsewhereResponse(tuneId);
   }
 
   const next = tuneWithFields(existing, fields);
@@ -700,13 +732,34 @@ export async function saveTune(env: Env, tuneId: number, body: Record<string, un
   const outcome = await publishChange(
     env,
     GENET_TUNE_TARGET,
-    { key: String(tuneId), action: 'publish', body: tunePublicShapeOf(next), alongside },
-    tuneSaveStatements(env, tuneId, fields),
+    {
+      key: String(tuneId),
+      action: 'publish',
+      body: tunePublicShapeOf(next),
+      alongside,
+      whileRow: tuneLeftAs(revisionBefore, held),
+    },
+    tuneSaveStatements(env, tuneId, fields, { whileRevision: revisionBefore, ...held }),
     now,
   );
 
   if (!outcome.written) {
-    if (!outcome.recorded) await env.DB.batch(tuneSaveStatements(env, tuneId, fields));
+    if (!outcome.recorded) {
+      const fallback = await env.DB.batch(
+        tuneSaveStatements(env, tuneId, fields, { whileRevision: revisionBefore, ...held, unlogged: true }),
+      );
+
+      if (!savedTuneRow(fallback)) return await tuneNotLoggedResponse(env, tuneId);
+    } else if (outcome.revisionId === null) {
+      return jsonResponse(
+        {
+          error: NOT_WRITTEN_TEXT,
+          detail: `tune ${tuneId} changed while this request was saving it, and ${GENET_MUSIC_OBJECT_KEY} could not be built again without the change: ${outcome.error}`,
+          saved: false,
+        },
+        { status: 502 },
+      );
+    }
 
     return await tuneResponse(
       env,
@@ -721,12 +774,31 @@ export async function saveTune(env: Env, tuneId: number, body: Record<string, un
     );
   }
 
-  if (outcome.revisionId === null) return noTuneResponse(tuneId);
+  if (outcome.revisionId === null) return await tuneNotLoggedResponse(env, tuneId);
 
   return await tuneResponse(env, tuneId, true, {
     revisionId: outcome.revisionId,
     publicationId: outcome.publicationId,
   });
+}
+
+/**
+ * `RevisionChange.whileRow` for a tune's save whose row statements write
+ * only while no revision of the tune was recorded since `revisionBefore`,
+ * and at the version `held` names - `leftAs` for a tune, which has no status.
+ */
+function tuneLeftAs(revisionBefore: number, held: HeldToVersion): string {
+  // Written into the SQL, so never anything but an integer from D1.
+  if (!Number.isSafeInteger(revisionBefore)) throw new Error(`not a revision id: ${revisionBefore}`);
+
+  return `${NEWEST_TUNE_REVISION} = ${revisionBefore}${writtenAt(held)}`;
+}
+
+/** The answer when a tune's save wrote nothing: 404 when it was deleted, 409 when another screen saved it first. */
+async function tuneNotLoggedResponse(env: Env, tuneId: number): Promise<Response> {
+  if ((await readTune(env, tuneId)) === null) return noTuneResponse(tuneId);
+
+  return tuneSavedElsewhereResponse(tuneId);
 }
 
 /** The tune as it now stands, whether a published stream performs it, and `extra`. 404 when it is gone. */
