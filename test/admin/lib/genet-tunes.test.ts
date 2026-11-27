@@ -38,6 +38,7 @@ const TUNE: GenetTune = {
   videos: [{ videoId: 'abcdefghijk', title: '演奏動画', startSeconds: 10, description: null }],
   scores: [{ url: 'https://imslp.org/x', title: '楽譜' }],
   memo: 'メモ',
+  version: 3,
 };
 
 describe('toFormFields', () => {

@@ -1,4 +1,4 @@
-import { fieldsAfterSave, fieldsOnReload, sameFields, writeBody } from '@/admin/lib/editing';
+import { fieldsAfterSave, fieldsOnReload, removePath, sameFields, writeBody } from '@/admin/lib/editing';
 import { toFormFields, type FootprintsEvent } from '@/admin/lib/footprints';
 
 const EVENT: FootprintsEvent = {
@@ -139,6 +139,12 @@ describe('writeBody', () => {
     writeBody(fields, { version: 7 });
 
     expect(fields).toEqual({ title: '打った題' });
+  });
+});
+
+describe('removePath', () => {
+  it('puts the version of the row the delete was pressed over in the query', () => {
+    expect(removePath('/footprints/events/12', { version: 3 })).toEqual('/footprints/events/12?version=3');
   });
 });
 

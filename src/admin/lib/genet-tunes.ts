@@ -39,11 +39,13 @@ export interface GenetTune {
   videos: TuneVideo[];
   scores: TuneScore[];
   memo: string | null;
+  /** `edit_version` as read (#303): what the tune's 保存 sends back. */
+  version: number;
 }
 
 /**
- * The PUT/POST body `updateTune`/`createTune` (`worker/src/admin/genet-tunes.ts`)
- * reads. A save here is a full replace of `attributes`/`videos`/`scores` -
+ * The PUT/POST body `saveTune`/`createTune` (`worker/src/admin/genet-publish.ts`,
+ * `worker/src/admin/genet-tunes.ts`) reads. A save here is a full replace of `attributes`/`videos`/`scores` -
  * every element is deleted and reinserted wholesale, the same shape
  * footprints.ts gives an event's own members and sources.
  */

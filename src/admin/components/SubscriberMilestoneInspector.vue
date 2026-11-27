@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, ref, toRaw, watch } fr
 
 import { deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, fieldsAfterSave, sameFields, writeBody } from '../lib/editing';
+import { EDITING_TEXT, fieldsAfterSave, removePath, sameFields, writeBody } from '../lib/editing';
 import type { FootprintsEvent, FootprintsMember } from '../lib/footprints';
 import { previewOpen } from '../lib/preview';
 import { refreshSidebarDrafts } from '../lib/sidebar-drafts';
@@ -343,7 +343,7 @@ async function create(): Promise<void> {
 }
 
 function remove(): Promise<void> {
-  return run('delete', () => deleteJson(`/subscribers/milestones/${milestoneId.value}`));
+  return run('delete', () => deleteJson(removePath(`/subscribers/milestones/${milestoneId.value}`, props.milestone!)));
 }
 
 /** ← 一覧 and a new milestone's キャンセル: what is let go here is thrown away. */

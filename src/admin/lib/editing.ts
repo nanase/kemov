@@ -123,3 +123,13 @@ function plainCopy<V>(value: V): V {
 export function writeBody<T extends object>(fields: T, row: { version: number }): T & { version: number } {
   return { ...fields, version: row.version };
 }
+
+/**
+ * The path of a 削除 of `row` at `path`, with the version it was read at
+ * (#309): the worker deletes only while the row is still at it, as it writes
+ * a 保存, and answers 409 otherwise. A DELETE has no body, so the version
+ * goes in the query.
+ */
+export function removePath(path: string, row: { version: number }): string {
+  return `${path}?version=${row.version}`;
+}

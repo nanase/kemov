@@ -14,7 +14,7 @@ import {
 } from '../lib/footprints';
 import { deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, fieldsAfterSave, sameFields, writeBody } from '../lib/editing';
+import { EDITING_TEXT, fieldsAfterSave, removePath, sameFields, writeBody } from '../lib/editing';
 import { footprintsAnswerFor, isChangedSincePublish, type FootprintsPending } from '../lib/footprints-publish';
 import {
   BAND_NOTE_ID,
@@ -285,7 +285,7 @@ async function create(): Promise<void> {
 }
 
 function remove(): Promise<void> {
-  return run('delete', () => deleteJson(`/footprints/events/${eventId.value}`));
+  return run('delete', () => deleteJson(removePath(`/footprints/events/${eventId.value}`, props.event!)));
 }
 
 /** ← 一覧 and a new row's キャンセル: on a narrow screen the panel stays behind the list, so what is let go here is thrown away, not kept for later. */
