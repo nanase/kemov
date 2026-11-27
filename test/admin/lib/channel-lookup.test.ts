@@ -58,7 +58,7 @@ describe('lookupView', () => {
     expect(lookupView(OTHER, { status: 'notFound', channelId: ID })).toBe('loading');
   });
 
-  test('reads the id as 一覧に足す will: with the spaces around it trimmed', () => {
+  test('reads the id as 一覧に追加 will: with the spaces around it trimmed', () => {
     expect(lookupView(`  ${ID} `, found)).toBe('found');
   });
 });

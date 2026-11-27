@@ -66,11 +66,11 @@ const PROBLEMS = [
 describe('footprintsAnswerFor', () => {
   // #277's decision 1c.
   test.each([
-    ['publish', 'draft', '公開しました。本番に出ています'],
-    ['save', 'published', '保存しました。本番に出ています'],
+    ['publish', 'draft', '公開しました'],
+    ['save', 'published', '保存して本番に反映しました'],
     ['save', 'draft', '下書きを保存しました'],
     ['save', null, '下書きを保存しました'],
-    ['withdraw', 'published', '非公開に戻しました。本番から外れています'],
+    ['withdraw', 'published', '非公開に戻しました'],
   ] as const)('a %s that went through on a %s row says so in a toast', (action, status, toast) => {
     expect(footprintsAnswerFor(action, status, null)).toEqual({ kind: 'done', toast });
   });
@@ -84,7 +84,7 @@ describe('footprintsAnswerFor', () => {
       band: {
         title: '公開できません',
         lines: PROBLEMS.map((p) => p.message),
-        note: '入力した内容は下書きとして保存しました。',
+        note: '下書きとして保存しました',
       },
       fields: ['leadChannelIds', 'videoId'],
       changed: true,
@@ -99,7 +99,7 @@ describe('footprintsAnswerFor', () => {
       band: {
         title: '保存できません',
         lines: PROBLEMS.map((p) => p.message),
-        note: '公開中の行は、公開の条件を満たさないと保存できません。本番は前の内容のままです。',
+        note: '本番は変更前の内容のままです',
       },
       fields: ['leadChannelIds', 'videoId'],
       changed: false,
@@ -109,8 +109,8 @@ describe('footprintsAnswerFor', () => {
   // A draft stays a draft when the JSON cannot be written, so 「公開」 is the
   // button to press again; a published row's is 「保存」.
   test.each([
-    ['publish', 'draft', '保存しましたが、本番に出せませんでした。もう一度「公開」を押してください。'],
-    ['save', 'published', '保存しましたが、本番に出せませんでした。もう一度「保存」を押してください。'],
+    ['publish', 'draft', '保存しましたが本番への反映に失敗しました'],
+    ['save', 'published', '保存しましたが本番への反映に失敗しました'],
   ] as const)('a %s on a %s row that saved but could not reach the public site says so', (action, status, title) => {
     const error = new AdminApiError(502, { error: 'saved, but …', saved: true, event: null });
 
@@ -130,7 +130,7 @@ describe('footprintsAnswerFor', () => {
     expect(footprintsAnswerFor('publish', 'draft', error)).toEqual({
       kind: 'band',
       band: {
-        title: '保存しましたが、本番に出せませんでした。もう一度「保存」を押してください。',
+        title: '保存しましたが本番への反映に失敗しました',
         lines: [],
         note: null,
       },
@@ -143,7 +143,7 @@ describe('footprintsAnswerFor', () => {
     const error = new AdminApiError(502, { error: 'saved, but …', saved: true, event: { status: 'draft' } });
 
     expect(footprintsAnswerFor('publish', 'draft', error)).toMatchObject({
-      band: { title: '保存しましたが、本番に出せませんでした。もう一度「公開」を押してください。' },
+      band: { title: '保存しましたが本番への反映に失敗しました' },
     });
   });
 
@@ -155,7 +155,7 @@ describe('footprintsAnswerFor', () => {
       band: {
         title: '本番への反映に失敗しました',
         lines: [],
-        note: '一覧の上の［本番に反映］を押してください',
+        note: null,
       },
       fields: [],
       changed: true,
@@ -170,7 +170,7 @@ describe('footprintsAnswerFor', () => {
       band: {
         title: '非公開に戻せません',
         lines: [],
-        note: '本番を書き直せませんでした。行は公開中のまま、本番も前の内容のままです。もう一度「非公開に戻す」を押してください。',
+        note: '行は公開中のままです',
       },
       fields: [],
       changed: false,
@@ -242,7 +242,7 @@ describe('footprintsAnswerFor for a 502 that saved nothing', () => {
   test('says the public timeline was not mended, in place of the worker message', () => {
     expect(footprintsAnswerFor('save', 'published', error)).toEqual({
       kind: 'band',
-      band: { title: '保存できません', lines: [], note: '本番の年表への反映に失敗しました。' },
+      band: { title: '保存できません', lines: [], note: '本番の年表への反映に失敗しました' },
       fields: [],
       changed: true,
     });
@@ -251,7 +251,7 @@ describe('footprintsAnswerFor for a 502 that saved nothing', () => {
   test('says the same for a withdraw, under its own title', () => {
     expect(footprintsAnswerFor('withdraw', 'published', error)).toEqual({
       kind: 'band',
-      band: { title: '非公開に戻せません', lines: [], note: '本番の年表への反映に失敗しました。' },
+      band: { title: '非公開に戻せません', lines: [], note: '本番の年表への反映に失敗しました' },
       fields: [],
       changed: true,
     });

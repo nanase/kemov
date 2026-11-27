@@ -113,7 +113,6 @@ onMounted(() => {
     :aria-valuenow="pct"
     :aria-valuemin="SPLIT_MIN"
     :aria-valuemax="SPLIT_MAX"
-    title="ドラッグで高さを変える（ダブルクリックで元に戻す）"
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
     @pointerup="onPointerUp"

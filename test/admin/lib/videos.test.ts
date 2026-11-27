@@ -13,7 +13,7 @@ describe('TYPE_LABEL and AVAILABILITY_LABEL', () => {
     expect(TYPE_LABEL).toEqual({ video: '動画', streaming: '配信', shorts: 'ショート' });
     expect(AVAILABILITY_LABEL).toEqual({
       public: '公開',
-      membership: 'メン限',
+      membership: 'メンバー限定',
       private: '非公開',
       unavailable: '削除・不明',
     });

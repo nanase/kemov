@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router';
 import BulkPublishBar from '../components/BulkPublishBar.vue';
 import BulkPublishOutcome from '../components/BulkPublishOutcome.vue';
 import FootprintsInspector from '../components/FootprintsInspector.vue';
+import HelpLink from '../components/HelpLink.vue';
 import RepublishBand from '../components/RepublishBand.vue';
 import { AdminApiError, getJson, postJson } from '../lib/api';
 import {
@@ -42,7 +43,7 @@ import { confirmDiscard } from '../lib/unsaved-guard';
 
 /**
  * あしあと (#144, task 9's own admin screen) - the table and its edit panel.
- * 出典不足だけ narrows the rows already read to those short of sources
+ * 出典不足のみ narrows the rows already read to those short of sources
  * (#277's decision 2b), judged here against the whitelist.
  */
 
@@ -54,7 +55,7 @@ const status = ref('all');
 const q = ref('');
 const selectedId = ref<number | null>(null);
 const detail = ref(false);
-// ＋ 足す: the edit panel holds a new event, not yet created (#277's 6-12).
+// ＋ 追加: the edit panel holds a new event, not yet created (#277's 6-12).
 const adding = ref(false);
 // Whether the edit panel's request is on its way. Selecting another row
 // meanwhile would unmount the panel, and its answer would never reach the table.
@@ -69,7 +70,7 @@ const locked = computed(() => inspectorBusy.value || bulkProgress.value !== null
 // panel says so. Null when it could not be read.
 const pending = ref<FootprintsPending | null>(null);
 // The 出典ホワイトリスト's prefixes, or null while they are unknown: no row
-// is called short of sources then, and 出典不足だけ cannot be pressed.
+// is called short of sources then, and 出典不足のみ cannot be pressed.
 const { whitelist, failed: whitelistFailed, load: loadWhitelist } = useWhitelist();
 const shortOnly = ref(false);
 // The row last saved, published or withdrawn, kept in the table at the place
@@ -87,7 +88,7 @@ const route = useRoute();
 let requestedId = typeof route.query.event === 'string' ? Number(route.query.event) : Number.NaN;
 
 const selected = computed(() => events.value.find((e) => e.eventId === selectedId.value) ?? null);
-// 出典不足だけ is pressed and has a whitelist to judge by.
+// 出典不足のみ is pressed and has a whitelist to judge by.
 const shortOnlyApplied = computed(() => shortOnly.value && whitelist.value !== null);
 const filtered = computed(() => status.value !== 'all' || q.value.trim() !== '' || shortOnlyApplied.value);
 const shortCount = computed(() =>
@@ -370,7 +371,7 @@ async function created(eventId: number): Promise<void> {
   } else {
     selectedId.value = shown.value[0]?.eventId ?? null;
     detail.value = false;
-    showToast(`${SAVE_TOAST.saveDraft}（いまの絞り込みには出ません）`);
+    showToast(`${SAVE_TOAST.saveDraft}（現在の絞り込みでは非表示）`);
   }
 }
 
@@ -457,7 +458,8 @@ onMounted(() => {
     <div class="pane">
       <div class="toolbar">
         <h2>あしあと</h2>
-        <div class="seg" role="group" aria-label="状態で絞る">
+        <HelpLink section="footprints" />
+        <div class="seg" role="group" aria-label="状態で絞り込み">
           <button
             v-for="opt in STATUS_OPTIONS"
             :key="opt.value"
@@ -482,18 +484,18 @@ onMounted(() => {
           :value="q"
           type="text"
           class="btn"
-          placeholder="題で絞り込み"
-          aria-label="題で絞り込み"
+          placeholder="タイトルで絞り込み"
+          aria-label="タイトルで絞り込み"
           @input="setQuery"
         />
         <span class="grow"></span>
         <span class="sub num">{{ countText(matchedCount, listTotal.total.value, filtered) }}</span>
-        <button class="btn" type="button" @click="startAdding">＋ 足す</button>
+        <button class="btn" type="button" @click="startAdding">＋ 追加</button>
       </div>
       <div class="scroller">
         <RepublishBand target="footprints" :text="bandText" :held="pendingHeld" :reload="reloadPending" />
         <div v-if="loadError" class="empty-note">
-          <b>読み込めません</b>
+          <b>読み込みに失敗しました</b>
           <div class="sub">{{ loadError }}</div>
           <button class="btn quiet" type="button" :disabled="loading" @click="confirmDiscard() && load()">
             再読み込み
@@ -514,7 +516,7 @@ onMounted(() => {
               <th>状態</th>
               <th>日付</th>
               <th>種類</th>
-              <th>題</th>
+              <th>タイトル</th>
               <th>メンバー</th>
               <th>出典</th>
               <th>event_id</th>

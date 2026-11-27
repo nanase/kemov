@@ -78,7 +78,7 @@ function publishProblems(saved: FootprintsEvent): PublishProblem[] {
   const { event } = saved;
   const problems: PublishProblem[] = [];
 
-  if (event.title === '') problems.push({ field: 'title', message: '題を書いてください。' });
+  if (event.title === '') problems.push({ field: 'title', message: 'タイトルを書いてください。' });
 
   // The upcoming list counts days and years from a debut for its leads
   // alone. A debut with none would count for nobody, and saying so here is

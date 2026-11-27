@@ -23,7 +23,7 @@ describe('entityLabel', () => {
   test.each([
     ['genet_stream', '配信'],
     ['genet_tune', '曲'],
-    ['genet_person', '人'],
+    ['genet_person', '人物'],
   ] as const)('labels %s as %s', (entity, label) => {
     expect(entityLabel(entity)).toEqual(label);
   });
@@ -270,7 +270,7 @@ describe('streamAnswerFor for a 502 that saved nothing', () => {
   test('says the public list was not mended, in place of the worker message', () => {
     expect(streamAnswerFor('save', 'published', error)).toEqual({
       kind: 'band',
-      band: { title: '保存できません', lines: [], note: '本番の楽曲一覧への反映に失敗しました。' },
+      band: { title: '保存できません', lines: [], note: '本番の楽曲一覧への反映に失敗しました' },
       fields: [],
       changed: true,
     });
@@ -279,7 +279,7 @@ describe('streamAnswerFor for a 502 that saved nothing', () => {
   test('says the same for a withdraw, under its own title', () => {
     expect(streamAnswerFor('withdraw', 'published', error)).toEqual({
       kind: 'band',
-      band: { title: '非公開に戻せません', lines: [], note: '本番の楽曲一覧への反映に失敗しました。' },
+      band: { title: '非公開に戻せません', lines: [], note: '本番の楽曲一覧への反映に失敗しました' },
       fields: [],
       changed: true,
     });

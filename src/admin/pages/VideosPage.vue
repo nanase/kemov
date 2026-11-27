@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 
+import HelpLink from '../components/HelpLink.vue';
 import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, errorDetail, getJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
@@ -19,7 +20,7 @@ import {
   type VideoOverride,
 } from '../lib/videos';
 import { showToast } from '../lib/toast';
-import { PREVIEW_NOTES, previewOpen } from '../lib/preview';
+import { previewOpen } from '../lib/preview';
 
 /**
  * 配信・動画 (#144's data screens task). The table lists every collected
@@ -143,7 +144,7 @@ async function save(): Promise<void> {
     if (overridesNothing(fields.value)) {
       if (overrideByVideoId.value.has(selectedId.value)) {
         await deleteJson(`/video-overrides/${encodeURIComponent(selectedId.value)}`);
-        showToast('上書きを消しました');
+        showToast('上書きを削除しました');
       }
     } else {
       await putJson(`/video-overrides/${encodeURIComponent(selectedId.value)}`, fields.value);
@@ -171,7 +172,7 @@ async function removeOverride(): Promise<void> {
   try {
     await deleteJson(`/video-overrides/${encodeURIComponent(selectedId.value)}`);
     await load();
-    showToast('上書きを消しました');
+    showToast('上書きを削除しました');
   } catch (error) {
     errorMessage.value = error instanceof AdminApiError ? error.message : String(error);
   } finally {
@@ -201,14 +202,15 @@ const VideoPreview = defineAsyncComponent(() => import('../components/previews/V
     <div class="pane">
       <div class="toolbar">
         <h2>配信・動画</h2>
+        <HelpLink section="videos" />
         <span class="chip">収集した記録</span>
-        <input v-model="q" type="text" class="btn" placeholder="題で絞り込み" aria-label="題で絞り込み" />
+        <input v-model="q" type="text" class="btn" placeholder="タイトルで絞り込み" aria-label="タイトルで絞り込み" />
         <span class="grow"></span>
         <span class="sub num">{{ videos.length }} 件</span>
       </div>
       <div class="scroller">
         <div v-if="loadError" class="empty-note">
-          <b>読み込めません</b>
+          <b>読み込みに失敗しました</b>
           <div class="sub">{{ loadError }}</div>
           <button class="btn quiet" type="button" :disabled="loading" @click="load">再読み込み</button>
         </div>
@@ -268,13 +270,11 @@ const VideoPreview = defineAsyncComponent(() => import('../components/previews/V
             <div class="hint">{{ errorMessage }}</div>
           </div>
 
-          <div v-if="!overridesNothing(fields)" class="hint">3つとも外して保存すると、上書きが消されます</div>
-
           <div
             class="panel"
             :class="{ flag: errorField === 'title' || errorField === 'type' || errorField === 'availability' }"
           >
-            <h4>収集した値と、上書き</h4>
+            <h4>収集した値と上書き</h4>
 
             <div class="ov">
               <span class="k">タイトル</span>
@@ -286,7 +286,7 @@ const VideoPreview = defineAsyncComponent(() => import('../components/previews/V
                 class="toggle"
                 type="button"
                 :aria-pressed="fields.title !== null"
-                aria-label="タイトルを上書きする"
+                aria-label="タイトルの上書き"
                 @click="toggle('title', selected.title)"
               ></button>
             </div>
@@ -331,11 +331,11 @@ const VideoPreview = defineAsyncComponent(() => import('../components/previews/V
           </div>
 
           <div class="field">
-            <label for="f-memo">メモ（公開されません）</label>
+            <label for="f-memo">メモ（非公開）</label>
             <textarea id="f-memo" v-model="fields.memo"></textarea>
           </div>
         </div>
-        <PreviewPane v-if="previewOpen" :note="PREVIEW_NOTES.live">
+        <PreviewPane v-if="previewOpen">
           <VideoPreview :video="selected" :fields="fields" />
         </PreviewPane>
       </div>
@@ -346,7 +346,7 @@ const VideoPreview = defineAsyncComponent(() => import('../components/previews/V
         <span class="grow"></span>
         <template v-if="selectedOverride">
           <span class="foot-sep" aria-hidden="true"></span>
-          <button class="btn danger" type="button" :disabled="saving" @click="removeOverride">上書きを消す</button>
+          <button class="btn danger" type="button" :disabled="saving" @click="removeOverride">上書きを削除</button>
         </template>
       </div>
     </div>

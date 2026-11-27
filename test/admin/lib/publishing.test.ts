@@ -29,7 +29,6 @@ describe('publishFootFor', () => {
         { action: 'publish', label: '公開' },
         { action: 'save', label: '保存' },
       ],
-      note: null,
       deleteDisabled: false,
       deleteReason: null,
     });
@@ -40,16 +39,15 @@ describe('publishFootFor', () => {
     expect(publishFootFor('review')).toEqual(publishFootFor('draft'));
   });
 
-  // 1a and 6-9: the save reaches the public site, and 削除 says why it cannot be pressed.
+  // 1a and 6-9: 削除 says why it cannot be pressed.
   test('a published row offers 保存 first and 非公開に戻す, with 削除 disabled and why', () => {
     expect(publishFootFor('published')).toEqual({
       actions: [
         { action: 'save', label: '保存' },
         { action: 'withdraw', label: '非公開に戻す' },
       ],
-      note: '保存するとすぐ本番に出ます',
       deleteDisabled: true,
-      deleteReason: '公開中は削除できません。先に「非公開に戻す」を押してください。',
+      deleteReason: '公開中は削除できません',
     });
   });
 });
@@ -57,7 +55,7 @@ describe('publishFootFor', () => {
 describe('bandReasonIds', () => {
   const refusal = {
     title: '公開できません',
-    lines: ['題を書いてください。', '出典が足りません。', '別の理由'],
+    lines: ['タイトルを書いてください。', '出典が足りません。', '別の理由'],
     note: null,
   };
 

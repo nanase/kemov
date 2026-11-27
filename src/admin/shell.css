@@ -1098,7 +1098,7 @@ table.grid input[type='checkbox'] {
   background: var(--k-surface);
 }
 
-/* What the public pages will no longer show: drawn faint, and said in words below. */
+/* What the public pages will no longer show: drawn faint. */
 .preview-video.gone {
   opacity: 0.5;
 }
@@ -1107,15 +1107,6 @@ table.grid input[type='checkbox'] {
   font-size: 14px;
   font-weight: 700;
   overflow-wrap: anywhere;
-}
-
-.preview-notes {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding-left: 1.2em;
-  color: var(--k-text-2);
-  font-size: 12px;
 }
 
 /* A switch with what it says beside it. */

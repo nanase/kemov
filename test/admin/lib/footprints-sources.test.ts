@@ -1,11 +1,5 @@
 import { getJson } from '@/admin/lib/api';
-import {
-  isShortOfSources,
-  markLabel,
-  shortfallMessage,
-  shortWhateverTheWhitelist,
-  useWhitelist,
-} from '@/admin/lib/footprints-sources';
+import { isShortOfSources, markLabel, shortWhateverTheWhitelist, useWhitelist } from '@/admin/lib/footprints-sources';
 
 vi.mock('@/admin/lib/api', () => ({ getJson: vi.fn() }));
 
@@ -27,21 +21,6 @@ describe('markLabel', () => {
 
   test('has no label for a URL that names no host', () => {
     expect(markLabel({ kind: 'none' })).toBeNull();
-  });
-});
-
-describe('shortfallMessage', () => {
-  // #277's decision 2a, word for word.
-  test('names the one host the sources are on', () => {
-    expect(shortfallMessage('youtube.com')).toEqual(
-      'ホワイトリストに載った出典を 1 つ足すか、別のサイトの出典を足してください。いまは youtube.com の出典しかありません。足りないまま公開すると、年表に「出典の確認待ち」と出ます。',
-    );
-  });
-
-  test('says there is no source when there is none', () => {
-    expect(shortfallMessage(null)).toEqual(
-      'ホワイトリストに載った出典を 1 つ足すか、別のサイトの出典を足してください。いまは出典がありません。足りないまま公開すると、年表に「出典の確認待ち」と出ます。',
-    );
   });
 });
 

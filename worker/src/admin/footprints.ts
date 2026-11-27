@@ -354,7 +354,7 @@ function eventFieldsProblem(fields: EventFields): Refusal | null {
 
     if (fields.datePrecision !== 'day') {
       return refusal(
-        '開始の時刻がある出来事は日付の細かさを「月まで」にできません',
+        '開始の時刻がある出来事は日付の精度を「年月」にできません',
         'startsAt requires datePrecision to be day',
       );
     }
@@ -384,7 +384,7 @@ function eventFieldsProblem(fields: EventFields): Refusal | null {
   // A lead is a member, marked: the column lives on footprints_event_member,
   // so a lead who is not among the members has no row to be marked on.
   if (fields.leadChannelIds.some((id) => !fields.channelIds.includes(id))) {
-    return refusal('主役は関わったメンバーから選んでください', 'every leadChannelIds entry must also be in channelIds');
+    return refusal('主役は関連メンバーから選んでください', 'every leadChannelIds entry must also be in channelIds');
   }
 
   for (const source of fields.sources) {
@@ -537,7 +537,7 @@ export async function validatedFields(
     return {
       error: refuse(
         400,
-        refusal('関わったメンバーに一覧にないメンバーが含まれています', `unknown channelIds: ${unknown.join(', ')}`),
+        refusal('関連メンバーに一覧にないメンバーが含まれています', `unknown channelIds: ${unknown.join(', ')}`),
       ),
     };
   }

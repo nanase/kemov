@@ -25,7 +25,7 @@ export const SCENE_STYLE_LABEL: Record<SceneStyle, string> = {
   play: '演奏',
   sing: '歌唱',
   bgm: 'BGM',
-  talk: '話',
+  talk: 'トーク',
 };
 
 export interface Scene {

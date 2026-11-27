@@ -71,7 +71,7 @@ export function isChangedSincePublish(state: GenetPendingResponse | null, entity
 }
 
 /** The stream editor's note for a 502 that saved nothing (lib/publishing.ts's `notMendedNote`). */
-export const GENET_NOT_MENDED_TEXT = '本番の楽曲一覧への反映に失敗しました。';
+export const GENET_NOT_MENDED_TEXT = '本番の楽曲一覧への反映に失敗しました';
 
 export interface GenetPublishResult {
   published: boolean;
@@ -85,7 +85,7 @@ export interface GenetPublishResult {
 const ENTITY_LABEL: Record<GenetEntity, string> = {
   genet_stream: '配信',
   genet_tune: '曲',
-  genet_person: '人',
+  genet_person: '人物',
 };
 
 export function entityLabel(entity: GenetEntity): string {
@@ -95,8 +95,8 @@ export function entityLabel(entity: GenetEntity): string {
 /** The words a tune's 保存 adds to #277's decisions, for a tune a published stream performs (#284's 6-5). */
 export const TUNE_TEXT = {
   failed: '曲を保存できません',
-  refusedNote: '公開中の配信で演奏している曲は、公開の条件を満たさないと保存できません。本番は前の内容のままです。',
-  notWritten: '保存しましたが、本番に出せませんでした。もう一度「この曲を保存」を押してください。',
+  refusedNote: '本番は変更前の内容のままです',
+  notWritten: '保存しましたが本番への反映に失敗しました',
 } as const;
 
 /** The id of a band's `lines[index]` in the page, and of its note: the stream's band, or the open tune's. */

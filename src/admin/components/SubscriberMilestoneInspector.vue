@@ -346,7 +346,7 @@ function remove(): Promise<void> {
   return run('delete', () => deleteJson(`/subscribers/milestones/${milestoneId.value}`));
 }
 
-/** ← 一覧 and a new milestone's やめる: what is let go here is thrown away. */
+/** ← 一覧 and a new milestone's キャンセル: what is let go here is thrown away. */
 function back(): void {
   if (confirmDiscard()) emit('back');
 }
@@ -396,12 +396,10 @@ const previewEvent = computed(() => {
 
         <div v-if="changedSincePublish" class="panel flag">
           <h4>{{ PUBLISH_TEXT.changedTitle }}</h4>
-          <div class="hint">{{ PUBLISH_TEXT.changedBody }}</div>
         </div>
 
         <div v-if="eventChanged" class="panel">
-          <h4>つないだ出来事が変わりました</h4>
-          <div class="hint">一覧の上の［本番に反映］を押してください</div>
+          <h4>本番に反映されていない変更があります</h4>
         </div>
 
         <div class="field">
@@ -418,7 +416,7 @@ const previewEvent = computed(() => {
 
         <div class="row2">
           <div class="field">
-            <label for="m-date">達成の日</label>
+            <label for="m-date">達成日</label>
             <input
               id="m-date"
               v-model="fields.reachedDate"
@@ -429,22 +427,22 @@ const previewEvent = computed(() => {
             />
           </div>
           <div class="field">
-            <label for="m-prec">日付の細かさ</label>
+            <label for="m-prec">日付の精度</label>
             <select
               id="m-prec"
               v-model="fields.datePrecision"
               :aria-invalid="invalid('datePrecision')"
               :aria-describedby="reasonIds('datePrecision')"
             >
-              <option value="day">日まで</option>
-              <option value="month">月まで</option>
+              <option value="day">年月日</option>
+              <option value="month">年月</option>
             </select>
           </div>
         </div>
 
         <div class="row2">
           <div class="field">
-            <label for="m-count">人数</label>
+            <label for="m-count">登録者数</label>
             <input
               id="m-count"
               v-model="fields.subscriberCount"
@@ -455,7 +453,7 @@ const previewEvent = computed(() => {
             />
           </div>
           <div class="field">
-            <label for="m-by">誰の公表か</label>
+            <label for="m-by">公表者</label>
             <select
               id="m-by"
               v-model="fields.announcedBy"
@@ -468,18 +466,17 @@ const previewEvent = computed(() => {
         </div>
 
         <div class="field">
-          <label for="m-event">つなぐ出来事</label>
+          <label for="m-event">関連する出来事</label>
           <select
             id="m-event"
             v-model="fields.eventId"
             :aria-invalid="invalid('eventId')"
             :aria-describedby="reasonIds('eventId')"
           >
-            <option :value="null">つながない</option>
+            <option :value="null">なし</option>
             <option v-for="e in events" :key="e.eventId" :value="e.eventId">{{ e.startDate }} {{ e.title }}</option>
             <option v-if="unlistedEventId !== null" :value="unlistedEventId">event_id {{ unlistedEventId }}</option>
           </select>
-          <div class="hint">あしあとの「節目」の出来事から選びます</div>
         </div>
 
         <div
@@ -490,26 +487,23 @@ const previewEvent = computed(() => {
           :aria-describedby="reasonIds('sources')"
         >
           <h4 id="m-sources-title">{{ sourcesShort ? SOURCE_TEXT.notEnoughTitle : '出典' }}</h4>
-          <div v-if="fields.announcedBy === 'listener'" class="hint">
-            リスナーの投稿の URL は公開サイトに出ません。管理サイトにだけ残ります
-          </div>
           <div v-for="(source, i) in fields.sources" :key="i" class="source-row judged">
             <input v-model="source.url" type="text" placeholder="https://..." aria-label="出典の URL" />
-            <input v-model="source.title" type="text" placeholder="題（省略可）" aria-label="出典の題" />
+            <input v-model="source.title" type="text" placeholder="タイトル（省略可）" aria-label="出典のタイトル" />
             <span>
               <span v-if="chips[i]" class="chip" :class="chips[i].tone">{{ chips[i].label }}</span>
             </span>
-            <button class="row-del" type="button" aria-label="この出典を外す" @click="removeSource(i)">&times;</button>
+            <button class="row-del" type="button" aria-label="この出典を削除" @click="removeSource(i)">&times;</button>
           </div>
           <div v-if="judgement?.enough" class="src-ok">{{ SOURCE_TEXT.enough }}</div>
           <div v-else-if="sourcesShort" class="hint">{{ SOURCE_TEXT.notEnoughBody }}</div>
           <div>
-            <button class="btn quiet" type="button" @click="addSource">＋ 出典を足す</button>
+            <button class="btn quiet" type="button" @click="addSource">＋ 出典を追加</button>
           </div>
         </div>
 
         <div class="field">
-          <label for="m-memo">メモ（公開されません）</label>
+          <label for="m-memo">メモ（非公開）</label>
           <textarea
             id="m-memo"
             v-model="fields.memo"
@@ -531,7 +525,7 @@ const previewEvent = computed(() => {
     <div v-if="milestone === null" class="inspector-foot">
       <button class="btn primary" type="button" :disabled="locked" @click="create">保存</button>
       <span class="grow"></span>
-      <button class="btn quiet" type="button" :disabled="saving" @click="back">やめる</button>
+      <button class="btn quiet" type="button" :disabled="saving" @click="back">キャンセル</button>
     </div>
     <div v-else class="inspector-foot">
       <button
@@ -545,7 +539,6 @@ const previewEvent = computed(() => {
       >
         {{ button.label }}
       </button>
-      <span v-if="foot.note" class="hint">{{ foot.note }}</span>
       <button class="btn back quiet" type="button" @click="back">← 一覧</button>
       <span class="grow"></span>
       <span class="foot-sep" aria-hidden="true"></span>

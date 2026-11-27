@@ -36,7 +36,7 @@ const period = computed(() =>
 </script>
 
 <template>
-  <p v-if="color === null" class="preview-problem">色の key が「#RRGGBB」の形でないので、色を描けません</p>
+  <p v-if="color === null" class="preview-problem">色の key の形式が正しくありません</p>
   <div class="preview-member">
     <MemberAvatar :src="icon" :name="fields.name" :color="color" :size="54" :dark="false" />
     <div>
@@ -47,7 +47,7 @@ const period = computed(() =>
       <div class="preview-member-sub">{{ period }}</div>
     </div>
   </div>
-  <div class="preview-label">一覧や年表での顔</div>
+  <div class="preview-label">一覧・年表での表示</div>
   <div class="preview-faces">
     <span class="preview-face">
       <MemberAvatar :src="icon" :name="fields.name" :color="color" :size="28" :dark="false" />

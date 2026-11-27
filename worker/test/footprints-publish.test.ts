@@ -31,7 +31,7 @@ const LATER = new Date('2026-09-19T00:00:00Z');
 const OBJECT_KEY = 'footprints/events.json';
 const WHITELISTED_PREFIX = 'https://kemono-friends.jp/';
 const WHITELISTED_SOURCE = `${WHITELISTED_PREFIX}some-article`;
-const NO_TITLE = '題を書いてください。';
+const NO_TITLE = 'タイトルを書いてください。';
 
 /** `env` with an R2 that refuses every write - what a publish meets when the public JSON cannot be written. */
 const R2_DOWN: Env = {

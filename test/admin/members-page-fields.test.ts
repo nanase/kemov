@@ -118,7 +118,7 @@ describe('MembersPage.vue fields', () => {
     expect(page).toContain(':disabled="loading || busy" @click="confirmDiscard() && load()"');
   });
 
-  // 「メンバーを足す」 is open with no row chosen (`selectedId` null): neither a read of the
+  // 「新しいメンバー」 is open with no row chosen (`selectedId` null): neither a read of the
   // list nor 元に戻す may choose the first row behind the form.
   test('a row is not chosen behind the open new-member form', () => {
     expect(page).toContain('if (selectedId.value === null && newForm.value === null && rows.value.length > 0) {');

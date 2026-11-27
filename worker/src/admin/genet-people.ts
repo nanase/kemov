@@ -172,7 +172,7 @@ export async function deletePerson(env: Env, personId: number): Promise<Response
     return refuse(
       409,
       refusal(
-        'この人をクレジットしている曲があるため削除できませんでした',
+        'この人物をクレジットしている曲があるため削除できませんでした',
         'this person is credited on a tune; remove them there first',
       ),
     );

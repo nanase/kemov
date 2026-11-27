@@ -53,7 +53,7 @@ erDiagram
 
 ```mermaid
 erDiagram
-  footprints_event ||--o{ footprints_event_member : "関わったメンバー"
+  footprints_event ||--o{ footprints_event_member : "関連メンバー"
   channel ||--o{ footprints_event_member : ""
   footprints_event ||--o{ footprints_event_source : "出典"
   footprints_event {
@@ -77,9 +77,9 @@ erDiagram
   }
 ```
 
-`footprints_event_member` は、出来事に関わったメンバーを持ちます。`lead` は、そのメンバーが出来事の主役かどうかです。
+`footprints_event_member` は、出来事の関連メンバーを持ちます。`lead` は、そのメンバーが出来事の主役かどうかです。
 
-- デビュー配信に出たゲストは、関わったメンバーに入るが、主役ではない
+- デビュー配信に出たゲストは、関連メンバーに入るが、主役ではない
 - 公開サイトの「これからのあしあと」は、デビューからの日数と周年を、主役についてだけ数える
 - デビューは、主役が 1 人以上いないと公開できない（[管理サイトの API](api/admin.md#あしあと)）
 

@@ -259,7 +259,7 @@ function readMilestoneFields(body: Record<string, unknown>): MilestoneFields | {
   if (typeof body.reachedDate !== 'string') return { error: malformed('reachedDate must be a string') };
 
   if (typeof body.subscriberCount !== 'number' || !Number.isSafeInteger(body.subscriberCount)) {
-    return { error: refusal('人数の形式が正しくありません', 'subscriberCount must be an integer') };
+    return { error: refusal('登録者数の形式が正しくありません', 'subscriberCount must be an integer') };
   }
 
   if (typeof body.announcedBy !== 'string')
@@ -307,13 +307,13 @@ function milestoneFieldsProblem(fields: MilestoneFields): Refusal | null {
 
   if (!reachedOk) {
     return refusal(
-      '達成の日の形式が正しくありません',
+      '達成日の形式が正しくありません',
       `reachedDate must be ${fields.datePrecision === 'day' ? 'YYYY-MM-DD' : 'YYYY-MM'}`,
     );
   }
 
   if (fields.subscriberCount <= 0) {
-    return refusal('人数は 1 以上にしてください', 'subscriberCount must be greater than 0');
+    return refusal('登録者数は 1 以上にしてください', 'subscriberCount must be greater than 0');
   }
 
   if (!(ANNOUNCERS as readonly string[]).includes(fields.announcedBy)) {
@@ -342,11 +342,11 @@ async function eventLinkProblem(env: Env, eventId: number | null): Promise<Refus
     .first<{ kind: string }>();
 
   if (event === null)
-    return refusal('つなぐ出来事が見つかりません。選び直してください', `no footprints event ${eventId}`);
+    return refusal('関連する出来事が見つかりません。選び直してください', `no footprints event ${eventId}`);
 
   if (event.kind !== 'milestone') {
     return refusal(
-      'つなぐ出来事はあしあとの「節目」の出来事から選んでください',
+      '関連する出来事はあしあとの「節目」の出来事から選んでください',
       `footprints event ${eventId} is not a milestone`,
     );
   }

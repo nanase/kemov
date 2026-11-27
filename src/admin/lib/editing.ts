@@ -9,11 +9,11 @@
 
 export const EDITING_TEXT = {
   unsaved: '未保存',
-  confirmDiscard: '保存していない変更があります。変更を捨てて移りますか？',
-  confirmDiscardTune: 'この曲に保存していない変更があります。変更を捨てて外しますか？',
+  confirmDiscard: '変更を破棄しますか',
+  confirmDiscardTune: 'この曲の変更を破棄しますか',
   remove: '削除',
-  removeConfirm: '削除する',
-  removeCancel: 'やめる',
+  removeConfirm: '削除を確定',
+  removeCancel: 'キャンセル',
   removed: '削除しました',
 } as const;
 
@@ -22,10 +22,10 @@ export const EDITING_TEXT = {
  * for a data whose save reaches the public site in the same request (#281).
  */
 export const SAVE_TOAST = {
-  publish: '公開しました。本番に出ています',
-  savePublished: '保存しました。本番に出ています',
+  publish: '公開しました',
+  savePublished: '保存して本番に反映しました',
   saveDraft: '下書きを保存しました',
-  withdraw: '非公開に戻しました。本番から外れています',
+  withdraw: '非公開に戻しました',
   /** A save that neither lands on the public site nor stays a draft: a published row before #281, or a tune. */
   saved: '保存しました',
 } as const;

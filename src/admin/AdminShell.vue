@@ -193,7 +193,7 @@ onUnmounted(() => {
           <button
             class="side-btn"
             type="button"
-            aria-label="メニューを畳む"
+            aria-label="メニューを閉じる"
             :aria-expanded="true"
             @click="folded = true"
           >

@@ -49,7 +49,7 @@ export function canPublishFootprints(state: FootprintsPending): boolean {
 }
 
 /** The edit panel's note for a 502 that saved nothing (lib/publishing.ts's `notMendedNote`). */
-export const FOOTPRINTS_NOT_MENDED_TEXT = '本番の年表への反映に失敗しました。';
+export const FOOTPRINTS_NOT_MENDED_TEXT = '本番の年表への反映に失敗しました';
 
 export type FootprintsAnswer = PublishAnswer<EventFieldKey>;
 

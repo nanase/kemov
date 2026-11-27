@@ -6,12 +6,12 @@ import VideoThumbnail from '@/videos/parts/VideoThumbnail.vue';
 import type { Channel } from '@/type/api';
 
 import { publicChannels } from '../../lib/public-data';
-import { AVAILABILITY_LABEL, TYPE_LABEL, type CollectedVideo, type OverrideFormFields } from '../../lib/videos';
+import { TYPE_LABEL, type CollectedVideo, type OverrideFormFields } from '../../lib/videos';
 
 /**
  * A video as its overrides leave it. The public pages draw a video only as a
  * row of a ranking or a list, which means nothing alone, so this is a small
- * sample of what a row carries, with what each override changes beside it.
+ * sample of what a row carries.
  *
  * An override wins over what was collected, the way the API's
  * `VIDEO_EFFECTIVE` reads it (`worker/src/lib/overrides.ts`).
@@ -51,13 +51,4 @@ onMounted(async () => {
       </div>
     </div>
   </div>
-  <ul class="preview-notes">
-    <li v-if="availability !== 'public'">
-      公開状況が「{{
-        AVAILABILITY_LABEL[availability] ?? availability
-      }}」なので、公開ページの一覧・順位・月ごとの本数から消えます
-    </li>
-    <li v-if="fields.title !== null">題は、順位表・メンバーのページ・あしあとなど、題が出るすべての場所で変わります</li>
-    <li v-if="fields.type !== null">種類を変えると、どの種類の順位表と月ごとの本数に数えるかも変わります</li>
-  </ul>
 </template>

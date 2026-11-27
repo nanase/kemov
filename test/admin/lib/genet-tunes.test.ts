@@ -3,7 +3,6 @@ import {
   attrNameOptions,
   emptyFormFields,
   fieldForSaveError,
-  latestPerKey,
   learnedNames,
   learnName,
   toFormFields,
@@ -155,25 +154,5 @@ describe('attrNameOptions', () => {
 
   test('does not duplicate a current value that is already a known name', () => {
     expect(attrNameOptions(ATTR_NAMES[0])).toEqual([...ATTR_NAMES]);
-  });
-});
-
-describe('latestPerKey', () => {
-  test('a request is the latest until another starts for the same key', () => {
-    const requests = latestPerKey<number>();
-    const older = requests.start(1);
-    const newer = requests.start(1);
-
-    expect(older()).toBe(false);
-    expect(newer()).toBe(true);
-  });
-
-  test('requests for other keys do not count', () => {
-    const requests = latestPerKey<number>();
-    const one = requests.start(1);
-
-    requests.start(2);
-
-    expect(one()).toBe(true);
   });
 });

@@ -64,7 +64,7 @@ onMounted(async () => {
 <template>
   <p v-if="!readout.ok" class="preview-problem">{{ unreadableField(readout.field) }}</p>
   <template v-else>
-    <div class="preview-label">点を押したときのカード</div>
+    <div class="preview-label">点の詳細</div>
     <MilestoneCard style="position: static" :milestone="readout.value" />
     <div class="preview-label">メンバーのふしめ</div>
     <div class="preview-trail" :style="colors">

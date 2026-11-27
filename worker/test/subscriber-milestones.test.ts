@@ -114,18 +114,18 @@ describe('createMilestone', () => {
     [{ channelId: undefined }, SAVE_FAILED, 'channelId must be a string'],
     [{ channelId: 'UCnope' }, 'このメンバーが見つかりません', 'unknown channelId: UCnope'],
     [{ datePrecision: 'year' }, SAVE_FAILED, 'datePrecision must be day or month'],
-    [{ reachedDate: '2024-02-30' }, '達成の日の形式が正しくありません', 'reachedDate must be YYYY-MM-DD'],
+    [{ reachedDate: '2024-02-30' }, '達成日の形式が正しくありません', 'reachedDate must be YYYY-MM-DD'],
     [
       { datePrecision: 'month', reachedDate: '2024-02-01' },
-      '達成の日の形式が正しくありません',
+      '達成日の形式が正しくありません',
       'reachedDate must be YYYY-MM',
     ],
-    [{ subscriberCount: 0 }, '人数は 1 以上にしてください', 'subscriberCount must be greater than 0'],
-    [{ subscriberCount: 1.5 }, '人数の形式が正しくありません', 'subscriberCount must be an integer'],
-    [{ subscriberCount: '20000' }, '人数の形式が正しくありません', 'subscriberCount must be an integer'],
+    [{ subscriberCount: 0 }, '登録者数は 1 以上にしてください', 'subscriberCount must be greater than 0'],
+    [{ subscriberCount: 1.5 }, '登録者数の形式が正しくありません', 'subscriberCount must be an integer'],
+    [{ subscriberCount: '20000' }, '登録者数の形式が正しくありません', 'subscriberCount must be an integer'],
     [{ announcedBy: 'fan' }, SAVE_FAILED, 'announcedBy must be one of member, official, listener'],
     [{ eventId: '1' }, SAVE_FAILED, 'eventId must be an integer or null'],
-    [{ eventId: 999 }, 'つなぐ出来事が見つかりません。選び直してください', 'no footprints event 999'],
+    [{ eventId: 999 }, '関連する出来事が見つかりません。選び直してください', 'no footprints event 999'],
     [{ memo: 1 }, SAVE_FAILED, 'memo must be a string or null'],
     [
       { sources: [{ url: 'http://example.com' }] },
@@ -166,7 +166,7 @@ describe('createMilestone', () => {
 
     expect(response.status).toEqual(400);
     expect(await errorOf(response)).toEqual({
-      error: 'つなぐ出来事はあしあとの「節目」の出来事から選んでください',
+      error: '関連する出来事はあしあとの「節目」の出来事から選んでください',
       detail: `footprints event ${eventId} is not a milestone`,
     });
   });

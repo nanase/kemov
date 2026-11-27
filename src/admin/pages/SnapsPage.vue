@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 
+import HelpLink from '../components/HelpLink.vue';
 import SplitHandle from '../components/SplitHandle.vue';
 import { AdminApiError, deleteJson, getJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
@@ -151,10 +152,10 @@ async function toggleExcluded(): Promise<void> {
       await deleteJson(
         `/snapshot-exclusions/${encodeURIComponent(channelId.value)}/${encodeURIComponent(tick.fetchedAt)}`,
       );
-      showToast('集計から除くのをやめました');
+      showToast('集計からの除外を解除しました');
     } else {
       if (reasonDraft.value.trim() === '') {
-        showToast('除く理由を書いてください');
+        showToast('除外理由を入力してください');
 
         return;
       }
@@ -165,7 +166,7 @@ async function toggleExcluded(): Promise<void> {
           reason: reasonDraft.value,
         },
       );
-      showToast('集計から除きました');
+      showToast('集計から除外しました');
     }
 
     if (openDay.value !== null) await openDayView(openDay.value);
@@ -188,18 +189,6 @@ onMounted(async () => {
 });
 
 useCrumbDetail(() => (selectedTick.value ? jstClock(selectedTick.value.fetchedAt) : openDay.value));
-
-/**
- * Whether the selected tick is the newest one there is: today's, and no
- * later tick on the day. Leaving out that one changes the counts the public
- * pages show now, not only how a change over time is measured.
- */
-const selectedIsNewest = computed(
-  () =>
-    selectedTick.value !== null &&
-    openDay.value === todayJst() &&
-    ticks.value.every((t) => t.fetchedAt <= selectedTick.value!.fetchedAt),
-);
 </script>
 
 <template>
@@ -207,6 +196,7 @@ const selectedIsNewest = computed(
     <div v-if="openDay === null" class="pane">
       <div class="toolbar">
         <h2>統計</h2>
+        <HelpLink section="snaps" />
         <select v-model="channelId" aria-label="チャンネル">
           <option v-for="m in members" :key="m.channelId" :value="m.channelId">{{ m.name }}</option>
         </select>
@@ -216,7 +206,7 @@ const selectedIsNewest = computed(
       </div>
       <div class="scroller">
         <div v-if="loadError || memberLoadError" class="empty-note">
-          <b>読み込めません</b>
+          <b>読み込みに失敗しました</b>
           <div class="sub">{{ loadError ?? memberLoadError }}</div>
         </div>
         <table v-if="!memberLoadError" class="grid">
@@ -237,8 +227,8 @@ const selectedIsNewest = computed(
               @keydown.space.prevent="openDayView(d.date)"
             >
               <td>
-                <span v-if="d.excluded > 0" class="chip alarm">除く {{ d.excluded }}</span>
-                <span v-else class="chip published">使う</span>
+                <span v-if="d.excluded > 0" class="chip alarm">除外 {{ d.excluded }}</span>
+                <span v-else class="chip published">集計対象</span>
               </td>
               <td class="num">{{ d.date }}</td>
               <td class="num sub">{{ d.ticks }}</td>
@@ -250,7 +240,7 @@ const selectedIsNewest = computed(
 
     <div v-else class="pane">
       <div class="toolbar">
-        <button class="btn quiet" type="button" @click="backToDays">← 日ごとへ</button>
+        <button class="btn quiet" type="button" @click="backToDays">← 日ごとの一覧</button>
         <h2>{{ openDay }}</h2>
         <span class="grow"></span>
         <span class="sub num">{{ ticks.length }} tick</span>
@@ -276,8 +266,8 @@ const selectedIsNewest = computed(
               @keydown.space.prevent="selectTick(t.fetchedAt)"
             >
               <td>
-                <span v-if="t.excluded" class="chip alarm">集計から除く</span>
-                <span v-else class="chip published">使う</span>
+                <span v-if="t.excluded" class="chip alarm">集計から除外</span>
+                <span v-else class="chip published">集計対象</span>
               </td>
               <td class="num">{{ jstClock(t.fetchedAt) }}</td>
               <td class="num">{{ t.subscriberCount ?? '—' }}</td>
@@ -315,26 +305,15 @@ const selectedIsNewest = computed(
             class="toggle"
             type="button"
             :aria-pressed="selectedTick.excluded"
-            aria-label="集計から除く"
+            aria-label="集計から除外"
             :disabled="saving"
             @click="toggleExcluded"
           ></button>
-          <span class="sub">集計から除く</span>
-        </div>
-
-        <div class="panel wide">
-          <h4>公開ページへの効き方</h4>
-          <div class="hint">
-            集計から除いた tick は、公開ページの登録者数・再生数と、1 時間・24 時間・30 日の増減に使われません。
-            <template v-if="selectedIsNewest"
-              >この tick はいま読める中でいちばん新しい記録なので、除くと公開ページの数は 1 つ前の tick
-              の値になります。</template
-            >
-          </div>
+          <span class="sub">集計から除外</span>
         </div>
 
         <div class="field">
-          <label for="f-reason">除く理由（公開されません）</label>
+          <label for="f-reason">除外理由（非公開）</label>
           <textarea id="f-reason" v-model="reasonDraft"></textarea>
         </div>
       </div>

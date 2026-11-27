@@ -69,7 +69,7 @@ export function publishesOnlyForShape(state: MilestonesPending): boolean {
 }
 
 /** The edit panel's note for a 502 that saved nothing (lib/publishing.ts's `notMendedNote`). */
-export const MILESTONES_NOT_MENDED_TEXT = '本番の登録者数の節目への反映に失敗しました。';
+export const MILESTONES_NOT_MENDED_TEXT = '本番の登録者数の節目への反映に失敗しました';
 
 export interface MilestonesPublishResult {
   published: boolean;
@@ -104,9 +104,9 @@ export interface SourcesJudgement {
 export const SOURCE_TEXT = {
   whitelist: 'ホワイトリスト',
   ownVideo: '本人の動画',
-  enough: '出典は足りています',
-  notEnoughTitle: '出典が足りません',
-  notEnoughBody: 'このままでは公開できません。ホワイトリストの出典か、別のサイトの出典を足してください。',
+  enough: '出典の条件を満たしています',
+  notEnoughTitle: '出典不足',
+  notEnoughBody: 'ホワイトリストの出典か別のサイトの出典が必要です',
 } as const;
 
 /**

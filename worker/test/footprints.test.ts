@@ -171,7 +171,7 @@ describe('createEvent', () => {
 
     expect(response.status).toEqual(400);
     expect(await response.json()).toEqual({
-      error: '関わったメンバーに一覧にないメンバーが含まれています',
+      error: '関連メンバーに一覧にないメンバーが含まれています',
       detail: 'unknown channelIds: UCnope',
     });
   });
@@ -225,7 +225,7 @@ describe('createEvent', () => {
 
     expect(response.status).toEqual(400);
     expect(await response.json()).toEqual({
-      error: '主役は関わったメンバーから選んでください',
+      error: '主役は関連メンバーから選んでください',
       detail: 'every leadChannelIds entry must also be in channelIds',
     });
   });
@@ -496,7 +496,7 @@ describe('what a refused save says', () => {
     [{ datePrecision: 'month', startDate: '2025-02-01' }, '日付の形式が正しくありません', 'startDate must be YYYY-MM'],
     [
       { datePrecision: 'month', startDate: '2025-01', startsAt: '2025-01-01T03:00:00Z' },
-      '開始の時刻がある出来事は日付の細かさを「月まで」にできません',
+      '開始の時刻がある出来事は日付の精度を「年月」にできません',
       'startsAt requires datePrecision to be day',
     ],
     [

@@ -28,13 +28,7 @@ import {
   type PublishAction,
   type PublishBand,
 } from '../lib/publishing';
-import {
-  judgeEventSources,
-  markLabel,
-  shortfallMessage,
-  shortWhateverTheWhitelist,
-  SOURCE_TEXT,
-} from '../lib/footprints-sources';
+import { judgeEventSources, markLabel, shortWhateverTheWhitelist, SOURCE_TEXT } from '../lib/footprints-sources';
 import { refreshSidebarDrafts } from '../lib/sidebar-drafts';
 import { previewOpen } from '../lib/preview';
 import { todayJst } from '../lib/snapshots';
@@ -294,7 +288,7 @@ function remove(): Promise<void> {
   return run('delete', () => deleteJson(`/footprints/events/${eventId.value}`));
 }
 
-/** ← 一覧 and a new row's やめる: on a narrow screen the panel stays behind the list, so what is let go here is thrown away, not kept for later. */
+/** ← 一覧 and a new row's キャンセル: on a narrow screen the panel stays behind the list, so what is let go here is thrown away, not kept for later. */
 function back(): void {
   if (confirmDiscard()) emit('back');
 }
@@ -333,7 +327,6 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
 
         <div v-if="changedSincePublish" class="panel flag">
           <h4>{{ PUBLISH_TEXT.changedTitle }}</h4>
-          <div class="hint">{{ PUBLISH_TEXT.changedBody }}</div>
         </div>
 
         <div class="row2">
@@ -348,21 +341,21 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
             />
           </div>
           <div class="field">
-            <label for="f-prec">日付の細かさ</label>
+            <label for="f-prec">日付の精度</label>
             <select
               id="f-prec"
               v-model="fields.datePrecision"
               :aria-invalid="invalid('datePrecision')"
               :aria-describedby="reasonIds('datePrecision')"
             >
-              <option value="day">日まで</option>
-              <option value="month">月まで</option>
+              <option value="day">年月日</option>
+              <option value="month">年月</option>
             </select>
           </div>
         </div>
 
         <div class="field span2">
-          <label for="f-title">題</label>
+          <label for="f-title">タイトル</label>
           <input
             id="f-title"
             v-model="fields.title"
@@ -402,7 +395,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
         </div>
 
         <div class="field">
-          <label id="f-members-label">関わったメンバー</label>
+          <label id="f-members-label">関連メンバー</label>
           <div
             class="stack"
             role="group"
@@ -415,7 +408,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
               <i :style="{ background: entry.member?.colorKey ?? '#9b9289' }"></i>
               <span class="sub">{{ entry.member?.name ?? entry.channelId }}</span>
             </span>
-            <button class="btn quiet" type="button" @click="memberPickerOpen = true">＋ 選ぶ</button>
+            <button class="btn quiet" type="button" @click="memberPickerOpen = true">＋ 選択</button>
           </div>
         </div>
 
@@ -441,11 +434,8 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
               </button>
             </div>
           </div>
-          <div class="hint">
-            <template v-if="selectedMembers.length === 0">先に関わったメンバーを選んでください。</template>
-            <template v-else-if="needsLead">デビューは、主役を 1 人以上選ばないと公開できません。</template>
-            <template v-else>この出来事が誰のものかを選びます。デビューでは本人を選び、ゲストは選びません。</template>
-          </div>
+          <div v-if="selectedMembers.length === 0" class="hint">関連メンバーが選択されていません</div>
+          <div v-else-if="needsLead" class="hint">デビューには主役が必要です</div>
         </div>
 
         <div class="field">
@@ -459,7 +449,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
         </div>
 
         <div class="field">
-          <label for="f-memo">メモ（公開されません）</label>
+          <label for="f-memo">メモ（非公開）</label>
           <textarea
             id="f-memo"
             v-model="fields.memo"
@@ -478,8 +468,8 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
           <h4 id="f-sources-title">{{ sourcesShort ? SOURCE_TEXT.shortTitle : '出典' }}</h4>
           <div v-for="(source, i) in fields.sources" :key="i" class="source-row">
             <input v-model="source.url" type="text" placeholder="https://..." aria-label="出典の URL" />
-            <input v-model="source.title" type="text" placeholder="題（省略可）" aria-label="出典の題" />
-            <button class="row-del" type="button" aria-label="この出典を外す" @click="removeSource(i)">&times;</button>
+            <input v-model="source.title" type="text" placeholder="タイトル（省略可）" aria-label="出典のタイトル" />
+            <button class="row-del" type="button" aria-label="この出典を削除" @click="removeSource(i)">&times;</button>
             <span
               v-if="judgement && markLabel(judgement.marks[i]!)"
               class="chip source-mark"
@@ -489,13 +479,13 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
           </div>
           <template v-if="judgement">
             <div v-if="judgement.enough" id="f-sources-judgement" class="src-ok">{{ SOURCE_TEXT.enough }}</div>
-            <div v-else id="f-sources-judgement" class="hint">{{ shortfallMessage(judgement.onlyHost) }}</div>
+            <div v-else id="f-sources-judgement" class="hint">{{ SOURCE_TEXT.shortBody }}</div>
           </template>
           <div v-else-if="whitelistFailed" id="f-sources-judgement" class="src-err">
             {{ SOURCE_TEXT.whitelistUnreadable }}
           </div>
           <div>
-            <button class="btn quiet" type="button" @click="addSource">＋ 出典を足す</button>
+            <button class="btn quiet" type="button" @click="addSource">＋ 出典を追加</button>
           </div>
         </div>
 
@@ -523,10 +513,10 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
               class="toggle"
               type="button"
               :aria-pressed="fields.emphasized"
-              aria-label="年表で大きく出す"
+              aria-label="年表で大きく表示"
               @click="fields.emphasized = !fields.emphasized"
             ></button>
-            <span class="sub">{{ fields.emphasized ? '大きい' : '通常の大きさ' }}</span>
+            <span class="sub">{{ fields.emphasized ? '大きい' : '通常' }}</span>
           </div>
         </div>
       </div>
@@ -538,7 +528,7 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
     <div v-if="event === null" class="inspector-foot">
       <button class="btn primary" type="button" :disabled="saving" @click="create">保存</button>
       <span class="grow"></span>
-      <button class="btn quiet" type="button" :disabled="saving" @click="back">やめる</button>
+      <button class="btn quiet" type="button" :disabled="saving" @click="back">キャンセル</button>
     </div>
     <div v-else class="inspector-foot">
       <button
@@ -552,7 +542,6 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
       >
         {{ button.label }}
       </button>
-      <span v-if="foot.note" class="hint">{{ foot.note }}</span>
       <button class="btn back quiet" type="button" @click="back">← 一覧</button>
       <span class="grow"></span>
       <span class="foot-sep" aria-hidden="true"></span>
@@ -561,8 +550,8 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
     </div>
 
     <div v-if="memberPickerOpen" class="picker" @mousedown.self="memberPickerOpen = false">
-      <div class="picker-box" role="dialog" aria-label="メンバーを選ぶ">
-        <div class="picker-head">メンバーを選ぶ</div>
+      <div class="picker-box" role="dialog" aria-label="メンバーの選択">
+        <div class="picker-head">メンバーの選択</div>
         <div class="picker-body">
           <label v-for="m in props.members" :key="m.channelId" class="picker-row">
             <input

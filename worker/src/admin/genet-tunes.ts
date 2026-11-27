@@ -569,7 +569,7 @@ function tuneFieldsProblem(fields: TuneFields): Refusal | null {
   for (const [index, s] of fields.scores.entries()) {
     if (!s.url.startsWith('https://')) {
       return refusal(
-        `外部の資料の ${index + 1} 番目のリンクが https:// で始まっていません`,
+        `外部資料の ${index + 1} 番目のリンクが https:// で始まっていません`,
         `scores[${index}].url must start with https://`,
       );
     }
@@ -578,7 +578,7 @@ function tuneFieldsProblem(fields: TuneFields): Refusal | null {
   for (const [index, v] of fields.videos.entries()) {
     if (v.startSeconds !== null && v.startSeconds < 0) {
       return refusal(
-        `参考の動画の ${index + 1} 番目の秒は 0 以上にしてください`,
+        `参考動画の ${index + 1} 番目の秒は 0 以上にしてください`,
         `videos[${index}].startSeconds must be 0 or more`,
       );
     }
