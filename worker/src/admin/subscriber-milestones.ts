@@ -96,16 +96,22 @@ export function publishedBodyOf(saved: SubscriberMilestone) {
 }
 
 export async function readMilestone(env: Env, milestoneId: number): Promise<SubscriberMilestone | null> {
-  const [milestone, sources] = await Promise.all([
-    env.DB.prepare(`SELECT ${MILESTONE_COLUMNS} FROM subscriber_milestone WHERE milestone_id = ?1`)
-      .bind(milestoneId)
-      .first<MilestoneRow>(),
-    env.DB.prepare('SELECT url, title FROM subscriber_milestone_source WHERE milestone_id = ?1 ORDER BY position')
-      .bind(milestoneId)
-      .all<SourceRow>(),
-  ]);
+  // The row before its sources, as footprints.ts's `readEvent` reads an
+  // event: a save landing in between leaves the `edit_version` read behind
+  // the sources, and a write sent with it is refused (#307).
+  const milestone = await env.DB.prepare(
+    `SELECT ${MILESTONE_COLUMNS} FROM subscriber_milestone WHERE milestone_id = ?1`,
+  )
+    .bind(milestoneId)
+    .first<MilestoneRow>();
 
   if (milestone === null) return null;
+
+  const sources = await env.DB.prepare(
+    'SELECT url, title FROM subscriber_milestone_source WHERE milestone_id = ?1 ORDER BY position',
+  )
+    .bind(milestoneId)
+    .all<SourceRow>();
 
   return { milestone, sources: sources.results };
 }
@@ -115,29 +121,31 @@ export async function readMilestones(
   env: Env,
   milestoneIds: readonly number[],
 ): Promise<Map<number, SubscriberMilestone>> {
-  const [milestoneRows, sourceRows] = await Promise.all([
-    queryInChunks(milestoneIds, async (chunk) => {
-      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
-      const { results } = await env.DB.prepare(
-        `SELECT ${MILESTONE_COLUMNS} FROM subscriber_milestone WHERE milestone_id IN (${placeholders})`,
-      )
-        .bind(...chunk)
-        .all<MilestoneRow>();
+  // The rows before their sources, not alongside them: a save landing in
+  // between then leaves the `edit_version` read behind the sources read,
+  // and a write sent with it is refused (#307) rather than taking the sources
+  // for the ones that version saved.
+  const milestoneRows = await queryInChunks(milestoneIds, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+    const { results } = await env.DB.prepare(
+      `SELECT ${MILESTONE_COLUMNS} FROM subscriber_milestone WHERE milestone_id IN (${placeholders})`,
+    )
+      .bind(...chunk)
+      .all<MilestoneRow>();
 
-      return results;
-    }),
-    queryInChunks(milestoneIds, async (chunk) => {
-      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
-      const { results } = await env.DB.prepare(
-        `SELECT milestone_id, url, title FROM subscriber_milestone_source
+    return results;
+  });
+  const sourceRows = await queryInChunks(milestoneIds, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+    const { results } = await env.DB.prepare(
+      `SELECT milestone_id, url, title FROM subscriber_milestone_source
           WHERE milestone_id IN (${placeholders}) ORDER BY milestone_id, position`,
-      )
-        .bind(...chunk)
-        .all<{ milestone_id: number } & SourceRow>();
+    )
+      .bind(...chunk)
+      .all<{ milestone_id: number } & SourceRow>();
 
-      return results;
-    }),
-  ]);
+    return results;
+  });
 
   const result = new Map<number, SubscriberMilestone>(
     milestoneRows.map((milestone) => [milestone.milestone_id, { milestone, sources: [] }]),

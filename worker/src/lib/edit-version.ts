@@ -24,10 +24,11 @@ export interface HeldToVersion {
  * lands after this request's read. A row already at another version was
  * written since the screen read it, and gets 409 straight away.
  *
- * A body with no `version` key is held to nothing but what the caller holds
- * it to besides. 400 for anything else but a whole number from 0 up, `null`
- * included: a screen that lost the version it read must not write over
- * another's save unchecked.
+ * A body with no `version` key is held to `current`, the version this
+ * request read: its write lands only on the row as it read it, as one that
+ * sent that version would. 400 for anything else but a whole number from 0
+ * up, `null` included: a screen that lost the version it read must not
+ * write over another's save unchecked.
  */
 export function heldToVersion(
   body: Record<string, unknown>,
@@ -36,7 +37,7 @@ export function heldToVersion(
 ): HeldToVersion | { error: Response } {
   const { version } = body;
 
-  if (version === undefined) return {};
+  if (version === undefined) return { whileVersion: current };
 
   if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 0) {
     return { error: refuse(400, malformed('version must be a whole number from 0 up')) };

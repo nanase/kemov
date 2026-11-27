@@ -1155,6 +1155,33 @@ describe('two screens that read the same published event (#307)', () => {
   });
 });
 
+describe('a save that sends no version (#307)', () => {
+  test('is held to the version it read, so one saved meanwhile with its fields alone is not written over', async () => {
+    const eventId = await createPublishedEvent({ title: '前の題' });
+    const savedUnlogged = beforeNextBatch(env, () =>
+      saveEvent(R2_DOWN, eventId, validBody({ title: '先の保存' }), NOW),
+    );
+
+    const response = await saveEvent(savedUnlogged, eventId, validBody({ title: '後の保存' }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '先の保存' });
+    expect((await readPublished())!.events.map((e) => e.title)).toEqual(['前の題']);
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish']);
+  });
+
+  test('of a draft is held to it too', async () => {
+    const eventId = await createValidEvent({ title: '前の題' });
+    const savedFirst = beforeNextBatch(env, () => saveEvent(env, eventId, validBody({ title: '先の保存' }), NOW));
+
+    const response = await saveEvent(savedFirst, eventId, validBody({ title: '後の保存', sources: [] }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ title: '先の保存' });
+    expect(await childCounts(eventId)).toEqual({ members: 0, sources: 1 });
+  });
+});
+
 describe('two screens that read the same draft event (#307)', () => {
   test('starts at version 0, and each save adds 1', async () => {
     const eventId = await createValidEvent();

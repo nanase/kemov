@@ -172,20 +172,24 @@ export async function readStreams(env: Env, videoIds: readonly string[]): Promis
 
   if (ids.length === 0) return new Map();
 
-  const [streamRows, perfRows, sceneRows] = await Promise.all([
-    queryInChunks(ids, async (chunk) => {
-      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+  // The rows before their performances and scenes, not alongside them: a save landing in
+  // between then leaves the `edit_version` read behind the performances and scenes read,
+  // and a write sent with it is refused (#307) rather than taking the performances and scenes
+  // for the ones that version saved.
+  const streamRows = await queryInChunks(ids, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
 
-      const { results } = await env.DB.prepare(
-        `SELECT video_id, platform, url, video_type, title, short_title, published_at, categories, keywords,
+    const { results } = await env.DB.prepare(
+      `SELECT video_id, platform, url, video_type, title, short_title, published_at, categories, keywords,
                 status, memo, created_at, updated_at, edit_version
            FROM genet_stream WHERE video_id IN (${placeholders})`,
-      )
-        .bind(...chunk)
-        .all<StreamRow>();
+    )
+      .bind(...chunk)
+      .all<StreamRow>();
 
-      return results;
-    }),
+    return results;
+  });
+  const [perfRows, sceneRows] = await Promise.all([
     queryInChunks(ids, async (chunk) => {
       const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
 

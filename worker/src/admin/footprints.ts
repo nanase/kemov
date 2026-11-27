@@ -185,20 +185,24 @@ export async function readEvent(env: Env, eventId: number): Promise<FootprintsEv
  * "changed" check).
  */
 export async function readEvents(env: Env, eventIds: readonly number[]): Promise<Map<number, FootprintsEvent>> {
-  const [eventRows, memberRows, sourceRows] = await Promise.all([
-    queryInChunks(eventIds, async (chunk) => {
-      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
-      const { results } = await env.DB.prepare(
-        `SELECT event_id, date_precision, start_date, starts_at, end_date, kind, emphasized, title, place,
+  // The rows before their members and sources, not alongside them: a save landing in
+  // between then leaves the `edit_version` read behind the members and sources read,
+  // and a write sent with it is refused (#307) rather than taking the members and sources
+  // for the ones that version saved.
+  const eventRows = await queryInChunks(eventIds, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+    const { results } = await env.DB.prepare(
+      `SELECT event_id, date_precision, start_date, starts_at, end_date, kind, emphasized, title, place,
                   supplement, video_id, status, memo, created_at, updated_at, edit_version
              FROM footprints_event
             WHERE event_id IN (${placeholders})`,
-      )
-        .bind(...chunk)
-        .all<EventRow>();
+    )
+      .bind(...chunk)
+      .all<EventRow>();
 
-      return results;
-    }),
+    return results;
+  });
+  const [memberRows, sourceRows] = await Promise.all([
     queryInChunks(eventIds, async (chunk) => {
       const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
       const { results } = await env.DB.prepare(
