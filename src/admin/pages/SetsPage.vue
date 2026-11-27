@@ -631,10 +631,19 @@ async function act(action: PublishAction): Promise<void> {
       // Fields that were not saved stay as typed over the stream read again,
       // and the stream stays open even when the filter no longer takes it.
       await reload(videoId);
+
+      // A publish is refused too when a tune it performs was saved
+      // elsewhere (#303): the tunes read are read again, over what is typed.
+      if (error instanceof AdminApiError && error.changedElsewhere) readTunesAgain();
     }
   } finally {
     sending.value = false;
   }
+}
+
+/** Reads every tune already read again, keeping what is typed into each (`takeInTuneRead`). */
+function readTunesAgain(): void {
+  for (const index of tuneFieldsByIndex.value.keys()) void readTune(index, true);
 }
 
 /** A new stream's 保存: creates it as a draft, and opens it once the list has it. */
@@ -1026,7 +1035,16 @@ async function saveTune(index: number): Promise<void> {
       void loadPending();
     }
 
-    if (answered !== null && stillAt(index, videoId, performance.tuneId)) rememberSavedTune(index, answered.tune);
+    if (answered !== null && stillAt(index, videoId, performance.tuneId)) {
+      rememberSavedTune(index, answered.tune);
+      // The same tune performed again further on is the same row, now at the
+      // version saved: its fields follow, keeping what is typed there.
+      for (const other of tuneFieldsByIndex.value.keys()) {
+        if (other !== index && streamFields.value.performances[other]?.tuneId === performance.tuneId) {
+          takeInTuneRead(other, answered.tune);
+        }
+      }
+    }
 
     return;
   }

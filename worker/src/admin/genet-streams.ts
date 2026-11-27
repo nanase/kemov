@@ -839,13 +839,15 @@ export async function deleteStream(env: Env, videoId: string, body: Record<strin
 
   if (existing === null) return noStreamResponse(videoId);
 
-  const held = heldToVersion(body, existing.stream.edit_version, `stream ${videoId}`, 'remove');
-
-  if ('error' in held) return held.error;
-
   if (existing.stream.status === 'published') {
     return changedElsewhereResponse('withdraw this stream before deleting it', 'remove');
   }
+
+  // After the checks that say why a delete can never go through, which a
+  // screen holding an old version would otherwise hear as a save elsewhere.
+  const held = heldToVersion(body, existing.stream.edit_version, `stream ${videoId}`, 'remove');
+
+  if ('error' in held) return held.error;
 
   // The check above and this batch are two round trips, not one, so a
   // concurrent publishStream can land in between and this would otherwise

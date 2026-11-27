@@ -877,10 +877,6 @@ export async function deleteEvent(env: Env, eventId: number, body: Record<string
 
   if (existing === null) return noEventResponse(eventId);
 
-  const held = heldToVersion(body, existing.event.edit_version, `footprints event ${eventId}`, 'remove');
-
-  if ('error' in held) return held.error;
-
   if (existing.event.status === 'published') {
     return changedElsewhereResponse('withdraw this event before deleting it', 'remove');
   }
@@ -901,6 +897,12 @@ export async function deleteEvent(env: Env, eventId: number, body: Record<string
       ),
     );
   }
+
+  // After the checks that say why a delete can never go through, which a
+  // screen holding an old version would otherwise hear as a save elsewhere.
+  const held = heldToVersion(body, existing.event.edit_version, `footprints event ${eventId}`, 'remove');
+
+  if ('error' in held) return held.error;
 
   const results = await env.DB.batch([
     env.DB.prepare(

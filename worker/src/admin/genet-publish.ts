@@ -408,8 +408,13 @@ async function notWrittenResponse(env: Env, videoId: string, outcome: Extract<Pu
  * `notLoggedResponse`'s 404 or 409: the JSON was built again without the
  * change.
  */
-async function writtenResponse(env: Env, videoId: string, outcome: Extract<PublishOutcome, { written: true }>) {
-  if (outcome.revisionId === null) return await notLoggedResponse(env, videoId);
+async function writtenResponse(
+  env: Env,
+  videoId: string,
+  outcome: Extract<PublishOutcome, { written: true }>,
+  tunesRead?: ReadonlyMap<number, number>,
+) {
+  if (outcome.revisionId === null) return await notLoggedResponse(env, videoId, tunesRead);
 
   const saved = await readStream(env, videoId);
 
@@ -425,12 +430,32 @@ async function writtenResponse(env: Env, videoId: string, outcome: Extract<Publi
 /**
  * The answer when the batch logged no revision for the stream: 404 when it
  * was deleted, 409 when it was still there but no longer as the request read
- * it - published, withdrawn or saved elsewhere.
+ * it - published, withdrawn or saved elsewhere - or when a tune it performs
+ * was saved since `tunesRead` read it (#303), which `detail` names.
  */
-async function notLoggedResponse(env: Env, videoId: string): Promise<Response> {
+async function notLoggedResponse(
+  env: Env,
+  videoId: string,
+  tunesRead?: ReadonlyMap<number, number>,
+): Promise<Response> {
   if ((await readStream(env, videoId)) === null) return noStreamResponse(videoId);
 
+  const savedTunes = tunesRead === undefined ? [] : await tunesSavedSince(env, tunesRead);
+
+  if (savedTunes.length > 0) {
+    return changedElsewhereResponse(
+      `tunes ${savedTunes.join(', ')} that stream ${videoId} performs were saved while this request was saving it`,
+    );
+  }
+
   return changedMeanwhileResponse(videoId);
+}
+
+/** Every tune in `read` - tune id to the `edit_version` it was read at - that is at another version now, or gone. */
+async function tunesSavedSince(env: Env, read: ReadonlyMap<number, number>): Promise<number[]> {
+  const now = await readTunes(env, [...read.keys()]);
+
+  return [...read].flatMap(([tuneId, version]) => (now.get(tuneId)?.tune.edit_version === version ? [] : [tuneId]));
 }
 
 /** The answer when the stream changed under a request that read it: published, withdrawn or saved elsewhere. */
@@ -511,6 +536,7 @@ async function saveAndPublish(
 
   const people = await readPeople(env, personIdsOf(tunes.values()));
   const alongside = changedAlongside(revisions, [...tunes.values()], [...people.values()]);
+  const tunesRead = new Map([...tunes.values()].map((t) => [t.tune.tune_id, t.tune.edit_version]));
 
   const outcome = await publishChange(
     env,
@@ -527,7 +553,7 @@ async function saveAndPublish(
       whileStatus: wasPublished ? 'published' : 'draft',
       whileRevision: revisionBefore,
       ...held,
-      whileTunes: new Map([...tunes.values()].map((t) => [t.tune.tune_id, t.tune.edit_version])),
+      whileTunes: tunesRead,
     }),
     now,
   );
@@ -549,7 +575,7 @@ async function saveAndPublish(
     return await notWrittenResponse(env, videoId, outcome);
   }
 
-  return await writtenResponse(env, videoId, outcome);
+  return await writtenResponse(env, videoId, outcome, tunesRead);
 }
 
 /**

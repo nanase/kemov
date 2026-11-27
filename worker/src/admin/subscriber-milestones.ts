@@ -664,13 +664,15 @@ export async function deleteMilestone(
 
   if (existing === null) return noMilestoneResponse(milestoneId);
 
-  const held = heldToVersion(body, existing.milestone.edit_version, `subscriber milestone ${milestoneId}`, 'remove');
-
-  if ('error' in held) return held.error;
-
   if (existing.milestone.status === 'published') {
     return changedElsewhereResponse('withdraw this milestone before deleting it', 'remove');
   }
+
+  // After the checks that say why a delete can never go through, which a
+  // screen holding an old version would otherwise hear as a save elsewhere.
+  const held = heldToVersion(body, existing.milestone.edit_version, `subscriber milestone ${milestoneId}`, 'remove');
+
+  if ('error' in held) return held.error;
 
   const results = await env.DB.batch([
     env.DB.prepare(

@@ -929,11 +929,13 @@ export async function deleteTune(env: Env, tuneId: number, body: Record<string, 
 
   if (existing === null) return noTuneResponse(tuneId);
 
+  if (await isPerformed(env, tuneId)) return performedResponse();
+
+  // After the checks that say why a delete can never go through, which a
+  // screen holding an old version would otherwise hear as a save elsewhere.
   const held = heldToVersion(body, existing.edit_version, `tune ${tuneId}`, 'remove');
 
   if ('error' in held) return held.error;
-
-  if (await isPerformed(env, tuneId)) return performedResponse();
 
   const deletable = `EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1 AND edit_version = ?2)
                      AND NOT EXISTS (SELECT 1 FROM genet_performance WHERE tune_id = ?1)`;

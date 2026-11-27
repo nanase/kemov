@@ -1332,7 +1332,10 @@ describe("a stream's publish that finds a tune it performs saved meanwhile", () 
     );
 
     expect(response.status).toEqual(409);
-    expect(await response.json()).toMatchObject({ changedElsewhere: true });
+    expect(await response.json()).toMatchObject({
+      changedElsewhere: true,
+      detail: expect.stringContaining(`tunes ${tuneId} that stream`),
+    });
     expect(await streamStatus(other)).toEqual('draft');
     expect((await revisionRows('genet_stream')).map((row) => row.entity_key)).toEqual([videoId]);
 
@@ -1360,7 +1363,10 @@ describe("a stream's publish that finds a tune it performs saved meanwhile", () 
     );
 
     expect(response.status).toEqual(409);
-    expect(await response.json()).toMatchObject({ changedElsewhere: true });
+    expect(await response.json()).toMatchObject({
+      changedElsewhere: true,
+      detail: expect.stringContaining(`tunes ${tuneId} that stream`),
+    });
     expect(await streamStatus(videoId)).toEqual('draft');
     expect(await revisionRows('genet_stream')).toEqual([]);
     expect(await revisionRows('genet_tune')).toEqual([]);
