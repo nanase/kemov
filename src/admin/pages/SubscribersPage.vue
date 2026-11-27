@@ -20,7 +20,7 @@ import {
   toRequestBody,
   type SubscriberMilestone,
 } from '../lib/subscriber-milestones';
-import { SAVE_TOAST } from '../lib/editing';
+import { SAVE_TOAST, writeBody } from '../lib/editing';
 import { countText } from '../lib/list-count';
 import { useListTotal } from '../lib/list-total';
 import {
@@ -320,7 +320,10 @@ async function publishTicked(): Promise<void> {
         // published by this run: that publish may not have reached the public JSON.
         if (saved.status !== 'draft') return ALREADY_PUBLISHED;
 
-        await postJson(`/subscribers/milestones/${milestoneId}/publish`, toRequestBody(toFormFields(saved)));
+        await postJson(
+          `/subscribers/milestones/${milestoneId}/publish`,
+          writeBody(toRequestBody(toFormFields(saved)), saved),
+        );
       },
       (done) => {
         bulkProgress.value = { done, total: targets.length };

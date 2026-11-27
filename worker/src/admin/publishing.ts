@@ -125,7 +125,8 @@ export interface RevisionChange {
    * row is still as it was read passes what they leave the row as: a row
    * they left alone then gets no revision either, and the JSON already
    * written with the change is built again without it, as for a deleted row.
-   * Constant SQL in the caller's code, never anything a request sent.
+   * SQL in the caller's code, with no value a request sent written into it
+   * but an integer the caller checked (lib/edit-version.ts's `writtenAt`).
    */
   whileRow?: string;
 }

@@ -135,6 +135,11 @@ async function readPublished(): Promise<PublishedJson | null> {
   return JSON.parse(await object.text()) as PublishedJson;
 }
 
+/** The event's `version` as GET answers it: what a screen sends back with its writes (#307). */
+async function versionOf(eventId: number): Promise<number> {
+  return ((await (await getEvent(env, eventId)).json()) as { version: number }).version;
+}
+
 async function readRow(eventId: number): Promise<{ status: string; title: string }> {
   return (await (await getEvent(env, eventId)).json()) as { status: string; title: string };
 }
@@ -1057,5 +1062,200 @@ describe('a 409 for an event another screen changed', () => {
 
     expect(response.status).toEqual(409);
     expect(await response.json()).toMatchObject({ changedElsewhere: true });
+  });
+});
+
+describe('two screens that read the same published event (#307)', () => {
+  test('the later save, sent with the version it read, answers 409 and writes nothing over the first', async () => {
+    const eventId = await createPublishedEvent({ title: '前の題' });
+    const read = await versionOf(eventId);
+
+    expect((await saveEvent(env, eventId, validBody({ title: '先の保存', version: read }), NOW)).status).toEqual(200);
+
+    const response = await saveEvent(env, eventId, validBody({ title: '後の保存', version: read }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(((await response.json()) as { changedElsewhere: boolean }).changedElsewhere).toBe(true);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '先の保存' });
+    expect((await readPublished())!.events.map((e) => e.title)).toEqual(['先の保存']);
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish', 'publish']);
+  });
+
+  test('a save sent with the version read after the first goes through', async () => {
+    const eventId = await createPublishedEvent({ title: '前の題' });
+
+    await saveEvent(env, eventId, validBody({ title: '先の保存', version: await versionOf(eventId) }), NOW);
+
+    const response = await saveEvent(
+      env,
+      eventId,
+      validBody({ title: '後の保存', version: await versionOf(eventId) }),
+      LATER,
+    );
+
+    expect(response.status).toEqual(200);
+    expect(await readRow(eventId)).toMatchObject({ title: '後の保存' });
+  });
+
+  test('a withdraw sent with the version from before another save answers 409 and leaves the event published', async () => {
+    const eventId = await createPublishedEvent({ title: '前の題' });
+    const read = await versionOf(eventId);
+
+    await saveEvent(env, eventId, validBody({ title: '先の保存', version: read }), NOW);
+
+    const response = await withdrawEvent(env, eventId, validBody({ title: '前の題', version: read }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '先の保存' });
+    expect((await readPublished())!.events.map((e) => e.title)).toEqual(['先の保存']);
+  });
+
+  test('refuses a version that is not a whole number, and saves nothing', async () => {
+    const eventId = await createPublishedEvent({ title: '前の題' });
+
+    const response = await saveEvent(env, eventId, validBody({ title: '新しい題', version: '3' }), LATER);
+
+    expect(response.status).toEqual(400);
+    expect(await readRow(eventId)).toMatchObject({ title: '前の題' });
+  });
+
+  // Both requests read the row before either wrote it: the version each
+  // read is the same, and only the batch can tell them apart.
+  test('the later save, whose batch runs after the first, answers 409 and leaves the first on the public timeline', async () => {
+    const eventId = await createPublishedEvent({ title: '前の題' });
+    const read = await versionOf(eventId);
+    const savedFirst = beforeNextBatch(env, () =>
+      saveEvent(env, eventId, validBody({ title: '先の保存', version: read }), NOW),
+    );
+
+    const response = await saveEvent(savedFirst, eventId, validBody({ title: '後の保存', version: read }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '先の保存' });
+    expect((await readPublished())!.events.map((e) => e.title)).toEqual(['先の保存']);
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish', 'publish']);
+  });
+
+  // The first save could not write the JSON, so it saved the fields alone
+  // and logged no revision: the revision cannot tell the two saves apart.
+  test('the later save, after the first saved its fields alone, answers 409 and logs nothing', async () => {
+    const eventId = await createPublishedEvent({ title: '前の題' });
+    const read = await versionOf(eventId);
+    const savedUnlogged = beforeNextBatch(env, () =>
+      saveEvent(R2_DOWN, eventId, validBody({ title: '先の保存', version: read }), NOW),
+    );
+
+    const response = await saveEvent(savedUnlogged, eventId, validBody({ title: '後の保存', version: read }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '先の保存' });
+    expect(await versionOf(eventId)).toEqual(read + 2);
+    expect((await readPublished())!.events.map((e) => e.title)).toEqual(['前の題']);
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish']);
+  });
+});
+
+describe('a save that sends no version (#307)', () => {
+  test('is held to the version it read, so one saved meanwhile with its fields alone is not written over', async () => {
+    const eventId = await createPublishedEvent({ title: '前の題' });
+    const savedUnlogged = beforeNextBatch(env, () =>
+      saveEvent(R2_DOWN, eventId, validBody({ title: '先の保存' }), NOW),
+    );
+
+    const response = await saveEvent(savedUnlogged, eventId, validBody({ title: '後の保存' }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'published', title: '先の保存' });
+    expect((await readPublished())!.events.map((e) => e.title)).toEqual(['前の題']);
+    expect((await revisionRows()).map((row) => row.action)).toEqual(['publish']);
+  });
+
+  test('of a draft is held to it too', async () => {
+    const eventId = await createValidEvent({ title: '前の題' });
+    const savedFirst = beforeNextBatch(env, () => saveEvent(env, eventId, validBody({ title: '先の保存' }), NOW));
+
+    const response = await saveEvent(savedFirst, eventId, validBody({ title: '後の保存', sources: [] }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ title: '先の保存' });
+    expect(await childCounts(eventId)).toEqual({ members: 0, sources: 1 });
+  });
+});
+
+describe('two screens that read the same draft event (#307)', () => {
+  test('starts at version 0, and each save adds 1', async () => {
+    const eventId = await createValidEvent();
+
+    expect(await versionOf(eventId)).toEqual(0);
+
+    await saveEvent(env, eventId, validBody({ title: '一度目', version: 0 }), NOW);
+
+    expect(await versionOf(eventId)).toEqual(1);
+
+    await publishEvent(env, eventId, validBody({ title: '二度目', version: 1 }), NOW);
+
+    expect(await versionOf(eventId)).toEqual(2);
+  });
+
+  test('the later save, sent with the version it read, answers 409 and writes nothing over the first', async () => {
+    const eventId = await createValidEvent({ title: '前の題' });
+    const read = await versionOf(eventId);
+
+    expect((await saveEvent(env, eventId, validBody({ title: '先の保存', version: read }), NOW)).status).toEqual(200);
+
+    const response = await saveEvent(env, eventId, validBody({ title: '後の保存', sources: [], version: read }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(((await response.json()) as { changedElsewhere: boolean }).changedElsewhere).toBe(true);
+    expect(await readRow(eventId)).toMatchObject({ status: 'draft', title: '先の保存' });
+    expect(await childCounts(eventId)).toEqual({ members: 0, sources: 1 });
+  });
+
+  test('the later save, whose batch runs after the first, answers 409 and writes nothing over it', async () => {
+    const eventId = await createValidEvent({ title: '前の題' });
+    const read = await versionOf(eventId);
+    const savedFirst = beforeNextBatch(env, () =>
+      saveEvent(env, eventId, validBody({ title: '先の保存', version: read }), NOW),
+    );
+
+    const response = await saveEvent(
+      savedFirst,
+      eventId,
+      validBody({ title: '後の保存', sources: [], version: read }),
+      LATER,
+    );
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'draft', title: '先の保存' });
+    expect(await childCounts(eventId)).toEqual({ members: 0, sources: 1 });
+  });
+
+  test('a publish sent with the version from before another save answers 409 and publishes nothing', async () => {
+    const eventId = await createValidEvent({ title: '前の題' });
+    const read = await versionOf(eventId);
+
+    await saveEvent(env, eventId, validBody({ title: '先の保存', version: read }), NOW);
+
+    const response = await publishEvent(env, eventId, validBody({ title: '後の公開', version: read }), LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await readRow(eventId)).toMatchObject({ status: 'draft', title: '先の保存' });
+    expect(await readPublished()).toBeNull();
+    expect(await revisionRows()).toEqual([]);
+  });
+
+  test('refuses a null version, and saves nothing', async () => {
+    const eventId = await createValidEvent({ title: '前の題' });
+
+    const response = await saveEvent(env, eventId, validBody({ title: '新しい題', version: null }), NOW);
+
+    expect(response.status).toEqual(400);
+    expect(await readRow(eventId)).toMatchObject({ title: '前の題' });
+  });
+
+  test('refuses a malformed version with 400 before it looks at whether the event is published', async () => {
+    const eventId = await createValidEvent();
+
+    expect((await withdrawEvent(env, eventId, validBody({ version: -1 }), NOW)).status).toEqual(400);
   });
 });

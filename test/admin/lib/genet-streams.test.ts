@@ -7,6 +7,7 @@ import {
   performanceMoves,
   streamsQuery,
   toFormFields,
+  withKeptStream,
   withoutIndex,
   withoutItem,
   type GenetStream,
@@ -26,6 +27,7 @@ const STREAM: GenetStream = {
   memo: null,
   createdAt: '2026-09-01T00:00:00Z',
   updatedAt: '2026-09-01T00:00:00Z',
+  version: 1,
   performances: [
     { tuneId: 1, description: null, scenes: [{ style: 'sing', videoId: 'abcdefghijk', startSeconds: 90 }] },
   ],
@@ -257,5 +259,23 @@ describe('openTuneUnread', () => {
 
   test('is false when no tune is open', () => {
     expect(openTuneUnread(null, new Map(), new Map())).toBe(false);
+  });
+});
+
+describe('withKeptStream', () => {
+  const row = (videoId: string) => ({ ...STREAM, videoId });
+
+  test('puts the kept stream back at its place when the rows no longer hold it', () => {
+    expect(withKeptStream([row('a'), row('c')], row('b'), 1).map((s) => s.videoId)).toEqual(['a', 'b', 'c']);
+  });
+
+  test('leaves the rows alone when they still hold it', () => {
+    const rows = [row('a'), row('b')];
+
+    expect(withKeptStream(rows, row('b'), 0)).toBe(rows);
+  });
+
+  test('puts it at the end when its place is past the rows', () => {
+    expect(withKeptStream([row('a')], row('b'), 5).map((s) => s.videoId)).toEqual(['a', 'b']);
   });
 });

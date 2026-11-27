@@ -38,6 +38,8 @@ export interface SubscriberMilestone {
   memo: string | null;
   createdAt: string;
   updatedAt: string;
+  /** The row's version as read, sent back with every write so that one another screen changed meanwhile is refused (#307, lib/editing.ts's `writeBody`). */
+  version: number;
   sources: FootprintsSource[];
 }
 

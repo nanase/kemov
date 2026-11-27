@@ -38,12 +38,28 @@ async function seed(): Promise<void> {
   ]);
 }
 
+/**
+ * Columns later migrations gave footprints_event, which 0012's rebuild does
+ * not write out: in production it ran before them, and here it runs again
+ * on the schema they left.
+ */
+const ADDED_AFTER_0012 = ['edit_version'];
+
 /** The rebuilt table and every table that points at it. */
 async function everyRow(): Promise<Record<string, unknown[]>> {
   const tables = ['footprints_event', 'footprints_event_member', 'footprints_event_source', 'subscriber_milestone'];
   const rows = await Promise.all(tables.map((table) => env.DB.prepare(`SELECT * FROM ${table} ORDER BY 1, 2`).all()));
 
-  return Object.fromEntries(tables.map((table, index) => [table, rows[index]!.results]));
+  return Object.fromEntries(
+    tables.map((table, index) => [
+      table,
+      rows[index]!.results.map((row) =>
+        table === 'footprints_event'
+          ? Object.fromEntries(Object.entries(row).filter(([column]) => !ADDED_AFTER_0012.includes(column)))
+          : row,
+      ),
+    ]),
+  );
 }
 
 describe('migration 0012', () => {

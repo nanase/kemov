@@ -27,7 +27,7 @@ import {
   type BulkPublishOutcome as Outcome,
 } from '../lib/bulk-publish';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, SAVE_TOAST, sameFields } from '../lib/editing';
+import { EDITING_TEXT, fieldsAfterSave, SAVE_TOAST, sameFields, writeBody } from '../lib/editing';
 import { insertAt, mdSnippet, clock, type MdLinkKind } from '../lib/genet-markdown';
 import { type GenetPerson } from '../lib/genet-people';
 import {
@@ -66,6 +66,7 @@ import {
   streamsQuery,
   toFormFields as toStreamFormFields,
   VIDEO_TYPES,
+  withKeptStream,
   withoutIndex,
   withoutItem,
   type GenetStream,
@@ -82,6 +83,7 @@ import {
   liveMarkFor,
   PUBLISH_TEXT,
   publishFootFor,
+  sentFieldsSaved,
   type PublishAction,
   type PublishBand,
 } from '../lib/publishing';
@@ -167,17 +169,31 @@ const streamFields = ref<StreamFormFields>(emptyStreamFields());
 const sending = ref(false);
 const band = ref<PublishBand | null>(null);
 const invalidFields = ref<readonly StreamFieldError[]>([]);
+/**
+ * The fields typed in that another screen changed too, found when the stream
+ * was read again (`fieldsOnReload`). Each is a whole field: the performances
+ * clash as one list, so no single performance is marked for it.
+ */
+const clashes = ref<readonly StreamFieldSection[]>([]);
+
+/** `clashes` as the field errors they mark. */
+const clashErrors = computed<StreamFieldError[]>(() =>
+  clashes.value.map((section) => ({ section, performanceIndex: null, sceneIndex: null })),
+);
 
 function invalid(section: StreamFieldSection, performanceIndex: number | null = null): boolean {
-  return invalidFields.value.some(
-    (f) => f.section === section && (performanceIndex === null || f.performanceIndex === performanceIndex),
+  return (
+    invalidFields.value.some(
+      (f) => f.section === section && (performanceIndex === null || f.performanceIndex === performanceIndex),
+    ) ||
+    (performanceIndex === null && clashes.value.includes(section))
   );
 }
 
 function reasonIds(section: StreamFieldSection, performanceIndex: number | null = null): string | undefined {
   return streamBandReasonIds(
     band.value,
-    invalidFields.value,
+    [...invalidFields.value, ...clashErrors.value],
     (f) => f.section === section && (performanceIndex === null || f.performanceIndex === performanceIndex),
   );
 }
@@ -190,26 +206,58 @@ const noTuneRefused = computed(() =>
 function clearBand(): void {
   band.value = null;
   invalidFields.value = [];
+  clashes.value = [];
 }
 
 /** A new stream's id while its 保存 reads the list, so that opening it keeps the tunes typed into while it was new. */
 let createdVideoId: string | null = null;
+/** What the last request sent, when it saved it (`sentFieldsSaved`): the read after it follows the stream as the worker saved it (`fieldsAfterSave`). */
+let savedSent: StreamFormFields | null = null;
+/** How many times the fields were thrown away (`discardEdits`): a request's answer that lands after one is not theirs. */
+let discards = 0;
+/**
+ * The stream the fields stand on: its fields, what a read is put together
+ * against (`fieldsAfterSave`), and its version, what a write sends back
+ * (#307). Behind `selected` while a read the fields did not take in is
+ * declined (`replaceStreamFields`): the next read is put together against
+ * it again, and a 保存 meanwhile is refused rather than sending fields that
+ * `selected`'s version does not hold.
+ */
+let standOn: { fields: StreamFormFields; version: number } | null = null;
+
+/** The fields now stand on `stream`, as it was read. */
+function standOnStream(stream: GenetStream | null): void {
+  standOn = stream === null ? null : { fields: toStreamFormFields(stream), version: stream.version };
+}
 
 watch(selected, (stream, previous) => {
-  if (stream === null || stream.videoId !== previous?.videoId) {
+  if (stream === null || previous === null || stream.videoId !== previous.videoId) {
+    savedSent = null;
     clearBand();
     streamFields.value = stream === null ? emptyStreamFields() : toStreamFormFields(stream);
+    standOnStream(stream);
     if (stream === null || stream.videoId !== createdVideoId) closeTunes();
     return;
   }
 
   // The open stream read again - after a request about it, or a filter that
-  // keeps it - leaves what is typed alone. A request that saved the fields
-  // puts the saved ones back itself, once the list has been read. The band
-  // is left alone too: it is the answer to the request that read it again.
-  if (previous !== null && !sameFields(streamFields.value, toStreamFormFields(previous))) return;
+  // keeps it - keeps what is typed, and takes the rest as saved now (#304):
+  // a save another screen's change refused would otherwise lose it, and a
+  // 保存 pressed again would turn back that change. After a request that
+  // saved the fields (`savedSent`), they are the stream as saved, but for
+  // what was typed since. Both hold until a read is taken in (`standOn`).
+  // The band is left alone: it is the answer to the request that read it
+  // again.
+  const before = standOn?.fields ?? toStreamFormFields(previous);
+  const reloaded = sameFields(streamFields.value, savedSent ?? before)
+    ? { fields: toStreamFormFields(stream), clashes: [] }
+    : fieldsAfterSave(streamFields.value, before, toStreamFormFields(stream), savedSent);
 
-  replaceStreamFields(toStreamFormFields(stream));
+  if (!replaceStreamFields(reloaded.fields)) return;
+
+  savedSent = null;
+  standOnStream(stream);
+  clashes.value = reloaded.clashes;
 });
 
 /**
@@ -219,22 +267,22 @@ watch(selected, (stream, previous) => {
  * tune's fields move with its tune (lib/genet-streams.ts `performanceMoves`).
  * A tune `next` no longer holds would take its unsaved changes with it, so
  * that is asked first; declining keeps the fields as they are, which then
- * show as unsaved against the stream read.
+ * show as unsaved against the stream read. False when declined.
  */
-function replaceStreamFields(next: StreamFormFields): void {
+function replaceStreamFields(next: StreamFormFields): boolean {
   const before = streamFields.value.performances.map((p) => p.tuneId);
   const after = next.performances.map((p) => p.tuneId);
 
   if (sameFields(before, after)) {
     streamFields.value = next;
 
-    return;
+    return true;
   }
 
   const moves = performanceMoves(before, after);
   const losesTyped = [...tuneFieldsByIndex.value.keys()].some((index) => !moves.has(index) && isTuneDirty(index));
 
-  if (losesTyped && !window.confirm(EDITING_TEXT.confirmDiscard)) return;
+  if (losesTyped && !window.confirm(EDITING_TEXT.confirmDiscard)) return false;
 
   streamFields.value = next;
   tuneFieldsByIndex.value = moveEntries(tuneFieldsByIndex.value, moves);
@@ -248,6 +296,8 @@ function replaceStreamFields(next: StreamFormFields): void {
   // it stays open and its read is sent again (#284).
   openIndex.value = open ?? null;
   readOpenTuneAgain();
+
+  return true;
 }
 
 /** Closes the tunes and forgets them; each is read again when opened. */
@@ -290,8 +340,25 @@ function reloadPending(): number {
 // for a filter that is no longer selected.
 let loadGeneration = 0;
 
-/** Resolves true when the list it read was put on screen: not failed, and not overtaken by a later load. */
-async function load(): Promise<boolean> {
+/**
+ * The open stream as it is now, null when it is gone, or `shown` - the one
+ * on screen - when it cannot be read.
+ */
+async function readKeptStream(videoId: string, shown: GenetStream): Promise<GenetStream | null> {
+  try {
+    return (await getJson<{ stream: GenetStream }>(`/genet/streams/${encodeURIComponent(videoId)}`)).stream;
+  } catch (error) {
+    return error instanceof AdminApiError && error.status === 404 ? null : shown;
+  }
+}
+
+/**
+ * Resolves true when the list it read was put on screen: not failed, and not
+ * overtaken by a later load. `keep` names the open stream after its own
+ * request was refused: it stays in the list though the filter no longer
+ * takes it (`withKeptStream`).
+ */
+async function load(keep: string | null = null): Promise<boolean> {
   loading.value = true;
   loadError.value = null;
   void loadPending();
@@ -305,9 +372,19 @@ async function load(): Promise<boolean> {
 
     if (generation !== loadGeneration) return false;
 
-    streams.value = body.streams;
+    let rows = body.streams;
+    const shown = selected.value;
+
+    if (keep !== null && shown !== null && shown.videoId === keep && !rows.some((s) => s.videoId === keep)) {
+      const kept = await readKeptStream(keep, shown);
+
+      if (generation !== loadGeneration) return false;
+      if (kept !== null) rows = withKeptStream(rows, kept, streams.value.indexOf(shown));
+    }
+
+    streams.value = rows;
     ticked.value = ticksAfterReload(ticked.value, streams.value, keyOf);
-    listTotal.update(streams.value.length, filtered.value);
+    listTotal.update(body.streams.length, filtered.value);
 
     // A stream the filter now leaves out closes its editor, and the first
     // one in the list takes its place, as on あしあと.
@@ -390,6 +467,7 @@ function startAdding(): void {
   selectedVideoId.value = null;
   // `selected` may already have been null, which the watch on it would not see.
   streamFields.value = emptyStreamFields();
+  standOnStream(null);
   closeTunes();
   clearBand();
   detail.value = true;
@@ -447,7 +525,10 @@ async function publishTicked(): Promise<void> {
 
         if (saved.status !== 'draft') return ALREADY_PUBLISHED;
 
-        await postJson(`/genet/streams/${encodeURIComponent(videoId)}/publish`, toStreamFormFields(saved));
+        await postJson(
+          `/genet/streams/${encodeURIComponent(videoId)}/publish`,
+          writeBody(toStreamFormFields(saved), saved),
+        );
       },
       (done) => {
         bulkProgress.value = { done, total: targets.length };
@@ -474,23 +555,10 @@ function streamLine(s: GenetStream): string {
 }
 
 /** After a request that may have changed the streams: the list and which of them the public JSON is behind. */
-async function reload(): Promise<boolean> {
+async function reload(keep: string | null = null): Promise<boolean> {
   listTotal.invalidate();
 
-  return await load();
-}
-
-/**
- * The list read again after the fields of `videoId` were saved. The reload
- * keeps the typed fields (see the watch on `selected`); they are saved now,
- * so the saved stream takes their place - unless the reload failed, when
- * `selected` is still the stream from before the save and putting it back
- * would undo the save at the next one.
- */
-async function reloadSaved(videoId: string): Promise<void> {
-  if ((await reload()) && selected.value?.videoId === videoId) {
-    replaceStreamFields(toStreamFormFields(selected.value));
-  }
+  return await load(keep);
 }
 
 /**
@@ -515,14 +583,18 @@ async function act(action: PublishAction): Promise<void> {
   }
 
   const path = `/genet/streams/${encodeURIComponent(videoId)}`;
+  const sent = structuredClone(toRaw(streamFields.value));
+  const discardsBefore = discards;
   let error: unknown = null;
 
   sending.value = true;
   clearBand();
 
   try {
-    if (action === 'save') await putJson(path, streamFields.value);
-    else await postJson(`${path}/${action}`, streamFields.value);
+    const body = writeBody(streamFields.value, standOn ?? selected.value);
+
+    if (action === 'save') await putJson(path, body);
+    else await postJson(`${path}/${action}`, body);
   } catch (caught) {
     error = caught;
   }
@@ -530,10 +602,14 @@ async function act(action: PublishAction): Promise<void> {
   try {
     const answer = streamAnswerFor(action, status, error);
 
+    // One that saved nothing keeps the last save's: no read may have answered
+    // it yet. Fields thrown away meanwhile are not what is on screen.
+    if (sentFieldsSaved(error) && discards === discardsBefore) savedSent = sent;
+
     if (answer.kind === 'done') {
       void refreshSidebarDrafts();
       showToast(answer.toast);
-      await reloadSaved(videoId);
+      await reload();
       void refreshTuneLive();
 
       return;
@@ -544,7 +620,9 @@ async function act(action: PublishAction): Promise<void> {
 
     if (answer.changed) {
       void refreshSidebarDrafts();
-      await reloadSaved(videoId);
+      // Fields that were not saved stay as typed over the stream read again,
+      // and the stream stays open even when the filter no longer takes it.
+      await reload(videoId);
       void refreshTuneLive();
     }
   } finally {
@@ -708,11 +786,18 @@ const dirty = computed(() => streamDirty.value || tunesDirty.value);
 
 /** Puts the stream's saved fields back and closes the tunes, which are read again when opened. */
 function discardEdits(): void {
+  // What was thrown away was typed over the stream as shown, not over a save
+  // the next read would answer (`savedSent`) - nor over one still on its way.
+  savedSent = null;
+  discards += 1;
+
   if (adding.value) {
     newVideoId.value = '';
     streamFields.value = emptyStreamFields();
+    standOnStream(null);
   } else if (selected.value !== null) {
     streamFields.value = toStreamFormFields(selected.value);
+    standOnStream(selected.value);
   }
 
   closeTunes();
@@ -1215,7 +1300,7 @@ onMounted(async () => {
   await Promise.all([load(), loadPeople()]);
 });
 
-watch([statusFilter, q], load);
+watch([statusFilter, q], () => load());
 
 useCrumbDetail(() =>
   adding.value
@@ -1390,8 +1475,14 @@ useCrumbDetail(() =>
               />
             </div>
             <div class="md">
-              <div class="md-bar"><span class="lab">カテゴリ</span></div>
-              <div class="chipset">
+              <div class="md-bar"><span id="f-categories-label" class="lab">カテゴリ</span></div>
+              <div
+                class="chipset"
+                role="group"
+                aria-labelledby="f-categories-label"
+                :aria-invalid="invalid('categories')"
+                :aria-describedby="reasonIds('categories')"
+              >
                 <span v-for="(c, i) in streamFields.categories" :key="c" class="chip-x"
                   >{{ c
                   }}<button
@@ -1406,8 +1497,14 @@ useCrumbDetail(() =>
               </div>
             </div>
             <div class="md">
-              <div class="md-bar"><span class="lab">キーワード</span></div>
-              <div class="chipset">
+              <div class="md-bar"><span id="f-keywords-label" class="lab">キーワード</span></div>
+              <div
+                class="chipset"
+                role="group"
+                aria-labelledby="f-keywords-label"
+                :aria-invalid="invalid('keywords')"
+                :aria-describedby="reasonIds('keywords')"
+              >
                 <span v-for="(k, i) in streamFields.keywords" :key="k" class="chip-x"
                   >{{ k
                   }}<button
@@ -1461,13 +1558,21 @@ useCrumbDetail(() =>
               <textarea
                 id="f-memo"
                 :value="streamFields.memo ?? ''"
+                :aria-invalid="invalid('memo')"
+                :aria-describedby="reasonIds('memo')"
                 @input="streamFields.memo = ($event.target as HTMLTextAreaElement).value || null"
               ></textarea>
             </div>
           </div>
 
-          <div class="editor-section">
-            <h3>曲 {{ streamFields.performances.length }} 件</h3>
+          <div
+            class="editor-section"
+            role="group"
+            aria-labelledby="f-performances-title"
+            :aria-invalid="clashes.includes('performances')"
+            :aria-describedby="clashes.includes('performances') ? reasonIds('performances') : undefined"
+          >
+            <h3 id="f-performances-title">曲 {{ streamFields.performances.length }} 件</h3>
 
             <div
               v-for="(perf, pi) in streamFields.performances"
@@ -1892,6 +1997,17 @@ useCrumbDetail(() =>
   padding-left: 1.2em;
   color: var(--k-text-2);
   font-size: var(--a-small);
+}
+
+/* Chips or performances another screen changed too (`clashes`): the global rule colours a border these have none of. */
+.chipset[aria-invalid='true'],
+.editor-section[aria-invalid='true'] {
+  border: 1px solid;
+  border-radius: 6px;
+}
+
+.chipset[aria-invalid='true'] {
+  padding: 4px;
 }
 
 /* A tune, or one of its attributes, a refusal names. */

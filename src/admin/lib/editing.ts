@@ -1,8 +1,10 @@
 /**
  * What the three edit panels (あしあと・登録者数の節目・ジェネット楽曲一覧)
  * share about unsaved changes, deleting and the toast after a save (#280,
- * #277's decision 1b・1c・6-10・6-11・6-13). The Vue half - the guard that
- * asks before the changes are thrown away - is `unsaved-guard.ts`.
+ * #277's decision 1b・1c・6-10・6-11・6-13), about the fields when their row
+ * is read again (#304), and about the version a write sends back (#307).
+ * The Vue half - the guard that asks before the changes are thrown away -
+ * is `unsaved-guard.ts`.
  */
 
 export const EDITING_TEXT = {
@@ -56,4 +58,68 @@ function isBlank(value: unknown): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+/** What an edit panel shows once its row was read again: `fieldsOnReload`. */
+export interface ReloadedFields<T> {
+  fields: T;
+  /** The fields typed in that the row now holds something else in too: changed on both screens. */
+  clashes: (keyof T)[];
+}
+
+/**
+ * What an edit panel shows when its row was read again and `before` - the row
+ * as the panel read it - is now `after`: `after`, with the fields typed in
+ * over it (#304). So a read never writes saved values over what is typed, as
+ * the メンバー panel's own `fieldsOnReload` does (#286).
+ *
+ * Only the fields typed in are kept: the others take what is saved now, so a
+ * 保存 pressed again does not turn back another screen's change to them. A
+ * field is compared as a whole, a list of sources or performances included.
+ */
+export function fieldsOnReload<T extends object>(current: T, before: T, after: T): ReloadedFields<T> {
+  const fields = plainCopy(after);
+  const clashes: (keyof T)[] = [];
+
+  for (const key of Object.keys(before) as (keyof T)[]) {
+    if (sameFields(current[key], before[key])) continue;
+
+    fields[key] = plainCopy(current[key]);
+
+    if (!sameFields(after[key], before[key]) && !sameFields(after[key], current[key])) clashes.push(key);
+  }
+
+  return { fields, clashes };
+}
+
+/**
+ * `fieldsOnReload` for a panel that may have sent its fields in a request
+ * that saved them (`sentFieldsSaved`): `sent` is the last of those it sent,
+ * or null. What was typed is then what was typed since it was sent, not
+ * since `before` - the row as the panel read it, which no read has brought
+ * up to that save yet.
+ *
+ * The panel holds `sent` until a read of the row arrives, however late: a
+ * read that failed after the save leaves `before` as it was, and the next
+ * one - after a request that saved nothing, a refused retry included -
+ * still answers the save.
+ */
+export function fieldsAfterSave<T extends object>(current: T, before: T, after: T, sent: T | null): ReloadedFields<T> {
+  return fieldsOnReload(current, sent ?? before, after);
+}
+
+/** A copy of plain form data that shares nothing with it. `structuredClone` refuses Vue's reactive proxies, which `current` usually is. */
+function plainCopy<V>(value: V): V {
+  return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as V);
+}
+
+/**
+ * The body of a 保存, 公開 or 非公開に戻す: `fields`, with the version of the
+ * row they were typed over (#307). The worker writes only while the row is
+ * still at that version, and answers 409 otherwise, so a write never lands
+ * silently over another screen's. After `fieldsOnReload`, the row is the one
+ * read again, and a 保存 pressed then writes over it on purpose.
+ */
+export function writeBody<T extends object>(fields: T, row: { version: number }): T & { version: number } {
+  return { ...fields, version: row.version };
 }
