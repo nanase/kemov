@@ -212,12 +212,20 @@ function clearBand(): void {
 let createdVideoId: string | null = null;
 /** What the last request sent, when it saved it (`sentFieldsSaved`): the read after it follows the stream as the worker saved it (`fieldsAfterSave`). */
 let savedSent: StreamFormFields | null = null;
+/**
+ * The version of the stream the fields stand on: what a write sends back
+ * (#307). Behind `selected`'s while a read the fields did not take in is
+ * still declined (`replaceStreamFields`), so a 保存 then is refused rather
+ * than sending fields that version does not hold.
+ */
+let fieldsVersion: number | null = null;
 
 watch(selected, (stream, previous) => {
   if (stream === null || previous === null || stream.videoId !== previous.videoId) {
     savedSent = null;
     clearBand();
     streamFields.value = stream === null ? emptyStreamFields() : toStreamFormFields(stream);
+    fieldsVersion = stream?.version ?? null;
     if (stream === null || stream.videoId !== createdVideoId) closeTunes();
     return;
   }
@@ -234,7 +242,7 @@ watch(selected, (stream, previous) => {
   savedSent = null;
 
   if (sameFields(streamFields.value, sent ?? toStreamFormFields(previous))) {
-    replaceStreamFields(toStreamFormFields(stream));
+    if (replaceStreamFields(toStreamFormFields(stream))) fieldsVersion = stream.version;
     clashes.value = [];
 
     return;
@@ -242,7 +250,7 @@ watch(selected, (stream, previous) => {
 
   const reloaded = fieldsAfterSave(streamFields.value, toStreamFormFields(previous), toStreamFormFields(stream), sent);
 
-  replaceStreamFields(reloaded.fields);
+  if (replaceStreamFields(reloaded.fields)) fieldsVersion = stream.version;
   clashes.value = reloaded.clashes;
 });
 
@@ -253,22 +261,22 @@ watch(selected, (stream, previous) => {
  * tune's fields move with its tune (lib/genet-streams.ts `performanceMoves`).
  * A tune `next` no longer holds would take its unsaved changes with it, so
  * that is asked first; declining keeps the fields as they are, which then
- * show as unsaved against the stream read.
+ * show as unsaved against the stream read. False when declined.
  */
-function replaceStreamFields(next: StreamFormFields): void {
+function replaceStreamFields(next: StreamFormFields): boolean {
   const before = streamFields.value.performances.map((p) => p.tuneId);
   const after = next.performances.map((p) => p.tuneId);
 
   if (sameFields(before, after)) {
     streamFields.value = next;
 
-    return;
+    return true;
   }
 
   const moves = performanceMoves(before, after);
   const losesTyped = [...tuneFieldsByIndex.value.keys()].some((index) => !moves.has(index) && isTuneDirty(index));
 
-  if (losesTyped && !window.confirm(EDITING_TEXT.confirmDiscard)) return;
+  if (losesTyped && !window.confirm(EDITING_TEXT.confirmDiscard)) return false;
 
   streamFields.value = next;
   tuneFieldsByIndex.value = moveEntries(tuneFieldsByIndex.value, moves);
@@ -282,6 +290,8 @@ function replaceStreamFields(next: StreamFormFields): void {
   // it stays open and its read is sent again (#284).
   openIndex.value = open ?? null;
   readOpenTuneAgain();
+
+  return true;
 }
 
 /** Closes the tunes and forgets them; each is read again when opened. */
@@ -424,6 +434,7 @@ function startAdding(): void {
   selectedVideoId.value = null;
   // `selected` may already have been null, which the watch on it would not see.
   streamFields.value = emptyStreamFields();
+  fieldsVersion = null;
   closeTunes();
   clearBand();
   detail.value = true;
@@ -546,7 +557,7 @@ async function act(action: PublishAction): Promise<void> {
   clearBand();
 
   try {
-    const body = writeBody(streamFields.value, selected.value);
+    const body = writeBody(streamFields.value, { version: fieldsVersion ?? selected.value.version });
 
     if (action === 'save') await putJson(path, body);
     else await postJson(`${path}/${action}`, body);
@@ -746,8 +757,10 @@ function discardEdits(): void {
   if (adding.value) {
     newVideoId.value = '';
     streamFields.value = emptyStreamFields();
+    fieldsVersion = null;
   } else if (selected.value !== null) {
     streamFields.value = toStreamFormFields(selected.value);
+    fieldsVersion = selected.value.version;
   }
 
   closeTunes();
