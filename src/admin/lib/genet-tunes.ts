@@ -44,10 +44,11 @@ export interface GenetTune {
 }
 
 /**
- * The PUT/POST body `saveTune`/`createTune` (`worker/src/admin/genet-publish.ts`,
- * `worker/src/admin/genet-tunes.ts`) reads. A save here is a full replace of `attributes`/`videos`/`scores` -
- * every element is deleted and reinserted wholesale, the same shape
- * footprints.ts gives an event's own members and sources.
+ * The PUT/POST body `saveTune`/`createTune` reads
+ * (`worker/src/admin/genet-publish.ts`, `worker/src/admin/genet-tunes.ts`).
+ * A save here is a full replace of `attributes`/`videos`/`scores` - every
+ * element is deleted and reinserted wholesale, the same shape footprints.ts
+ * gives an event's own members and sources.
  */
 export interface TuneFormFields {
   title: string;

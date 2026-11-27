@@ -1898,10 +1898,6 @@ describe('two screens that read the same draft stream (#307)', () => {
 });
 
 describe('a delete of a stream another screen saved (#309)', () => {
-  async function versionOf(videoId: string): Promise<number> {
-    return ((await fieldsOf(videoId)) as { version: number }).version;
-  }
-
   test('sent with the version from before the save, answers 409 and leaves the stream as saved', async () => {
     const { videoId } = await createPerformableStream();
     const read = await fieldsOf(videoId);
@@ -1937,7 +1933,7 @@ describe('a delete of a stream another screen saved (#309)', () => {
 
     await saveStream(env, videoId, await fieldsOf(videoId, { title: '先の保存' }), NOW);
 
-    expect((await deleteStream(env, videoId, { version: await versionOf(videoId) })).status).toEqual(200);
+    expect((await deleteStream(env, videoId, { version: (await fieldsOf(videoId)).version })).status).toEqual(200);
     expect(await streamStatus(videoId)).toBeUndefined();
   });
 
@@ -1950,7 +1946,8 @@ describe('a delete of a stream another screen saved (#309)', () => {
 });
 
 describe('a delete of a tune another screen saved (#309)', () => {
-  async function tuneTitle(tuneId: number): Promise<string | null> {
+  /** The tune's title as stored, or null once it is deleted. */
+  async function storedTuneTitle(tuneId: number): Promise<string | null> {
     const row = await env.DB.prepare('SELECT title FROM genet_tune WHERE tune_id = ?1')
       .bind(tuneId)
       .first<{ title: string }>();
@@ -1979,7 +1976,7 @@ describe('a delete of a tune another screen saved (#309)', () => {
       error: '別の画面で変更されたため削除できませんでした',
       changedElsewhere: true,
     });
-    expect(await tuneTitle(tuneId)).toEqual('先の保存');
+    expect(await storedTuneTitle(tuneId)).toEqual('先の保存');
     expect(await scoreCount(tuneId)).toEqual(1);
   });
 
@@ -1992,7 +1989,7 @@ describe('a delete of a tune another screen saved (#309)', () => {
 
     expect(response.status).toEqual(409);
     expect(await response.json()).toMatchObject({ error: '別の画面で変更されたため削除できませんでした' });
-    expect(await tuneTitle(tuneId)).toEqual('先の保存');
+    expect(await storedTuneTitle(tuneId)).toEqual('先の保存');
     expect(await scoreCount(tuneId)).toEqual(1);
   });
 
@@ -2008,7 +2005,7 @@ describe('a delete of a tune another screen saved (#309)', () => {
 
     expect(response.status).toEqual(409);
     expect(await response.json()).toMatchObject({ error: 'この曲を演奏している配信があるため削除できませんでした' });
-    expect(await tuneTitle(tuneId)).toEqual('曲名');
+    expect(await storedTuneTitle(tuneId)).toEqual('曲名');
   });
 
   test('sent with the version read after the save, deletes it', async () => {
@@ -2019,13 +2016,13 @@ describe('a delete of a tune another screen saved (#309)', () => {
     const response = await deleteTune(env, tuneId, { version: (await tuneFieldsOf(tuneId)).version });
 
     expect(response.status).toEqual(200);
-    expect(await tuneTitle(tuneId)).toBeNull();
+    expect(await storedTuneTitle(tuneId)).toBeNull();
   });
 
   test('refuses a version that is not a whole number with 400, and deletes nothing', async () => {
     const tuneId = await createValidTune();
 
     expect((await deleteTune(env, tuneId, { version: null })).status).toEqual(400);
-    expect(await tuneTitle(tuneId)).toEqual('曲名');
+    expect(await storedTuneTitle(tuneId)).toEqual('曲名');
   });
 });

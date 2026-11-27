@@ -330,7 +330,7 @@ export async function isPerformedLive(env: Env, tuneId: number): Promise<boolean
  * or a column, written into the SQL as is - so that a save's batch can ask
  * it again when it runs (`SaveOptions.whileUnperformed`).
  */
-function performedLive(tuneId: string): string {
+function performedLive(tuneId: '?1' | 'genet_tune.tune_id'): string {
   return `EXISTS (SELECT 1
                     FROM revision r
                     JOIN (SELECT MAX(revision_id) AS revision_id
@@ -878,12 +878,12 @@ export function saveStatements(
  * Whether `saveStatements`' batch - those statements alone - wrote the row:
  * false when it was gone, or no longer as `SaveOptions` asked.
  */
-export function savedTuneRow(results: readonly D1Result[]): boolean {
+export function savedRow(results: readonly D1Result[]): boolean {
   return results[results.length - 1]!.meta.changes > 0;
 }
 
 /** The answer when a save found the tune saved by another screen since the version it was read at (#303). */
-export function tuneSavedElsewhereResponse(tuneId: number): Response {
+export function savedElsewhereResponse(tuneId: number): Response {
   return changedElsewhereResponse(`tune ${tuneId} was saved by another screen meanwhile`);
 }
 
@@ -923,9 +923,7 @@ export function withFields(saved: GenetTune, fields: TuneFields): GenetTune {
  * as it is, rather than deleting a save unseen or failing on the foreign key.
  */
 export async function deleteTune(env: Env, tuneId: number, body: Record<string, unknown> = {}): Promise<Response> {
-  const existing = await env.DB.prepare('SELECT edit_version FROM genet_tune WHERE tune_id = ?1')
-    .bind(tuneId)
-    .first<{ edit_version: number }>();
+  const existing = await readTune(env, tuneId);
 
   if (existing === null) return noTuneResponse(tuneId);
 
@@ -933,7 +931,7 @@ export async function deleteTune(env: Env, tuneId: number, body: Record<string, 
 
   // After the checks that say why a delete can never go through, which a
   // screen holding an old version would otherwise hear as a save elsewhere.
-  const held = heldToVersion(body, existing.edit_version, `tune ${tuneId}`, 'remove');
+  const held = heldToVersion(body, existing.tune.edit_version, `tune ${tuneId}`, 'remove');
 
   if ('error' in held) return held.error;
 
@@ -947,9 +945,7 @@ export async function deleteTune(env: Env, tuneId: number, body: Record<string, 
   ]);
 
   if (results[results.length - 1]!.meta.changes === 0) {
-    const now = await env.DB.prepare('SELECT 1 FROM genet_tune WHERE tune_id = ?1').bind(tuneId).first();
-
-    if (now === null) return noTuneResponse(tuneId);
+    if ((await readTune(env, tuneId)) === null) return noTuneResponse(tuneId);
 
     if (await isPerformed(env, tuneId)) return performedResponse();
 
