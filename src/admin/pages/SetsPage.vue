@@ -739,6 +739,10 @@ const dirty = computed(() => streamDirty.value || tunesDirty.value);
 
 /** Puts the stream's saved fields back and closes the tunes, which are read again when opened. */
 function discardEdits(): void {
+  // What was thrown away was typed over the stream as shown, not over a save
+  // the next read would answer (`savedSent`).
+  savedSent = null;
+
   if (adding.value) {
     newVideoId.value = '';
     streamFields.value = emptyStreamFields();

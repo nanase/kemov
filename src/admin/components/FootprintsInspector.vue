@@ -104,6 +104,9 @@ const dirty = computed(() => !sameFields(fields.value, initialFields()));
 useUnsavedGuard(
   () => dirty.value,
   () => {
+    // What was thrown away was typed over the row as shown, not over a save
+    // the next read would answer (`savedSent`).
+    savedSent = null;
     fields.value = initialFields();
   },
 );
