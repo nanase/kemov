@@ -152,7 +152,7 @@ describe('fieldsAfterSave', () => {
     expect(fieldsAfterSave(sent, before, after, sent)).toEqual({ fields: after, clashes: [] });
   });
 
-  it('keeps what was typed after it was sent, with no clash named', () => {
+  it('keeps what was typed after it was sent', () => {
     const current = { title: '送った題', supplement: '後から打った補足' };
     const after = { title: '送った題（整えた）', supplement: null };
 
@@ -160,6 +160,24 @@ describe('fieldsAfterSave', () => {
       fields: { title: '送った題（整えた）', supplement: '後から打った補足' },
       clashes: [],
     });
+  });
+
+  // Saved 送った題, the read failed, then もとの題 was typed back and a retry was refused.
+  it('keeps a field typed back to what the row held before the save', () => {
+    const current = { title: 'もとの題', supplement: null };
+    const after = { title: '送った題', supplement: '別の画面の補足' };
+
+    expect(fieldsAfterSave(current, before, after, sent)).toEqual({
+      fields: { title: 'もとの題', supplement: '別の画面の補足' },
+      clashes: [],
+    });
+  });
+
+  it('names a field another screen changed since it was sent, and typed in since', () => {
+    const current = { title: '後から打った題', supplement: null };
+    const after = { title: '別の画面の題', supplement: null };
+
+    expect(fieldsAfterSave(current, before, after, sent).clashes).toEqual(['title']);
   });
 
   // A read after the save failed: the next one is measured against what was sent, not the row before it.

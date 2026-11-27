@@ -94,19 +94,18 @@ export function fieldsOnReload<T extends object>(current: T, before: T, after: T
 
 /**
  * `fieldsOnReload` for a panel that may have sent its fields in a request
- * that saved them (`sentFieldsSaved`): `sent` is what it sent, or null. The
- * row read after such a request is the worker's answer to those fields, so
- * the fields follow it - all but those typed since they were sent, which
- * are kept, and no clash is named: what the row holds is this panel's own
- * save.
+ * that saved them (`sentFieldsSaved`): `sent` is the last of those it sent,
+ * or null. What was typed is then what was typed since it was sent, not
+ * since `before` - the row as the panel read it, which no read has brought
+ * up to that save yet.
  *
- * Held until a read arrives, however late: a read that failed after the
- * save leaves the row as it was before, and the next one still answers it.
+ * The panel holds `sent` until a read of the row arrives, however late: a
+ * read that failed after the save leaves `before` as it was, and the next
+ * one - after a request that saved nothing, a refused retry included -
+ * still answers the save.
  */
 export function fieldsAfterSave<T extends object>(current: T, before: T, after: T, sent: T | null): ReloadedFields<T> {
-  if (sent === null) return fieldsOnReload(current, before, after);
-
-  return { fields: fieldsOnReload(current, sent, after).fields, clashes: [] };
+  return fieldsOnReload(current, sent ?? before, after);
 }
 
 /** A copy of plain form data that shares nothing with it. `structuredClone` refuses Vue's reactive proxies, which `current` usually is. */

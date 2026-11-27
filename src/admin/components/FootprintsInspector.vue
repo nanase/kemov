@@ -6,6 +6,7 @@ import {
   kindLabel,
   KINDS,
   toFormFields,
+  withLeadsAmongMembers,
   type EventFieldKey,
   type EventFormFields,
   type FootprintsEvent,
@@ -110,10 +111,11 @@ useUnsavedGuard(
 // A refetch hands the same row back as a new object. The fields follow what
 // is saved now, but keep what is typed (#304): a save another screen's
 // change refused would otherwise lose it. After a request that saved them
-// (`savedSent`), they are the row as saved, but for what was typed since. The band is left alone: a refetch
-// follows a refused publish too, and the band is still the answer to it.
-// Selecting another row mounts a new panel (the page keys it by id), which
-// starts clean.
+// (`savedSent`), they are the row as saved, but for what was typed since.
+// A lead is kept only while it is a member (`withLeadsAmongMembers`). The
+// band is left alone: a refetch follows a refused publish too, and the band
+// is still the answer to it. Selecting another row mounts a new panel (the
+// page keys it by id), which starts clean.
 watch(
   () => props.event,
   (after, before) => {
@@ -128,8 +130,7 @@ watch(
     const reloaded = fieldsAfterSave(fields.value, toFormFields(before), toFormFields(after), savedSent);
 
     savedSent = null;
-
-    fields.value = reloaded.fields;
+    fields.value = withLeadsAmongMembers(reloaded.fields);
     clashes.value = reloaded.clashes;
   },
 );
@@ -237,7 +238,8 @@ async function run(action: AnsweredAction, request: () => Promise<unknown>): Pro
 
   const answer = footprintsAnswerFor(action, status, error);
 
-  savedSent = sentFieldsSaved(error) ? sent : null;
+  // One that saved nothing keeps the last save's: no read may have answered it yet.
+  if (sentFieldsSaved(error)) savedSent = sent;
 
   if (answer.kind === 'done') {
     emit('changed');

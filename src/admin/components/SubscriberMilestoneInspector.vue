@@ -283,7 +283,8 @@ async function run(action: AnsweredAction, request: () => Promise<unknown>, toas
 
   const answer = milestonesAnswerFor(action, status, error);
 
-  savedSent = sentFieldsSaved(error) ? sent : null;
+  // One that saved nothing keeps the last save's: no read may have answered it yet.
+  if (sentFieldsSaved(error)) savedSent = sent;
 
   if (answer.kind === 'done') {
     emit('changed');

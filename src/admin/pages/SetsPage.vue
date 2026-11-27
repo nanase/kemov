@@ -27,7 +27,7 @@ import {
   type BulkPublishOutcome as Outcome,
 } from '../lib/bulk-publish';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, fieldsOnReload, SAVE_TOAST, sameFields, writeBody } from '../lib/editing';
+import { EDITING_TEXT, fieldsAfterSave, SAVE_TOAST, sameFields, writeBody } from '../lib/editing';
 import { insertAt, mdSnippet, clock, type MdLinkKind } from '../lib/genet-markdown';
 import { type GenetPerson } from '../lib/genet-people';
 import {
@@ -210,9 +210,12 @@ function clearBand(): void {
 
 /** A new stream's id while its 保存 reads the list, so that opening it keeps the tunes typed into while it was new. */
 let createdVideoId: string | null = null;
+/** What the last request sent, when it saved it (`sentFieldsSaved`): the read after it follows the stream as the worker saved it (`fieldsAfterSave`). */
+let savedSent: StreamFormFields | null = null;
 
 watch(selected, (stream, previous) => {
-  if (stream === null || stream.videoId !== previous?.videoId) {
+  if (stream === null || previous === null || stream.videoId !== previous.videoId) {
+    savedSent = null;
     clearBand();
     streamFields.value = stream === null ? emptyStreamFields() : toStreamFormFields(stream);
     if (stream === null || stream.videoId !== createdVideoId) closeTunes();
@@ -222,18 +225,22 @@ watch(selected, (stream, previous) => {
   // The open stream read again - after a request about it, or a filter that
   // keeps it - keeps what is typed, and takes the rest as saved now (#304):
   // a save another screen's change refused would otherwise lose it, and a
-  // 保存 pressed again would turn back that change. A request that saved the
-  // fields puts the saved ones back itself, once the list has been read
-  // (`reloadSaved`). The band is left alone: it is the answer to the request
-  // that read it again.
-  if (previous === null || sameFields(streamFields.value, toStreamFormFields(previous))) {
+  // 保存 pressed again would turn back that change. After a request that
+  // saved the fields (`savedSent`), they are the stream as saved, but for
+  // what was typed since. The band is left alone: it is the answer to the
+  // request that read it again.
+  const sent = savedSent;
+
+  savedSent = null;
+
+  if (sameFields(streamFields.value, sent ?? toStreamFormFields(previous))) {
     replaceStreamFields(toStreamFormFields(stream));
     clashes.value = [];
 
     return;
   }
 
-  const reloaded = fieldsOnReload(streamFields.value, toStreamFormFields(previous), toStreamFormFields(stream));
+  const reloaded = fieldsAfterSave(streamFields.value, toStreamFormFields(previous), toStreamFormFields(stream), sent);
 
   replaceStreamFields(reloaded.fields);
   clashes.value = reloaded.clashes;
@@ -511,20 +518,6 @@ async function reload(): Promise<boolean> {
 }
 
 /**
- * The list read again after the fields of `videoId` were saved. The reload
- * keeps the typed fields (see the watch on `selected`); they are saved now,
- * so the saved stream takes their place - unless the reload failed, when
- * `selected` is still the stream from before the save and putting it back
- * would undo the save at the next one.
- */
-async function reloadSaved(videoId: string): Promise<void> {
-  if ((await reload()) && selected.value?.videoId === videoId) {
-    replaceStreamFields(toStreamFormFields(selected.value));
-    clashes.value = [];
-  }
-}
-
-/**
  * 「公開」, 「保存」 or 「非公開に戻す」 on the open stream. Each sends the
  * fields as they stand, and the worker saves them in the same request
  * (#277's 6-2); the open tunes are not sent, and keep what is typed into
@@ -546,6 +539,7 @@ async function act(action: PublishAction): Promise<void> {
   }
 
   const path = `/genet/streams/${encodeURIComponent(videoId)}`;
+  const sent = structuredClone(toRaw(streamFields.value));
   let error: unknown = null;
 
   sending.value = true;
@@ -563,10 +557,13 @@ async function act(action: PublishAction): Promise<void> {
   try {
     const answer = streamAnswerFor(action, status, error);
 
+    // One that saved nothing keeps the last save's: no read may have answered it yet.
+    if (sentFieldsSaved(error)) savedSent = sent;
+
     if (answer.kind === 'done') {
       void refreshSidebarDrafts();
       showToast(answer.toast);
-      await reloadSaved(videoId);
+      await reload();
       void refreshTuneLive();
 
       return;
@@ -578,8 +575,7 @@ async function act(action: PublishAction): Promise<void> {
     if (answer.changed) {
       void refreshSidebarDrafts();
       // Fields that were not saved stay as typed over the stream read again.
-      if (sentFieldsSaved(error)) await reloadSaved(videoId);
-      else await reload();
+      await reload();
       void refreshTuneLive();
     }
   } finally {

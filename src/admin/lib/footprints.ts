@@ -152,6 +152,16 @@ export interface EventFormFields {
   sources: FootprintsSource[];
 }
 
+/**
+ * `fields` with the leads that are no longer members taken out: the worker
+ * refuses a lead that is not one. Fields kept and fields read again are
+ * put together one by one (lib/editing.ts's `fieldsOnReload`), so members
+ * typed on this screen can meet leads another screen saved.
+ */
+export function withLeadsAmongMembers(fields: EventFormFields): EventFormFields {
+  return { ...fields, leadChannelIds: fields.leadChannelIds.filter((id) => fields.channelIds.includes(id)) };
+}
+
 /** `event`'s own fields, in the shape a PUT body sends them - a deep copy, so editing it never touches the row the table still shows. */
 export function toFormFields(event: FootprintsEvent): EventFormFields {
   return {
