@@ -26,6 +26,7 @@ function milestone(milestoneId: number, status: string): SubscriberMilestone {
     memo: null,
     createdAt: '2024-02-01 00:00:00',
     updatedAt: '2024-02-01 00:00:00',
+    version: 1,
     sources: [],
   };
 }

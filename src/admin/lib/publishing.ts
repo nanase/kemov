@@ -195,6 +195,17 @@ function savedNothing(body: unknown): boolean {
   return typeof body === 'object' && body !== null && 'saved' in body && body.saved === false;
 }
 
+/**
+ * Whether the fields a request sent are saved now, so the row read after it
+ * holds them as the worker keeps them: a request that went through, a
+ * draft's refused publish, or a save that went through while the public JSON
+ * could not be written. The edit panel then takes the row as read; otherwise
+ * it keeps what is typed over it (lib/editing.ts's `fieldsOnReload`, #304).
+ */
+export function sentFieldsSaved(error: unknown): boolean {
+  return error === null || (error instanceof AdminApiError && savedAnyway(error.body));
+}
+
 /** The status the row has now, as a 502 that saved anyway gives it under `rowKey`, or null when the answer carries no row. */
 function statusNow(body: unknown, rowKey: string): string | null {
   if (typeof body !== 'object' || body === null || !(rowKey in body)) return null;

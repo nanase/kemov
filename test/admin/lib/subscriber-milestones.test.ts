@@ -26,6 +26,7 @@ const MILESTONE: SubscriberMilestone = {
   memo: null,
   createdAt: '2031-04-06T00:00:00Z',
   updatedAt: '2031-04-06T00:00:00Z',
+  version: 1,
   sources: [{ url: 'https://example.com/a', title: null }],
 };
 

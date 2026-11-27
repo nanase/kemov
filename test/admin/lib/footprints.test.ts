@@ -7,6 +7,7 @@ import {
   STATUS_OPTIONS,
   toFormFields,
   withKeptRow,
+  withLeadsAmongMembers,
   type FootprintsEvent,
 } from '@/admin/lib/footprints';
 
@@ -107,6 +108,7 @@ describe('toFormFields', () => {
     memo: null,
     createdAt: '2025-01-01T00:00:00Z',
     updatedAt: '2025-01-01T00:00:00Z',
+    version: 1,
     channelIds: ['UCaaa'],
     leadChannelIds: ['UCaaa'],
     sources: [{ url: 'https://example.com', title: null }],
@@ -183,6 +185,7 @@ describe('withKeptRow', () => {
       memo: null,
       createdAt: '2025-01-01T00:00:00Z',
       updatedAt: '2025-01-01T00:00:00Z',
+      version: 1,
       channelIds: [],
       leadChannelIds: [],
       sources: [],
@@ -202,5 +205,19 @@ describe('withKeptRow', () => {
     const rows = [row(1), row(2, '新しい題')];
 
     expect(withKeptRow(rows, row(2, '古い題'), 0)).toBe(rows);
+  });
+});
+
+describe('withLeadsAmongMembers', () => {
+  test('takes out a lead that is no longer a member', () => {
+    const fields = { ...emptyFormFields('2026-11-27'), channelIds: ['UCb'], leadChannelIds: ['UCa', 'UCb'] };
+
+    expect(withLeadsAmongMembers(fields).leadChannelIds).toEqual(['UCb']);
+  });
+
+  test('leaves the rest of the fields as they are', () => {
+    const fields = { ...emptyFormFields('2026-11-27'), channelIds: ['UCa'], leadChannelIds: ['UCa'] };
+
+    expect(withLeadsAmongMembers(fields)).toEqual(fields);
   });
 });

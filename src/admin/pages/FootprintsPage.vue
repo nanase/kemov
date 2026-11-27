@@ -21,7 +21,7 @@ import {
   toggleTick,
   type BulkPublishOutcome as Outcome,
 } from '../lib/bulk-publish';
-import { SAVE_TOAST } from '../lib/editing';
+import { SAVE_TOAST, writeBody } from '../lib/editing';
 import {
   footprintsQuery,
   kindLabel,
@@ -403,7 +403,7 @@ async function publishTicked(): Promise<void> {
 
         if (saved.status !== 'draft') return ALREADY_PUBLISHED;
 
-        await postJson(`/footprints/events/${eventId}/publish`, toFormFields(saved));
+        await postJson(`/footprints/events/${eventId}/publish`, writeBody(toFormFields(saved), saved));
       },
       (done) => {
         bulkProgress.value = { done, total: targets.length };

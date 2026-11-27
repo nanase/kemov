@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, ref, toRaw, watch } from 'vue';
 
 import {
   emptyFormFields,
   kindLabel,
   KINDS,
   toFormFields,
+  withLeadsAmongMembers,
   type EventFieldKey,
   type EventFormFields,
   type FootprintsEvent,
@@ -13,7 +14,7 @@ import {
 } from '../lib/footprints';
 import { deleteJson, postJson, putJson } from '../lib/api';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, sameFields } from '../lib/editing';
+import { EDITING_TEXT, fieldsAfterSave, sameFields, writeBody } from '../lib/editing';
 import { footprintsAnswerFor, isChangedSincePublish, type FootprintsPending } from '../lib/footprints-publish';
 import {
   BAND_NOTE_ID,
@@ -22,6 +23,7 @@ import {
   liveMarkFor,
   publishFootFor,
   PUBLISH_TEXT,
+  sentFieldsSaved,
   type AnsweredAction,
   type PublishAction,
   type PublishBand,
@@ -84,6 +86,10 @@ const saving = ref(false);
 watch(saving, (busy) => emit('busy', busy));
 const band = ref<PublishBand | null>(null);
 const invalidFields = ref<readonly EventFieldKey[]>([]);
+/** The fields typed in that another screen changed too, found when the row was read again (`fieldsOnReload`). */
+const clashes = ref<readonly (keyof EventFormFields)[]>([]);
+/** What the last request sent, when it saved it (`sentFieldsSaved`): the read after it follows the row as the worker saved it (`fieldsAfterSave`). */
+let savedSent: EventFormFields | null = null;
 const memberPickerOpen = ref(false);
 
 /** Against the saved row, or a new row's blank fields: the 未保存 chip, and what asks before they are thrown away. */
@@ -92,18 +98,37 @@ const dirty = computed(() => !sameFields(fields.value, initialFields()));
 useUnsavedGuard(
   () => dirty.value,
   () => {
+    // What was thrown away was typed over the row as shown, not over a save
+    // the next read would answer (`savedSent`).
+    savedSent = null;
     fields.value = initialFields();
   },
 );
 
-// A refetch hands the same row back as a new object, and the fields follow
-// what was saved. The band is left alone: a refetch follows a refused
-// publish too, and the band is still the answer to it. Selecting another row
-// mounts a new panel (the page keys it by id), which starts clean.
+// A refetch hands the same row back as a new object. The fields follow what
+// is saved now, but keep what is typed (#304): a save another screen's
+// change refused would otherwise lose it. After a request that saved them
+// (`savedSent`), they are the row as saved, but for what was typed since.
+// A lead is kept only while it is a member (`withLeadsAmongMembers`). The
+// band is left alone: a refetch follows a refused publish too, and the band
+// is still the answer to it. Selecting another row mounts a new panel (the
+// page keys it by id), which starts clean.
 watch(
   () => props.event,
-  () => {
-    fields.value = initialFields();
+  (after, before) => {
+    if (after === null || before === null || after.eventId !== before.eventId) {
+      savedSent = null;
+      fields.value = initialFields();
+      clashes.value = [];
+
+      return;
+    }
+
+    const reloaded = fieldsAfterSave(fields.value, toFormFields(before), toFormFields(after), savedSent);
+
+    savedSent = null;
+    fields.value = withLeadsAmongMembers(reloaded.fields);
+    clashes.value = reloaded.clashes;
   },
 );
 
@@ -120,12 +145,12 @@ const selectedMembers = computed(() =>
   })),
 );
 
-function invalid(field: EventFieldKey): boolean {
-  return invalidFields.value.includes(field);
+function invalid(field: keyof EventFormFields): boolean {
+  return (invalidFields.value as readonly string[]).includes(field) || clashes.value.includes(field);
 }
 
-function reasonIds(field: EventFieldKey): string | undefined {
-  return bandReasonIds(band.value, invalidFields.value, field);
+function reasonIds(field: keyof EventFormFields): string | undefined {
+  return bandReasonIds<keyof EventFormFields>(band.value, [...invalidFields.value, ...clashes.value], field);
 }
 
 function toggleMember(channelId: string): void {
@@ -175,10 +200,11 @@ function removeSource(index: number): void {
 /** The request behind each button. Each sends the fields as they stand; the worker saves them in the same request. */
 function send(action: PublishAction): Promise<unknown> {
   const path = `/footprints/events/${eventId.value}`;
+  const body = writeBody(fields.value, props.event!);
 
-  if (action === 'save') return putJson(path, fields.value);
+  if (action === 'save') return putJson(path, body);
 
-  return postJson(`${path}/${action}`, fields.value);
+  return postJson(`${path}/${action}`, body);
 }
 
 /**
@@ -191,11 +217,13 @@ async function run(action: AnsweredAction, request: () => Promise<unknown>): Pro
   if (saving.value) return;
 
   const status = props.event?.status ?? null;
+  const sent = structuredClone(toRaw(fields.value));
   let error: unknown = null;
 
   saving.value = true;
   band.value = null;
   invalidFields.value = [];
+  clashes.value = [];
 
   try {
     await request();
@@ -206,6 +234,9 @@ async function run(action: AnsweredAction, request: () => Promise<unknown>): Pro
   }
 
   const answer = footprintsAnswerFor(action, status, error);
+
+  // One that saved nothing keeps the last save's: no read may have answered it yet.
+  if (sentFieldsSaved(error)) savedSent = sent;
 
   if (answer.kind === 'done') {
     emit('changed');
@@ -353,13 +384,25 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
           </div>
           <div class="field">
             <label for="f-place">場所</label>
-            <input id="f-place" v-model="fields.place" type="text" />
+            <input
+              id="f-place"
+              v-model="fields.place"
+              type="text"
+              :aria-invalid="invalid('place')"
+              :aria-describedby="reasonIds('place')"
+            />
           </div>
         </div>
 
         <div class="field">
-          <label>関連メンバー</label>
-          <div class="stack">
+          <label id="f-members-label">関連メンバー</label>
+          <div
+            class="stack"
+            role="group"
+            aria-labelledby="f-members-label"
+            :aria-invalid="invalid('channelIds')"
+            :aria-describedby="reasonIds('channelIds')"
+          >
             <span v-if="selectedMembers.length === 0" class="sub">未設定</span>
             <span v-for="entry in selectedMembers" v-else :key="entry.channelId" class="who-chip">
               <i :style="{ background: entry.member?.colorKey ?? '#9b9289' }"></i>
@@ -397,12 +440,22 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
 
         <div class="field">
           <label for="f-supplement">補足</label>
-          <textarea id="f-supplement" v-model="fields.supplement"></textarea>
+          <textarea
+            id="f-supplement"
+            v-model="fields.supplement"
+            :aria-invalid="invalid('supplement')"
+            :aria-describedby="reasonIds('supplement')"
+          ></textarea>
         </div>
 
         <div class="field">
           <label for="f-memo">メモ（非公開）</label>
-          <textarea id="f-memo" v-model="fields.memo"></textarea>
+          <textarea
+            id="f-memo"
+            v-model="fields.memo"
+            :aria-invalid="invalid('memo')"
+            :aria-describedby="reasonIds('memo')"
+          ></textarea>
         </div>
 
         <div
@@ -447,8 +500,14 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
           />
         </div>
 
-        <div class="panel">
-          <h4>年表での大きさ</h4>
+        <div
+          class="panel"
+          :class="{ flag: invalid('emphasized') }"
+          role="group"
+          aria-labelledby="f-size-title"
+          :aria-describedby="reasonIds('emphasized')"
+        >
+          <h4 id="f-size-title">年表での大きさ</h4>
           <div class="switch-row">
             <button
               class="toggle"
@@ -523,6 +582,13 @@ const FootprintsPreview = defineAsyncComponent(() => import('./previews/Footprin
 
 .panel.flag-src > h4 {
   color: var(--a-flag);
+}
+
+/* The members picked, marked when another screen changed them too (`clashes`). */
+.stack[aria-invalid='true'] {
+  padding: 4px;
+  border: 1px solid;
+  border-radius: 6px;
 }
 
 /* The chip saying how a source counts goes under its URL and title, so a long one does not narrow the URL. */

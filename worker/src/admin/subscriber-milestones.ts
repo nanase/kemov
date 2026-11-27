@@ -4,6 +4,7 @@ import { changedElsewhereResponse, jsonResponse } from '../lib/json';
 import { LOAD_FAILED, malformed, MEMBER_NOT_FOUND_TEXT, refusal, refuse, type Refusal } from '../lib/refusal';
 import { sourceUrlProblem } from '../lib/source-whitelist';
 import { isSchemaDate, isSchemaMonth } from '../lib/time';
+import { heldToVersion, UNLOGGED_VERSION_STEP } from '../lib/edit-version';
 
 /**
  * Reading, saving and deleting `subscriber_milestone` (#225): a subscriber
@@ -31,6 +32,7 @@ export interface MilestoneRow {
   memo: string | null;
   created_at: string;
   updated_at: string;
+  edit_version: number;
 }
 
 export interface SourceRow {
@@ -45,7 +47,7 @@ export interface SubscriberMilestone {
 }
 
 const MILESTONE_COLUMNS = `milestone_id, channel_id, date_precision, reached_date, subscriber_count, announced_by,
-       event_id, status, memo, created_at, updated_at`;
+       event_id, status, memo, created_at, updated_at, edit_version`;
 
 export function present(saved: SubscriberMilestone) {
   const { milestone } = saved;
@@ -62,6 +64,7 @@ export function present(saved: SubscriberMilestone) {
     memo: milestone.memo,
     createdAt: milestone.created_at,
     updatedAt: milestone.updated_at,
+    version: milestone.edit_version,
     sources: saved.sources.map((source) => ({ url: source.url, title: source.title })),
   };
 }
@@ -93,16 +96,22 @@ export function publishedBodyOf(saved: SubscriberMilestone) {
 }
 
 export async function readMilestone(env: Env, milestoneId: number): Promise<SubscriberMilestone | null> {
-  const [milestone, sources] = await Promise.all([
-    env.DB.prepare(`SELECT ${MILESTONE_COLUMNS} FROM subscriber_milestone WHERE milestone_id = ?1`)
-      .bind(milestoneId)
-      .first<MilestoneRow>(),
-    env.DB.prepare('SELECT url, title FROM subscriber_milestone_source WHERE milestone_id = ?1 ORDER BY position')
-      .bind(milestoneId)
-      .all<SourceRow>(),
-  ]);
+  // The row before its sources, as footprints.ts's `readEvent` reads an
+  // event: a save landing in between leaves the `edit_version` read behind
+  // the sources, and a write sent with it is refused (#307).
+  const milestone = await env.DB.prepare(
+    `SELECT ${MILESTONE_COLUMNS} FROM subscriber_milestone WHERE milestone_id = ?1`,
+  )
+    .bind(milestoneId)
+    .first<MilestoneRow>();
 
   if (milestone === null) return null;
+
+  const sources = await env.DB.prepare(
+    'SELECT url, title FROM subscriber_milestone_source WHERE milestone_id = ?1 ORDER BY position',
+  )
+    .bind(milestoneId)
+    .all<SourceRow>();
 
   return { milestone, sources: sources.results };
 }
@@ -112,29 +121,31 @@ export async function readMilestones(
   env: Env,
   milestoneIds: readonly number[],
 ): Promise<Map<number, SubscriberMilestone>> {
-  const [milestoneRows, sourceRows] = await Promise.all([
-    queryInChunks(milestoneIds, async (chunk) => {
-      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
-      const { results } = await env.DB.prepare(
-        `SELECT ${MILESTONE_COLUMNS} FROM subscriber_milestone WHERE milestone_id IN (${placeholders})`,
-      )
-        .bind(...chunk)
-        .all<MilestoneRow>();
+  // The rows before their sources, not alongside them: a save landing in
+  // between then leaves the `edit_version` read behind the sources read,
+  // and a write sent with it is refused (#307) rather than taking the sources
+  // for the ones that version saved.
+  const milestoneRows = await queryInChunks(milestoneIds, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+    const { results } = await env.DB.prepare(
+      `SELECT ${MILESTONE_COLUMNS} FROM subscriber_milestone WHERE milestone_id IN (${placeholders})`,
+    )
+      .bind(...chunk)
+      .all<MilestoneRow>();
 
-      return results;
-    }),
-    queryInChunks(milestoneIds, async (chunk) => {
-      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
-      const { results } = await env.DB.prepare(
-        `SELECT milestone_id, url, title FROM subscriber_milestone_source
+    return results;
+  });
+  const sourceRows = await queryInChunks(milestoneIds, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+    const { results } = await env.DB.prepare(
+      `SELECT milestone_id, url, title FROM subscriber_milestone_source
           WHERE milestone_id IN (${placeholders}) ORDER BY milestone_id, position`,
-      )
-        .bind(...chunk)
-        .all<{ milestone_id: number } & SourceRow>();
+    )
+      .bind(...chunk)
+      .all<{ milestone_id: number } & SourceRow>();
 
-      return results;
-    }),
-  ]);
+    return results;
+  });
 
   const result = new Map<number, SubscriberMilestone>(
     milestoneRows.map((milestone) => [milestone.milestone_id, { milestone, sources: [] }]),
@@ -382,8 +393,8 @@ export async function validatedFields(
 
 /**
  * Source rows for a milestone that already has its row. Inserted only while
- * that row is still there - and still as `SaveOptions`' `whileStatus` and
- * `whileRevision` ask, when given - for the reason footprints.ts's
+ * that row is still there - and still as `SaveOptions` asks, through
+ * `still` - for the reason footprints.ts's
  * `memberStatements` gives: a milestone deleted between the caller's read
  * and its batch would otherwise fail the whole batch on the foreign key, a
  * publish with it.
@@ -392,15 +403,14 @@ function sourceStatements(
   env: Env,
   milestoneId: number,
   sources: readonly SourceRow[],
-  whileStatus: string | null,
-  whileRevision: number | null,
+  still: StillAsRead,
 ): D1PreparedStatement[] {
   return sources.map((source, index) =>
     env.DB.prepare(
       `INSERT INTO subscriber_milestone_source (milestone_id, position, url, title)
        SELECT ?1, ?2, ?3, ?4
-        WHERE EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1 AND ${stillAsRead('?5', '?6')})`,
-    ).bind(milestoneId, index + 1, source.url, source.title, whileStatus, whileRevision),
+        WHERE EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1 AND ${stillAsRead(5)})`,
+    ).bind(milestoneId, index + 1, source.url, source.title, ...still),
   );
 }
 
@@ -460,27 +470,43 @@ export async function createMilestone(env: Env, body: Record<string, unknown>): 
  *   caller saw it before reading the row. A save that lands late - after its
  *   public JSON could not be written - then writes nothing over a publish or
  *   withdrawal recorded in between, even one that left the status as it was
+ * - `whileVersion`: the `edit_version` the screen read the row at (#307),
+ *   as footprints.ts's `SaveOptions` has it
  */
 export interface SaveOptions {
   status?: MilestoneStatus;
   whileStatus?: MilestoneStatus;
   whileRevision?: number;
+  whileVersion?: number;
+  /** A published row's save that logs no revision: adds lib/edit-version.ts's `UNLOGGED_VERSION_STEP` to `edit_version`. */
+  unlogged?: boolean;
+}
+
+/** `SaveOptions`' conditions as `stillAsRead` binds them: status, revision and version, each null for none. */
+type StillAsRead = readonly [string | null, number | null, number | null];
+
+function stillAsReadValues(options: SaveOptions): StillAsRead {
+  return [options.whileStatus ?? null, options.whileRevision ?? null, options.whileVersion ?? null];
 }
 
 export type MilestoneStatus = 'draft' | 'published';
 
 /**
  * The condition, in `saveStatements`' statements over a `subscriber_milestone`
- * row, that the row is still as `SaveOptions` asks: `?status` and `?revision`
- * are null for no condition. The key is cast from the row's own column: a
- * number bound from JavaScript reaches D1 as a real, which casts to `'1.0'`.
+ * row, that the row is still as `SaveOptions` asks, read from the
+ * `StillAsRead` bound from `?first` on. The key is cast from the row's own
+ * column: a number bound from JavaScript reaches D1 as a real, which casts
+ * to `'1.0'`.
  */
-function stillAsRead(status: string, revision: string): string {
+function stillAsRead(first: number): string {
+  const [status, revision, version] = [`?${first}`, `?${first + 1}`, `?${first + 2}`];
+
   return `(${status} IS NULL OR subscriber_milestone.status = ${status})
           AND (${revision} IS NULL
                OR (SELECT COALESCE(MAX(revision_id), 0) FROM revision
                     WHERE entity = 'subscriber_milestone'
-                      AND entity_key = CAST(subscriber_milestone.milestone_id AS TEXT)) = ${revision})`;
+                      AND entity_key = CAST(subscriber_milestone.milestone_id AS TEXT)) = ${revision})
+          AND (${version} IS NULL OR subscriber_milestone.edit_version = ${version})`;
 }
 
 /** The newest revision of milestone `milestoneId`, or 0 when it has none: `SaveOptions.whileRevision`. */
@@ -507,22 +533,21 @@ export function saveStatements(
   fields: MilestoneFields,
   options: SaveOptions = {},
 ): D1PreparedStatement[] {
-  const whileStatus = options.whileStatus ?? null;
-  const whileRevision = options.whileRevision ?? null;
+  const still = stillAsReadValues(options);
 
   return [
     env.DB.prepare(
       `DELETE FROM subscriber_milestone_source
         WHERE milestone_id = ?1
-          AND EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1 AND ${stillAsRead('?2', '?3')})`,
-    ).bind(milestoneId, whileStatus, whileRevision),
-    ...sourceStatements(env, milestoneId, fields.sources, whileStatus, whileRevision),
+          AND EXISTS (SELECT 1 FROM subscriber_milestone WHERE milestone_id = ?1 AND ${stillAsRead(2)})`,
+    ).bind(milestoneId, ...still),
+    ...sourceStatements(env, milestoneId, fields.sources, still),
     env.DB.prepare(
       `UPDATE subscriber_milestone
           SET channel_id = ?1, date_precision = ?2, reached_date = ?3, subscriber_count = ?4, announced_by = ?5,
-              event_id = ?6, memo = ?7, status = COALESCE(?8, status),
+              event_id = ?6, memo = ?7, status = COALESCE(?8, status), edit_version = edit_version + ${options.unlogged === true ? UNLOGGED_VERSION_STEP : 1},
               updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE milestone_id = ?9 AND ${stillAsRead('?10', '?11')}`,
+        WHERE milestone_id = ?9 AND ${stillAsRead(10)}`,
     ).bind(
       fields.channelId,
       fields.datePrecision,
@@ -533,8 +558,7 @@ export function saveStatements(
       fields.memo,
       options.status ?? null,
       milestoneId,
-      whileStatus,
-      whileRevision,
+      ...still,
     ),
   ];
 }
@@ -550,6 +574,11 @@ export function savedRow(results: readonly D1Result[]): boolean {
 /** The answer when a save that read the row as a draft found it published by then. */
 export function noLongerDraftResponse(milestoneId: number): Response {
   return changedElsewhereResponse(`subscriber milestone ${milestoneId} is no longer a draft`);
+}
+
+/** The answer when a draft's save found it saved by another screen since the version it was read at (#307). */
+export function savedElsewhereResponse(milestoneId: number): Response {
+  return changedElsewhereResponse(`subscriber milestone ${milestoneId} was saved by another screen meanwhile`);
 }
 
 /**
@@ -591,17 +620,26 @@ export async function updateMilestone(env: Env, milestoneId: number, body: Recor
 
   if (existing === null) return noMilestoneResponse(milestoneId);
 
+  const held = heldToVersion(body, existing.milestone.edit_version, `subscriber milestone ${milestoneId}`);
+
+  if ('error' in held) return held.error;
+
   const fields = await validatedFields(env, body);
 
   if ('error' in fields) return fields.error;
 
   if (existing.milestone.status !== 'draft') return noLongerDraftResponse(milestoneId);
 
-  const results = await env.DB.batch(saveStatements(env, milestoneId, fields, { whileStatus: 'draft' }));
+  const results = await env.DB.batch(saveStatements(env, milestoneId, fields, { whileStatus: 'draft', ...held }));
   const saved = await readMilestone(env, milestoneId);
 
   if (saved === null) return noMilestoneResponse(milestoneId);
-  if (!savedRow(results)) return noLongerDraftResponse(milestoneId);
+
+  if (!savedRow(results)) {
+    return saved.milestone.status === 'draft'
+      ? savedElsewhereResponse(milestoneId)
+      : noLongerDraftResponse(milestoneId);
+  }
 
   return jsonResponse({ milestone: present(saved) });
 }

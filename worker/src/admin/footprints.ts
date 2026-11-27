@@ -13,6 +13,7 @@ import {
 } from '../lib/refusal';
 import { sourcesEnough } from '../lib/source-whitelist';
 import { isSchemaDate, isSchemaMonth, isSchemaTimestamp, japanDateOf } from '../lib/time';
+import { heldToVersion, UNLOGGED_VERSION_STEP } from '../lib/edit-version';
 
 /**
  * Reading, saving and deleting `footprints_event` (#141, #140): the
@@ -61,6 +62,7 @@ export interface EventRow {
   memo: string | null;
   created_at: string;
   updated_at: string;
+  edit_version: number;
 }
 
 export interface SourceRow {
@@ -96,6 +98,7 @@ export function present(saved: FootprintsEvent) {
     memo: event.memo,
     createdAt: event.created_at,
     updatedAt: event.updated_at,
+    version: event.edit_version,
     channelIds: saved.channelIds,
     leadChannelIds: saved.leadChannelIds,
     sources: saved.sources.map((source) => ({ url: source.url, title: source.title })),
@@ -148,7 +151,7 @@ export function publicShapeOf(saved: FootprintsEvent, whitelist: readonly string
 export async function readEvent(env: Env, eventId: number): Promise<FootprintsEvent | null> {
   const event = await env.DB.prepare(
     `SELECT event_id, date_precision, start_date, starts_at, end_date, kind, emphasized, title, place,
-            supplement, video_id, status, memo, created_at, updated_at
+            supplement, video_id, status, memo, created_at, updated_at, edit_version
        FROM footprints_event
       WHERE event_id = ?1`,
   )
@@ -182,20 +185,24 @@ export async function readEvent(env: Env, eventId: number): Promise<FootprintsEv
  * "changed" check).
  */
 export async function readEvents(env: Env, eventIds: readonly number[]): Promise<Map<number, FootprintsEvent>> {
-  const [eventRows, memberRows, sourceRows] = await Promise.all([
-    queryInChunks(eventIds, async (chunk) => {
-      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
-      const { results } = await env.DB.prepare(
-        `SELECT event_id, date_precision, start_date, starts_at, end_date, kind, emphasized, title, place,
-                  supplement, video_id, status, memo, created_at, updated_at
+  // The rows before their members and sources, not alongside them: a save landing in
+  // between then leaves the `edit_version` read behind the members and sources read,
+  // and a write sent with it is refused (#307) rather than taking the members and sources
+  // for the ones that version saved.
+  const eventRows = await queryInChunks(eventIds, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+    const { results } = await env.DB.prepare(
+      `SELECT event_id, date_precision, start_date, starts_at, end_date, kind, emphasized, title, place,
+                  supplement, video_id, status, memo, created_at, updated_at, edit_version
              FROM footprints_event
             WHERE event_id IN (${placeholders})`,
-      )
-        .bind(...chunk)
-        .all<EventRow>();
+    )
+      .bind(...chunk)
+      .all<EventRow>();
 
-      return results;
-    }),
+    return results;
+  });
+  const [memberRows, sourceRows] = await Promise.all([
     queryInChunks(eventIds, async (chunk) => {
       const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
       const { results } = await env.DB.prepare(
@@ -541,25 +548,18 @@ export async function validatedFields(
 /**
  * Member and source rows for an event that already has its row. Inserted
  * only while that row is still there - and still as `SaveOptions` asks:
- * `?status` and `?revision` are null for no condition, as `stillAsRead`
- * reads them. An event deleted between the caller's read and its batch
- * would otherwise fail the whole batch on the foreign key, and a publish
+ * each of `still` is null for no condition, as `stillAsRead` reads them.
+ * An event deleted between the caller's read and its batch would otherwise fail the whole batch on the foreign key, and a publish
  * with it, after the public JSON was already written, instead of letting the
  * batch end with no revision logged (publishing.ts).
  */
-function memberStatements(
-  env: Env,
-  eventId: number,
-  fields: EventFields,
-  whileStatus: string | null,
-  whileRevision: number | null,
-): D1PreparedStatement[] {
+function memberStatements(env: Env, eventId: number, fields: EventFields, still: StillAsRead): D1PreparedStatement[] {
   return fields.channelIds.map((channelId) =>
     env.DB.prepare(
       `INSERT INTO footprints_event_member (event_id, channel_id, lead)
        SELECT ?1, ?2, ?3
-        WHERE EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND ${stillAsRead('?4', '?5')})`,
-    ).bind(eventId, channelId, fields.leadChannelIds.includes(channelId) ? 1 : 0, whileStatus, whileRevision),
+        WHERE EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND ${stillAsRead(4)})`,
+    ).bind(eventId, channelId, fields.leadChannelIds.includes(channelId) ? 1 : 0, ...still),
   );
 }
 
@@ -567,15 +567,14 @@ function sourceStatements(
   env: Env,
   eventId: number,
   sources: readonly SourceRow[],
-  whileStatus: string | null,
-  whileRevision: number | null,
+  still: StillAsRead,
 ): D1PreparedStatement[] {
   return sources.map((source, index) =>
     env.DB.prepare(
       `INSERT INTO footprints_event_source (event_id, position, url, title)
        SELECT ?1, ?2, ?3, ?4
-        WHERE EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND ${stillAsRead('?5', '?6')})`,
-    ).bind(eventId, index + 1, source.url, source.title, whileStatus, whileRevision),
+        WHERE EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND ${stillAsRead(5)})`,
+    ).bind(eventId, index + 1, source.url, source.title, ...still),
   );
 }
 
@@ -661,27 +660,43 @@ export async function createEvent(env: Env, body: Record<string, unknown>): Prom
  *   saw it before reading the row. A save that lands late - after its public
  *   JSON could not be written - then writes nothing over a publish or
  *   withdrawal recorded in between, even one that left the status as it was
+ * - `whileVersion`: the `edit_version` the screen read the row at (#307),
+ *   which every save adds 1 to. Another screen's save in between - a draft's
+ *   too, which logs no revision - is then not written over
  */
 export interface SaveOptions {
   status?: EventStatus;
   whileStatus?: EventStatus;
   whileRevision?: number;
+  whileVersion?: number;
+  /** A published row's save that logs no revision: adds lib/edit-version.ts's `UNLOGGED_VERSION_STEP` to `edit_version`. */
+  unlogged?: boolean;
 }
 
 export type EventStatus = 'draft' | 'published';
 
+/** `SaveOptions`' conditions as `stillAsRead` binds them: status, revision and version, each null for none. */
+type StillAsRead = readonly [string | null, number | null, number | null];
+
+function stillAsReadValues(options: SaveOptions): StillAsRead {
+  return [options.whileStatus ?? null, options.whileRevision ?? null, options.whileVersion ?? null];
+}
+
 /**
  * The condition, in `saveStatements`' statements over a `footprints_event`
- * row, that the row is still as `SaveOptions` asks: `?status` and `?revision`
- * are null for no condition. The key is cast from the row's own column, for
- * the reason subscriber-milestones.ts's `stillAsRead` gives.
+ * row, that the row is still as `SaveOptions` asks, read from the
+ * `StillAsRead` bound from `?first` on. The key is cast from the row's own
+ * column, for the reason subscriber-milestones.ts's `stillAsRead` gives.
  */
-function stillAsRead(status: string, revision: string): string {
+function stillAsRead(first: number): string {
+  const [status, revision, version] = [`?${first}`, `?${first + 1}`, `?${first + 2}`];
+
   return `(${status} IS NULL OR footprints_event.status = ${status})
           AND (${revision} IS NULL
                OR (SELECT COALESCE(MAX(revision_id), 0) FROM revision
                     WHERE entity = 'footprints_event'
-                      AND entity_key = CAST(footprints_event.event_id AS TEXT)) = ${revision})`;
+                      AND entity_key = CAST(footprints_event.event_id AS TEXT)) = ${revision})
+          AND (${version} IS NULL OR footprints_event.edit_version = ${version})`;
 }
 
 /** The newest revision of event `eventId`, or 0 when it has none: `SaveOptions.whileRevision`. */
@@ -708,28 +723,28 @@ export function saveStatements(
   fields: EventFields,
   options: SaveOptions = {},
 ): D1PreparedStatement[] {
-  const whileStatus = options.whileStatus ?? null;
-  const whileRevision = options.whileRevision ?? null;
+  const still = stillAsReadValues(options);
 
   return [
     env.DB.prepare(
       `DELETE FROM footprints_event_member
         WHERE event_id = ?1
-          AND EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND ${stillAsRead('?2', '?3')})`,
-    ).bind(eventId, whileStatus, whileRevision),
+          AND EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND ${stillAsRead(2)})`,
+    ).bind(eventId, ...still),
     env.DB.prepare(
       `DELETE FROM footprints_event_source
         WHERE event_id = ?1
-          AND EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND ${stillAsRead('?2', '?3')})`,
-    ).bind(eventId, whileStatus, whileRevision),
-    ...memberStatements(env, eventId, fields, whileStatus, whileRevision),
-    ...sourceStatements(env, eventId, fields.sources, whileStatus, whileRevision),
+          AND EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND ${stillAsRead(2)})`,
+    ).bind(eventId, ...still),
+    ...memberStatements(env, eventId, fields, still),
+    ...sourceStatements(env, eventId, fields.sources, still),
     env.DB.prepare(
       `UPDATE footprints_event
           SET date_precision = ?1, start_date = ?2, starts_at = ?3, end_date = ?4, kind = ?5, emphasized = ?6,
               title = ?7, place = ?8, supplement = ?9, video_id = ?10, memo = ?11,
-              status = COALESCE(?12, status), updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE event_id = ?13 AND ${stillAsRead('?14', '?15')}`,
+              status = COALESCE(?12, status), edit_version = edit_version + ${options.unlogged === true ? UNLOGGED_VERSION_STEP : 1},
+              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE event_id = ?13 AND ${stillAsRead(14)}`,
     ).bind(
       fields.datePrecision,
       fields.startDate,
@@ -744,8 +759,7 @@ export function saveStatements(
       fields.memo,
       options.status ?? null,
       eventId,
-      whileStatus,
-      whileRevision,
+      ...still,
     ),
   ];
 }
@@ -761,6 +775,11 @@ export function savedRow(results: readonly D1Result[]): boolean {
 /** The answer when a save that read the row as a draft found it published by then. */
 export function noLongerDraftResponse(eventId: number): Response {
   return changedElsewhereResponse(`footprints event ${eventId} is no longer a draft`);
+}
+
+/** The answer when a draft's save found it saved by another screen since the version it was read at (#307). */
+export function savedElsewhereResponse(eventId: number): Response {
+  return changedElsewhereResponse(`footprints event ${eventId} was saved by another screen meanwhile`);
 }
 
 /**
@@ -810,17 +829,23 @@ export async function updateEvent(env: Env, eventId: number, body: Record<string
 
   if (existing === null) return noEventResponse(eventId);
 
+  const held = heldToVersion(body, existing.event.edit_version, `footprints event ${eventId}`);
+
+  if ('error' in held) return held.error;
+
   const fields = await validatedFields(env, body);
 
   if ('error' in fields) return fields.error;
 
   if (existing.event.status !== 'draft') return noLongerDraftResponse(eventId);
 
-  const results = await env.DB.batch(saveStatements(env, eventId, fields, { whileStatus: 'draft' }));
+  const results = await env.DB.batch(saveStatements(env, eventId, fields, { whileStatus: 'draft', ...held }));
   const saved = await readEvent(env, eventId);
 
   if (saved === null) return noEventResponse(eventId);
-  if (!savedRow(results)) return noLongerDraftResponse(eventId);
+  if (!savedRow(results)) {
+    return saved.event.status === 'draft' ? savedElsewhereResponse(eventId) : noLongerDraftResponse(eventId);
+  }
 
   return jsonResponse({ event: present(saved) });
 }

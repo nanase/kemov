@@ -5,6 +5,7 @@ import {
   liveMarkFor,
   publishAnswerFor,
   publishFootFor,
+  sentFieldsSaved,
 } from '@/admin/lib/publishing';
 
 // #277's decision 1a: the chip is the row's status, and nothing else - every
@@ -158,5 +159,28 @@ describe('publishAnswerFor for a 409 the worker marks changedElsewhere', () => {
       '削除できません',
       '別の画面で変更されたため削除できませんでした',
     ]);
+  });
+});
+
+describe('sentFieldsSaved', () => {
+  test('is true for a request that went through', () => {
+    expect(sentFieldsSaved(null)).toBe(true);
+  });
+
+  test.each([
+    ['a draft refused for publishing, whose fields were saved', new AdminApiError(400, { problems: [], saved: true })],
+    ['a save that went through while the public JSON could not be written', new AdminApiError(502, { saved: true })],
+  ])('is true for %s', (_, error) => {
+    expect(sentFieldsSaved(error)).toBe(true);
+  });
+
+  test.each([
+    ['a published row refused for saving', new AdminApiError(400, { problems: [], saved: false })],
+    ['a row another screen changed', new AdminApiError(409, { error: '…', changedElsewhere: true })],
+    ['a 502 that saved nothing', new AdminApiError(502, { error: '…', saved: false })],
+    ['a 400 about one field', new AdminApiError(400, { error: '…', detail: 'title must not be empty' })],
+    ['a request that never reached the worker', new TypeError('Failed to fetch')],
+  ])('is false for %s', (_, error) => {
+    expect(sentFieldsSaved(error)).toBe(false);
   });
 });

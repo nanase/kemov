@@ -3,6 +3,7 @@ import type { Env } from '../lib/env';
 import { changedElsewhereResponse, jsonResponse } from '../lib/json';
 import { LOAD_FAILED, malformed, refusal, refuse, type Refusal } from '../lib/refusal';
 import { isSchemaTimestamp } from '../lib/time';
+import { heldToVersion, UNLOGGED_VERSION_STEP } from '../lib/edit-version';
 
 /**
  * Reading, saving and deleting `genet_stream` (#141, #139): one stream, the
@@ -37,6 +38,7 @@ export interface StreamRow {
   memo: string | null;
   created_at: string;
   updated_at: string;
+  edit_version: number;
 }
 
 export interface Scene {
@@ -73,6 +75,7 @@ export function present(saved: GenetStream) {
     memo: stream.memo,
     createdAt: stream.created_at,
     updatedAt: stream.updated_at,
+    version: stream.edit_version,
     performances: saved.performances.map((p) => ({
       tuneId: p.tune_id,
       description: p.description,
@@ -125,7 +128,7 @@ interface RawSceneRow {
 export async function readStream(env: Env, videoId: string): Promise<GenetStream | null> {
   const stream = await env.DB.prepare(
     `SELECT video_id, platform, url, video_type, title, short_title, published_at, categories, keywords,
-            status, memo, created_at, updated_at
+            status, memo, created_at, updated_at, edit_version
        FROM genet_stream WHERE video_id = ?1`,
   )
     .bind(videoId)
@@ -169,20 +172,24 @@ export async function readStreams(env: Env, videoIds: readonly string[]): Promis
 
   if (ids.length === 0) return new Map();
 
-  const [streamRows, perfRows, sceneRows] = await Promise.all([
-    queryInChunks(ids, async (chunk) => {
-      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+  // The rows before their performances and scenes, not alongside them: a save landing in
+  // between then leaves the `edit_version` read behind the performances and scenes read,
+  // and a write sent with it is refused (#307) rather than taking the performances and scenes
+  // for the ones that version saved.
+  const streamRows = await queryInChunks(ids, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
 
-      const { results } = await env.DB.prepare(
-        `SELECT video_id, platform, url, video_type, title, short_title, published_at, categories, keywords,
-                status, memo, created_at, updated_at
+    const { results } = await env.DB.prepare(
+      `SELECT video_id, platform, url, video_type, title, short_title, published_at, categories, keywords,
+                status, memo, created_at, updated_at, edit_version
            FROM genet_stream WHERE video_id IN (${placeholders})`,
-      )
-        .bind(...chunk)
-        .all<StreamRow>();
+    )
+      .bind(...chunk)
+      .all<StreamRow>();
 
-      return results;
-    }),
+    return results;
+  });
+  const [perfRows, sceneRows] = await Promise.all([
     queryInChunks(ids, async (chunk) => {
       const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
 
@@ -513,8 +520,8 @@ export async function validatedStreamFields(
 
 /**
  * Performance and scene rows for a stream that already has its row. Inserted
- * only while that row is still there - and still as `SaveOptions` asks, the
- * two left null for no condition: a stream deleted between the caller's
+ * only while that row is still there - and still as `SaveOptions` asks,
+ * through `still`, which is no condition by default: a stream deleted between the caller's
  * read and its batch would otherwise fail the whole batch on the foreign
  * key, and a publish with it, after the public JSON was already written,
  * instead of letting the batch end with no revision logged (publishing.ts).
@@ -524,8 +531,7 @@ function childStatements(
   env: Env,
   videoId: string,
   fields: StreamFields,
-  whileStatus: string | null = null,
-  whileRevision: number | null = null,
+  still: StillAsRead = [null, null, null],
 ): D1PreparedStatement[] {
   const statements: D1PreparedStatement[] = [];
 
@@ -536,8 +542,8 @@ function childStatements(
       env.DB.prepare(
         `INSERT INTO genet_performance (video_id, position, tune_id, description)
          SELECT ?1, ?2, ?3, ?4
-          WHERE EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1 AND ${stillAsRead('?5', '?6')})`,
-      ).bind(videoId, position, p.tuneId, p.description, whileStatus, whileRevision),
+          WHERE EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1 AND ${stillAsRead(5)})`,
+      ).bind(videoId, position, p.tuneId, p.description, ...still),
     );
 
     p.scenes.forEach((s, sceneIndex) => {
@@ -545,8 +551,8 @@ function childStatements(
         env.DB.prepare(
           `INSERT INTO genet_scene (video_id, position, scene_position, style, scene_video_id, start_seconds)
            SELECT ?1, ?2, ?3, ?4, ?5, ?6
-            WHERE EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1 AND ${stillAsRead('?7', '?8')})`,
-        ).bind(videoId, position, sceneIndex + 1, s.style, s.videoId, s.startSeconds, whileStatus, whileRevision),
+            WHERE EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1 AND ${stillAsRead(7)})`,
+        ).bind(videoId, position, sceneIndex + 1, s.style, s.videoId, s.startSeconds, ...still),
       );
     });
   });
@@ -633,25 +639,40 @@ export async function createStream(env: Env, body: Record<string, unknown>): Pro
  *   saw it before reading the row. A save that lands late - after its public
  *   JSON could not be written - then writes nothing over a publish or
  *   withdrawal recorded in between, even one that left the status as it was
+ * - `whileVersion`: the `edit_version` the screen read the stream at (#307),
+ *   as footprints.ts's `SaveOptions` has it
  */
 export interface SaveOptions {
   status?: StreamStatus;
   whileStatus?: StreamStatus;
   whileRevision?: number;
+  whileVersion?: number;
+  /** A published row's save that logs no revision: adds lib/edit-version.ts's `UNLOGGED_VERSION_STEP` to `edit_version`. */
+  unlogged?: boolean;
+}
+
+/** `SaveOptions`' conditions as `stillAsRead` binds them: status, revision and version, each null for none. */
+type StillAsRead = readonly [string | null, number | null, number | null];
+
+function stillAsReadValues(options: SaveOptions): StillAsRead {
+  return [options.whileStatus ?? null, options.whileRevision ?? null, options.whileVersion ?? null];
 }
 
 export type StreamStatus = 'draft' | 'published';
 
 /**
  * The condition, in `saveStatements`' statements over a `genet_stream` row,
- * that the row is still as `SaveOptions` asks: `?status` and `?revision` are
- * null for no condition.
+ * that the row is still as `SaveOptions` asks, read from the `StillAsRead`
+ * bound from `?first` on.
  */
-function stillAsRead(status: string, revision: string): string {
+function stillAsRead(first: number): string {
+  const [status, revision, version] = [`?${first}`, `?${first + 1}`, `?${first + 2}`];
+
   return `(${status} IS NULL OR genet_stream.status = ${status})
           AND (${revision} IS NULL
                OR (SELECT COALESCE(MAX(revision_id), 0) FROM revision
-                    WHERE entity = 'genet_stream' AND entity_key = genet_stream.video_id) = ${revision})`;
+                    WHERE entity = 'genet_stream' AND entity_key = genet_stream.video_id) = ${revision})
+          AND (${version} IS NULL OR genet_stream.edit_version = ${version})`;
 }
 
 /** The newest revision of stream `videoId`, or 0 when it has none: `SaveOptions.whileRevision`. */
@@ -677,27 +698,26 @@ export function saveStatements(
   fields: StreamFields,
   options: SaveOptions = {},
 ): D1PreparedStatement[] {
-  const whileStatus = options.whileStatus ?? null;
-  const whileRevision = options.whileRevision ?? null;
+  const still = stillAsReadValues(options);
 
   return [
     env.DB.prepare(
       `DELETE FROM genet_scene
         WHERE video_id = ?1
-          AND EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1 AND ${stillAsRead('?2', '?3')})`,
-    ).bind(videoId, whileStatus, whileRevision),
+          AND EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1 AND ${stillAsRead(2)})`,
+    ).bind(videoId, ...still),
     env.DB.prepare(
       `DELETE FROM genet_performance
         WHERE video_id = ?1
-          AND EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1 AND ${stillAsRead('?2', '?3')})`,
-    ).bind(videoId, whileStatus, whileRevision),
-    ...childStatements(env, videoId, fields, whileStatus, whileRevision),
+          AND EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1 AND ${stillAsRead(2)})`,
+    ).bind(videoId, ...still),
+    ...childStatements(env, videoId, fields, still),
     env.DB.prepare(
       `UPDATE genet_stream
           SET platform = ?1, url = ?2, video_type = ?3, title = ?4, short_title = ?5, published_at = ?6,
               categories = ?7, keywords = ?8, memo = ?9, status = COALESCE(?10, status),
-              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE video_id = ?11 AND ${stillAsRead('?12', '?13')}`,
+              edit_version = edit_version + ${options.unlogged === true ? UNLOGGED_VERSION_STEP : 1}, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        WHERE video_id = ?11 AND ${stillAsRead(12)}`,
     ).bind(
       fields.platform,
       fields.url,
@@ -710,8 +730,7 @@ export function saveStatements(
       fields.memo,
       options.status ?? null,
       videoId,
-      whileStatus,
-      whileRevision,
+      ...still,
     ),
   ];
 }
@@ -727,6 +746,11 @@ export function savedRow(results: readonly D1Result[]): boolean {
 /** The answer when a save that read the stream as a draft found it published by then. */
 export function noLongerDraftResponse(videoId: string): Response {
   return changedElsewhereResponse(`stream ${videoId} is no longer a draft`);
+}
+
+/** The answer when a draft's save found it saved by another screen since the version it was read at (#307). */
+export function savedElsewhereResponse(videoId: string): Response {
+  return changedElsewhereResponse(`stream ${videoId} was saved by another screen meanwhile`);
 }
 
 /** `saved` as it reads once `fields` are saved over it with `status`, without reading it back. */
@@ -764,18 +788,25 @@ export async function updateStream(env: Env, videoId: string, body: Record<strin
 
   if (existing === null) return noStreamResponse(videoId);
 
+  const held = heldToVersion(body, existing.stream.edit_version, `stream ${videoId}`);
+
+  if ('error' in held) return held.error;
+
   const fields = await validatedStreamFields(env, body);
 
   if ('error' in fields) return fields.error;
 
   if (existing.stream.status !== 'draft') return noLongerDraftResponse(videoId);
 
-  const results = await env.DB.batch(saveStatements(env, videoId, fields, { whileStatus: 'draft' }));
+  const results = await env.DB.batch(saveStatements(env, videoId, fields, { whileStatus: 'draft', ...held }));
   const saved = await readStream(env, videoId);
 
   // Deleted between the read and the batch, whose writes then found no row.
   if (saved === null) return noStreamResponse(videoId);
-  if (!savedRow(results)) return noLongerDraftResponse(videoId);
+
+  if (!savedRow(results)) {
+    return saved.stream.status === 'draft' ? savedElsewhereResponse(videoId) : noLongerDraftResponse(videoId);
+  }
 
   return jsonResponse({ stream: present(saved) });
 }
