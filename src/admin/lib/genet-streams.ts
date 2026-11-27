@@ -279,3 +279,18 @@ export function openTuneUnread(
 ): boolean {
   return openIndex !== null && !loaded.has(openIndex) && !reading.has(openIndex);
 }
+
+/**
+ * `rows` with `kept` put back at `index` when they no longer hold it, as
+ * lib/footprints.ts's `withKeptRow` keeps an event. A stream whose 保存 was
+ * refused stays in the list with its editor open, even when another screen's
+ * change took it out of the filter: closing it would throw away what is
+ * typed into it and its tunes (#304).
+ */
+export function withKeptStream(rows: GenetStream[], kept: GenetStream, index: number): GenetStream[] {
+  if (rows.some((s) => s.videoId === kept.videoId)) return rows;
+
+  const at = Math.min(Math.max(index, 0), rows.length);
+
+  return [...rows.slice(0, at), kept, ...rows.slice(at)];
+}

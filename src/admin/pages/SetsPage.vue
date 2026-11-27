@@ -66,6 +66,7 @@ import {
   streamsQuery,
   toFormFields as toStreamFormFields,
   VIDEO_TYPES,
+  withKeptStream,
   withoutIndex,
   withoutItem,
   type GenetStream,
@@ -212,6 +213,8 @@ function clearBand(): void {
 let createdVideoId: string | null = null;
 /** What the last request sent, when it saved it (`sentFieldsSaved`): the read after it follows the stream as the worker saved it (`fieldsAfterSave`). */
 let savedSent: StreamFormFields | null = null;
+/** How many times the fields were thrown away (`discardEdits`): a request's answer that lands after one is not theirs. */
+let discards = 0;
 /**
  * The stream the fields stand on: its fields, what a read is put together
  * against (`fieldsAfterSave`), and its version, what a write sends back
@@ -337,8 +340,25 @@ function reloadPending(): number {
 // for a filter that is no longer selected.
 let loadGeneration = 0;
 
-/** Resolves true when the list it read was put on screen: not failed, and not overtaken by a later load. */
-async function load(): Promise<boolean> {
+/**
+ * The open stream as it is now, null when it is gone, or `shown` - the one
+ * on screen - when it cannot be read.
+ */
+async function readKeptStream(videoId: string, shown: GenetStream): Promise<GenetStream | null> {
+  try {
+    return (await getJson<{ stream: GenetStream }>(`/genet/streams/${encodeURIComponent(videoId)}`)).stream;
+  } catch (error) {
+    return error instanceof AdminApiError && error.status === 404 ? null : shown;
+  }
+}
+
+/**
+ * Resolves true when the list it read was put on screen: not failed, and not
+ * overtaken by a later load. `keep` names the open stream after its own
+ * request was refused: it stays in the list though the filter no longer
+ * takes it (`withKeptStream`).
+ */
+async function load(keep: string | null = null): Promise<boolean> {
   loading.value = true;
   loadError.value = null;
   void loadPending();
@@ -352,9 +372,19 @@ async function load(): Promise<boolean> {
 
     if (generation !== loadGeneration) return false;
 
-    streams.value = body.streams;
+    let rows = body.streams;
+    const shown = selected.value;
+
+    if (keep !== null && shown !== null && shown.videoId === keep && !rows.some((s) => s.videoId === keep)) {
+      const kept = await readKeptStream(keep, shown);
+
+      if (generation !== loadGeneration) return false;
+      if (kept !== null) rows = withKeptStream(rows, kept, streams.value.indexOf(shown));
+    }
+
+    streams.value = rows;
     ticked.value = ticksAfterReload(ticked.value, streams.value, keyOf);
-    listTotal.update(streams.value.length, filtered.value);
+    listTotal.update(body.streams.length, filtered.value);
 
     // A stream the filter now leaves out closes its editor, and the first
     // one in the list takes its place, as on あしあと.
@@ -525,10 +555,10 @@ function streamLine(s: GenetStream): string {
 }
 
 /** After a request that may have changed the streams: the list and which of them the public JSON is behind. */
-async function reload(): Promise<boolean> {
+async function reload(keep: string | null = null): Promise<boolean> {
   listTotal.invalidate();
 
-  return await load();
+  return await load(keep);
 }
 
 /**
@@ -554,6 +584,7 @@ async function act(action: PublishAction): Promise<void> {
 
   const path = `/genet/streams/${encodeURIComponent(videoId)}`;
   const sent = structuredClone(toRaw(streamFields.value));
+  const discardsBefore = discards;
   let error: unknown = null;
 
   sending.value = true;
@@ -571,8 +602,9 @@ async function act(action: PublishAction): Promise<void> {
   try {
     const answer = streamAnswerFor(action, status, error);
 
-    // One that saved nothing keeps the last save's: no read may have answered it yet.
-    if (sentFieldsSaved(error)) savedSent = sent;
+    // One that saved nothing keeps the last save's: no read may have answered
+    // it yet. Fields thrown away meanwhile are not what is on screen.
+    if (sentFieldsSaved(error) && discards === discardsBefore) savedSent = sent;
 
     if (answer.kind === 'done') {
       void refreshSidebarDrafts();
@@ -588,8 +620,9 @@ async function act(action: PublishAction): Promise<void> {
 
     if (answer.changed) {
       void refreshSidebarDrafts();
-      // Fields that were not saved stay as typed over the stream read again.
-      await reload();
+      // Fields that were not saved stay as typed over the stream read again,
+      // and the stream stays open even when the filter no longer takes it.
+      await reload(videoId);
       void refreshTuneLive();
     }
   } finally {
@@ -754,8 +787,9 @@ const dirty = computed(() => streamDirty.value || tunesDirty.value);
 /** Puts the stream's saved fields back and closes the tunes, which are read again when opened. */
 function discardEdits(): void {
   // What was thrown away was typed over the stream as shown, not over a save
-  // the next read would answer (`savedSent`).
+  // the next read would answer (`savedSent`) - nor over one still on its way.
   savedSent = null;
+  discards += 1;
 
   if (adding.value) {
     newVideoId.value = '';
@@ -1266,7 +1300,7 @@ onMounted(async () => {
   await Promise.all([load(), loadPeople()]);
 });
 
-watch([statusFilter, q], load);
+watch([statusFilter, q], () => load());
 
 useCrumbDetail(() =>
   adding.value
