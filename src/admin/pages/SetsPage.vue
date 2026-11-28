@@ -296,6 +296,7 @@ function replaceStreamFields(next: StreamFormFields): boolean {
   streamFields.value = next;
   tuneFieldsByIndex.value = moveEntries(tuneFieldsByIndex.value, moves);
   tuneSavedByIndex.value = moveEntries(tuneSavedByIndex.value, moves);
+  tuneClashesByIndex.value = moveEntries(tuneClashesByIndex.value, moves);
   // A read on its way names its old index, so its answer is dropped.
   latestTuneRead.clear();
 
@@ -314,6 +315,7 @@ function closeTunes(): void {
   openIndex.value = null;
   tuneFieldsByIndex.value = new Map();
   tuneSavedByIndex.value = new Map();
+  tuneClashesByIndex.value = new Map();
   latestTuneRead.clear();
 }
 
@@ -735,7 +737,10 @@ async function remove(): Promise<void> {
       band.value = answer.band;
       invalidFields.value = answer.fields;
 
-      if (answer.changed) await reload();
+      // Kept open even when another screen's change takes it out of the
+      // filter, as a refused save does: closing it would throw away what is
+      // typed into its tunes.
+      if (answer.changed) await reload(videoId);
     }
 
     sending.value = false;
@@ -812,7 +817,7 @@ function takeInTuneRead(index: number, tune: GenetTune): void {
   tuneFieldsByIndex.value.set(index, reloaded.fields);
   savedTuneAs(index, after, tune.version);
 
-  if (openIndex.value === index) tuneClashes.value = reloaded.clashes;
+  setTuneClashes(index, reloaded.clashes);
 }
 
 function isTuneDirty(index: number): boolean {
@@ -869,8 +874,17 @@ function stillAt(index: number, videoId: string, tuneId: number): boolean {
 const tuneSaving = ref(false);
 const tuneBand = ref<PublishBand | null>(null);
 const tuneInvalid = ref<readonly TuneFieldError[]>([]);
-/** The open tune's fields typed in that another screen changed too, found when it was read again after a refused 保存. Each is a whole field. */
-const tuneClashes = ref<readonly TuneFieldSection[]>([]);
+/**
+ * Each tune's fields typed in that another screen changed too, by index,
+ * found when it was read again after a refused 保存. Each is a whole field.
+ * Kept until that tune is saved or its changes are discarded, as the other
+ * tune caches are. Replaced, never changed in place.
+ */
+const tuneClashesByIndex = shallowRef<Map<number, readonly TuneFieldSection[]>>(new Map());
+/** The open tune's clashes. */
+const tuneClashes = computed<readonly TuneFieldSection[]>(() =>
+  openIndex.value === null ? [] : (tuneClashesByIndex.value.get(openIndex.value) ?? []),
+);
 /** `tuneClashes` as the field errors they mark. */
 const tuneClashErrors = computed<TuneFieldError[]>(() =>
   tuneClashes.value.map((section) => ({ section, index: null })),
@@ -882,7 +896,15 @@ const tuneSearchError = ref<string | null>(null);
 function clearTuneBand(): void {
   tuneBand.value = null;
   tuneInvalid.value = [];
-  tuneClashes.value = [];
+}
+
+function setTuneClashes(index: number, clashes: readonly TuneFieldSection[]): void {
+  const next = new Map(tuneClashesByIndex.value);
+
+  if (clashes.length === 0) next.delete(index);
+  else next.set(index, clashes);
+
+  tuneClashesByIndex.value = next;
 }
 
 function tuneInvalidAt(section: TuneFieldError['section'], index: number | null = null): boolean {
@@ -1015,6 +1037,7 @@ async function saveTune(index: number): Promise<void> {
 
   tuneSaving.value = true;
   clearTuneBand();
+  setTuneClashes(index, []);
 
   try {
     answered = await putJson<TuneAnswer>(`/genet/tunes/${performance.tuneId}`, writeBody(sent, { version }));
@@ -1036,11 +1059,14 @@ async function saveTune(index: number): Promise<void> {
     }
 
     if (answered !== null && stillAt(index, videoId, performance.tuneId)) {
+      // A read sent before the save would answer an older version.
+      latestTuneRead.delete(index);
       rememberSavedTune(index, answered.tune);
       // The same tune performed again further on is the same row, now at the
       // version saved: its fields follow, keeping what is typed there.
       for (const other of tuneFieldsByIndex.value.keys()) {
         if (other !== index && streamFields.value.performances[other]?.tuneId === performance.tuneId) {
+          latestTuneRead.delete(other);
           takeInTuneRead(other, answered.tune);
         }
       }
@@ -1157,6 +1183,7 @@ function removePerformance(index: number): void {
   // and writing the tune an index actually names after the splice.
   tuneFieldsByIndex.value = withoutIndex(tuneFieldsByIndex.value, index);
   tuneSavedByIndex.value = withoutIndex(tuneSavedByIndex.value, index);
+  tuneClashesByIndex.value = withoutIndex(tuneClashesByIndex.value, index);
 
   if (openIndex.value === index) openIndex.value = null;
   else if (openIndex.value !== null && openIndex.value > index) openIndex.value -= 1;
