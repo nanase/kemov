@@ -7,13 +7,13 @@ import MembersPage from '@/admin/pages/MembersPage.vue';
 import { mountPage } from './mount-page';
 
 /**
- * MembersPage.vue while a row's 保存 is under way (#292, #296): nothing changes
+ * MembersPage.vue while a request is under way (#292, #296): nothing changes
  * what the edit panel shows or starts another request until it is answered,
  * and everything does again once it is.
  *
- * A button is stopped twice: it is disabled, and its handler returns while
- * `busy`. A disabled button gets no click, here as in a browser, so each test
- * that presses one checks that it is disabled and then presses it with the
+ * A button is stopped twice: it is disabled, and its handler returns. A
+ * disabled button gets no click, here as in a browser, so each test that
+ * presses one checks that it is disabled and then presses it with the
  * attribute taken off, for the handler's own refusal to be what is seen.
  */
 
@@ -45,12 +45,12 @@ const THIRD = member('UCcccccccccccccccccccccc', 'さんばん', 2);
 /** Not on the server: added on the screen, and refused by the list's 保存 in the test that needs that. */
 const ADDED = { channelId: 'UCdddddddddddddddddddddd', name: 'ついか' };
 
-/** The first member's own 保存, as `METHOD /path` under /admin/api. */
-const ROW_SAVE = `PUT /members/${FIRST.channelId}`;
+/** What is typed over the first member's 名前 before a request starts. */
+const TYPED = `${FIRST.name}（直した）`;
 
 /** Every request the page made, as `METHOD /path` under /admin/api. */
 let requests: string[];
-/** The request the server holds unanswered until `release`. */
+/** The request the server holds unanswered until `answerHeld`. */
 let held: string;
 let release: () => void;
 /** What the list's 保存 is answered with. */
@@ -78,6 +78,9 @@ const fakeFetch = vi.fn<typeof fetch>(async (input, init) => {
 
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 });
+
+/** Says yes to 変更を破棄しますか, so that a test can see whether it was asked. */
+const fakeConfirm = vi.fn(() => true);
 
 function row(name: string): DOMWrapper<HTMLTableRowElement> {
   const found = wrapper.findAll<HTMLTableRowElement>('tbody tr').find((tr) => tr.text().includes(name));
@@ -110,17 +113,9 @@ async function pressPastDisabled(target: DOMWrapper<HTMLButtonElement>): Promise
   await flushPromises();
 }
 
-/** Presses the first member's own 保存, which the server holds. */
-async function startRowSave(): Promise<void> {
-  held = ROW_SAVE;
-  await wrapper.get('.inspector-foot button.primary').trigger('click');
-  await flushPromises();
-
-  expect(requests.at(-1)).toBe(ROW_SAVE);
-}
-
-/** Answers the request the server holds, and what the page asks after it. */
+/** Answers the request the server holds, and what the page asks after it. The same request is not held again. */
 async function answerHeld(): Promise<void> {
+  held = '';
   release();
   await flushPromises();
 }
@@ -142,11 +137,57 @@ async function leaveRowErrorBanner(): Promise<void> {
   await wrapper.get('#f-name').setValue(ADDED.name);
   await wrapper.get('.inspector-foot button.primary').trigger('click');
   await row(FIRST.name).trigger('click');
-  await wrapper.get('#f-name').setValue(`${FIRST.name}（直した）`);
+  await wrapper.get('#f-name').setValue(TYPED);
 
   listSaveAnswer = { status: 400, body: { error: '誤りがあります', channelId: ADDED.channelId } };
   await button('.toolbar', '保存').trigger('click');
   await flushPromises();
+}
+
+/** The requests that make `busy`, each with what presses it for the first member. */
+const BUSY = [
+  {
+    name: 'a row’s 保存',
+    request: `PUT /members/${FIRST.channelId}`,
+    press: () => wrapper.get('.inspector-foot button.primary').trigger('click'),
+  },
+  {
+    name: 'a 削除',
+    request: `DELETE /members/${FIRST.channelId}`,
+    press: async () => {
+      await button('.inspector-foot', '削除').trigger('click');
+      await button('.inspector-foot', '削除を確定').trigger('click');
+    },
+  },
+  {
+    name: 'the list’s 保存',
+    request: 'PUT /members',
+    press: () => button('.toolbar', '保存').trigger('click'),
+  },
+];
+
+type Busy = (typeof BUSY)[number];
+
+/**
+ * Starts `busy`'s request, which the server holds, with a row moved and the
+ * first member's 名前 typed over: an unsaved list, and typing that 変更を破棄
+ * would be asked about.
+ */
+async function start(busy: Busy): Promise<void> {
+  await moveARow();
+  await wrapper.get('#f-name').setValue(TYPED);
+  held = busy.request;
+  await busy.press();
+  await flushPromises();
+
+  expect(requests.at(-1)).toBe(busy.request);
+}
+
+/** Nothing has moved: the first member is shown as typed, the list is unsaved, nobody was asked to discard. */
+function expectUnmoved(): void {
+  expect(shown()).toEqual({ row: expect.stringContaining(FIRST.name), field: TYPED });
+  expect(wrapper.get('.toolbar').text()).toContain('未保存');
+  expect(fakeConfirm).not.toHaveBeenCalled();
 }
 
 beforeEach(async () => {
@@ -157,6 +198,7 @@ beforeEach(async () => {
   };
   listSaveAnswer = { status: 200, body: {} };
   vi.stubGlobal('fetch', fakeFetch);
+  vi.stubGlobal('confirm', fakeConfirm);
 
   wrapper = await mountPage(MembersPage);
   await flushPromises();
@@ -167,11 +209,13 @@ afterEach(() => {
   // Module state, which outlives the page: the next test starts with no unsaved list.
   clearDraft();
   vi.unstubAllGlobals();
+  fakeFetch.mockClear();
+  fakeConfirm.mockClear();
 });
 
-describe('MembersPage.vue while a row is being saved', () => {
-  test('the edit panel cannot be typed in, and can be again once the save is answered', async () => {
-    await startRowSave();
+describe.each(BUSY)('MembersPage.vue while $name is under way', (busy) => {
+  test('the edit panel cannot be typed in, and can be again once it is answered', async () => {
+    await start(busy);
 
     expect(wrapper.get('.inspector').attributes('inert')).toBeDefined();
 
@@ -184,12 +228,12 @@ describe('MembersPage.vue while a row is being saved', () => {
     ['a click', (tr: DOMWrapper<HTMLTableRowElement>) => tr.trigger('click')],
     ['Enter', (tr: DOMWrapper<HTMLTableRowElement>) => tr.trigger('keydown', { key: 'Enter' })],
     ['Space', (tr: DOMWrapper<HTMLTableRowElement>) => tr.trigger('keydown', { key: ' ' })],
-  ])('%s on another row keeps the member being saved, and chooses the row once it is saved', async (_, press) => {
-    await startRowSave();
+  ])('%s on another row keeps the first member, and chooses the row once it is answered', async (_, press) => {
+    await start(busy);
     await press(row(SECOND.name));
 
-    expect(shown()).toEqual({ row: expect.stringContaining(FIRST.name), field: FIRST.name });
-    expect(requests).toEqual(['GET /members', ROW_SAVE]);
+    expectUnmoved();
+    expect(requests).toEqual(['GET /members', busy.request]);
 
     await answerHeld();
     await press(row(SECOND.name));
@@ -201,35 +245,33 @@ describe('MembersPage.vue while a row is being saved', () => {
   test.each([
     ['再読み込み', () => expect(requests.filter((r) => r === 'GET /members')).toHaveLength(3)],
     ['元に戻す', () => expect(wrapper.get('.toolbar').text()).not.toContain('未保存')],
-    ['保存', () => expect(requests).toContain('PUT /members')],
+    ['保存', () => expect(requests.slice(-2)).toEqual(['PUT /members', 'GET /members'])],
     ['＋ メンバーを追加', () => expect(wrapper.get('.inspector h3').text()).toBe('新しいメンバー')],
-  ])('the toolbar’s %s is refused, and does what it does once the save is answered', async (label, expectItRan) => {
-    await moveARow();
-    await startRowSave();
+  ])('the toolbar’s %s is refused, and does what it does once it is answered', async (label, expectItRan) => {
+    await start(busy);
 
     expect(button('.toolbar', label).element.disabled).toBe(true);
 
     await pressPastDisabled(button('.toolbar', label));
 
-    expect(shown()).toEqual({ row: expect.stringContaining(FIRST.name), field: FIRST.name });
-    expect(wrapper.get('.toolbar').text()).toContain('未保存');
-    expect(requests).toEqual(['GET /members', ROW_SAVE]);
+    expectUnmoved();
+    expect(requests).toEqual(['GET /members', busy.request]);
 
     await answerHeld();
+    // The list's 保存 has kept the moved row by then; one more move brings 元に戻す and 保存 back.
+    await moveARow();
     await button('.toolbar', label).trigger('click');
     await flushPromises();
 
     expectItRan();
   });
+});
 
-  test('該当の行を表示 is refused, and shows the added member once the save is answered', async () => {
-    // What is typed over the first member is still there when the banner's button moves away from it.
-    vi.stubGlobal(
-      'confirm',
-      vi.fn(() => true),
-    );
+// The list's 保存 is left out: it clears the banner as it starts.
+describe.each(BUSY.slice(0, 2))('MembersPage.vue while $name is under way over the 該当の行を表示 banner', (busy) => {
+  test('該当の行を表示 is refused, and shows the added member once it is answered', async () => {
     await leaveRowErrorBanner();
-    await startRowSave();
+    await start(busy);
 
     const before = [...requests];
 
@@ -237,8 +279,8 @@ describe('MembersPage.vue while a row is being saved', () => {
 
     await pressPastDisabled(button('.panel', '該当の行を表示'));
 
-    expect(shown()).toEqual({ row: expect.stringContaining(FIRST.name), field: `${FIRST.name}（直した）` });
-    expect(wrapper.text()).toContain('該当の行を表示');
+    expect(shown()).toEqual({ row: expect.stringContaining(FIRST.name), field: TYPED });
+    expect(fakeConfirm).not.toHaveBeenCalled();
     expect(requests).toEqual(before);
 
     await answerHeld();

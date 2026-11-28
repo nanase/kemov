@@ -1,7 +1,7 @@
 import { resolve } from 'path';
 import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-plugin';
 import { mergeConfig } from 'vite';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import viteConfig from './vite.config';
 
 const root = resolve(import.meta.dirname);
@@ -36,8 +36,9 @@ export default mergeConfig(
             name: 'frontend',
             root,
             include: ['test/**/*.test.ts'],
-            // The next project's, which need a DOM this one does not give.
-            exclude: ['test/**/*.mount.test.ts'],
+            // The next project's, which need a DOM this one does not give. Added to
+            // the defaults, which an exclude of its own would replace.
+            exclude: [...configDefaults.exclude, 'test/**/*.mount.test.ts'],
             globals: true,
             server: {
               deps: {
