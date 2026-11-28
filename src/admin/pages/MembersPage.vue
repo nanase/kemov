@@ -252,6 +252,13 @@ async function load(): Promise<void> {
   }
 }
 
+/** 再読み込み. Refused while a read or `busy` is under way, as its button is disabled then. */
+function reload(): void {
+  if (loading.value || busy.value) return;
+
+  if (confirmDiscard()) void load();
+}
+
 function selectRow(channelId: string): void {
   if (busy.value) return;
 
@@ -559,9 +566,7 @@ const MemberPreview = defineAsyncComponent(() => import('../components/previews/
         <span class="grow"></span>
         <span class="sub num">{{ rows.length }} 人</span>
         <!-- Always there, unsaved changes or not: a 409 from 保存 says to reload, and the draft is kept across it. -->
-        <button class="btn quiet" type="button" :disabled="loading || busy" @click="confirmDiscard() && load()">
-          再読み込み
-        </button>
+        <button class="btn quiet" type="button" :disabled="loading || busy" @click="reload">再読み込み</button>
         <template v-if="dirty">
           <button class="btn quiet" type="button" :disabled="busy" @click="discard">
             {{ MEMBER_TEXT.discard }}

@@ -62,6 +62,9 @@ jobs:
       - name: Test
         run: bun run vitest run --project frontend
 
+      - name: Test the screens
+        run: bun run vitest run --project dom
+
       - name: Test the worker
         run: bun run vitest run --project worker
 

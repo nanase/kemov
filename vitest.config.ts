@@ -11,13 +11,13 @@ export default mergeConfig(
   defineConfig({
     test: {
       root,
-      // The frontend and the scripts, which is why `bun run coverage` names
-      // those two projects. The worker is left out because nothing can
-      // measure it now that it runs on workerd: v8 coverage reads
-      // node:inspector, which workerd does not implement and the pool
-      // rejects outright, and istanbul was measured to report no worker file
-      // at all. scripts/ runs under bare node and is unaffected. `bun run
-      // test` still runs all three projects.
+      // The frontend, its mounted screens and the scripts, which is why `bun
+      // run coverage` names those three projects. The worker is left out
+      // because nothing can measure it now that it runs on workerd: v8
+      // coverage reads node:inspector, which workerd does not implement and
+      // the pool rejects outright, and istanbul was measured to report no
+      // worker file at all. scripts/ runs under bare node and is unaffected.
+      // `bun run test` still runs every project.
       coverage: {
         reporter: ['text', 'json'],
         include: ['src/**/*.{ts,vue}', 'scripts/*.js'],
@@ -27,7 +27,8 @@ export default mergeConfig(
       // The frontend, the worker and the scripts share no runtime: a browser
       // bundle built by the vite config above, workerd, and a bare node
       // process. Keeping them as projects of one run means `bun run test`
-      // still covers all three.
+      // still covers all three. The frontend's mounted screens are a project
+      // of their own as well, for the DOM only they need.
       projects: [
         {
           extends: true,
@@ -35,6 +36,8 @@ export default mergeConfig(
             name: 'frontend',
             root,
             include: ['test/**/*.test.ts'],
+            // The next project's, which need a DOM this one does not give.
+            exclude: ['test/**/*.mount.test.ts'],
             globals: true,
             server: {
               deps: {
@@ -42,6 +45,25 @@ export default mergeConfig(
                 // node cannot load .css. Only that entry needs vite to process
                 // it, but inline does not match subpaths - '@nanase/alnilam/components'
                 // alone was measured not to work - so the package is listed whole.
+                inline: ['@nanase/alnilam'],
+              },
+            },
+          },
+        },
+        {
+          // A screen mounted whole, its clicks and keys and what they ask the
+          // server (#296). Its own project rather than the frontend's because
+          // the DOM is the slow part, and only these files need one.
+          extends: true,
+          test: {
+            name: 'dom',
+            root,
+            include: ['test/**/*.mount.test.ts'],
+            environment: 'happy-dom',
+            globals: true,
+            server: {
+              deps: {
+                // As in the frontend's, for a screen that imports it.
                 inline: ['@nanase/alnilam'],
               },
             },
