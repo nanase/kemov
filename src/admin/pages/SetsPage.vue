@@ -1059,14 +1059,16 @@ async function saveTune(index: number): Promise<void> {
     }
 
     if (answered !== null && stillAt(index, videoId, performance.tuneId)) {
-      // A read sent before the save would answer an older version.
-      latestTuneRead.delete(index);
+      // A read sent before the save would answer an older version, for any
+      // performance of this tune: one not read yet reads again when opened.
+      streamFields.value.performances.forEach((other, at) => {
+        if (other.tuneId === performance.tuneId) latestTuneRead.delete(at);
+      });
       rememberSavedTune(index, answered.tune);
       // The same tune performed again further on is the same row, now at the
       // version saved: its fields follow, keeping what is typed there.
       for (const other of tuneFieldsByIndex.value.keys()) {
         if (other !== index && streamFields.value.performances[other]?.tuneId === performance.tuneId) {
-          latestTuneRead.delete(other);
           takeInTuneRead(other, answered.tune);
         }
       }
@@ -1089,6 +1091,8 @@ async function saveTune(index: number): Promise<void> {
     // here - the tune is gone. Anything else may be another screen's save
     // (#303), read again over what is typed.
     if (savedAnyway(error)) {
+      // A read sent before the save would answer an older version.
+      latestTuneRead.delete(index);
       savedTuneAs(index, structuredClone(sent), savedTuneVersion(error) ?? version);
     } else if (!(error instanceof AdminApiError && error.status === 404)) {
       void readTune(index, true);
