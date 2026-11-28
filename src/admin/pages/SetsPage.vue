@@ -1060,7 +1060,9 @@ async function saveTune(index: number): Promise<void> {
 
     if (answered !== null && stillAt(index, videoId, performance.tuneId)) {
       forgetTuneReads(performance.tuneId);
-      rememberSavedTune(index, answered.tune);
+
+      if (!holdsNewerTune(index, answered.tune.version)) rememberSavedTune(index, answered.tune);
+
       followSavedTune(index, answered.tune);
     }
 
@@ -1083,9 +1085,11 @@ async function saveTune(index: number): Promise<void> {
     // (#303), read again over what is typed.
     if (savedAnyway(error)) {
       const saved = savedTuneOf(error);
+      const savedVersion = saved?.version ?? version;
 
       forgetTuneReads(performance.tuneId);
-      savedTuneAs(index, structuredClone(sent), saved?.version ?? version);
+
+      if (!holdsNewerTune(index, savedVersion)) savedTuneAs(index, structuredClone(sent), savedVersion);
 
       if (saved !== null) followSavedTune(index, saved);
     } else if (!(error instanceof AdminApiError && error.status === 404)) {
@@ -1122,8 +1126,25 @@ function followSavedTune(index: number, tune: GenetTune): void {
   const tuneId = streamFields.value.performances[index]?.tuneId;
 
   for (const other of tuneFieldsByIndex.value.keys()) {
-    if (other !== index && streamFields.value.performances[other]?.tuneId === tuneId) takeInTuneRead(other, tune);
+    if (
+      other !== index &&
+      streamFields.value.performances[other]?.tuneId === tuneId &&
+      !holdsNewerTune(other, tune.version)
+    ) {
+      takeInTuneRead(other, tune);
+    }
   }
+}
+
+/**
+ * Whether performance `index` already holds a version of its tune newer than
+ * `version`. Another screen's save can land between a save and its answer,
+ * and a read since may have brought it: the answer must not take it back.
+ */
+function holdsNewerTune(index: number, version: number): boolean {
+  const saved = tuneSavedByIndex.value.get(index);
+
+  return saved !== undefined && saved.version > version;
 }
 
 // Every keystroke starts its own request - without this, an older one that
