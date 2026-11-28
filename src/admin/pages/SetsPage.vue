@@ -1059,19 +1059,9 @@ async function saveTune(index: number): Promise<void> {
     }
 
     if (answered !== null && stillAt(index, videoId, performance.tuneId)) {
-      // A read sent before the save would answer an older version, for any
-      // performance of this tune: one not read yet reads again when opened.
-      streamFields.value.performances.forEach((other, at) => {
-        if (other.tuneId === performance.tuneId) latestTuneRead.delete(at);
-      });
+      forgetTuneReads(performance.tuneId);
       rememberSavedTune(index, answered.tune);
-      // The same tune performed again further on is the same row, now at the
-      // version saved: its fields follow, keeping what is typed there.
-      for (const other of tuneFieldsByIndex.value.keys()) {
-        if (other !== index && streamFields.value.performances[other]?.tuneId === performance.tuneId) {
-          takeInTuneRead(other, answered.tune);
-        }
-      }
+      followSavedTune(index, answered.tune);
     }
 
     return;
@@ -1087,27 +1077,53 @@ async function saveTune(index: number): Promise<void> {
     if (!stillAt(index, videoId, performance.tuneId)) return;
 
     // Saved, though the public JSON could not be written: what was sent is
-    // what is saved, at the version the answer says. A 404 changed nothing
+    // what is saved, at the version the answer says, and the tune's other
+    // performances follow as after a save that reached it. A 404 changed nothing
     // here - the tune is gone. Anything else may be another screen's save
     // (#303), read again over what is typed.
     if (savedAnyway(error)) {
-      // A read sent before the save would answer an older version.
-      latestTuneRead.delete(index);
-      savedTuneAs(index, structuredClone(sent), savedTuneVersion(error) ?? version);
+      const saved = savedTuneOf(error);
+
+      forgetTuneReads(performance.tuneId);
+      savedTuneAs(index, structuredClone(sent), saved?.version ?? version);
+
+      if (saved !== null) followSavedTune(index, saved);
     } else if (!(error instanceof AdminApiError && error.status === 404)) {
       void readTune(index, true);
     }
   }
 }
 
-/** The version of the tune a failed request says it saved, when its answer has the tune. */
-function savedTuneVersion(error: unknown): number | null {
+/** The tune a failed request says it saved, when its answer has the tune. */
+function savedTuneOf(error: unknown): GenetTune | null {
   if (!(error instanceof AdminApiError)) return null;
 
   const body = error.body as { tune?: { version?: unknown } } | null;
-  const version = body?.tune?.version;
+  const tune = body?.tune;
 
-  return typeof version === 'number' ? version : null;
+  return typeof tune?.version === 'number' ? (tune as GenetTune) : null;
+}
+
+/**
+ * A read sent before a save would answer an older version, for any
+ * performance of the tune: one not read yet reads again when opened.
+ */
+function forgetTuneReads(tuneId: number): void {
+  streamFields.value.performances.forEach((performance, at) => {
+    if (performance.tuneId === tuneId) latestTuneRead.delete(at);
+  });
+}
+
+/**
+ * The same tune performed again further on is the same row, now at the
+ * version saved: its fields follow, keeping what is typed there.
+ */
+function followSavedTune(index: number, tune: GenetTune): void {
+  const tuneId = streamFields.value.performances[index]?.tuneId;
+
+  for (const other of tuneFieldsByIndex.value.keys()) {
+    if (other !== index && streamFields.value.performances[other]?.tuneId === tuneId) takeInTuneRead(other, tune);
+  }
 }
 
 // Every keystroke starts its own request - without this, an older one that
