@@ -430,6 +430,19 @@ describe('handleAdminRequest routing to footprints', () => {
     expect(deleted.status).toEqual(200);
   });
 
+  // #309: a DELETE sends the version it read in its query, having no body.
+  test('holds DELETE /admin/api/footprints/events/:eventId to the version in its query', async () => {
+    const created = await post('/admin/api/footprints/events', minimalEventBody);
+    const { event } = (await created.json()) as { event: { eventId: number; version: number } };
+    const path = `/admin/api/footprints/events/${event.eventId}`;
+
+    await put(path, { ...minimalEventBody, version: event.version });
+
+    expect((await call(`${path}?version=abc`, { method: 'DELETE' })).status).toEqual(400);
+    expect((await call(`${path}?version=${event.version}`, { method: 'DELETE' })).status).toEqual(409);
+    expect((await call(`${path}?version=${event.version + 1}`, { method: 'DELETE' })).status).toEqual(200);
+  });
+
   test('answers 404 for a non-numeric event id', async () => {
     expect((await call('/admin/api/footprints/events/not-a-number')).status).toEqual(404);
   });

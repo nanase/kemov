@@ -531,7 +531,7 @@ function childStatements(
   env: Env,
   videoId: string,
   fields: StreamFields,
-  still: StillAsRead = [null, null, null],
+  still: StillAsRead = [null, null, null, null],
 ): D1PreparedStatement[] {
   const statements: D1PreparedStatement[] = [];
 
@@ -641,21 +641,31 @@ export async function createStream(env: Env, body: Record<string, unknown>): Pro
  *   withdrawal recorded in between, even one that left the status as it was
  * - `whileVersion`: the `edit_version` the screen read the stream at (#307),
  *   as footprints.ts's `SaveOptions` has it
+ * - `whileTunes`: the `edit_version` each tune the stream performs was read
+ *   at, by tune id (#303). A publish puts those tunes in the public JSON as
+ *   they were read, so it writes nothing once one of them was saved since -
+ *   a save that logged no revision would otherwise be left out of the JSON
  */
 export interface SaveOptions {
   status?: StreamStatus;
   whileStatus?: StreamStatus;
   whileRevision?: number;
   whileVersion?: number;
+  whileTunes?: ReadonlyMap<number, number>;
   /** A published row's save that logs no revision: adds lib/edit-version.ts's `UNLOGGED_VERSION_STEP` to `edit_version`. */
   unlogged?: boolean;
 }
 
-/** `SaveOptions`' conditions as `stillAsRead` binds them: status, revision and version, each null for none. */
-type StillAsRead = readonly [string | null, number | null, number | null];
+/** `SaveOptions`' conditions as `stillAsRead` binds them: status, revision, version and tunes (as a JSON object), each null for none. */
+type StillAsRead = readonly [string | null, number | null, number | null, string | null];
 
 function stillAsReadValues(options: SaveOptions): StillAsRead {
-  return [options.whileStatus ?? null, options.whileRevision ?? null, options.whileVersion ?? null];
+  return [
+    options.whileStatus ?? null,
+    options.whileRevision ?? null,
+    options.whileVersion ?? null,
+    options.whileTunes === undefined ? null : JSON.stringify(Object.fromEntries(options.whileTunes)),
+  ];
 }
 
 export type StreamStatus = 'draft' | 'published';
@@ -666,13 +676,18 @@ export type StreamStatus = 'draft' | 'published';
  * bound from `?first` on.
  */
 function stillAsRead(first: number): string {
-  const [status, revision, version] = [`?${first}`, `?${first + 1}`, `?${first + 2}`];
+  const [status, revision, version, tunes] = [`?${first}`, `?${first + 1}`, `?${first + 2}`, `?${first + 3}`];
 
   return `(${status} IS NULL OR genet_stream.status = ${status})
           AND (${revision} IS NULL
                OR (SELECT COALESCE(MAX(revision_id), 0) FROM revision
                     WHERE entity = 'genet_stream' AND entity_key = genet_stream.video_id) = ${revision})
-          AND (${version} IS NULL OR genet_stream.edit_version = ${version})`;
+          AND (${version} IS NULL OR genet_stream.edit_version = ${version})
+          AND (${tunes} IS NULL
+               OR NOT EXISTS (SELECT 1 FROM json_each(${tunes}) t
+                               WHERE NOT EXISTS (SELECT 1 FROM genet_tune
+                                                  WHERE genet_tune.tune_id = CAST(t.key AS INTEGER)
+                                                    AND genet_tune.edit_version = t.value)))`;
 }
 
 /** The newest revision of stream `videoId`, or 0 when it has none: `SaveOptions.whileRevision`. */
@@ -815,9 +830,11 @@ export async function updateStream(env: Env, videoId: string, body: Record<strin
  * DELETE /admin/api/genet/streams/:videoId. 404 when there is no such
  * stream, 409 when it is `published` - the same reasoning as
  * footprints.ts's deleteEvent: the public JSON is built from `revision`, not
- * the working row, so withdrawing first is what makes a delete safe.
+ * the working row, so withdrawing first is what makes a delete safe. 409
+ * too for a stream saved since the version `body` names (#309), as
+ * footprints.ts's deleteEvent is.
  */
-export async function deleteStream(env: Env, videoId: string): Promise<Response> {
+export async function deleteStream(env: Env, videoId: string, body: Record<string, unknown> = {}): Promise<Response> {
   const existing = await readStream(env, videoId);
 
   if (existing === null) return noStreamResponse(videoId);
@@ -826,6 +843,12 @@ export async function deleteStream(env: Env, videoId: string): Promise<Response>
     return changedElsewhereResponse('withdraw this stream before deleting it', 'remove');
   }
 
+  // After the checks that say why a delete can never go through, which a
+  // screen holding an old version would otherwise hear as a save elsewhere.
+  const held = heldToVersion(body, existing.stream.edit_version, `stream ${videoId}`, 'remove');
+
+  if ('error' in held) return held.error;
+
   // The check above and this batch are two round trips, not one, so a
   // concurrent publishStream can land in between and this would otherwise
   // delete a stream that is published by the time the batch actually runs -
@@ -833,25 +856,35 @@ export async function deleteStream(env: Env, videoId: string): Promise<Response>
   // guard, not just the parent row's. Every statement re-checks the current
   // status itself rather than trusting `existing`, the same way a revision
   // INSERT is gated on the row EXISTS finds at batch time. One that deleted
-  // nothing found the stream published, or already gone.
+  // nothing found the stream published, saved since the version the screen
+  // read (#309), or already gone.
   const results = await env.DB.batch([
     env.DB.prepare(
       `DELETE FROM genet_scene
         WHERE video_id = ?1
-          AND EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1 AND status <> 'published')`,
-    ).bind(videoId),
+          AND EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1 AND status <> 'published' AND edit_version = ?2)`,
+    ).bind(videoId, held.whileVersion),
     env.DB.prepare(
       `DELETE FROM genet_performance
         WHERE video_id = ?1
-          AND EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1 AND status <> 'published')`,
-    ).bind(videoId),
-    env.DB.prepare(`DELETE FROM genet_stream WHERE video_id = ?1 AND status <> 'published'`).bind(videoId),
+          AND EXISTS (SELECT 1 FROM genet_stream WHERE video_id = ?1 AND status <> 'published' AND edit_version = ?2)`,
+    ).bind(videoId, held.whileVersion),
+    env.DB.prepare(`DELETE FROM genet_stream WHERE video_id = ?1 AND status <> 'published' AND edit_version = ?2`).bind(
+      videoId,
+      held.whileVersion,
+    ),
   ]);
 
   if (results[2]!.meta.changes === 0) {
-    if ((await readStream(env, videoId)) === null) return noStreamResponse(videoId);
+    const now = await readStream(env, videoId);
 
-    return changedElsewhereResponse('withdraw this stream before deleting it', 'remove');
+    if (now === null) return noStreamResponse(videoId);
+
+    if (now.stream.status === 'published') {
+      return changedElsewhereResponse('withdraw this stream before deleting it', 'remove');
+    }
+
+    return changedElsewhereResponse(`stream ${videoId} was saved by another screen meanwhile`, 'remove');
   }
 
   return jsonResponse({});

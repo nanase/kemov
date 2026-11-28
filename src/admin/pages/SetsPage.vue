@@ -28,7 +28,16 @@ import {
   type BulkPublishOutcome as Outcome,
 } from '../lib/bulk-publish';
 import { useCrumbDetail } from '../lib/crumb';
-import { EDITING_TEXT, fieldsAfterSave, SAVE_TOAST, sameFields, writeBody } from '../lib/editing';
+import {
+  clashesKept,
+  EDITING_TEXT,
+  fieldsAfterSave,
+  fieldsOnReload,
+  removePath,
+  SAVE_TOAST,
+  sameFields,
+  writeBody,
+} from '../lib/editing';
 import { insertAt, mdSnippet, clock, type MdLinkKind } from '../lib/genet-markdown';
 import { type GenetPerson } from '../lib/genet-people';
 import {
@@ -51,6 +60,7 @@ import {
   type Attribute,
   type GenetTune,
   type TuneFieldError,
+  type TuneFieldSection,
   type TuneFormFields,
 } from '../lib/genet-tunes';
 import {
@@ -287,6 +297,7 @@ function replaceStreamFields(next: StreamFormFields): boolean {
   streamFields.value = next;
   tuneFieldsByIndex.value = moveEntries(tuneFieldsByIndex.value, moves);
   tuneSavedByIndex.value = moveEntries(tuneSavedByIndex.value, moves);
+  tuneClashesByIndex.value = moveEntries(tuneClashesByIndex.value, moves);
   // A read on its way names its old index, so its answer is dropped.
   latestTuneRead.clear();
 
@@ -305,6 +316,7 @@ function closeTunes(): void {
   openIndex.value = null;
   tuneFieldsByIndex.value = new Map();
   tuneSavedByIndex.value = new Map();
+  tuneClashesByIndex.value = new Map();
   latestTuneRead.clear();
 }
 
@@ -622,10 +634,19 @@ async function act(action: PublishAction): Promise<void> {
       // Fields that were not saved stay as typed over the stream read again,
       // and the stream stays open even when the filter no longer takes it.
       await reload(videoId);
+
+      // A publish is refused too when a tune it performs was saved
+      // elsewhere (#303): the tunes read are read again, over what is typed.
+      if (error instanceof AdminApiError && error.changedElsewhere) readTunesAgain();
     }
   } finally {
     sending.value = false;
   }
+}
+
+/** Reads every tune already read again, keeping what is typed into each (`takeInTuneRead`). */
+function readTunesAgain(): void {
+  for (const index of tuneFieldsByIndex.value.keys()) void readTune(index, true);
 }
 
 /** A new stream's 保存: creates it as a draft, and opens it once the list has it. */
@@ -709,7 +730,7 @@ async function remove(): Promise<void> {
   clearBand();
 
   try {
-    await deleteJson(`/genet/streams/${encodeURIComponent(videoId)}`);
+    await deleteJson(removePath(`/genet/streams/${encodeURIComponent(videoId)}`, standOn ?? selected.value));
   } catch (error) {
     const answer = streamAnswerFor('delete', status, error);
 
@@ -717,7 +738,10 @@ async function remove(): Promise<void> {
       band.value = answer.band;
       invalidFields.value = answer.fields;
 
-      if (answer.changed) await reload();
+      // Kept open even when another screen's change takes it out of the
+      // filter, as a refused save does: closing it would throw away what is
+      // typed into its tunes.
+      if (answer.changed) await reload(videoId);
     }
 
     sending.value = false;
@@ -748,8 +772,12 @@ function addChip(list: string[], label: string): void {
 
 const openIndex = ref<number | null>(null);
 const tuneFieldsByIndex = ref<Map<number, TuneFormFields>>(new Map());
-/** Each open tune as last read from the worker, to tell what is unsaved in `tuneFieldsByIndex`. Replaced, never changed in place. */
-const tuneSavedByIndex = shallowRef<Map<number, TuneFormFields>>(new Map());
+/**
+ * Each open tune as last read from the worker, to tell what is unsaved in
+ * `tuneFieldsByIndex`, and the version its 保存 sends back (#303). Replaced,
+ * never changed in place.
+ */
+const tuneSavedByIndex = shallowRef<Map<number, { fields: TuneFormFields; version: number }>>(new Map());
 /**
  * The latest read of each open tune, by index. A tune closed and opened again
  * before its first read lands starts a second one; whichever lands last must
@@ -762,14 +790,44 @@ const TUNE_READ_FAILED = '読み込みに失敗しました';
 
 function rememberSavedTune(index: number, tune: GenetTune): void {
   tuneFieldsByIndex.value.set(index, toTuneFormFields(tune));
-  tuneSavedByIndex.value = new Map(tuneSavedByIndex.value).set(index, toTuneFormFields(tune));
+  savedTuneAs(index, toTuneFormFields(tune), tune.version);
+}
+
+function savedTuneAs(index: number, fields: TuneFormFields, version: number): void {
+  tuneSavedByIndex.value = new Map(tuneSavedByIndex.value).set(index, { fields, version });
+}
+
+/**
+ * Takes in `tune`, read again after its 保存 was refused, keeping what is
+ * typed (`fieldsOnReload`, #304): the fields not typed take what is saved
+ * now, and the ones another screen changed too are marked (`tuneClashes`).
+ */
+function takeInTuneRead(index: number, tune: GenetTune): void {
+  const fields = tuneFieldsByIndex.value.get(index);
+  const saved = tuneSavedByIndex.value.get(index);
+
+  if (fields === undefined || saved === undefined) {
+    rememberSavedTune(index, tune);
+
+    return;
+  }
+
+  const after = toTuneFormFields(tune);
+  const reloaded = fieldsOnReload(fields, saved.fields, after);
+
+  tuneFieldsByIndex.value.set(index, reloaded.fields);
+  savedTuneAs(index, after, tune.version);
+
+  // A read with nothing new from another screen - after the stream's 保存 was
+  // refused, say - finds no clash of its own: the marks stay until 保存 or discard.
+  setTuneClashes(index, clashesKept(tuneClashesByIndex.value.get(index) ?? [], reloaded, after));
 }
 
 function isTuneDirty(index: number): boolean {
   const fields = tuneFieldsByIndex.value.get(index);
   const saved = tuneSavedByIndex.value.get(index);
 
-  return fields !== undefined && saved !== undefined && !sameFields(fields, saved);
+  return fields !== undefined && saved !== undefined && !sameFields(fields, saved.fields);
 }
 
 /** Against the saved stream, or a new stream's blank fields. */
@@ -819,6 +877,21 @@ function stillAt(index: number, videoId: string, tuneId: number): boolean {
 const tuneSaving = ref(false);
 const tuneBand = ref<PublishBand | null>(null);
 const tuneInvalid = ref<readonly TuneFieldError[]>([]);
+/**
+ * Each tune's fields typed in that another screen changed too, by index,
+ * found when it was read again after a refused 保存. Each is a whole field.
+ * Kept until that tune is saved or its changes are discarded, as the other
+ * tune caches are. Replaced, never changed in place.
+ */
+const tuneClashesByIndex = shallowRef<Map<number, readonly TuneFieldSection[]>>(new Map());
+/** The open tune's clashes. */
+const tuneClashes = computed<readonly TuneFieldSection[]>(() =>
+  openIndex.value === null ? [] : (tuneClashesByIndex.value.get(openIndex.value) ?? []),
+);
+/** `tuneClashes` as the field errors they mark. */
+const tuneClashErrors = computed<TuneFieldError[]>(() =>
+  tuneClashes.value.map((section) => ({ section, index: null })),
+);
 const tuneQuery = ref('');
 const tuneSearchResults = ref<{ tuneId: number; title: string }[]>([]);
 const tuneSearchError = ref<string | null>(null);
@@ -828,14 +901,26 @@ function clearTuneBand(): void {
   tuneInvalid.value = [];
 }
 
+function setTuneClashes(index: number, clashes: readonly TuneFieldSection[]): void {
+  const next = new Map(tuneClashesByIndex.value);
+
+  if (clashes.length === 0) next.delete(index);
+  else next.set(index, clashes);
+
+  tuneClashesByIndex.value = next;
+}
+
 function tuneInvalidAt(section: TuneFieldError['section'], index: number | null = null): boolean {
-  return tuneInvalid.value.some((f) => f.section === section && (index === null || f.index === index));
+  return (
+    tuneInvalid.value.some((f) => f.section === section && (index === null || f.index === index)) ||
+    (index === null && tuneClashes.value.includes(section))
+  );
 }
 
 function tuneReasonIds(section: TuneFieldError['section'], index: number | null = null): string | undefined {
   return tuneBandReasonIds(
     tuneBand.value,
-    tuneInvalid.value,
+    [...tuneInvalid.value, ...tuneClashErrors.value],
     (f) => f.section === section && (index === null || f.index === index),
   );
 }
@@ -860,7 +945,6 @@ function openTune(index: number): void {
   if (!tuneFieldsByIndex.value.has(index)) void readTune(index);
 }
 
-/** Reads the tune performance `index` names, for the panel open on it. */
 /** Whether a failed request says it saved what it sent all the same. */
 function savedAnyway(error: unknown): boolean {
   if (!(error instanceof AdminApiError)) return false;
@@ -870,7 +954,12 @@ function savedAnyway(error: unknown): boolean {
   return typeof body === 'object' && body !== null && 'saved' in body && body.saved === true;
 }
 
-async function readTune(index: number): Promise<void> {
+/**
+ * Reads the tune performance `index` names. A tune already read - read
+ * again after its 保存 was refused, `afterRefusal` - keeps what is typed
+ * (`takeInTuneRead`), and a read that fails leaves the refusal's band.
+ */
+async function readTune(index: number, afterRefusal = false): Promise<void> {
   const performance = streamFields.value.performances[index];
 
   if (performance === undefined) return;
@@ -890,7 +979,7 @@ async function readTune(index: number): Promise<void> {
     latestTuneRead.delete(index);
 
     if (stillAt(index, videoId, performance.tuneId)) {
-      rememberSavedTune(index, body.tune);
+      takeInTuneRead(index, body.tune);
     } else {
       readOpenTuneAgain();
     }
@@ -898,6 +987,9 @@ async function readTune(index: number): Promise<void> {
     if (latestTuneRead.get(index) !== read) return;
 
     latestTuneRead.delete(index);
+
+    if (afterRefusal) return;
+
     tuneBand.value = {
       title: TUNE_READ_FAILED,
       lines: [],
@@ -937,6 +1029,10 @@ async function saveTune(index: number): Promise<void> {
 
   if (performance === undefined || fields === undefined || busy.value) return;
 
+  const version = tuneSavedByIndex.value.get(index)?.version;
+
+  if (version === undefined) return;
+
   const videoId = currentVideoId.value;
   const sent = structuredClone(toRaw(fields));
   let answered: TuneAnswer | null = null;
@@ -944,9 +1040,10 @@ async function saveTune(index: number): Promise<void> {
 
   tuneSaving.value = true;
   clearTuneBand();
+  setTuneClashes(index, []);
 
   try {
-    answered = await putJson<TuneAnswer>(`/genet/tunes/${performance.tuneId}`, sent);
+    answered = await putJson<TuneAnswer>(`/genet/tunes/${performance.tuneId}`, writeBody(sent, { version }));
   } catch (caught) {
     error = caught;
   } finally {
@@ -964,7 +1061,13 @@ async function saveTune(index: number): Promise<void> {
       void loadPending();
     }
 
-    if (answered !== null && stillAt(index, videoId, performance.tuneId)) rememberSavedTune(index, answered.tune);
+    if (answered !== null && stillAt(index, videoId, performance.tuneId)) {
+      forgetTuneReads(performance.tuneId);
+
+      if (!holdsNewerTune(index, answered.tune.version)) rememberSavedTune(index, answered.tune);
+
+      followSavedTune(index, answered.tune);
+    }
 
     return;
   }
@@ -976,12 +1079,75 @@ async function saveTune(index: number): Promise<void> {
     void refreshSidebarDrafts();
     void loadPending();
 
+    if (!stillAt(index, videoId, performance.tuneId)) return;
+
     // Saved, though the public JSON could not be written: what was sent is
-    // what is saved. A 404 changed nothing here - the tune is gone.
-    if (savedAnyway(error) && stillAt(index, videoId, performance.tuneId)) {
-      tuneSavedByIndex.value = new Map(tuneSavedByIndex.value).set(index, structuredClone(sent));
+    // what is saved, at the version the answer says, and the tune's other
+    // performances follow as after a save that reached it. A 404 changed nothing
+    // here - the tune is gone. Anything else may be another screen's save
+    // (#303), read again over what is typed.
+    if (savedAnyway(error)) {
+      const saved = savedTuneOf(error);
+      const savedVersion = saved?.version ?? version;
+
+      forgetTuneReads(performance.tuneId);
+
+      if (!holdsNewerTune(index, savedVersion)) savedTuneAs(index, structuredClone(sent), savedVersion);
+
+      if (saved !== null) followSavedTune(index, saved);
+    } else if (!(error instanceof AdminApiError && error.status === 404)) {
+      void readTune(index, true);
     }
   }
+}
+
+/** The tune a failed request says it saved, when its answer has the tune. */
+function savedTuneOf(error: unknown): GenetTune | null {
+  if (!(error instanceof AdminApiError)) return null;
+
+  const body = error.body as { tune?: { version?: unknown } } | null;
+  const tune = body?.tune;
+
+  return typeof tune?.version === 'number' ? (tune as GenetTune) : null;
+}
+
+/**
+ * A read sent before a save would answer an older version, for any
+ * performance of the tune: one not read yet reads again when opened.
+ */
+function forgetTuneReads(tuneId: number): void {
+  streamFields.value.performances.forEach((performance, at) => {
+    if (performance.tuneId === tuneId) latestTuneRead.delete(at);
+  });
+}
+
+/**
+ * The same tune performed again further on is the same row, now at the
+ * version saved: its fields follow, keeping what is typed there.
+ */
+function followSavedTune(index: number, tune: GenetTune): void {
+  const tuneId = streamFields.value.performances[index]?.tuneId;
+
+  for (const other of tuneFieldsByIndex.value.keys()) {
+    if (
+      other !== index &&
+      streamFields.value.performances[other]?.tuneId === tuneId &&
+      !holdsNewerTune(other, tune.version)
+    ) {
+      takeInTuneRead(other, tune);
+    }
+  }
+}
+
+/**
+ * Whether performance `index` already holds a version of its tune newer than
+ * `version`. Another screen's save can land between a save and its answer,
+ * and a read since may have brought it: the answer must not take it back.
+ */
+function holdsNewerTune(index: number, version: number): boolean {
+  const saved = tuneSavedByIndex.value.get(index);
+
+  return saved !== undefined && saved.version > version;
 }
 
 // Every keystroke starts its own request - without this, an older one that
@@ -1061,6 +1227,7 @@ function removePerformance(index: number): void {
   // and writing the tune an index actually names after the splice.
   tuneFieldsByIndex.value = withoutIndex(tuneFieldsByIndex.value, index);
   tuneSavedByIndex.value = withoutIndex(tuneSavedByIndex.value, index);
+  tuneClashesByIndex.value = withoutIndex(tuneClashesByIndex.value, index);
 
   if (openIndex.value === index) openIndex.value = null;
   else if (openIndex.value !== null && openIndex.value > index) openIndex.value -= 1;
@@ -1632,6 +1799,8 @@ useCrumbDetail(() =>
                     <input
                       type="text"
                       :value="tuneFieldsByIndex.get(pi)!.originalTitle ?? ''"
+                      :aria-invalid="tuneInvalidAt('originalTitle')"
+                      :aria-describedby="tuneReasonIds('originalTitle')"
                       @input="
                         tuneFieldsByIndex.get(pi)!.originalTitle = ($event.target as HTMLInputElement).value || null
                       "
@@ -1644,12 +1813,18 @@ useCrumbDetail(() =>
 
                   <div class="md">
                     <div class="md-bar">
-                      <span class="lab">小曲</span
+                      <span id="f-tune-subtunes-title" class="lab">小曲</span
                       ><button class="md-ins" type="button" @click="addSubtune(tuneFieldsByIndex.get(pi)!)">
                         ＋ 追加
                       </button>
                     </div>
-                    <div class="rows">
+                    <div
+                      class="rows"
+                      role="group"
+                      aria-labelledby="f-tune-subtunes-title"
+                      :aria-invalid="tuneClashes.includes('subtunes')"
+                      :aria-describedby="tuneClashes.includes('subtunes') ? tuneReasonIds('subtunes') : undefined"
+                    >
                       <span v-if="tuneFieldsByIndex.get(pi)!.subtunes.length === 0" class="sub">なし</span>
                       <div v-for="(_, si) in tuneFieldsByIndex.get(pi)!.subtunes" :key="si" class="row-item">
                         <input type="text" v-model="tuneFieldsByIndex.get(pi)!.subtunes[si]" aria-label="小曲" />
@@ -1667,12 +1842,18 @@ useCrumbDetail(() =>
 
                   <div class="md">
                     <div class="md-bar">
-                      <span class="lab">作曲・作詞など</span
+                      <span id="f-tune-attributes-title" class="lab">作曲・作詞など</span
                       ><button class="md-ins" type="button" @click="addAttribute(tuneFieldsByIndex.get(pi)!)">
                         ＋ 追加
                       </button>
                     </div>
-                    <div class="rows">
+                    <div
+                      class="rows"
+                      role="group"
+                      aria-labelledby="f-tune-attributes-title"
+                      :aria-invalid="tuneClashes.includes('attributes')"
+                      :aria-describedby="tuneClashes.includes('attributes') ? tuneReasonIds('attributes') : undefined"
+                    >
                       <span v-if="tuneFieldsByIndex.get(pi)!.attributes.length === 0" class="sub">なし</span>
                       <div
                         v-for="(attr, ai) in tuneFieldsByIndex.get(pi)!.attributes"
@@ -1760,12 +1941,18 @@ useCrumbDetail(() =>
 
                   <div class="md">
                     <div class="md-bar">
-                      <span class="lab">参考動画</span
+                      <span id="f-tune-videos-title" class="lab">参考動画</span
                       ><button class="md-ins" type="button" @click="addVideo(tuneFieldsByIndex.get(pi)!)">
                         ＋ 追加
                       </button>
                     </div>
-                    <div class="rows">
+                    <div
+                      class="rows"
+                      role="group"
+                      aria-labelledby="f-tune-videos-title"
+                      :aria-invalid="tuneClashes.includes('videos')"
+                      :aria-describedby="tuneClashes.includes('videos') ? tuneReasonIds('videos') : undefined"
+                    >
                       <span v-if="tuneFieldsByIndex.get(pi)!.videos.length === 0" class="sub">なし</span>
                       <div v-for="(v, vi) in tuneFieldsByIndex.get(pi)!.videos" :key="vi" class="row-item two">
                         <input type="text" v-model="v.videoId" aria-label="動画 ID" />
@@ -1784,12 +1971,18 @@ useCrumbDetail(() =>
 
                   <div class="md">
                     <div class="md-bar">
-                      <span class="lab">外部資料</span
+                      <span id="f-tune-scores-title" class="lab">外部資料</span
                       ><button class="md-ins" type="button" @click="addScore(tuneFieldsByIndex.get(pi)!)">
                         ＋ 追加
                       </button>
                     </div>
-                    <div class="rows">
+                    <div
+                      class="rows"
+                      role="group"
+                      aria-labelledby="f-tune-scores-title"
+                      :aria-invalid="tuneClashes.includes('scores')"
+                      :aria-describedby="tuneClashes.includes('scores') ? tuneReasonIds('scores') : undefined"
+                    >
                       <span v-if="tuneFieldsByIndex.get(pi)!.scores.length === 0" class="sub">なし</span>
                       <div v-for="(sc, si) in tuneFieldsByIndex.get(pi)!.scores" :key="si" class="row-item two">
                         <input type="text" v-model="sc.url" placeholder="https://imslp.org/..." aria-label="リンク" />
@@ -1944,14 +2137,16 @@ useCrumbDetail(() =>
   font-size: var(--a-small);
 }
 
-/* Chips or performances another screen changed too (`clashes`): the global rule colours a border these have none of. */
+/* Chips, performances or a tune's rows another screen changed too (`clashes`, `tuneClashes`): the global rule colours a border these have none of. */
 .chipset[aria-invalid='true'],
-.editor-section[aria-invalid='true'] {
+.editor-section[aria-invalid='true'],
+.rows[aria-invalid='true'] {
   border: 1px solid;
   border-radius: 6px;
 }
 
-.chipset[aria-invalid='true'] {
+.chipset[aria-invalid='true'],
+.rows[aria-invalid='true'] {
   padding: 4px;
 }
 

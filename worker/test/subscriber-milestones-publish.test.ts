@@ -966,6 +966,64 @@ describe('a delete that finds the row published meanwhile', () => {
   });
 });
 
+describe('a delete of a milestone another screen saved (#309)', () => {
+  async function sourceCount(milestoneId: number): Promise<number> {
+    const row = await env.DB.prepare('SELECT count(*) AS n FROM subscriber_milestone_source WHERE milestone_id = ?1')
+      .bind(milestoneId)
+      .first<{ n: number }>();
+
+    return row!.n;
+  }
+
+  test('sent with the version from before the save, answers 409 and leaves the row as saved', async () => {
+    const milestoneId = await create();
+    const read = await versionOf(milestoneId);
+
+    await saveMilestone(env, milestoneId, body({ subscriberCount: 21000, version: read }), NOW);
+
+    const response = await deleteMilestone(env, milestoneId, { version: read });
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({
+      error: '別の画面で変更されたため削除できませんでした',
+      changedElsewhere: true,
+    });
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 21000 });
+    expect(await sourceCount(milestoneId)).toEqual(1);
+  });
+
+  test('whose batch runs after the save, answers 409 and leaves the row as saved', async () => {
+    const milestoneId = await create();
+    const read = await versionOf(milestoneId);
+    const savedFirst = beforeNextBatch(env, () =>
+      saveMilestone(env, milestoneId, body({ subscriberCount: 21000, version: read }), NOW),
+    );
+
+    const response = await deleteMilestone(savedFirst, milestoneId, { version: read });
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ error: '別の画面で変更されたため削除できませんでした' });
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft', subscriberCount: 21000 });
+    expect(await sourceCount(milestoneId)).toEqual(1);
+  });
+
+  test('sent with the version read after the save, deletes it', async () => {
+    const milestoneId = await create();
+
+    await saveMilestone(env, milestoneId, body({ subscriberCount: 21000, version: await versionOf(milestoneId) }), NOW);
+
+    expect((await deleteMilestone(env, milestoneId, { version: await versionOf(milestoneId) })).status).toEqual(200);
+    expect((await getMilestone(env, milestoneId)).status).toEqual(404);
+  });
+
+  test('refuses a version that is not a whole number with 400, and deletes nothing', async () => {
+    const milestoneId = await create();
+
+    expect((await deleteMilestone(env, milestoneId, { version: -1 })).status).toEqual(400);
+    expect(await readRow(milestoneId)).toMatchObject({ status: 'draft' });
+  });
+});
+
 describe('withdrawMilestone with an event no longer a milestone', () => {
   test('still takes the milestone off the public site, keeping the link', async () => {
     const eventId = await liveEvent('記念配信');

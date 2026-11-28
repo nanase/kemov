@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 
-import { createTune, deleteTune, getTune, listTunes, updateTune } from '../src/admin/genet-tunes';
+import { saveTune } from '../src/admin/genet-publish';
+import { createTune, deleteTune, getTune, listTunes } from '../src/admin/genet-tunes';
 import { clearEverything } from './reset-db';
 
 beforeEach(clearEverything);
@@ -173,9 +174,9 @@ describe('getTune', () => {
   });
 });
 
-describe('updateTune', () => {
+describe('saveTune of a tune no published stream performs', () => {
   test('answers 404 for a tune that does not exist', async () => {
-    expect((await updateTune(env, 1, validBody())).status).toEqual(404);
+    expect((await saveTune(env, 1, validBody(), new Date())).status).toEqual(404);
   });
 
   test('replaces attributes, videos and scores wholesale', async () => {
@@ -184,7 +185,7 @@ describe('updateTune', () => {
       attributes: [{ name: '作曲', text: null, people: [{ personId, creditedAs: null, note: null }] }],
     });
 
-    const response = await updateTune(env, tuneId, validBody({ title: '新しい題' }));
+    const response = await saveTune(env, tuneId, validBody({ title: '新しい題' }), new Date());
 
     expect(response.status).toEqual(200);
 

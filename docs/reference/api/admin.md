@@ -62,7 +62,7 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 | GET      | `/admin/api/footprints/events/<できごと ID>`          | 1 行と、そのメンバーと出典                                                                   |
 | POST     | `/admin/api/footprints/events`                        | `draft` で作成した後の行                                                                     |
 | PUT      | `/admin/api/footprints/events/<できごと ID>`          | 「保存」。下書きなら保存した後の行。公開中なら、保存して JSON を書き直した後の行             |
-| DELETE   | `/admin/api/footprints/events/<できごと ID>`          | `{}`。消す時点で `published` のできごとなら 409                                              |
+| DELETE   | `/admin/api/footprints/events/<できごと ID>`          | `{}`。消す時点で `published` のできごとか、`version` が違えば 409                            |
 | POST     | `/admin/api/footprints/events/<できごと ID>/publish`  | 「公開」。保存し、検証し、JSON を書き直した後の行                                            |
 | POST     | `/admin/api/footprints/events/<できごと ID>/withdraw` | 「非公開に戻す」。JSON から外し、`draft` として保存した後の行。`published` でなければ 409    |
 | GET      | `/admin/api/footprints/pending`                       | 公開の JSON がまだ写していない版と、公開中なのに公開の JSON と違うできごと                   |
@@ -130,13 +130,13 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 - `publication` の行は足さない。そのため、次に `publication` の行が足されるまで、`GET .../pending` はその版を公開待ちとして返す
 - 次にどれかの行を公開・公開中の保存・非公開に戻すと、JSON は記録済みの版から作り直される
 
-4 つの操作は、本文に `version` を添えられます。画面が行を読んだときの `version` で、行の答えが持つ値です（#307）。値は `edit_version` 列にあり、行を書くたびに 1 増えます。
+4 つの操作と削除は、`version` を添えられます。画面が行を読んだときの `version` で、行の答えが持つ値です（#307、#309）。値は `edit_version` 列にあり、行を書くたびに 1 増えます。
 
 - 添えたときは、行がまだその `version` のときだけ書く。違えば、別の画面で保存されたとみなして 409 を返し、何も書かない
 - 下書きの保存は版を記録しないので、下書きどうしの保存はこの `version` で見分ける
 - 0 以上の整数でなければ 400 を返す。`null` も 400 にする
 - `version` の欄が無ければ、worker が要求の中で読んだときの版で同じ条件を付ける。管理サイトの画面はいつも添える
-- 削除は `version` を見ない（#309）
+- 削除は本文を持たないので、`version` をクエリで送る（`?version=3`）。数字でなければ 400 を返す
 
 版の記録は、行が「読んだ `version` + 1」のときだけにします。公開中の行の保存で JSON を書けず、欄だけを保存したときは、版を記録せずに `edit_version` を 2 増やします（`worker/src/lib/edit-version.ts` の `UNLOGGED_VERSION_STEP`）。1 増やすと、同じ `version` を読んだ別の画面の保存が、行を書けなかったのに版の条件を満たしてしまいます。2 増やせば、行がその画面の待つ値になりません。
 
@@ -145,7 +145,7 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 - 下書きの保存と公開中の保存は、読んだときと同じ状態の行にだけ書く。メンバーと出典の行も同じ条件で消して入れ直す
 - 公開・公開中の保存・非公開に戻すは、読んでからできごとの版が増えていない行にだけ書く
   - 同じ `version` を読んだ 2 つの画面が公開中の保存を送ると、先に着いた方が版を記録する。後の方は版が増えているので書かない
-- 削除は、消す時点でまだ下書きの行と、そのメンバー・出典だけを消す
+- 削除は、消す時点でまだ下書きで、読んだ `version` のままの行と、そのメンバー・出典だけを消す
 - 先に書いた JSON を作り直せなかったときは、409 ではなく 502 を返す。`saved` は `false`
 
 ぶつかったときの 409 の本文は、`error` と `detail` のほかに `changedElsewhere: true` を持ちます。`error` は「別の画面で変更されたため保存できませんでした」です。削除だけは「保存」が「削除」になり、非公開に戻すは保存と同じ文です。管理サイトの画面は、`changedElsewhere` を見て、操作に合う同じ文を出します。節目とのつなぎが残る出来事の削除のように、ぶつかったのではない 409 には付きません。楽曲一覧と節目の 409 も同じです。
@@ -222,12 +222,12 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 | POST     | `/admin/api/genet/tunes`                      | 作成した後の行                                                                               |
 | GET      | `/admin/api/genet/tunes/<曲 ID>`              | 1 行と、その属性・動画・楽譜。公開中の配信が演奏しているか（`live`）も返す                   |
 | PUT      | `/admin/api/genet/tunes/<曲 ID>`              | 「この曲を保存」。置き換えた後の行と `live`。`live` なら JSON も書き直す                     |
-| DELETE   | `/admin/api/genet/tunes/<曲 ID>`              | `{}`。まだその曲を演奏する配信があれば 409                                                   |
+| DELETE   | `/admin/api/genet/tunes/<曲 ID>`              | `{}`。まだその曲を演奏する配信があるか、`version` が違えば 409                               |
 | GET      | `/admin/api/genet/streams`                    | `genet_stream` の全行と、それぞれの演奏とシーン                                              |
 | POST     | `/admin/api/genet/streams`                    | `draft` で作成した後の行                                                                     |
 | GET      | `/admin/api/genet/streams/<動画 ID>`          | 1 行と、その演奏とシーン                                                                     |
 | PUT      | `/admin/api/genet/streams/<動画 ID>`          | 「保存」。下書きなら保存した後の行。公開中なら、保存して JSON を書き直した後の行             |
-| DELETE   | `/admin/api/genet/streams/<動画 ID>`          | `{}`。消す時点で `published` の配信なら 409                                                  |
+| DELETE   | `/admin/api/genet/streams/<動画 ID>`          | `{}`。消す時点で `published` の配信か、`version` が違えば 409                                |
 | POST     | `/admin/api/genet/streams/<動画 ID>/publish`  | 「公開」。保存し、検証し、JSON を書き直した後の行                                            |
 | POST     | `/admin/api/genet/streams/<動画 ID>/withdraw` | 「非公開に戻す」。JSON から外し、`draft` として保存した後の行。`published` でなければ 409    |
 | GET      | `/admin/api/genet/pending`                    | 公開の JSON がまだ写していない版と、公開中なのに公開の JSON と違う配信・曲・人物             |
@@ -237,7 +237,7 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 
 配信の状態は、あしあとと同じく下書き（`draft`）と公開中（`published`）の 2 つです（#277、#284）。「あとで」（`status = 'review'`）はなくしました。`review` だった配信は、migration 0016 で `draft` に移しました。表の CHECK は `review` を許したままですが、コードはもう書きません。
 
-下書きの保存・公開・公開中の保存・非公開に戻すの 4 つの操作は、[あしあと](#あしあと)と同じ形です。どれも配信のすべての欄を本文に送ります。公開・公開中の保存・非公開に戻すは、1 回の要求で公開の JSON（`genet/music.json`）まで書き直します。書く順、記録した後の確かめ、`publication_write` の扱い、断ったときと書けなかったときの答え、本文の `version` の扱いも、あしあとと同じです。曲の保存は `version` を見ません（#303）。公開の処理は `worker/src/admin/publishing.ts` の `publishChange` を通り、楽曲一覧に固有の部分は `worker/src/admin/genet-publish.ts` にあります。
+下書きの保存・公開・公開中の保存・非公開に戻すの 4 つの操作は、[あしあと](#あしあと)と同じ形です。どれも配信のすべての欄を本文に送ります。公開・公開中の保存・非公開に戻すは、1 回の要求で公開の JSON（`genet/music.json`）まで書き直します。書く順、記録した後の確かめ、`publication_write` の扱い、断ったときと書けなかったときの答え、`version` の扱いも、あしあとと同じです。曲の保存と削除も `version` を見ます（#303、migration 0018）。公開の処理は `worker/src/admin/publishing.ts` の `publishChange` を通り、楽曲一覧に固有の部分は `worker/src/admin/genet-publish.ts` にあります。
 
 公開の JSON は、配信・曲・人物の 3 つの版から作ります。そのため `publishing.ts` には、配信の操作なら曲と人物を、曲の保存なら配信と人物を `alsoBuiltFrom` として渡します。3 つは 1 つの `publication` の行（`target = 'genet_music'`）を共有します。
 
@@ -245,12 +245,17 @@ PUT は、列を 1 つずつ直すのではなく、すべての列をまとめ�
 
 - 配信の公開と公開中の保存では、演奏するすべての曲と、その曲がクレジットするすべての人物を、配信と一緒に検証する
   - 自分の最新の版と一致しない曲・人物には、`publish` の版を配信の版と同じ `db.batch` で記録する
-  - 曲と人物の最新の版は、行より先に読む。読んでから新しい版が記録された曲・人物には、古い内容の版を記録しない（`LoggedRevision.whileLatest`、#299）。そのときは JSON を記録済みの版から作り直し、新しい版を載せる
+  - 演奏する曲は、読んだときの `edit_version` のままのときだけ書く（`SaveOptions.whileTunes`、#303）。読んでから曲が保存されていたら、配信も何も書かずに 409 を返す
+    - #299 では、間に曲の保存が入っても配信の公開を通し、曲の新しい版を載せていた。版を記録しない曲の保存は JSON から漏れるので、#303 で断る形にした
+  - 人物の最新の版は、行より先に読む。読んでから新しい版が記録された人物には、古い内容の版を記録しない（`LoggedRevision.whileLatest`、#299）。そのときは JSON を記録済みの版から作り直し、新しい版を載せる
 - 非公開に戻すでは、配信の `withdraw` の版だけを記録する
   - 曲と人物の版はそのまま残る。ほかの公開中の配信が演奏していなければ、配信と一緒に JSON から外れる
 - 公開中の配信が演奏していない曲の保存は、行を保存するだけで、版を記録しない
+  - 書く時点でも、まだ公開中の配信が演奏していないときだけ書く。間に配信が公開されていたら、次の演奏している曲の保存としてやり直す
+  - `edit_version` は 2 増やす。版を記録しない保存なので、公開中の行の欄だけの保存と同じ理由になる
 - 公開中の配信が演奏している曲の保存は、公開中の配信の保存と同じく、1 回の要求で JSON まで書き直す（#277 の 6-5）
   - 曲の `publish` の版と、自分の最新の版と一致しない人物の `publish` の版を記録する
+  - 読んでから曲の版が記録されていたら書かずに 409 を返す。ほかの配信の公開が曲の版を記録したときも当たる
   - 条件を満たさなければ 400 を返し、何も保存しない。本文は配信と同じく `problems`・`errors`・`saved` を持ち、`saved` は `false`。`problems` の `field` は `attributes` で、`attributeIndex` が何番目の属性かを 0 から数える
   - JSON を書けなかったときは、欄だけを保存し、502 と `saved: true` を返す
 - 人物の保存は、行を保存するだけで、版を記録しない。次にその人物をクレジットする曲が公開中の配信と一緒に保存されたときに、JSON へ届く
@@ -294,7 +299,7 @@ JSON は `shape_version` と `channel_id` も持ちます。
 | GET      | `/admin/api/subscribers/milestones/<節目 ID>`          | 1 行と、その出典                                                                          |
 | POST     | `/admin/api/subscribers/milestones`                    | `draft` で作成した後の行                                                                  |
 | PUT      | `/admin/api/subscribers/milestones/<節目 ID>`          | 「保存」。下書きなら保存した後の行。公開中なら、保存して JSON を書き直した後の行          |
-| DELETE   | `/admin/api/subscribers/milestones/<節目 ID>`          | `{}`。消す時点で `published` の節目なら 409                                               |
+| DELETE   | `/admin/api/subscribers/milestones/<節目 ID>`          | `{}`。消す時点で `published` の節目か、`version` が違えば 409                             |
 | POST     | `/admin/api/subscribers/milestones/<節目 ID>/publish`  | 「公開」。保存し、検証し、JSON を書き直した後の行                                         |
 | POST     | `/admin/api/subscribers/milestones/<節目 ID>/withdraw` | 「非公開に戻す」。JSON から外し、`draft` として保存した後の行。`published` でなければ 409 |
 | POST     | `/admin/api/subscribers/source-check`                  | 送った出典それぞれの扱いと、出典が足りているか。何も保存しない                            |
