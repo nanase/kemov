@@ -108,6 +108,25 @@ export function fieldsAfterSave<T extends object>(current: T, before: T, after: 
   return fieldsOnReload(current, sent ?? before, after);
 }
 
+/**
+ * The clashes a panel marks once `reloaded` is taken in, when it keeps its
+ * marks until the row is saved: `reloaded`'s, and those found before (`earlier`)
+ * whose fields still hold something other than `after`. A read that brings
+ * nothing new from another screen finds no clash of its own, though what is
+ * typed still stands over another screen's change.
+ */
+export function clashesKept<T extends object>(
+  earlier: readonly (keyof T)[],
+  reloaded: ReloadedFields<T>,
+  after: T,
+): (keyof T)[] {
+  const kept = earlier.filter(
+    (key) => !reloaded.clashes.includes(key) && !sameFields(reloaded.fields[key], after[key]),
+  );
+
+  return [...reloaded.clashes, ...kept];
+}
+
 /** A copy of plain form data that shares nothing with it. `structuredClone` refuses Vue's reactive proxies, which `current` usually is. */
 function plainCopy<V>(value: V): V {
   return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as V);

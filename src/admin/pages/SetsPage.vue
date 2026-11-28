@@ -29,6 +29,7 @@ import {
 } from '../lib/bulk-publish';
 import { useCrumbDetail } from '../lib/crumb';
 import {
+  clashesKept,
   EDITING_TEXT,
   fieldsAfterSave,
   fieldsOnReload,
@@ -817,7 +818,9 @@ function takeInTuneRead(index: number, tune: GenetTune): void {
   tuneFieldsByIndex.value.set(index, reloaded.fields);
   savedTuneAs(index, after, tune.version);
 
-  setTuneClashes(index, reloaded.clashes);
+  // A read with nothing new from another screen - after the stream's 保存 was
+  // refused, say - finds no clash of its own: the marks stay until 保存 or discard.
+  setTuneClashes(index, clashesKept(tuneClashesByIndex.value.get(index) ?? [], reloaded, after));
 }
 
 function isTuneDirty(index: number): boolean {
