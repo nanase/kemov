@@ -4,7 +4,7 @@ import { changedElsewhereResponse, jsonResponse } from '../lib/json';
 import { refusal, refuse } from '../lib/refusal';
 import type { RevisionEntity } from '../lib/revision';
 import { formatTimestamp } from '../lib/time';
-import { heldToVersion, writtenAt, type HeldToVersion } from '../lib/edit-version';
+import { heldToVersion, UNLOGGED_VERSION_STEP, writtenAt, type HeldToVersion } from '../lib/edit-version';
 import { publicShapeOf as personPublicShapeOf, readPeople, type PersonRow } from './genet-people';
 import {
   newestRevisionOf as newestStreamRevisionOf,
@@ -519,6 +519,16 @@ async function saveAndPublish(
   const next = streamWithFields(existing, fields, 'published');
   const revisions = await readAlongsideRevisions(env);
   const tunes = await readTunes(env, tuneIdsOf(next));
+  const deletedTunes = tuneIdsOf(next).filter((tuneId) => !tunes.has(tuneId));
+
+  // Deleted since the fields were checked: the performance would fail the
+  // batch on its foreign key, after the JSON was written.
+  if (deletedTunes.length > 0) {
+    return changedElsewhereResponse(
+      `tunes ${deletedTunes.join(', ')} that stream ${videoId} performs were deleted while this request was saving it`,
+    );
+  }
+
   const problems = publishProblems(next, tunes);
 
   if (problems.length > 0) {
@@ -565,11 +575,12 @@ async function saveAndPublish(
           whileStatus: wasPublished ? 'published' : 'draft',
           whileRevision: revisionBefore,
           ...held,
+          whileTunes: tunesRead,
           unlogged: wasPublished,
         }),
       );
 
-      if (!savedRow(fallback)) return await notLoggedResponse(env, videoId);
+      if (!savedRow(fallback)) return await notLoggedResponse(env, videoId, tunesRead);
     }
 
     return await notWrittenResponse(env, videoId, outcome);
@@ -787,16 +798,20 @@ export async function saveTune(env: Env, tuneId: number, body: Record<string, un
       );
     }
 
-    return await tuneResponse(
-      env,
-      tuneId,
-      true,
+    // The tune as this request wrote it, at the version it left: read back,
+    // a save landing after it would be taken for what this request saved.
+    const wrote = tuneWithFields(existing, fields);
+    const step = outcome.recorded ? 1 : UNLOGGED_VERSION_STEP;
+
+    return jsonResponse(
       {
+        tune: presentTune({ ...wrote, tune: { ...wrote.tune, edit_version: held.whileVersion! + step } }),
+        live: true,
         error: NOT_WRITTEN_TEXT,
         detail: `saved, but ${GENET_MUSIC_OBJECT_KEY} could not be written: ${outcome.error}`,
         saved: true,
       },
-      502,
+      { status: 502 },
     );
   }
 
@@ -833,13 +848,12 @@ async function tuneResponse(
   tuneId: number,
   live: boolean,
   extra: Record<string, unknown>,
-  status = 200,
 ): Promise<Response> {
   const saved = await readTune(env, tuneId);
 
   if (saved === null) return noTuneResponse(tuneId);
 
-  return jsonResponse({ tune: presentTune(saved), live, ...extra }, { status });
+  return jsonResponse({ tune: presentTune(saved), live, ...extra });
 }
 
 /**

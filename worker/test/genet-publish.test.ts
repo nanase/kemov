@@ -1409,6 +1409,101 @@ describe("a tune's save that finds a stream performing it published meanwhile (#
   });
 });
 
+/** `env` that runs `then` once, right after its first `batch` has answered - another tab's request landing just after this one's write. */
+function afterFirstBatch(base: typeof env, then: () => Promise<unknown>): typeof env {
+  let done = false;
+
+  return {
+    ...base,
+    DB: new Proxy(base.DB, {
+      get(target, property) {
+        if (property === 'batch') {
+          return async (statements: D1PreparedStatement[]) => {
+            const results = await target.batch(statements);
+
+            if (!done) {
+              done = true;
+              await then();
+            }
+
+            return results;
+          };
+        }
+
+        const value = Reflect.get(target, property) as unknown;
+
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    }),
+  } as typeof env;
+}
+
+describe("a stream's publish that finds a tune it performs deleted meanwhile (#303)", () => {
+  test('answers 409 naming the tune, rather than failing on the foreign key', async () => {
+    const { videoId } = await createPerformableStream();
+    const added = await createValidTune({ title: '足した曲' });
+    const fields = await fieldsOf(videoId);
+    const performances = [...(fields.performances as unknown[]), { tuneId: added, description: null, scenes: [] }];
+    const deletedBetween = afterFirstRead('SELECT r.entity, r.entity_key', () => deleteTune(env, added));
+
+    const response = await publishStream(deletedBetween, videoId, { ...fields, performances }, NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({
+      changedElsewhere: true,
+      detail: expect.stringContaining(`tunes ${added} that stream`),
+    });
+    expect(await streamStatus(videoId)).toEqual('draft');
+    expect(await childCount(videoId)).toEqual({ performances: 1, scenes: 1 });
+    expect(await readPublished()).toBeNull();
+  });
+});
+
+describe("a stream's save whose JSON could not be written, after a tune it performs was saved (#303)", () => {
+  test('saves nothing, and answers 409 naming the tune', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const read = await fieldsOf(videoId);
+    const tuneSavedFirst = beforeNextBatch(failingPutEnv(), async () =>
+      saveTune(env, tuneId, await tuneFieldsOf(tuneId, { title: '後から直した曲名' }), NOW),
+    );
+
+    const response = await saveStream(tuneSavedFirst, videoId, { ...read, title: '後の保存' }, NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ detail: expect.stringContaining(`tunes ${tuneId} that stream`) });
+    expect(await streamTitle(videoId)).toEqual(read.title);
+    expect(((await fieldsOf(videoId)) as { version: number }).version).toEqual(read.version);
+  });
+});
+
+describe("a tune's save whose JSON could not be written (#303)", () => {
+  // A save landing between this request's write and its answer must not be
+  // answered as this request's: the screen takes the answer for what it sent.
+  test('answers the tune as this request wrote it, at the version it left', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const read = await tuneFieldsOf(tuneId);
+    const otherSavedAfter = afterFirstBatch(failingPutEnv(), async () =>
+      saveTune(env, tuneId, { ...read, version: (read.version as number) + 2, title: '別の画面の曲名' }, NOW),
+    );
+
+    const response = await saveTune(otherSavedAfter, tuneId, { ...read, title: 'この画面の曲名' }, NOW);
+
+    expect(response.status).toEqual(502);
+    expect(await response.json()).toMatchObject({
+      saved: true,
+      live: true,
+      tune: { title: 'この画面の曲名', version: (read.version as number) + 2 },
+    });
+    expect(((await tuneFieldsOf(tuneId)) as { title: string }).title).toEqual('別の画面の曲名');
+  });
+});
+
 describe('two screens that read the same tune (#303)', () => {
   const LATER = new Date('2026-09-19T00:00:00Z');
 
