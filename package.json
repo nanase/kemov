@@ -19,7 +19,7 @@
     "screenshot": "node scripts/screenshot.js",
     "format": "prettier --write .",
     "test": "vitest",
-    "coverage": "vitest run --coverage --project frontend --project scripts"
+    "coverage": "vitest run --coverage --project frontend --project dom --project scripts"
   },
   "resolutions": {
     "vue": "^3",
@@ -40,11 +40,13 @@
     "@vue-macros/volar": "^3.1.4",
     "@vue/eslint-config-prettier": "^10.2.0",
     "@vue/eslint-config-typescript": "^14.9.0",
+    "@vue/test-utils": "^2.6.0",
     "@vue/tsconfig": "^0.9.1",
     "axios": "^1.21.0",
     "axios-retry": "^4.5.0",
     "eslint": "^10.14.0",
     "eslint-plugin-vue": "^10.12.0",
+    "happy-dom": "^21.0.4",
     "playwright": "^1.65.0",
     "postcss": "^8.5.33",
     "postcss-html": "^2.0.0",
