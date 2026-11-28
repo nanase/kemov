@@ -45,11 +45,13 @@ const THIRD = member('UCcccccccccccccccccccccc', 'さんばん', 2);
 /** Not on the server: added on the screen, and refused by the list's 保存 in the test that needs that. */
 const ADDED = { channelId: 'UCdddddddddddddddddddddd', name: 'ついか' };
 
-/** The request the server holds unanswered until `release`, as `METHOD /path`. */
-const HELD = `PUT /members/${FIRST.channelId}`;
+/** The first member's own 保存, as `METHOD /path` under /admin/api. */
+const ROW_SAVE = `PUT /members/${FIRST.channelId}`;
 
 /** Every request the page made, as `METHOD /path` under /admin/api. */
 let requests: string[];
+/** The request the server holds unanswered until `release`. */
+let held: string;
 let release: () => void;
 /** What the list's 保存 is answered with. */
 let listSaveAnswer: { status: number; body: unknown };
@@ -65,37 +67,16 @@ function answerFor(request: string): { status: number; body: unknown } {
   return { status: 200, body: {} };
 }
 
-beforeEach(async () => {
-  requests = [];
-  release = () => {
-    throw new Error(`${HELD} was never asked`);
-  };
-  listSaveAnswer = { status: 200, body: {} };
+const fakeFetch = vi.fn<typeof fetch>(async (input, init) => {
+  const request = `${init?.method ?? 'GET'} ${String(input).replace(/^\/admin\/api/, '')}`;
 
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const request = `${init?.method ?? 'GET'} ${String(input).replace(/^\/admin\/api/, '')}`;
+  requests.push(request);
 
-      requests.push(request);
+  if (request === held) await new Promise<void>((resolve) => (release = resolve));
 
-      if (request === HELD) await new Promise<void>((resolve) => (release = resolve));
+  const { status, body } = answerFor(request);
 
-      const { status, body } = answerFor(request);
-
-      return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-    }),
-  );
-
-  wrapper = await mountPage(MembersPage);
-  await flushPromises();
-});
-
-afterEach(() => {
-  wrapper.unmount();
-  // Module state, which outlives the page: the next test starts with no unsaved list.
-  clearDraft();
-  vi.unstubAllGlobals();
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 });
 
 function row(name: string): DOMWrapper<HTMLTableRowElement> {
@@ -131,13 +112,15 @@ async function pressPastDisabled(target: DOMWrapper<HTMLButtonElement>): Promise
 
 /** Presses the first member's own 保存, which the server holds. */
 async function startRowSave(): Promise<void> {
+  held = ROW_SAVE;
   await wrapper.get('.inspector-foot button.primary').trigger('click');
   await flushPromises();
 
-  expect(requests.at(-1)).toBe(HELD);
+  expect(requests.at(-1)).toBe(ROW_SAVE);
 }
 
-async function answerRowSave(): Promise<void> {
+/** Answers the request the server holds, and what the page asks after it. */
+async function answerHeld(): Promise<void> {
   release();
   await flushPromises();
 }
@@ -147,13 +130,52 @@ async function moveARow(): Promise<void> {
   await wrapper.get(`button[aria-label="${SECOND.name}を下へ移動"]`).trigger('click');
 }
 
+/**
+ * Adds a member, types over the first one, and has the list's 保存 refused
+ * about the added member: the banner with 該当の行を表示 is left over the list,
+ * as moving to the added member would lose what is typed.
+ */
+async function leaveRowErrorBanner(): Promise<void> {
+  await button('.toolbar', '＋ メンバーを追加').trigger('click');
+  await wrapper.get('#f-cid').setValue(ADDED.channelId);
+  await flushPromises();
+  await wrapper.get('#f-name').setValue(ADDED.name);
+  await wrapper.get('.inspector-foot button.primary').trigger('click');
+  await row(FIRST.name).trigger('click');
+  await wrapper.get('#f-name').setValue(`${FIRST.name}（直した）`);
+
+  listSaveAnswer = { status: 400, body: { error: '誤りがあります', channelId: ADDED.channelId } };
+  await button('.toolbar', '保存').trigger('click');
+  await flushPromises();
+}
+
+beforeEach(async () => {
+  requests = [];
+  held = '';
+  release = () => {
+    throw new Error('no request is held');
+  };
+  listSaveAnswer = { status: 200, body: {} };
+  vi.stubGlobal('fetch', fakeFetch);
+
+  wrapper = await mountPage(MembersPage);
+  await flushPromises();
+});
+
+afterEach(() => {
+  wrapper.unmount();
+  // Module state, which outlives the page: the next test starts with no unsaved list.
+  clearDraft();
+  vi.unstubAllGlobals();
+});
+
 describe('MembersPage.vue while a row is being saved', () => {
   test('the edit panel cannot be typed in, and can be again once the save is answered', async () => {
     await startRowSave();
 
     expect(wrapper.get('.inspector').attributes('inert')).toBeDefined();
 
-    await answerRowSave();
+    await answerHeld();
 
     expect(wrapper.get('.inspector').attributes('inert')).toBeUndefined();
   });
@@ -167,9 +189,9 @@ describe('MembersPage.vue while a row is being saved', () => {
     await press(row(SECOND.name));
 
     expect(shown()).toEqual({ row: expect.stringContaining(FIRST.name), field: FIRST.name });
-    expect(requests).toEqual(['GET /members', HELD]);
+    expect(requests).toEqual(['GET /members', ROW_SAVE]);
 
-    await answerRowSave();
+    await answerHeld();
     await press(row(SECOND.name));
 
     expect(shown()).toEqual({ row: expect.stringContaining(SECOND.name), field: SECOND.name });
@@ -181,7 +203,7 @@ describe('MembersPage.vue while a row is being saved', () => {
     ['元に戻す', () => expect(wrapper.get('.toolbar').text()).not.toContain('未保存')],
     ['保存', () => expect(requests).toContain('PUT /members')],
     ['＋ メンバーを追加', () => expect(wrapper.get('.inspector h3').text()).toBe('新しいメンバー')],
-  ])('the toolbar’s %s is refused, and does what it does once the save is answered', async (label, done) => {
+  ])('the toolbar’s %s is refused, and does what it does once the save is answered', async (label, expectItRan) => {
     await moveARow();
     await startRowSave();
 
@@ -191,35 +213,22 @@ describe('MembersPage.vue while a row is being saved', () => {
 
     expect(shown()).toEqual({ row: expect.stringContaining(FIRST.name), field: FIRST.name });
     expect(wrapper.get('.toolbar').text()).toContain('未保存');
-    expect(requests).toEqual(['GET /members', HELD]);
+    expect(requests).toEqual(['GET /members', ROW_SAVE]);
 
-    await answerRowSave();
+    await answerHeld();
     await button('.toolbar', label).trigger('click');
     await flushPromises();
 
-    done();
+    expectItRan();
   });
 
-  // The banner a list save's 400 leaves over the list when moving to the member would lose what is typed.
   test('該当の行を表示 is refused, and shows the added member once the save is answered', async () => {
     // What is typed over the first member is still there when the banner's button moves away from it.
     vi.stubGlobal(
       'confirm',
       vi.fn(() => true),
     );
-
-    await button('.toolbar', '＋ メンバーを追加').trigger('click');
-    await wrapper.get('#f-cid').setValue(ADDED.channelId);
-    await flushPromises();
-    await wrapper.get('#f-name').setValue(ADDED.name);
-    await wrapper.get('.inspector-foot button.primary').trigger('click');
-    await row(FIRST.name).trigger('click');
-    await wrapper.get('#f-name').setValue(`${FIRST.name}（直した）`);
-
-    listSaveAnswer = { status: 400, body: { error: '誤りがあります', channelId: ADDED.channelId } };
-    await button('.toolbar', '保存').trigger('click');
-    await flushPromises();
-
+    await leaveRowErrorBanner();
     await startRowSave();
 
     const before = [...requests];
@@ -232,11 +241,31 @@ describe('MembersPage.vue while a row is being saved', () => {
     expect(wrapper.text()).toContain('該当の行を表示');
     expect(requests).toEqual(before);
 
-    await answerRowSave();
+    await answerHeld();
     await button('.panel', '該当の行を表示').trigger('click');
     await flushPromises();
 
     expect(shown()).toEqual({ row: expect.stringContaining(ADDED.name), field: ADDED.name });
     expect(wrapper.text()).not.toContain('該当の行を表示');
+  });
+});
+
+describe('MembersPage.vue while the list is being read', () => {
+  test('再読み込み is refused and the edit panel cannot be typed in, until the list is read', async () => {
+    held = 'GET /members';
+    await button('.toolbar', '再読み込み').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.get('.inspector').attributes('inert')).toBeDefined();
+    expect(button('.toolbar', '再読み込み').element.disabled).toBe(true);
+
+    await pressPastDisabled(button('.toolbar', '再読み込み'));
+
+    expect(requests).toEqual(['GET /members', 'GET /members']);
+
+    await answerHeld();
+
+    expect(wrapper.get('.inspector').attributes('inert')).toBeUndefined();
+    expect(button('.toolbar', '再読み込み').element.disabled).toBe(false);
   });
 });

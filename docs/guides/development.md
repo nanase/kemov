@@ -113,11 +113,11 @@ bun run format                 # 書き換える
 bun run prettier --check .     # CI が実行するもの
 ```
 
-## 画面のテスト
+## 画面を mount するテスト
 
-管理サイトの画面は、mount してクリックやキー操作を確かめるテストを書けます。ファイル名を `*.mount.test.ts` にすると、happy-dom の DOM がある `dom` プロジェクトで動きます。DOM の用意には時間がかかるので、ほかのテストは DOM の無い `frontend` プロジェクトで動かします。
+画面を mount して、クリックやキー操作を確かめるテストを書けます。ファイル名を `*.mount.test.ts` にすると、happy-dom の DOM がある `dom` プロジェクトで動きます。DOM の用意には時間がかかるので、ほかのテストは DOM の無い `frontend` プロジェクトで動かします。
 
-画面は `test/admin/mount-page.ts` の `mountPage` で mount します。サーバーへの通信は、`vi.stubGlobal` で `fetch` を差し替えて答えます。答えを返さずに待たせると、通信中の画面を確かめられます。例は `test/admin/members-page.mount.test.ts` にあります。
+管理サイトの画面は、`test/admin/mount-page.ts` の `mountPage` で mount します。サーバーへの通信は、`vi.stubGlobal` で `fetch` を差し替えて答えます。答えを返さずに待たせると、通信中の画面を確かめられます。例は `test/admin/members-page.mount.test.ts` にあります。
 
 無効なボタンは、ブラウザと同じくクリックを受け取りません。ハンドラの中の止め方まで確かめるときは、テストの中で `disabled` を外してから押します。
 

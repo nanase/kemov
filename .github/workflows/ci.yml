@@ -56,9 +56,9 @@ jobs:
       - name: Type check the worker
         run: bun run type-check:worker
 
-      # vitest.config.ts declares a project per runtime. Naming each one here
-      # rather than running them together means a project that stops matching
-      # any test file fails the build instead of passing quietly.
+      # Each vitest project is named here rather than run together, so that a
+      # project that stops matching any test file fails the build instead of
+      # passing quietly.
       - name: Test
         run: bun run vitest run --project frontend
 

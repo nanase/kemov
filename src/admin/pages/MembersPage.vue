@@ -252,7 +252,7 @@ async function load(): Promise<void> {
   }
 }
 
-/** 再読み込み. Refused while a read or `busy` is under way, as its button is disabled then. */
+/** Reads the list again for 再読み込み. Returns while a read or `busy` is under way, as the button is disabled then. */
 function reload(): void {
   if (loading.value || busy.value) return;
 
