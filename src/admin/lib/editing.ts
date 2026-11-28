@@ -108,6 +108,25 @@ export function fieldsAfterSave<T extends object>(current: T, before: T, after: 
   return fieldsOnReload(current, sent ?? before, after);
 }
 
+/**
+ * The clashes a panel marks once `reloaded` is taken in, when it keeps its
+ * marks until the row is saved: `reloaded`'s, and those found before (`earlier`)
+ * whose fields still hold something other than `after`. A read that brings
+ * nothing new from another screen finds no clash of its own, though what is
+ * typed still stands over another screen's change.
+ */
+export function clashesKept<T extends object>(
+  earlier: readonly (keyof T)[],
+  reloaded: ReloadedFields<T>,
+  after: T,
+): (keyof T)[] {
+  const kept = earlier.filter(
+    (key) => !reloaded.clashes.includes(key) && !sameFields(reloaded.fields[key], after[key]),
+  );
+
+  return [...reloaded.clashes, ...kept];
+}
+
 /** A copy of plain form data that shares nothing with it. `structuredClone` refuses Vue's reactive proxies, which `current` usually is. */
 function plainCopy<V>(value: V): V {
   return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as V);
@@ -122,4 +141,14 @@ function plainCopy<V>(value: V): V {
  */
 export function writeBody<T extends object>(fields: T, row: { version: number }): T & { version: number } {
   return { ...fields, version: row.version };
+}
+
+/**
+ * The path of a 削除 of `row` at `path`, with the version it was read at
+ * (#309): the worker deletes only while the row is still at it, as it writes
+ * a 保存, and answers 409 otherwise. A DELETE has no body, so the version
+ * goes in the query.
+ */
+export function removePath(path: string, row: { version: number }): string {
+  return `${path}?version=${row.version}`;
 }

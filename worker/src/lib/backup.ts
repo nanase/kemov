@@ -318,7 +318,7 @@ export const BACKED_UP_TABLES: readonly TableShape[] = [
   },
   {
     name: 'genet_tune',
-    columns: ['tune_id', 'title', 'original_title', 'subtunes', 'memo'],
+    columns: ['tune_id', 'title', 'original_title', 'subtunes', 'memo', 'edit_version'],
     conflict: ['tune_id'],
   },
   {

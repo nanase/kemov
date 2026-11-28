@@ -3,6 +3,7 @@ import { isAdminEmail, verifyAccess } from '../lib/access';
 import type { Env } from '../lib/env';
 import { jsonResponse } from '../lib/json';
 import { malformed, refusal, refuse, REQUEST_FAILED } from '../lib/refusal';
+import { versionInQuery } from '../lib/edit-version';
 import { lookupChannel } from './channel-lookup';
 import { ackCollectTask, listCollectTasks, markCollectTaskUnavailable, retryCollectTask } from './collect-tasks';
 import { listDrafts } from './drafts';
@@ -155,7 +156,7 @@ export async function handleAdminRequest(
 
     if (request.method === 'GET') return await getEvent(env, eventId);
 
-    if (request.method === 'DELETE') return await deleteEvent(env, eventId);
+    if (request.method === 'DELETE') return await deleteEvent(env, eventId, deleteBody(request));
 
     if (request.method !== 'PUT') return methodNotAllowed(request, 'GET, PUT, DELETE');
 
@@ -221,7 +222,7 @@ export async function handleAdminRequest(
 
     if (request.method === 'GET') return await getMilestone(env, milestoneId);
 
-    if (request.method === 'DELETE') return await deleteMilestone(env, milestoneId);
+    if (request.method === 'DELETE') return await deleteMilestone(env, milestoneId, deleteBody(request));
 
     if (request.method !== 'PUT') return methodNotAllowed(request, 'GET, PUT, DELETE');
 
@@ -289,7 +290,7 @@ export async function handleAdminRequest(
   if (segments.length === 5 && name === 'genet' && sub === 'streams' && id2 !== undefined) {
     if (request.method === 'GET') return await getStream(env, id2);
 
-    if (request.method === 'DELETE') return await deleteStream(env, id2);
+    if (request.method === 'DELETE') return await deleteStream(env, id2, deleteBody(request));
 
     if (request.method !== 'PUT') return methodNotAllowed(request, 'GET, PUT, DELETE');
 
@@ -337,7 +338,7 @@ export async function handleAdminRequest(
 
     if (request.method === 'GET') return await getTune(env, tuneId);
 
-    if (request.method === 'DELETE') return await deleteTune(env, tuneId);
+    if (request.method === 'DELETE') return await deleteTune(env, tuneId, deleteBody(request));
 
     if (request.method !== 'PUT') return methodNotAllowed(request, 'GET, PUT, DELETE');
 
@@ -623,6 +624,11 @@ function methodNotAllowed(request: Request, allow: string): Response {
     { error: REQUEST_FAILED, detail: `${request.method} is not allowed here` },
     { status: 405, headers: { Allow: allow } },
   );
+}
+
+/** What a DELETE of an edited row is held to (#309): its query's `version`, as a save's body carries it. */
+function deleteBody(request: Request): Record<string, unknown> {
+  return versionInQuery(new URL(request.url).searchParams);
 }
 
 /**

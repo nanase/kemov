@@ -2,10 +2,11 @@ import { changedElsewhereResponse } from './json';
 import { malformed, refuse } from './refusal';
 
 /**
- * `edit_version` (#307, migration 0017): the count of the writes to each row
- * the admin site edits - あしあと's events, 登録者数の節目 and ジェネット楽曲一覧's
- * streams. A screen sends back the version it read with every save, 公開 and
- * 非公開に戻す, and a row at another one was written by another screen since.
+ * `edit_version` (#307, migration 0017; #303, migration 0018): the count of
+ * the writes to each row the admin site edits - あしあと's events, 登録者数の節目
+ * and ジェネット楽曲一覧's streams and tunes. A screen sends back the version it
+ * read with every save, 公開, 非公開に戻す and 削除 (#309), and a row at
+ * another one was written by another screen since.
  *
  * Each table's `saveStatements` holds its statements to the version, and
  * each `*-publish.ts` holds the revision it logs to the version those
@@ -34,6 +35,7 @@ export function heldToVersion(
   body: Record<string, unknown>,
   current: number,
   what: string,
+  action: 'save' | 'remove' = 'save',
 ): HeldToVersion | { error: Response } {
   const { version } = body;
 
@@ -44,10 +46,27 @@ export function heldToVersion(
   }
 
   if (version !== current) {
-    return { error: changedElsewhereResponse(`${what} was saved by another screen since version ${version}`) };
+    return {
+      error: changedElsewhereResponse(`${what} was saved by another screen since version ${version}`, action),
+    };
   }
 
   return { whileVersion: version };
+}
+
+/**
+ * A DELETE's `version` (#309), from its query - `?version=3` - as
+ * `heldToVersion` reads it from a body: a DELETE sends none. Digits alone
+ * are a number; anything else is passed on as the text it is, for
+ * `heldToVersion` to refuse. No `version` is no key, held to the version
+ * the request reads.
+ */
+export function versionInQuery(searchParams: URLSearchParams): Record<string, unknown> {
+  const version = searchParams.get('version');
+
+  if (version === null) return {};
+
+  return { version: /^\d+$/.test(version) ? Number(version) : version };
 }
 
 /**
@@ -63,6 +82,9 @@ export function heldToVersion(
  * The one write that leaves a published row published with no revision is
  * the unlogged save, and it leaves the row at no version another save of
  * the same version could leave it at.
+ *
+ * A tune (#303) has no status to tell its saves apart by: every save of one
+ * no published stream performs logs no revision, and adds this too.
  */
 export const UNLOGGED_VERSION_STEP = 2;
 

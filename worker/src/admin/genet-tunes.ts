@@ -1,7 +1,8 @@
 import { queryInChunks } from '../lib/d1';
 import type { Env } from '../lib/env';
-import { jsonResponse } from '../lib/json';
+import { changedElsewhereResponse, jsonResponse } from '../lib/json';
 import { malformed, refusal, refuse, type Refusal } from '../lib/refusal';
+import { heldToVersion, UNLOGGED_VERSION_STEP } from '../lib/edit-version';
 
 /**
  * Reading, saving and deleting `genet_tune` (#141, #139): one tune's own
@@ -14,6 +15,11 @@ import { malformed, refusal, refuse, type Refusal } from '../lib/refusal';
  * A save replaces every attribute, video and score row wholesale, the same
  * full-replace shape footprints.ts gives `footprints_event`'s members and
  * sources - there is no partial edit of "just one attribute".
+ *
+ * `edit_version` (#303, migration 0018) counts the writes to the row, as
+ * migration 0017's does for a stream's: a save and a delete are held to the
+ * version the screen read, and a stream's publish to the version it read
+ * each tune it performs at (genet-publish.ts).
  */
 
 export interface TuneRow {
@@ -22,6 +28,7 @@ export interface TuneRow {
   original_title: string | null;
   subtunes: string;
   memo: string | null;
+  edit_version: number;
 }
 
 export interface AttributePersonRow {
@@ -76,6 +83,7 @@ export function present(saved: GenetTune) {
     })),
     scores: saved.scores.map((s) => ({ url: s.url, title: s.title })),
     memo: tune.memo,
+    version: tune.edit_version,
   };
 }
 
@@ -126,7 +134,7 @@ interface RawAttributePersonRow {
 /** `genet_tune`, its attributes (with the people each names), its videos and its scores, all in display order. */
 export async function readTune(env: Env, tuneId: number): Promise<GenetTune | null> {
   const tune = await env.DB.prepare(
-    'SELECT tune_id, title, original_title, subtunes, memo FROM genet_tune WHERE tune_id = ?1',
+    'SELECT tune_id, title, original_title, subtunes, memo, edit_version FROM genet_tune WHERE tune_id = ?1',
   )
     .bind(tuneId)
     .first<TuneRow>();
@@ -178,17 +186,21 @@ export async function readTunes(env: Env, tuneIds: readonly number[]): Promise<M
 
   if (ids.length === 0) return new Map();
 
-  const [tuneRows, attrRows, personRows, videoRows, scoreRows] = await Promise.all([
-    queryInChunks(ids, async (chunk) => {
-      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
-      const { results } = await env.DB.prepare(
-        `SELECT tune_id, title, original_title, subtunes, memo FROM genet_tune WHERE tune_id IN (${placeholders})`,
-      )
-        .bind(...chunk)
-        .all<TuneRow>();
+  // The rows before their children, not alongside them, as genet-streams.ts's
+  // `readStreams` reads streams: a save landing in between then leaves the
+  // `edit_version` read behind the children read, and a write held to it is
+  // refused (#303) rather than taking the children for the ones it saved.
+  const tuneRows = await queryInChunks(ids, async (chunk) => {
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+    const { results } = await env.DB.prepare(
+      `SELECT tune_id, title, original_title, subtunes, memo, edit_version FROM genet_tune WHERE tune_id IN (${placeholders})`,
+    )
+      .bind(...chunk)
+      .all<TuneRow>();
 
-      return results;
-    }),
+    return results;
+  });
+  const [attrRows, personRows, videoRows, scoreRows] = await Promise.all([
     queryInChunks(ids, async (chunk) => {
       const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
       const { results } = await env.DB.prepare(
@@ -306,24 +318,30 @@ export async function listTunes(env: Env, q: string | null): Promise<Response> {
  * JSON too (#284's 6-5).
  */
 export async function isPerformedLive(env: Env, tuneId: number): Promise<boolean> {
-  const row = await env.DB.prepare(
-    `SELECT 1
-       FROM revision r
-       JOIN (SELECT MAX(revision_id) AS revision_id
-               FROM revision
-              WHERE entity = 'genet_stream'
-              GROUP BY entity_key) latest
-         ON latest.revision_id = r.revision_id
-      WHERE r.action <> 'withdraw'
-        AND r.body IS NOT NULL
-        AND EXISTS (SELECT 1 FROM json_each(r.body, '$.performances') p
-                     WHERE json_extract(p.value, '$.tune_id') = ?1)
-      LIMIT 1`,
-  )
+  const row = await env.DB.prepare(`SELECT 1 WHERE ${performedLive('?1')}`)
     .bind(tuneId)
     .first();
 
   return row !== null;
+}
+
+/**
+ * `isPerformedLive` as SQL, for the tune whose id `tuneId` is - a parameter
+ * or a column, written into the SQL as is - so that a save's batch can ask
+ * it again when it runs (`SaveOptions.whileUnperformed`).
+ */
+function performedLive(tuneId: '?1' | 'genet_tune.tune_id'): string {
+  return `EXISTS (SELECT 1
+                    FROM revision r
+                    JOIN (SELECT MAX(revision_id) AS revision_id
+                            FROM revision
+                           WHERE entity = 'genet_stream'
+                           GROUP BY entity_key) latest
+                      ON latest.revision_id = r.revision_id
+                   WHERE r.action <> 'withdraw'
+                     AND r.body IS NOT NULL
+                     AND EXISTS (SELECT 1 FROM json_each(r.body, '$.performances') p
+                                  WHERE json_extract(p.value, '$.tune_id') = ${tuneId}))`;
 }
 
 /** The 404 for a tune that is not there - gone, or never was. */
@@ -684,14 +702,79 @@ function childStatementsForNewTune(env: Env, fields: TuneFields): D1PreparedStat
 }
 
 /**
+ * What `saveStatements` expects the tune still to be for anything to be
+ * written - its attributes, videos and scores as much as its own row - and
+ * what it adds to `edit_version`. Every condition is checked against the
+ * row as it was before the batch: the child statements run before the
+ * row's own, which is what changes `edit_version`.
+ *
+ * - `whileVersion`: the `edit_version` the screen read the tune at (#303),
+ *   as genet-streams.ts's `SaveOptions` has it
+ * - `whileRevision`: the tune's newest revision, 0 for none, as the caller
+ *   saw it before reading the row, as genet-streams.ts's `SaveOptions` has
+ *   it. A stream's publish logs the tune as it read it: a save of a tune a
+ *   published stream performs writes nothing over one that landed between
+ *   its read and its batch, and logs no revision either
+ * - `whileUnperformed`: a save that found no published stream performing
+ *   the tune, and so logs no revision, writes only while that is still so.
+ *   A stream published in between has put the tune in the public JSON as
+ *   it was, so the save has to reach the JSON too (genet-publish.ts)
+ * - `unlogged`: a save that logs no revision adds lib/edit-version.ts's
+ *   `UNLOGGED_VERSION_STEP`
+ */
+export interface SaveOptions {
+  whileVersion?: number;
+  whileRevision?: number;
+  whileUnperformed?: boolean;
+  unlogged?: boolean;
+}
+
+/** `SaveOptions`' conditions as `stillAsRead` binds them: the version, the revision, and 1 for `whileUnperformed`, each null for none. */
+type StillAsRead = readonly [number | null, number | null, 1 | null];
+
+function stillAsReadValues(options: SaveOptions): StillAsRead {
+  return [options.whileVersion ?? null, options.whileRevision ?? null, options.whileUnperformed === true ? 1 : null];
+}
+
+/**
+ * The condition, in `saveStatements`' statements over a `genet_tune` row,
+ * that the row is still as `SaveOptions` asks, read from the `StillAsRead`
+ * bound from `?first` on.
+ */
+function stillAsRead(first: number): string {
+  const [version, revision, unperformed] = [`?${first}`, `?${first + 1}`, `?${first + 2}`];
+
+  return `(${version} IS NULL OR genet_tune.edit_version = ${version})
+          AND (${revision} IS NULL OR ${NEWEST_TUNE_REVISION} = ${revision})
+          AND (${unperformed} IS NULL OR NOT ${performedLive('genet_tune.tune_id')})`;
+}
+
+/** The newest revision of the `genet_tune` row in scope, 0 for none, as SQL. */
+export const NEWEST_TUNE_REVISION = `(SELECT COALESCE(MAX(revision_id), 0) FROM revision
+                                       WHERE entity = 'genet_tune' AND entity_key = CAST(genet_tune.tune_id AS TEXT))`;
+
+/** The newest revision of tune `tuneId`, or 0 when it has none: `SaveOptions.whileRevision`. */
+export async function newestRevisionOf(env: Env, tuneId: number): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT COALESCE(MAX(revision_id), 0) AS revision_id FROM revision
+      WHERE entity = 'genet_tune' AND entity_key = ?1`,
+  )
+    .bind(String(tuneId))
+    .first<{ revision_id: number }>();
+
+  return row!.revision_id;
+}
+
+/**
  * The same statements as `childStatementsForNewTune`, for an existing
  * `tuneId` bound directly rather than read off `last_insert_rowid()`. Each is
- * inserted only while the tune is still there, as genet-streams.ts's own
- * `childStatements` are and for the same reason: a tune deleted between the
- * caller's read and its batch would otherwise fail a publish's batch on the
- * foreign key, after the public JSON was already written.
+ * inserted only while the tune is still there, and still as `still` asks, as
+ * genet-streams.ts's own `childStatements` are and for the same reason: a
+ * tune deleted between the caller's read and its batch would otherwise fail
+ * a publish's batch on the foreign key, after the public JSON was already
+ * written.
  */
-function childStatements(env: Env, tuneId: number, fields: TuneFields): D1PreparedStatement[] {
+function childStatements(env: Env, tuneId: number, fields: TuneFields, still: StillAsRead): D1PreparedStatement[] {
   const statements: D1PreparedStatement[] = [];
 
   fields.attributes.forEach((a, index) => {
@@ -700,8 +783,8 @@ function childStatements(env: Env, tuneId: number, fields: TuneFields): D1Prepar
     statements.push(
       env.DB.prepare(
         `INSERT INTO genet_tune_attribute (tune_id, position, name, text)
-         SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1)`,
-      ).bind(tuneId, position, a.name, a.text),
+         SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1 AND ${stillAsRead(5)})`,
+      ).bind(tuneId, position, a.name, a.text, ...still),
     );
 
     a.people.forEach((p, personIndex) => {
@@ -709,8 +792,8 @@ function childStatements(env: Env, tuneId: number, fields: TuneFields): D1Prepar
         env.DB.prepare(
           `INSERT INTO genet_tune_attribute_person
              (tune_id, attribute_position, position, person_id, credited_as, note)
-           SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1)`,
-        ).bind(tuneId, position, personIndex + 1, p.personId, p.creditedAs, p.note),
+           SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1 AND ${stillAsRead(7)})`,
+        ).bind(tuneId, position, personIndex + 1, p.personId, p.creditedAs, p.note, ...still),
       );
     });
   });
@@ -719,8 +802,8 @@ function childStatements(env: Env, tuneId: number, fields: TuneFields): D1Prepar
     statements.push(
       env.DB.prepare(
         `INSERT INTO genet_tune_video (tune_id, position, video_id, title, start_seconds, description)
-         SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1)`,
-      ).bind(tuneId, index + 1, v.videoId, v.title, v.startSeconds, v.description),
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1 AND ${stillAsRead(7)})`,
+      ).bind(tuneId, index + 1, v.videoId, v.title, v.startSeconds, v.description, ...still),
     );
   });
 
@@ -728,8 +811,8 @@ function childStatements(env: Env, tuneId: number, fields: TuneFields): D1Prepar
     statements.push(
       env.DB.prepare(
         `INSERT INTO genet_tune_score (tune_id, position, url, title)
-         SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1)`,
-      ).bind(tuneId, index + 1, s.url, s.title),
+         SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1 AND ${stillAsRead(5)})`,
+      ).bind(tuneId, index + 1, s.url, s.title, ...still),
     );
   });
 
@@ -758,18 +841,50 @@ export async function createTune(env: Env, body: Record<string, unknown>): Promi
   return jsonResponse({ tune: present(saved!) }, { status: 201 });
 }
 
-/** The statements that save `fields` over tune `tuneId`, replacing every attribute, video and score row. */
-export function saveStatements(env: Env, tuneId: number, fields: TuneFields): D1PreparedStatement[] {
-  return [
+/**
+ * The statements that save `fields` over tune `tuneId`, replacing every
+ * attribute, video and score row, the row's own last (see `SaveOptions`).
+ */
+export function saveStatements(
+  env: Env,
+  tuneId: number,
+  fields: TuneFields,
+  options: SaveOptions = {},
+): D1PreparedStatement[] {
+  const still = stillAsReadValues(options);
+  const deleteChildren = (table: string) =>
     env.DB.prepare(
-      'UPDATE genet_tune SET title = ?1, original_title = ?2, subtunes = ?3, memo = ?4 WHERE tune_id = ?5',
-    ).bind(fields.title, fields.originalTitle, JSON.stringify(fields.subtunes), fields.memo, tuneId),
-    env.DB.prepare('DELETE FROM genet_tune_attribute_person WHERE tune_id = ?1').bind(tuneId),
-    env.DB.prepare('DELETE FROM genet_tune_attribute WHERE tune_id = ?1').bind(tuneId),
-    env.DB.prepare('DELETE FROM genet_tune_video WHERE tune_id = ?1').bind(tuneId),
-    env.DB.prepare('DELETE FROM genet_tune_score WHERE tune_id = ?1').bind(tuneId),
-    ...childStatements(env, tuneId, fields),
+      `DELETE FROM ${table}
+        WHERE tune_id = ?1
+          AND EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1 AND ${stillAsRead(2)})`,
+    ).bind(tuneId, ...still);
+
+  return [
+    deleteChildren('genet_tune_attribute_person'),
+    deleteChildren('genet_tune_attribute'),
+    deleteChildren('genet_tune_video'),
+    deleteChildren('genet_tune_score'),
+    ...childStatements(env, tuneId, fields, still),
+    env.DB.prepare(
+      `UPDATE genet_tune
+          SET title = ?1, original_title = ?2, subtunes = ?3, memo = ?4,
+              edit_version = edit_version + ${options.unlogged === true ? UNLOGGED_VERSION_STEP : 1}
+        WHERE tune_id = ?5 AND ${stillAsRead(6)}`,
+    ).bind(fields.title, fields.originalTitle, JSON.stringify(fields.subtunes), fields.memo, tuneId, ...still),
   ];
+}
+
+/**
+ * Whether `saveStatements`' batch - those statements alone - wrote the row:
+ * false when it was gone, or no longer as `SaveOptions` asked.
+ */
+export function savedRow(results: readonly D1Result[]): boolean {
+  return results[results.length - 1]!.meta.changes > 0;
+}
+
+/** The answer when a save found the tune saved by another screen since the version it was read at (#303). */
+export function savedElsewhereResponse(tuneId: number): Response {
+  return changedElsewhereResponse(`tune ${tuneId} was saved by another screen meanwhile`);
 }
 
 /** `saved` as it reads once `fields` are saved over it, without reading it back. */
@@ -798,56 +913,59 @@ export function withFields(saved: GenetTune, fields: TuneFields): GenetTune {
 }
 
 /**
- * PUT /admin/api/genet/tunes/:tuneId for a tune no published stream
- * performs. Replaces every attribute, video and score row. A tune a
- * published stream performs reaches the public JSON when it is saved, and
- * goes through genet-publish.ts's `saveTune` instead (#284).
+ * DELETE /admin/api/genet/tunes/:tuneId. 404 when there is no such tune, 409
+ * when any `genet_performance` still performs it - the same shape as
+ * genet-people.ts's deletePerson - and 409 when it was saved since the
+ * version `body` names (#309), as genet-streams.ts's deleteStream is.
+ *
+ * Each statement asks both again when the batch runs: a save, or a stream
+ * that performs it, landing between the read and the batch leaves the tune
+ * as it is, rather than deleting a save unseen or failing on the foreign key.
  */
-export async function updateTune(env: Env, tuneId: number, body: Record<string, unknown>): Promise<Response> {
+export async function deleteTune(env: Env, tuneId: number, body: Record<string, unknown> = {}): Promise<Response> {
   const existing = await readTune(env, tuneId);
 
   if (existing === null) return noTuneResponse(tuneId);
 
-  const fields = await validatedTuneFields(env, body);
+  if (await isPerformed(env, tuneId)) return performedResponse();
 
-  if ('error' in fields) return fields.error;
+  // After the checks that say why a delete can never go through, which a
+  // screen holding an old version would otherwise hear as a save elsewhere.
+  const held = heldToVersion(body, existing.tune.edit_version, `tune ${tuneId}`, 'remove');
 
-  await env.DB.batch(saveStatements(env, tuneId, fields));
+  if ('error' in held) return held.error;
 
-  const saved = await readTune(env, tuneId);
-
-  return jsonResponse({ tune: present(saved!) });
-}
-
-/**
- * DELETE /admin/api/genet/tunes/:tuneId. 404 when there is no such tune, 409
- * when any `genet_performance` still performs it - the same shape as
- * genet-people.ts's deletePerson.
- */
-export async function deleteTune(env: Env, tuneId: number): Promise<Response> {
-  const existing = await env.DB.prepare('SELECT 1 FROM genet_tune WHERE tune_id = ?1').bind(tuneId).first();
-
-  if (existing === null) return noTuneResponse(tuneId);
-
-  const referenced = await env.DB.prepare('SELECT 1 FROM genet_performance WHERE tune_id = ?1').bind(tuneId).first();
-
-  if (referenced !== null) {
-    return refuse(
-      409,
-      refusal(
-        'この曲を演奏している配信があるため削除できませんでした',
-        'this tune is performed by a stream; remove it there first',
-      ),
-    );
-  }
-
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM genet_tune_attribute_person WHERE tune_id = ?1').bind(tuneId),
-    env.DB.prepare('DELETE FROM genet_tune_attribute WHERE tune_id = ?1').bind(tuneId),
-    env.DB.prepare('DELETE FROM genet_tune_video WHERE tune_id = ?1').bind(tuneId),
-    env.DB.prepare('DELETE FROM genet_tune_score WHERE tune_id = ?1').bind(tuneId),
-    env.DB.prepare('DELETE FROM genet_tune WHERE tune_id = ?1').bind(tuneId),
+  const deletable = `EXISTS (SELECT 1 FROM genet_tune WHERE tune_id = ?1 AND edit_version = ?2)
+                     AND NOT EXISTS (SELECT 1 FROM genet_performance WHERE tune_id = ?1)`;
+  const results = await env.DB.batch([
+    ...['genet_tune_attribute_person', 'genet_tune_attribute', 'genet_tune_video', 'genet_tune_score'].map((table) =>
+      env.DB.prepare(`DELETE FROM ${table} WHERE tune_id = ?1 AND ${deletable}`).bind(tuneId, held.whileVersion),
+    ),
+    env.DB.prepare(`DELETE FROM genet_tune WHERE tune_id = ?1 AND ${deletable}`).bind(tuneId, held.whileVersion),
   ]);
 
+  if (results[results.length - 1]!.meta.changes === 0) {
+    if ((await readTune(env, tuneId)) === null) return noTuneResponse(tuneId);
+
+    if (await isPerformed(env, tuneId)) return performedResponse();
+
+    return changedElsewhereResponse(`tune ${tuneId} was saved by another screen meanwhile`, 'remove');
+  }
+
   return jsonResponse({});
+}
+
+/** Whether any stream, draft or published, performs tune `tuneId`. */
+async function isPerformed(env: Env, tuneId: number): Promise<boolean> {
+  return (await env.DB.prepare('SELECT 1 FROM genet_performance WHERE tune_id = ?1').bind(tuneId).first()) !== null;
+}
+
+function performedResponse(): Response {
+  return refuse(
+    409,
+    refusal(
+      'この曲を演奏している配信があるため削除できませんでした',
+      'this tune is performed by a stream; remove it there first',
+    ),
+  );
 }

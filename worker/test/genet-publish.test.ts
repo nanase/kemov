@@ -10,8 +10,8 @@ import {
   saveTune,
   withdrawStream,
 } from '../src/admin/genet-publish';
-import { createStream, getStream } from '../src/admin/genet-streams';
-import { createTune, getTune } from '../src/admin/genet-tunes';
+import { createStream, deleteStream, getStream } from '../src/admin/genet-streams';
+import { createTune, deleteTune, getTune } from '../src/admin/genet-tunes';
 import { clearEverything } from './reset-db';
 
 async function clearPublicData(): Promise<void> {
@@ -1304,7 +1304,17 @@ async function isBehindNow(): Promise<boolean> {
 }
 
 describe("a stream's publish that finds a tune it performs saved meanwhile", () => {
-  test('keeps the newer tune in the revisions and the JSON, and still publishes the stream', async () => {
+  /** `env` whose first read of the tunes a publish performs is followed by a save of `tuneId`, titled `title`. */
+  function tuneSavedAfterRead(tuneId: number, title: string): typeof env {
+    return afterFirstRead('SELECT tune_id, title, original_title, subtunes, memo', async () =>
+      saveTune(env, tuneId, await tuneFieldsOf(tuneId, { title }), NOW),
+    );
+  }
+
+  // #299 let this publish through and kept the tune's newer revision. #303
+  // holds the publish to the tune as it read it, as a save that logs no
+  // revision would otherwise be left out of the JSON (the test below).
+  test('answers 409 and publishes nothing, when the tune was saved to the public JSON', async () => {
     const { videoId, tuneId } = await createPerformableStream();
 
     await publish(videoId);
@@ -1313,21 +1323,333 @@ describe("a stream's publish that finds a tune it performs saved meanwhile", () 
       videoId: 'bbbbbbbbbbb',
       performances: [{ tuneId, description: null, scenes: [] }],
     });
-    const tuneSavedBetween = afterFirstRead('SELECT tune_id, title, original_title, subtunes, memo', async () =>
-      saveTune(env, tuneId, await tuneFieldsOf(tuneId, { title: '後から直した曲名' }), NOW),
+
+    const response = await publishStream(
+      tuneSavedAfterRead(tuneId, '後から直した曲名'),
+      other,
+      await fieldsOf(other),
+      NOW,
     );
 
-    const response = await publishStream(tuneSavedBetween, other, await fieldsOf(other), NOW);
-
-    expect(response.status).toEqual(200);
-    expect(await response.json()).toMatchObject({ tuneRevisionCount: 0 });
-    expect(await streamStatus(other)).toEqual('published');
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({
+      changedElsewhere: true,
+      detail: expect.stringContaining(`tunes ${tuneId} that stream`),
+    });
+    expect(await streamStatus(other)).toEqual('draft');
+    expect((await revisionRows('genet_stream')).map((row) => row.entity_key)).toEqual([videoId]);
 
     const tuneRevisions = await revisionRows('genet_tune');
 
     expect(tuneRevisions).toHaveLength(2);
     expect(JSON.parse(tuneRevisions[1]!.body!)).toMatchObject({ title: '後から直した曲名' });
+
+    const published = (await readPublished())!;
+
+    expect(published.streams.map((s) => s.video_id)).toEqual([videoId]);
+    expect(published.tunes).toEqual([expect.objectContaining({ title: '後から直した曲名' })]);
+  });
+
+  // #303: no published stream performed the tune, so its save logged no
+  // revision, and the publish logged the tune as it read it.
+  test('answers 409 and publishes nothing, when the tune was saved with no published stream performing it', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    const response = await publishStream(
+      tuneSavedAfterRead(tuneId, '後から直した曲名'),
+      videoId,
+      await fieldsOf(videoId),
+      NOW,
+    );
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({
+      changedElsewhere: true,
+      detail: expect.stringContaining(`tunes ${tuneId} that stream`),
+    });
+    expect(await streamStatus(videoId)).toEqual('draft');
+    expect(await revisionRows('genet_stream')).toEqual([]);
+    expect(await revisionRows('genet_tune')).toEqual([]);
+    expect(((await tuneFieldsOf(tuneId)) as { title: string }).title).toEqual('後から直した曲名');
+
+    const published = await readPublished();
+
+    expect(published?.streams ?? []).toEqual([]);
+    expect(published?.tunes ?? []).toEqual([]);
+  });
+
+  test('publishes the tune as saved, when pressed again', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    await publishStream(tuneSavedAfterRead(tuneId, '後から直した曲名'), videoId, await fieldsOf(videoId), NOW);
+
+    const response = await publish(videoId);
+
+    expect(response.status).toEqual(200);
     expect((await readPublished())!.tunes).toEqual([expect.objectContaining({ title: '後から直した曲名' })]);
+  });
+});
+
+describe("a tune's save that finds a stream performing it published meanwhile (#303)", () => {
+  test('reaches the public JSON, as a live tune does', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+    const publishedFirst = beforeNextBatch(env, () => publish(videoId));
+
+    const response = await saveTune(publishedFirst, tuneId, await tuneFieldsOf(tuneId, { title: '新しい曲名' }), NOW);
+
+    expect(response.status).toEqual(200);
+    expect(await response.json()).toMatchObject({ live: true, tune: { title: '新しい曲名' } });
+    expect(await streamStatus(videoId)).toEqual('published');
+    expect((await readPublished())!.tunes).toEqual([expect.objectContaining({ title: '新しい曲名' })]);
+
+    const tuneRevisions = await revisionRows('genet_tune');
+
+    expect(JSON.parse(tuneRevisions.at(-1)!.body!)).toMatchObject({ title: '新しい曲名' });
+    expect(await (await pendingGenetMusic(env)).json()).toMatchObject({ changed: [] });
+  });
+});
+
+/** `env` that runs `then` once, right after its first `batch` has answered - another tab's request landing just after this one's write. */
+function afterFirstBatch(base: typeof env, then: () => Promise<unknown>): typeof env {
+  let done = false;
+
+  return {
+    ...base,
+    DB: new Proxy(base.DB, {
+      get(target, property) {
+        if (property === 'batch') {
+          return async (statements: D1PreparedStatement[]) => {
+            const results = await target.batch(statements);
+
+            if (!done) {
+              done = true;
+              await then();
+            }
+
+            return results;
+          };
+        }
+
+        const value = Reflect.get(target, property) as unknown;
+
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    }),
+  } as typeof env;
+}
+
+describe("a stream's publish that finds a tune it performs deleted meanwhile (#303)", () => {
+  test('answers 409 naming the tune, rather than failing on the foreign key', async () => {
+    const { videoId } = await createPerformableStream();
+    const added = await createValidTune({ title: '足した曲' });
+    const fields = await fieldsOf(videoId);
+    const performances = [...(fields.performances as unknown[]), { tuneId: added, description: null, scenes: [] }];
+    const deletedBetween = afterFirstRead('SELECT r.entity, r.entity_key', () => deleteTune(env, added));
+
+    const response = await publishStream(deletedBetween, videoId, { ...fields, performances }, NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({
+      changedElsewhere: true,
+      detail: expect.stringContaining(`tunes ${added} that stream`),
+    });
+    expect(await streamStatus(videoId)).toEqual('draft');
+    expect(await childCount(videoId)).toEqual({ performances: 1, scenes: 1 });
+    expect(await readPublished()).toBeNull();
+  });
+});
+
+describe("a stream's save whose JSON could not be written, after a tune it performs was saved (#303)", () => {
+  test('saves nothing, and answers 409 naming the tune', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const read = await fieldsOf(videoId);
+    const tuneSavedFirst = beforeNextBatch(failingPutEnv(), async () =>
+      saveTune(env, tuneId, await tuneFieldsOf(tuneId, { title: '後から直した曲名' }), NOW),
+    );
+
+    const response = await saveStream(tuneSavedFirst, videoId, { ...read, title: '後の保存' }, NOW);
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ detail: expect.stringContaining(`tunes ${tuneId} that stream`) });
+    expect(await streamTitle(videoId)).toEqual(read.title);
+    expect(((await fieldsOf(videoId)) as { version: number }).version).toEqual(read.version);
+  });
+});
+
+describe("a tune's save whose JSON could not be written (#303)", () => {
+  // A save landing between this request's write and its answer must not be
+  // answered as this request's: the screen takes the answer for what it sent.
+  test('answers the tune as this request wrote it, at the version it left', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const read = await tuneFieldsOf(tuneId);
+    const otherSavedAfter = afterFirstBatch(failingPutEnv(), async () =>
+      saveTune(env, tuneId, { ...read, version: (read.version as number) + 2, title: '別の画面の曲名' }, NOW),
+    );
+
+    const response = await saveTune(otherSavedAfter, tuneId, { ...read, title: 'この画面の曲名' }, NOW);
+
+    expect(response.status).toEqual(502);
+    expect(await response.json()).toMatchObject({
+      saved: true,
+      live: true,
+      tune: { title: 'この画面の曲名', version: (read.version as number) + 2 },
+    });
+    expect(((await tuneFieldsOf(tuneId)) as { title: string }).title).toEqual('別の画面の曲名');
+  });
+});
+
+describe('two screens that read the same tune (#303)', () => {
+  const LATER = new Date('2026-09-19T00:00:00Z');
+
+  async function tuneTitle(tuneId: number): Promise<string> {
+    return ((await tuneFieldsOf(tuneId)) as { title: string }).title;
+  }
+
+  async function tuneVersion(tuneId: number): Promise<number> {
+    return ((await tuneFieldsOf(tuneId)) as { version: number }).version;
+  }
+
+  test('starts at version 0; a save no published stream sees adds 2, one that reaches the JSON adds 1', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    expect(await tuneVersion(tuneId)).toEqual(0);
+
+    await saveTune(env, tuneId, await tuneFieldsOf(tuneId, { title: '一度目' }), NOW);
+
+    expect(await tuneVersion(tuneId)).toEqual(2);
+
+    await publish(videoId);
+    await saveTune(env, tuneId, await tuneFieldsOf(tuneId, { title: '二度目' }), NOW);
+
+    expect(await tuneVersion(tuneId)).toEqual(3);
+  });
+
+  test('with no published stream, the later save sent with the version it read answers 409 and writes nothing', async () => {
+    const tuneId = await createValidTune();
+    const read = await tuneFieldsOf(tuneId);
+
+    expect((await saveTune(env, tuneId, { ...read, title: '先の保存' }, NOW)).status).toEqual(200);
+
+    const response = await saveTune(env, tuneId, { ...read, title: '後の保存', subtunes: ['後'] }, LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({
+      error: '別の画面で変更されたため保存できませんでした',
+      changedElsewhere: true,
+    });
+    expect(await tuneTitle(tuneId)).toEqual('先の保存');
+    expect(((await tuneFieldsOf(tuneId)) as { subtunes: string[] }).subtunes).toEqual([]);
+  });
+
+  test('with no published stream, the later save whose batch runs after the first answers 409', async () => {
+    const tuneId = await createValidTune({ scores: [{ url: 'https://example.com/a', title: '楽譜' }] });
+    const read = await tuneFieldsOf(tuneId);
+    const savedFirst = beforeNextBatch(env, () => saveTune(env, tuneId, { ...read, title: '先の保存' }, NOW));
+
+    const response = await saveTune(savedFirst, tuneId, { ...read, title: '後の保存', scores: [] }, LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await tuneTitle(tuneId)).toEqual('先の保存');
+    expect(((await tuneFieldsOf(tuneId)) as { scores: unknown[] }).scores).toHaveLength(1);
+  });
+
+  test('performed by a published stream, the later save sent with the version it read answers 409', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const read = await tuneFieldsOf(tuneId);
+
+    expect((await saveTune(env, tuneId, { ...read, title: '先の保存' }, NOW)).status).toEqual(200);
+
+    const response = await saveTune(env, tuneId, { ...read, title: '後の保存' }, LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await tuneTitle(tuneId)).toEqual('先の保存');
+    expect((await readPublished())!.tunes.map((t) => t.title)).toEqual(['先の保存']);
+    expect((await revisionRows('genet_tune')).map((row) => JSON.parse(row.body!).title)).toEqual(['曲名', '先の保存']);
+  });
+
+  // Both read the tune before either wrote it: only the batch tells them apart.
+  test('performed by a published stream, the later save whose batch runs after the first answers 409 and logs nothing', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const read = await tuneFieldsOf(tuneId);
+    const savedFirst = beforeNextBatch(env, () => saveTune(env, tuneId, { ...read, title: '先の保存' }, NOW));
+
+    const response = await saveTune(savedFirst, tuneId, { ...read, title: '後の保存' }, LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await tuneTitle(tuneId)).toEqual('先の保存');
+    expect((await readPublished())!.tunes.map((t) => t.title)).toEqual(['先の保存']);
+    expect((await revisionRows('genet_tune')).map((row) => JSON.parse(row.body!).title)).toEqual(['曲名', '先の保存']);
+  });
+
+  // The first could not write the JSON, so it saved the fields alone and
+  // logged no revision: the revision cannot tell the two saves apart.
+  test('performed by a published stream, the later save after the first saved its fields alone answers 409 and logs nothing', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    await publish(videoId);
+
+    const read = await tuneFieldsOf(tuneId);
+    const savedUnlogged = beforeNextBatch(env, () =>
+      saveTune(failingPutEnv(), tuneId, { ...read, title: '先の保存' }, NOW),
+    );
+
+    const response = await saveTune(savedUnlogged, tuneId, { ...read, title: '後の保存' }, LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await tuneTitle(tuneId)).toEqual('先の保存');
+    expect(await tuneVersion(tuneId)).toEqual((read.version as number) + 2);
+    expect((await readPublished())!.tunes.map((t) => t.title)).toEqual(['曲名']);
+    expect((await revisionRows('genet_tune')).map((row) => JSON.parse(row.body!).title)).toEqual(['曲名']);
+  });
+
+  // A stream's publish logged the tune as it read it, after this save read
+  // the tune's revisions: written over, the revision would be the older one.
+  test('performed by a published stream, a save whose batch runs after another stream logged the tune answers 409', async () => {
+    const { videoId, tuneId } = await createPerformableStream();
+
+    await publish(videoId);
+    // A revision the next publish brings along: the tune as it now stands differs from it.
+    await env.DB.prepare("UPDATE genet_tune SET original_title = '原題' WHERE tune_id = ?1").bind(tuneId).run();
+
+    const other = await createValidStream({
+      videoId: 'bbbbbbbbbbb',
+      performances: [{ tuneId, description: null, scenes: [] }],
+    });
+    const read = await tuneFieldsOf(tuneId);
+    const otherPublishedFirst = beforeNextBatch(env, () => publish(other));
+
+    const response = await saveTune(otherPublishedFirst, tuneId, { ...read, title: '後の保存' }, LATER);
+
+    expect(response.status).toEqual(409);
+    expect(await streamStatus(other)).toEqual('published');
+    expect(await tuneTitle(tuneId)).toEqual('曲名');
+    expect((await readPublished())!.tunes.map((t) => t.title)).toEqual(['曲名']);
+  });
+
+  test('refuses a version that is not a whole number, and saves nothing', async () => {
+    const tuneId = await createValidTune();
+
+    const response = await saveTune(
+      env,
+      tuneId,
+      await tuneFieldsOf(tuneId, { title: '新しい題', version: '1' }),
+      LATER,
+    );
+
+    expect(response.status).toEqual(400);
+    expect(await tuneTitle(tuneId)).toEqual('曲名');
   });
 });
 
@@ -1667,5 +1989,135 @@ describe('two screens that read the same draft stream (#307)', () => {
     expect(await streamStatus(videoId)).toEqual('draft');
     expect(await readPublished()).toBeNull();
     expect(await revisionRows('genet_stream')).toEqual([]);
+  });
+});
+
+describe('a delete of a stream another screen saved (#309)', () => {
+  test('sent with the version from before the save, answers 409 and leaves the stream as saved', async () => {
+    const { videoId } = await createPerformableStream();
+    const read = await fieldsOf(videoId);
+
+    await saveStream(env, videoId, { ...read, title: '先の保存' }, NOW);
+
+    const response = await deleteStream(env, videoId, { version: read.version });
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({
+      error: '別の画面で変更されたため削除できませんでした',
+      changedElsewhere: true,
+    });
+    expect(await streamTitle(videoId)).toEqual('先の保存');
+    expect(await childCount(videoId)).toEqual({ performances: 1, scenes: 1 });
+  });
+
+  test('whose batch runs after the save, answers 409 and leaves the stream as saved', async () => {
+    const { videoId } = await createPerformableStream();
+    const read = await fieldsOf(videoId);
+    const savedFirst = beforeNextBatch(env, () => saveStream(env, videoId, { ...read, title: '先の保存' }, NOW));
+
+    const response = await deleteStream(savedFirst, videoId, { version: read.version });
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ error: '別の画面で変更されたため削除できませんでした' });
+    expect(await streamTitle(videoId)).toEqual('先の保存');
+    expect(await childCount(videoId)).toEqual({ performances: 1, scenes: 1 });
+  });
+
+  test('sent with the version read after the save, deletes it', async () => {
+    const { videoId } = await createPerformableStream();
+
+    await saveStream(env, videoId, await fieldsOf(videoId, { title: '先の保存' }), NOW);
+
+    expect((await deleteStream(env, videoId, { version: (await fieldsOf(videoId)).version })).status).toEqual(200);
+    expect(await streamStatus(videoId)).toBeUndefined();
+  });
+
+  test('refuses a version that is not a whole number with 400, and deletes nothing', async () => {
+    const { videoId } = await createPerformableStream();
+
+    expect((await deleteStream(env, videoId, { version: 'x' })).status).toEqual(400);
+    expect(await streamStatus(videoId)).toEqual('draft');
+  });
+});
+
+describe('a delete of a tune another screen saved (#309)', () => {
+  /** The tune's title as stored, or null once it is deleted. */
+  async function storedTuneTitle(tuneId: number): Promise<string | null> {
+    const row = await env.DB.prepare('SELECT title FROM genet_tune WHERE tune_id = ?1')
+      .bind(tuneId)
+      .first<{ title: string }>();
+
+    return row?.title ?? null;
+  }
+
+  async function scoreCount(tuneId: number): Promise<number> {
+    const row = await env.DB.prepare('SELECT count(*) AS n FROM genet_tune_score WHERE tune_id = ?1')
+      .bind(tuneId)
+      .first<{ n: number }>();
+
+    return row!.n;
+  }
+
+  test('sent with the version from before the save, answers 409 and leaves the tune as saved', async () => {
+    const tuneId = await createValidTune({ scores: [{ url: 'https://example.com/a', title: '楽譜' }] });
+    const read = await tuneFieldsOf(tuneId);
+
+    await saveTune(env, tuneId, { ...read, title: '先の保存' }, NOW);
+
+    const response = await deleteTune(env, tuneId, { version: read.version });
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({
+      error: '別の画面で変更されたため削除できませんでした',
+      changedElsewhere: true,
+    });
+    expect(await storedTuneTitle(tuneId)).toEqual('先の保存');
+    expect(await scoreCount(tuneId)).toEqual(1);
+  });
+
+  test('whose batch runs after the save, answers 409 and leaves the tune as saved', async () => {
+    const tuneId = await createValidTune({ scores: [{ url: 'https://example.com/a', title: '楽譜' }] });
+    const read = await tuneFieldsOf(tuneId);
+    const savedFirst = beforeNextBatch(env, () => saveTune(env, tuneId, { ...read, title: '先の保存' }, NOW));
+
+    const response = await deleteTune(savedFirst, tuneId, { version: read.version });
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ error: '別の画面で変更されたため削除できませんでした' });
+    expect(await storedTuneTitle(tuneId)).toEqual('先の保存');
+    expect(await scoreCount(tuneId)).toEqual(1);
+  });
+
+  // The foreign key from genet_performance would otherwise fail the batch.
+  test('whose batch runs after a stream took the tune, answers 409 and leaves the tune', async () => {
+    const tuneId = await createValidTune();
+    const read = await tuneFieldsOf(tuneId);
+    const performedFirst = beforeNextBatch(env, () =>
+      createStream(env, validStreamBody({ performances: [{ tuneId, description: null, scenes: [] }] })),
+    );
+
+    const response = await deleteTune(performedFirst, tuneId, { version: read.version });
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ error: 'この曲を演奏している配信があるため削除できませんでした' });
+    expect(await storedTuneTitle(tuneId)).toEqual('曲名');
+  });
+
+  test('sent with the version read after the save, deletes it', async () => {
+    const tuneId = await createValidTune();
+
+    await saveTune(env, tuneId, await tuneFieldsOf(tuneId, { title: '先の保存' }), NOW);
+
+    const response = await deleteTune(env, tuneId, { version: (await tuneFieldsOf(tuneId)).version });
+
+    expect(response.status).toEqual(200);
+    expect(await storedTuneTitle(tuneId)).toBeNull();
+  });
+
+  test('refuses a version that is not a whole number with 400, and deletes nothing', async () => {
+    const tuneId = await createValidTune();
+
+    expect((await deleteTune(env, tuneId, { version: null })).status).toEqual(400);
+    expect(await storedTuneTitle(tuneId)).toEqual('曲名');
   });
 });

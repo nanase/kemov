@@ -1,4 +1,4 @@
-import { fieldsAfterSave, fieldsOnReload, sameFields, writeBody } from '@/admin/lib/editing';
+import { clashesKept, fieldsAfterSave, fieldsOnReload, removePath, sameFields, writeBody } from '@/admin/lib/editing';
 import { toFormFields, type FootprintsEvent } from '@/admin/lib/footprints';
 
 const EVENT: FootprintsEvent = {
@@ -142,6 +142,12 @@ describe('writeBody', () => {
   });
 });
 
+describe('removePath', () => {
+  it('puts the version of the row the delete was pressed over in the query', () => {
+    expect(removePath('/footprints/events/12', { version: 3 })).toEqual('/footprints/events/12?version=3');
+  });
+});
+
 describe('fieldsAfterSave', () => {
   const before = { title: 'もとの題', supplement: null as string | null };
   const sent = { title: '送った題', supplement: null as string | null };
@@ -193,5 +199,35 @@ describe('fieldsAfterSave', () => {
     const after = { title: '別の画面の題', supplement: null };
 
     expect(fieldsAfterSave(current, before, after, null)).toEqual(fieldsOnReload(current, before, after));
+  });
+});
+
+describe('clashesKept', () => {
+  const before = { title: 'もとの題', supplement: null as string | null };
+
+  // A clash found, then the row read again with nothing new from another screen.
+  it('keeps a clash found before while its field is still typed', () => {
+    const current = { title: '打った題', supplement: null };
+    const after = { title: '別の画面の題', supplement: null };
+    const reloaded = fieldsOnReload(current, after, after);
+
+    expect(reloaded.clashes).toEqual([]);
+    expect(clashesKept(['title'], reloaded, after)).toEqual(['title']);
+  });
+
+  it('drops a clash once its field reads as the row now does', () => {
+    const current = { title: '別の画面の題', supplement: null };
+    const after = { title: '別の画面の題', supplement: null };
+
+    expect(clashesKept(['title'], fieldsOnReload(current, after, after), after)).toEqual([]);
+  });
+
+  it('adds the clashes the read found, each once', () => {
+    const current = { title: '打った題', supplement: '打った補足' };
+    const after = { title: '別の画面の題', supplement: '別の画面の補足' };
+    const reloaded = fieldsOnReload(current, before, after);
+
+    expect(reloaded.clashes).toEqual(['title', 'supplement']);
+    expect(clashesKept(['title'], reloaded, after)).toEqual(['title', 'supplement']);
   });
 });

@@ -866,8 +866,13 @@ export async function updateEvent(env: Env, eventId: number, body: Record<string
  * sources too: a 「公開」 that lands between the read and the delete would
  * otherwise leave its revision and its public entry with no row to withdraw
  * them from.
+ *
+ * And only while it is at the version `body` names (#309), as a save is
+ * (lib/edit-version.ts's `heldToVersion`): a save another screen made since
+ * this one read the event is not deleted unseen. `body` is the DELETE's
+ * query, read by `versionInQuery`.
  */
-export async function deleteEvent(env: Env, eventId: number): Promise<Response> {
+export async function deleteEvent(env: Env, eventId: number, body: Record<string, unknown> = {}): Promise<Response> {
   const existing = await readEvent(env, eventId);
 
   if (existing === null) return noEventResponse(eventId);
@@ -893,24 +898,39 @@ export async function deleteEvent(env: Env, eventId: number): Promise<Response> 
     );
   }
 
+  // After the checks that say why a delete can never go through, which a
+  // screen holding an old version would otherwise hear as a save elsewhere.
+  const held = heldToVersion(body, existing.event.edit_version, `footprints event ${eventId}`, 'remove');
+
+  if ('error' in held) return held.error;
+
   const results = await env.DB.batch([
     env.DB.prepare(
       `DELETE FROM footprints_event_member
         WHERE event_id = ?1
-          AND EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND status = 'draft')`,
-    ).bind(eventId),
+          AND EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND status = 'draft' AND edit_version = ?2)`,
+    ).bind(eventId, held.whileVersion),
     env.DB.prepare(
       `DELETE FROM footprints_event_source
         WHERE event_id = ?1
-          AND EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND status = 'draft')`,
-    ).bind(eventId),
-    env.DB.prepare(`DELETE FROM footprints_event WHERE event_id = ?1 AND status = 'draft'`).bind(eventId),
+          AND EXISTS (SELECT 1 FROM footprints_event WHERE event_id = ?1 AND status = 'draft' AND edit_version = ?2)`,
+    ).bind(eventId, held.whileVersion),
+    env.DB.prepare(`DELETE FROM footprints_event WHERE event_id = ?1 AND status = 'draft' AND edit_version = ?2`).bind(
+      eventId,
+      held.whileVersion,
+    ),
   ]);
 
   if (results[2]!.meta.changes === 0) {
-    if ((await readEvent(env, eventId)) === null) return noEventResponse(eventId);
+    const now = await readEvent(env, eventId);
 
-    return changedElsewhereResponse('withdraw this event before deleting it', 'remove');
+    if (now === null) return noEventResponse(eventId);
+
+    if (now.event.status === 'published') {
+      return changedElsewhereResponse('withdraw this event before deleting it', 'remove');
+    }
+
+    return changedElsewhereResponse(`footprints event ${eventId} was saved by another screen meanwhile`, 'remove');
   }
 
   // {} rather than 204: every other answer in this API is JSON, and this one

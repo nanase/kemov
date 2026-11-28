@@ -1043,6 +1043,60 @@ describe('a delete that finds the event published meanwhile', () => {
   });
 });
 
+describe('a delete of an event another screen saved (#309)', () => {
+  test('sent with the version from before the save, answers 409 and leaves the row as saved', async () => {
+    await insertChannel('UCaaa');
+
+    const eventId = await createValidEvent({ channelIds: ['UCaaa'] });
+    const read = await versionOf(eventId);
+
+    await saveEvent(env, eventId, validBody({ title: '先の保存', channelIds: ['UCaaa'], version: read }), NOW);
+
+    const response = await deleteEvent(env, eventId, { version: read });
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({
+      error: '別の画面で変更されたため削除できませんでした',
+      changedElsewhere: true,
+    });
+    expect(await readRow(eventId)).toMatchObject({ status: 'draft', title: '先の保存' });
+    expect(await childCounts(eventId)).toEqual({ members: 1, sources: 1 });
+  });
+
+  test('whose batch runs after the save, answers 409 and leaves the row as saved', async () => {
+    await insertChannel('UCaaa');
+
+    const eventId = await createValidEvent({ channelIds: ['UCaaa'] });
+    const read = await versionOf(eventId);
+    const savedFirst = beforeNextBatch(env, () =>
+      saveEvent(env, eventId, validBody({ title: '先の保存', channelIds: ['UCaaa'], version: read }), NOW),
+    );
+
+    const response = await deleteEvent(savedFirst, eventId, { version: read });
+
+    expect(response.status).toEqual(409);
+    expect(await response.json()).toMatchObject({ error: '別の画面で変更されたため削除できませんでした' });
+    expect(await readRow(eventId)).toMatchObject({ status: 'draft', title: '先の保存' });
+    expect(await childCounts(eventId)).toEqual({ members: 1, sources: 1 });
+  });
+
+  test('sent with the version read after the save, deletes it', async () => {
+    const eventId = await createValidEvent();
+
+    await saveEvent(env, eventId, validBody({ title: '先の保存', version: await versionOf(eventId) }), NOW);
+
+    expect((await deleteEvent(env, eventId, { version: await versionOf(eventId) })).status).toEqual(200);
+    expect((await getEvent(env, eventId)).status).toEqual(404);
+  });
+
+  test('refuses a version that is not a whole number with 400, and deletes nothing', async () => {
+    const eventId = await createValidEvent();
+
+    expect((await deleteEvent(env, eventId, { version: 'x' })).status).toEqual(400);
+    expect(await readRow(eventId)).toMatchObject({ status: 'draft' });
+  });
+});
+
 describe('a 409 for an event another screen changed', () => {
   test('is marked changedElsewhere, so the screen says it in its own words', async () => {
     const eventId = await createValidEvent();

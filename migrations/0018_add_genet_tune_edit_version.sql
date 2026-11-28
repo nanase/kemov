@@ -1,0 +1,12 @@
+-- A count of the writes to each `genet_tune` row (#303), as 0017 added to
+-- the three tables the admin site publishes.
+--
+-- A tune has no status of its own: its 保存 reaches the public JSON only
+-- while a published stream performs it, and logs no revision otherwise. Two
+-- screens' saves could not be told apart, and a stream's publish could log
+-- the tune as it read it after a save that logged nothing had changed it.
+-- Every save now adds to `edit_version`, a save and a stream's publish each
+-- send back the one they read, and a tune at any other count was written
+-- since: the write is refused with 409. Tunes that exist start at 0, as a
+-- new one does.
+ALTER TABLE genet_tune ADD COLUMN edit_version INTEGER NOT NULL DEFAULT 0 CHECK (edit_version >= 0);
